@@ -34,7 +34,7 @@
     attic = {
       cacheName = "harbor-macos-sdk";
       url = "https://attic.candee.baby/harbor-macos-sdk";
-      publicKey = "harbor-macos-sdk:ci7MNMkHDqdeTS4aKwzDNEJ1175AbpVUypTRjCJoHDk=";
+      publicKey = "harbor-macos-sdk:MLRX9qZASKwDh48UWON67cvYxfEbqvjfIZQmGwt1v1E=";
     };
   };
 }
