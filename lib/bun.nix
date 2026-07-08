@@ -14,6 +14,8 @@
     then system
     else throw "js-harbor.bun: unsupported system `${system}`; supported systems: ${lib.concatStringsSep ", " supportedSystems}";
 
+  sources = builtins.fromJSON (builtins.readFile "${bun-overlay}/sources.json");
+
   readPackageManagerVersion = {packageJson}: let
     parsed =
       if builtins.isPath packageJson || builtins.isString packageJson
@@ -28,19 +30,107 @@
     if match == null
     then throw "js-harbor.bun.readPackageManagerVersion: packageManager must be `bun@<version>`"
     else builtins.elemAt match 0;
+
+  linuxInterpreterPath = {
+    aarch64-linux = "/lib/ld-linux-aarch64.so.1";
+    x86_64-linux = "/lib64/ld-linux-x86-64.so.2";
+  };
+
+  mkBunFhsRunner = {pkgs}: let
+    system = requireSupportedSystem pkgs.stdenv.hostPlatform.system;
+  in
+    pkgs.writeShellScriptBin "bun-fhs-run" (
+      if pkgs.stdenvNoCC.hostPlatform.isLinux
+      then ''
+        set -euo pipefail
+        loaderPath=${linuxInterpreterPath.${system}}
+        loaderName=''${loaderPath##*/}
+        exec ${pkgs.proot}/bin/proot \
+          -b ${pkgs.glibc}/lib/$loaderName:$loaderPath \
+          -b ${pkgs.glibc}:${pkgs.glibc} \
+          -b ${pkgs.stdenv.cc.cc.lib}:${pkgs.stdenv.cc.cc.lib} \
+          "$@"
+      ''
+      else ''
+        exec "$@"
+      ''
+    );
 in rec {
-  inherit readPackageManagerVersion;
+  inherit mkBunFhsRunner readPackageManagerVersion;
 
   mkBunPackage = {
     pkgs,
     version,
+    baseline ? false,
   }: let
     system = requireSupportedSystem pkgs.stdenv.hostPlatform.system;
+    versionData =
+      if builtins.hasAttr version sources
+      then sources.${version}
+      else throw "js-harbor.bun.mkBunPackage: bun-overlay does not provide Bun version `${version}`";
+    platform =
+      if system == "x86_64-linux" && baseline
+      then "x86_64-linux-baseline"
+      else system;
+    platformData =
+      versionData.platforms.${platform}
+        or (throw "js-harbor.bun.mkBunPackage: Bun ${version} is not available for `${platform}`");
+    fhsRunner = mkBunFhsRunner {inherit pkgs;};
   in
-    (import "${bun-overlay}/default.nix" {
-      inherit pkgs system;
-      bunVersion = version;
-    }).bun;
+    pkgs.stdenvNoCC.mkDerivation {
+      pname = "bun";
+      version = versionData.version;
+
+      src = pkgs.fetchurl {
+        inherit (platformData) url;
+        inherit (platformData) sha256;
+      };
+
+      sourceRoot = ".";
+      nativeBuildInputs =
+        [
+          pkgs.unzip
+        ]
+        ++ lib.optionals pkgs.stdenvNoCC.hostPlatform.isLinux [
+          pkgs.makeWrapper
+        ]
+        ++ lib.optionals (pkgs.stdenvNoCC.hostPlatform.isDarwin or false) [
+          pkgs.installShellFiles
+        ];
+
+      dontConfigure = true;
+      dontBuild = true;
+
+      installPhase =
+        ''
+          runHook preInstall
+        ''
+        + lib.optionalString pkgs.stdenvNoCC.hostPlatform.isLinux ''
+          install -Dm755 */bun $out/libexec/bun/bun
+          makeWrapper ${fhsRunner}/bin/bun-fhs-run $out/bin/bun \
+            --add-flags "$out/libexec/bun/bun"
+        ''
+        + lib.optionalString (!pkgs.stdenvNoCC.hostPlatform.isLinux) ''
+          install -Dm755 */bun $out/bin/bun
+        ''
+        + ''
+          ln -s bun $out/bin/bunx
+          runHook postInstall
+        '';
+
+      meta = {
+        description = "Bun is a fast JavaScript runtime, package manager, bundler and test runner";
+        homepage = "https://bun.sh";
+        license = lib.licenses.mit;
+        mainProgram = "bun";
+        platforms = supportedSystems;
+        sourceProvenance = with lib.sourceTypes; [binaryNativeCode];
+      };
+
+      passthru = {
+        inherit fhsRunner;
+      };
+    };
 
   mkBunToolchain = {
     pkgs,
