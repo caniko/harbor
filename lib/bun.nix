@@ -144,9 +144,14 @@ in rec {
       else if packageJson != null
       then readPackageManagerVersion {inherit packageJson;}
       else throw "js-harbor.bun.mkBunToolchain: provide either `version` or `packageJson`";
+    baseline =
+      pkgs.stdenv.hostPlatform.system
+      == "x86_64-linux"
+      && !(pkgs.stdenv.hostPlatform.avx2Support or false);
     bun = mkBunPackage {
       inherit pkgs;
       version = resolvedVersion;
+      inherit baseline;
     };
   in {
     inherit bun;

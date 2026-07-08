@@ -11,6 +11,7 @@ The first maintained surface wraps
 - `lib.bun.mkBunWorkspaceDeps`
 - `lib.bun.readPackageManagerVersion`
 - `packages.<system>.bun_1_3_14`
+- `packages.x86_64-linux.bun_1_3_14_baseline`
 
 On Linux, `mkBunPackage` keeps the upstream Bun binary unpatched and runs it
 through `proot` so `bun build --compile` keeps working in Nix build sandboxes.

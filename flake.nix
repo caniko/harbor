@@ -42,11 +42,20 @@
           inherit pkgs;
           version = "1.3.14";
         };
-      in {
-        packages = {
-          inherit bun_1_3_14;
-          default = bun_1_3_14;
+        bun_1_3_14_baseline = self.lib.bun.mkBunPackage {
+          inherit pkgs;
+          version = "1.3.14";
+          baseline = true;
         };
+      in {
+        packages =
+          {
+            inherit bun_1_3_14;
+            default = bun_1_3_14;
+          }
+          // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+            inherit bun_1_3_14_baseline;
+          };
 
         checks = import ./checks {
           inherit pkgs system;
