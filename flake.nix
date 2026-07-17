@@ -2,20 +2,15 @@
   description = "Plugins for the anx article toolchain";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-
-    crane = {
-      url = "github:ipetkov/crane";
-    };
-
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    rs-harbor.url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=9bfa8bdb0ecb22d7bc11448665f7fbaebae7a759";
+    nixpkgs.follows = "rs-harbor/nixpkgs";
+    rust-overlay.follows = "rs-harbor/rust-overlay";
+    crane.follows = "rs-harbor/crane";
   };
 
   outputs = {
     self,
+    rs-harbor,
     nixpkgs,
     crane,
     rust-overlay,
@@ -31,10 +26,16 @@
         }));
   in {
     packages = forAllSystems (pkgs: let
-      rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-        extensions = ["rust-src" "rustfmt" "clippy"];
+      toolchain = rs-harbor.lib.mkToolchain {inherit pkgs;};
+      inherit (toolchain) craneLib rustToolchain;
+      buildCache = rs-harbor.lib.mkBuildCachePolicy {
+        inherit pkgs;
+        buildPackageSet = pkgs.buildPackages;
+        sccachePackage = pkgs.buildPackages.sccache;
+        cacheRoot = null;
+        namespaceScope = "canix-rust";
+        namespaceGeneration = 5;
       };
-      craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
       commonArgs = {
         src = craneLib.cleanCargoSource ./.;
@@ -45,11 +46,13 @@
 
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-      anx-plugin-zenodo = craneLib.buildPackage (commonArgs
-        // {
-          inherit cargoArtifacts;
-          pname = "anx-plugin-zenodo";
-        });
+      anx-plugin-zenodo = buildCache.withRustCache {
+        package = craneLib.buildPackage (commonArgs
+          // {
+            inherit cargoArtifacts;
+            pname = "anx-plugin-zenodo";
+          });
+      };
 
       anx-plugin-pandoc = pkgs.python314.pkgs.buildPythonPackage {
         pname = "anx-plugin-pandoc";
