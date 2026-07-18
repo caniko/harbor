@@ -1,0 +1,14 @@
+\documentclass{article}
+\usepackage{fontspec}
+\usepackage{svg}
+\usepackage{biblatex}
+\addbibresource{references.bib}
+\setmainfont{Latin Modern Roman}
+
+\begin{document}
+\section*{LuaLaTeX smoke test}
+Font selection, SVG inclusion, and bibliography processing are covered here~\cite{texlive}.
+
+\includesvg[width=0.25\linewidth]{figure}
+\printbibliography
+\end{document}
