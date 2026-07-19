@@ -24,7 +24,7 @@
 
   profileSmoke =
     pkgs.runCommand "tex-harbor-profile-smoke-${system}" {
-      nativeBuildInputs = builtins.attrValues profilePackages;
+      nativeBuildInputs = [profilePackages.cv profilePackages.article profilePackages.editor];
     } ''
       command -v pdflatex
       command -v lualatex
@@ -55,6 +55,29 @@
     nativeBuildInputs = [pkgs.inkscape];
   };
 
+  xelatexSmoke = lib.mkLatexDocument {
+    inherit pkgs;
+    name = "tex-harbor-xelatex-smoke";
+    src = ../fixtures/lualatex;
+    mainFile = "main.tex";
+    engine = "xelatex";
+    profile = "article";
+    shellEscape = true;
+    nativeBuildInputs = [pkgs.inkscape];
+  };
+
+  nestedWorkingDirectorySmoke = lib.mkLatexDocument {
+    inherit pkgs;
+    name = "tex-harbor-nested-working-directory-smoke";
+    src = ../fixtures;
+    workingDirectory = "lualatex";
+    mainFile = "main.tex";
+    engine = "lualatex";
+    profile = "article";
+    shellEscape = true;
+    nativeBuildInputs = [pkgs.inkscape];
+  };
+
   conferenceSmoke = lib.mkLatexDocument {
     inherit pkgs;
     name = "tex-harbor-conference-smoke";
@@ -64,5 +87,5 @@
     profile = "conference";
   };
 in {
-  inherit profileSmoke pdflatexSmoke lualatexSmoke conferenceSmoke;
+  inherit profileSmoke pdflatexSmoke lualatexSmoke xelatexSmoke nestedWorkingDirectorySmoke conferenceSmoke;
 }

@@ -32,6 +32,7 @@ article = tex-harbor.lib.mkLatexDocument {
   inherit pkgs;
   name = "article";
   src = ./article;
+  workingDirectory = ".";
   mainFile = "manuscript.tex";
   engine = "lualatex";
   profile = "article";
@@ -39,6 +40,11 @@ article = tex-harbor.lib.mkLatexDocument {
   nativeBuildInputs = [ pkgs.inkscape ];
 };
 ```
+
+`workingDirectory` may point below a larger source tree, which is useful when
+an article depends on generated assets or shared TikZ sources elsewhere in a
+repository. `preBuild` and `postBuild` are available for consumer-specific
+validation such as page-count limits; publication policy stays in the consumer.
 
 Project-specific `.latexmkrc` files remain valid. They are the right place for
 publication-specific entry points, BibTeX/Biber policy, and shell-escape
