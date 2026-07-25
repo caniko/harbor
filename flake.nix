@@ -74,7 +74,7 @@
     });
 
     devShells = forAllSystems (pkgs: let
-      anx-plugin-zenodo = self.packages.${pkgs.system}.anx-plugin-zenodo;
+      anx-plugin-zenodo = self.packages.${pkgs.stdenv.hostPlatform.system}.anx-plugin-zenodo;
     in {
       default = pkgs.mkShell {
         packages = [
@@ -105,7 +105,7 @@
         cargoClippyExtraArgs = "-- --deny warnings";
       });
       pandoc-plugin-import = pkgs.runCommand "pandoc-plugin-test" {
-        buildInputs = [self.packages.${pkgs.system}.anx-plugin-pandoc];
+        buildInputs = [self.packages.${pkgs.stdenv.hostPlatform.system}.anx-plugin-pandoc];
       } ''
         python -c "from anx_plugin_pandoc import export_odt; print('import OK')"
         touch $out
