@@ -1,11 +1,15 @@
 {
   description = "Reusable TeX Live profiles and LaTeX build helpers";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
+  };
 
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-darwin,
   }: let
     systems = [
       "x86_64-linux"
@@ -18,7 +22,13 @@
       nixpkgs.lib.genAttrs systems (system:
         f {
           inherit system;
-          pkgs = nixpkgs.legacyPackages.${system};
+          pkgs = import (
+            if system == "x86_64-darwin"
+            then nixpkgs-darwin
+            else nixpkgs
+          ) {
+            inherit system;
+          };
         });
   in {
     inherit lib;
@@ -42,12 +52,12 @@
         };
       };
 
-      anx-plugin-pandoc = pkgs.python314.pkgs.buildPythonPackage {
+      anx-plugin-pandoc = pkgs.python3.pkgs.buildPythonPackage {
         pname = "anx-plugin-pandoc";
         version = "0.1.0";
         pyproject = true;
         src = ./plugins/pandoc;
-        nativeBuildInputs = [pkgs.python314.pkgs.hatchling];
+        nativeBuildInputs = [pkgs.python3.pkgs.hatchling];
         pythonImportsCheck = ["anx_plugin_pandoc"];
         meta = {
           description = "Pandoc ODT export plugin for the anx article toolchain";

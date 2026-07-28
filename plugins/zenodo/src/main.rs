@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use clap::Parser;
-use miette::{Context, IntoDiagnostic, Result, miette};
+use miette::{miette, Context, IntoDiagnostic, Result};
 use reqwest::blocking::{Client, Response};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 const PRODUCTION_API_BASE: &str = "https://zenodo.org/api";
 const PRODUCTION_AUTH: &str = "https://zenodo.org/oauth/authorize";
@@ -122,8 +122,7 @@ fn main() {
 }
 
 fn run(context_json: &str) -> Result<Value> {
-    let ctx: PluginContext =
-        serde_json::from_str(context_json).into_diagnostic()?;
+    let ctx: PluginContext = serde_json::from_str(context_json).into_diagnostic()?;
 
     let sandbox = ctx
         .metadata
@@ -180,7 +179,9 @@ fn oauth_login(cfg: &ZenodoConfig, ctx: &PluginContext) -> Result<Value> {
         .get("state")
         .ok_or_else(|| miette!("Zenodo OAuth callback missing state"))?;
     if returned_state != &state {
-        return Err(miette!("Zenodo OAuth state mismatch; refusing token exchange"));
+        return Err(miette!(
+            "Zenodo OAuth state mismatch; refusing token exchange"
+        ));
     }
     let code = callback
         .query
@@ -296,11 +297,7 @@ fn upload_file(cfg: &ZenodoConfig, ctx: &PluginContext) -> Result<Value> {
     let bytes = fs::read(&file_path)
         .into_diagnostic()
         .wrap_err_with(|| format!("read {}", file_path.display()))?;
-    let upload_url = format!(
-        "{}/{}",
-        store.bucket_url.trim_end_matches('/'),
-        filename
-    );
+    let upload_url = format!("{}/{}", store.bucket_url.trim_end_matches('/'), filename);
 
     let response = Client::new()
         .put(&upload_url)
@@ -358,10 +355,14 @@ fn publish_deposition(cfg: &ZenodoConfig, _ctx: &PluginContext) -> Result<Value>
 
 fn access_token(cfg: &ZenodoConfig) -> Result<String> {
     let mut store = load_oauth_store()?;
-    if !store.sandbox == cfg.sandbox {
+    if store.sandbox != cfg.sandbox {
         return Err(miette!(
             "Stored token is for {} but requested {}",
-            if store.sandbox { "sandbox" } else { "production" },
+            if store.sandbox {
+                "sandbox"
+            } else {
+                "production"
+            },
             if cfg.sandbox { "sandbox" } else { "production" },
         ));
     }
