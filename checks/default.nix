@@ -2,6 +2,7 @@
   pkgs,
   lib,
   system,
+  packages,
 }: let
   profilePackages = {
     cv = lib.mkTexlive {
@@ -86,6 +87,17 @@
     engine = "pdflatex";
     profile = "conference";
   };
+
+  anxPluginPandocImport = let
+    pythonWithPlugin = pkgs.python314.withPackages (_: [packages.anx-plugin-pandoc]);
+  in
+    pkgs.runCommand "tex-harbor-anx-plugin-pandoc-import-${system}" {} ''
+      ${pythonWithPlugin}/bin/python -c "from anx_plugin_pandoc import main; print('import OK')"
+      mkdir -p "$out"
+      echo ok > "$out/result"
+    '';
 in {
   inherit profileSmoke pdflatexSmoke lualatexSmoke xelatexSmoke nestedWorkingDirectorySmoke conferenceSmoke;
+  anxPluginZenodoBuild = packages.anx-plugin-zenodo;
+  inherit anxPluginPandocImport;
 }

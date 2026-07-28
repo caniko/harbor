@@ -5,9 +5,18 @@ centralizes TeX Live profiles and the reproducible parts of PDF compilation
 while leaving manuscript layout, source trees, engine policy, and publication
 artifacts with each consumer.
 
-The flake exports packages and checks for `x86_64-linux`, `aarch64-linux`, and
-`aarch64-darwin` with its current Nixpkgs pin. Its `lib` output is system
-independent and can be consumed by projects that still expose other systems.
+The flake exports packages and checks for `x86_64-linux`, `aarch64-linux`,
+`x86_64-darwin`, and `aarch64-darwin` with its current Nixpkgs pin. Its `lib`
+output is system independent and can be consumed by projects that still expose
+other systems.
+
+The anx plugin packages are canonical here:
+
+- `packages.<system>.anx-plugin-zenodo` — the Rust Zenodo archival plugin.
+- `packages.<system>.anx-plugin-pandoc` — the Python Pandoc ODT export plugin.
+
+Their sources and manifests live under `plugins/`; the package checks include a
+Zenodo build and a Pandoc import smoke test.
 
 ## Profiles
 

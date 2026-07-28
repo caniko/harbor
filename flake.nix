@@ -10,6 +10,7 @@
     systems = [
       "x86_64-linux"
       "aarch64-linux"
+      "x86_64-darwin"
       "aarch64-darwin"
     ];
     lib = import ./lib {inherit nixpkgs;};
@@ -26,7 +27,34 @@
       pkgs,
       system,
       ...
-    }: {
+    }: let
+      anx-plugin-zenodo = pkgs.rustPlatform.buildRustPackage {
+        pname = "anx-plugin-zenodo";
+        version = "0.1.0";
+        src = ./plugins;
+        cargoLock.lockFile = ./plugins/Cargo.lock;
+        cargoBuildFlags = ["--package" "anx-plugin-zenodo"];
+        nativeBuildInputs = [pkgs.pkg-config];
+        buildInputs = [pkgs.openssl];
+        meta = {
+          description = "Zenodo archival plugin for the anx article toolchain";
+          mainProgram = "anx-plugin-zenodo";
+        };
+      };
+
+      anx-plugin-pandoc = pkgs.python314.pkgs.buildPythonPackage {
+        pname = "anx-plugin-pandoc";
+        version = "0.1.0";
+        pyproject = true;
+        src = ./plugins/pandoc;
+        nativeBuildInputs = [pkgs.python314.pkgs.hatchling];
+        pythonImportsCheck = ["anx_plugin_pandoc"];
+        meta = {
+          description = "Pandoc ODT export plugin for the anx article toolchain";
+          mainProgram = "anx-plugin-pandoc";
+        };
+      };
+    in {
       texlive-cv = lib.mkTexlive {
         inherit pkgs;
         profile = "cv";
@@ -43,6 +71,7 @@
         inherit pkgs;
         profile = "editor";
       };
+      inherit anx-plugin-zenodo anx-plugin-pandoc;
       default = self.packages.${system}.texlive-article;
     });
 
@@ -78,7 +107,10 @@
       system,
       ...
     }:
-      import ./checks {inherit pkgs lib system;});
+      import ./checks {
+        inherit pkgs lib system;
+        packages = self.packages.${system};
+      });
 
     formatter = forAllSystems ({pkgs, ...}: pkgs.alejandra);
   };
