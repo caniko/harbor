@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.1] - 2026-07-29
+
+- Make the signed GitHub release bundle evaluate without developer-local flake inputs.
+
 ## [0.1.0] - 2026-07-29
 
 - Initial signed GitHub release bundle for the rs-harbor CLI.
