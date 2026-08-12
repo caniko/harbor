@@ -1,5 +1,5 @@
 [ci]
 provider = "actions"
-platform = "forgejo"
+platform = "github"
 runtime = "nix"
-runner = "atlas-nix-trusted"
+runner = "ubuntu-24.04"
