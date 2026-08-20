@@ -8,6 +8,14 @@
       url = "git+https://github.com/caniko/meta-harbor.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -15,6 +23,8 @@
     nixpkgs,
     nixpkgs-darwin,
     meta-harbor,
+    treefmt-nix,
+    git-hooks,
   }: let
     systems = [
       "x86_64-linux"
@@ -128,7 +138,7 @@
       ...
     }:
       import ./checks {
-        inherit pkgs lib system self nixpkgs;
+        inherit pkgs lib system self nixpkgs treefmt-nix git-hooks;
         packages = self.packages.${system};
         meta = meta-harbor.lib;
       });

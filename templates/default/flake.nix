@@ -4,12 +4,16 @@
   inputs = {
     tex-harbor.url = "git+https://codeberg.org/caniko/tex-harbor.git?ref=trunk";
     nixpkgs.follows = "tex-harbor/nixpkgs";
+    treefmt-nix.follows = "tex-harbor/treefmt-nix";
+    git-hooks.follows = "tex-harbor/git-hooks";
   };
 
   outputs = {
     self,
     nixpkgs,
     tex-harbor,
+    treefmt-nix,
+    git-hooks,
   }: let
     systems = [
       "x86_64-linux"
@@ -17,31 +21,48 @@
       "x86_64-darwin"
       "aarch64-darwin"
     ];
-  in {
-    packages = nixpkgs.lib.genAttrs systems (
-      system: let
-        pkgs = import nixpkgs {inherit system;};
-      in {
-        default = tex-harbor.lib.mkLatexDocument {
+    forSystem = system: let
+      pkgs = import nixpkgs {inherit system;};
+      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
+      pre-commit-check = git-hooks.lib.${system}.run {
+        src = ./.;
+        hooks = import ./nix/pre-commit.nix {
           inherit pkgs;
-          name = "tex-harbor-template";
-          src = ./.;
-          mainFile = "main.tex";
-          engine = "pdflatex";
-          profile = "cv";
+          treefmtWrapper = treefmtEval.config.build.wrapper;
         };
-      }
+      };
+    in {
+      inherit pkgs treefmtEval pre-commit-check;
+      default = tex-harbor.lib.mkLatexDocument {
+        inherit pkgs;
+        name = "tex-harbor-template";
+        src = ./.;
+        mainFile = "main.tex";
+        engine = "pdflatex";
+        profile = "cv";
+      };
+      shell = tex-harbor.lib.mkTexDevShell {
+        inherit pkgs;
+        profile = "cv";
+        extraPackages = pre-commit-check.enabledPackages;
+        shellArgs.shellHook = pre-commit-check.shellHook;
+      };
+    };
+  in {
+    packages = nixpkgs.lib.genAttrs systems (system: {
+      default = (forSystem system).default;
+    });
+
+    devShells = nixpkgs.lib.genAttrs systems (system: {
+      default = (forSystem system).shell;
+    });
+
+    formatter = nixpkgs.lib.genAttrs systems (
+      system: (forSystem system).treefmtEval.config.build.wrapper
     );
 
-    devShells = nixpkgs.lib.genAttrs systems (
-      system: let
-        pkgs = import nixpkgs {inherit system;};
-      in {
-        default = tex-harbor.lib.mkTexDevShell {
-          inherit pkgs;
-          profile = "cv";
-        };
-      }
-    );
+    checks = nixpkgs.lib.genAttrs systems (system: {
+      formatting = (forSystem system).treefmtEval.config.build.check self;
+    });
   };
 }
