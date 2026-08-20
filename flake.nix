@@ -4,12 +4,27 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
+    meta-harbor = {
+      url = "git+https://github.com/caniko/meta-harbor.git?ref=trunk";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
     self,
     nixpkgs,
     nixpkgs-darwin,
+    meta-harbor,
+    treefmt-nix,
+    git-hooks,
   }: let
     systems = [
       "x86_64-linux"
@@ -17,7 +32,7 @@
       "x86_64-darwin"
       "aarch64-darwin"
     ];
-    lib = import ./lib {inherit nixpkgs;};
+    lib = import ./lib {inherit nixpkgs meta-harbor;};
     forAllSystems = f:
       nixpkgs.lib.genAttrs systems (system:
         f {
@@ -32,6 +47,11 @@
         });
   in {
     inherit lib;
+
+    templates.default = {
+      path = ./templates/default;
+      description = "LaTeX project with tex-harbor";
+    };
 
     packages = forAllSystems ({
       pkgs,
@@ -118,8 +138,9 @@
       ...
     }:
       import ./checks {
-        inherit pkgs lib system;
+        inherit pkgs lib system self nixpkgs treefmt-nix git-hooks;
         packages = self.packages.${system};
+        meta = meta-harbor.lib;
       });
 
     formatter = forAllSystems ({pkgs, ...}: pkgs.alejandra);

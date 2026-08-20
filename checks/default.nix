@@ -3,7 +3,17 @@
   lib,
   system,
   packages,
+  self,
+  nixpkgs,
+  treefmt-nix,
+  git-hooks,
+  meta,
 }: let
+  templateRoot = ../templates/default;
+  templateFlake = builtins.readFile (templateRoot + "/flake.nix");
+  templateSimit = builtins.fromTOML (builtins.readFile (templateRoot + "/simit.toml"));
+  templateTreefmt = builtins.readFile (templateRoot + "/nix/treefmt.nix");
+  templateHooks = builtins.readFile (templateRoot + "/nix/pre-commit.nix");
   profilePackages = {
     cv = lib.mkTexlive {
       inherit pkgs;
@@ -39,7 +49,7 @@
   pdflatexSmoke = lib.mkLatexDocument {
     inherit pkgs;
     name = "tex-harbor-pdflatex-smoke";
-    src = ../fixtures/pdflatex;
+    src = ../templates/default;
     mainFile = "main.tex";
     engine = "pdflatex";
     profile = "cv";
@@ -96,8 +106,41 @@
       mkdir -p "$out"
       echo ok > "$out/result"
     '';
-in {
-  inherit profileSmoke pdflatexSmoke lualatexSmoke xelatexSmoke nestedWorkingDirectorySmoke conferenceSmoke;
-  anxPluginZenodoBuild = packages.anx-plugin-zenodo;
-  inherit anxPluginPandocImport;
-}
+in
+  assert templateSimit.flake
+  == {
+    scope = "full";
+    mode = "custom";
+    backend = "generic";
+  };
+  assert pkgs.lib.hasInfix "treefmt-nix.follows" templateFlake;
+  assert pkgs.lib.hasInfix "git-hooks.follows" templateFlake;
+  assert pkgs.lib.hasInfix "treefmtEval.config.build.check self" templateFlake;
+  assert pkgs.lib.hasInfix "pre-commit-check.shellHook" templateFlake;
+  assert pkgs.lib.hasInfix "latexindent" templateTreefmt;
+  assert pkgs.lib.hasInfix "\"*.tex\"" templateTreefmt;
+  assert pkgs.lib.hasInfix "treefmt =" templateHooks;
+  assert pkgs.lib.hasInfix "nix-flake-check" templateHooks; {
+    inherit profileSmoke pdflatexSmoke lualatexSmoke xelatexSmoke nestedWorkingDirectorySmoke conferenceSmoke;
+    anxPluginZenodoBuild = packages.anx-plugin-zenodo;
+    inherit anxPluginPandocImport;
+
+    template-default = meta.templateTests.mkCheck {
+      inherit pkgs system;
+      flakeNix = ../templates/default/flake.nix;
+      inputs = {
+        inherit nixpkgs treefmt-nix git-hooks;
+        tex-harbor = self;
+      };
+      requiredFiles = [
+        "flake.nix"
+        "main.tex"
+        "simit.toml"
+        "nix/treefmt.nix"
+        "nix/pre-commit.nix"
+      ];
+      requiredInputs = ["tex-harbor" "treefmt-nix" "git-hooks"];
+      commands = ["pdflatex"];
+      inherit (meta) devShellTests;
+    };
+  }
