@@ -8,6 +8,11 @@
       url = "github:alleneubank/bun-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    meta-harbor = {
+      url = "git+https://github.com/caniko/meta-harbor.git?ref=trunk";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs @ {
@@ -15,6 +20,7 @@
     self,
     nixpkgs,
     bun-overlay,
+    meta-harbor,
     ...
   }:
     flake-parts.lib.mkFlake {inherit inputs;} {
@@ -27,10 +33,15 @@
 
       flake = let
         lib = import ./lib {
-          inherit nixpkgs bun-overlay;
+          inherit nixpkgs bun-overlay meta-harbor;
         };
       in {
         inherit lib;
+
+        templates.default = {
+          path = ./templates/default;
+          description = "Bun project with js-harbor";
+        };
       };
 
       perSystem = {
@@ -58,9 +69,10 @@
           };
 
         checks = import ./checks {
-          inherit pkgs system;
+          inherit pkgs system self;
           lib = self.lib;
-          inherit bun_1_3_14;
+          inherit bun_1_3_14 nixpkgs;
+          meta = meta-harbor.lib;
         };
 
         formatter = pkgs.alejandra;

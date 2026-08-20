@@ -3,6 +3,9 @@
   system,
   lib,
   bun_1_3_14,
+  self,
+  nixpkgs,
+  meta,
 }:
 {
   bun-package-manager-version = let
@@ -23,6 +26,20 @@
     mkdir -p $out
     echo ok > $out/result
   '';
+
+  template-default = meta.templateTests.mkCheck {
+    inherit pkgs system;
+    flakeNix = ../templates/default/flake.nix;
+    inputs = {
+      inherit nixpkgs;
+      js-harbor = self;
+    };
+    requiredFiles = ["flake.nix" "package.json" "index.ts"];
+    requiredInputs = ["js-harbor"];
+    commands = ["bun"];
+    env.BUN_VERSION = "1.3.14";
+    inherit (meta) devShellTests;
+  };
 }
 // pkgs.lib.optionalAttrs pkgs.stdenvNoCC.hostPlatform.isLinux {
   bun-compile-smoke = let

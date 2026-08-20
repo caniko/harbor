@@ -8,6 +8,7 @@ The first maintained surface wraps
 - `lib.bun.mkBunPackage`
 - `lib.bun.mkBunFhsRunner`
 - `lib.bun.mkBunToolchain`
+- `lib.bun.mkBunDevShell`
 - `lib.bun.mkBunWorkspaceDeps`
 - `lib.bun.readPackageManagerVersion`
 - `packages.<system>.bun_1_3_14`
@@ -20,3 +21,7 @@ executables during checks or install hooks.
 
 The API is intentionally namespaced under `lib.bun` so future Node, pnpm, Yarn,
 and generic JavaScript helpers can be added without renaming the flake.
+
+```bash
+nix flake init -t git+https://codeberg.org/caniko/js-harbor.git
+```

@@ -1,6 +1,7 @@
 {
   lib,
   bun-overlay,
+  metaDevShell ? null,
 }: let
   supportedSystems = [
     "x86_64-linux"
@@ -161,6 +162,28 @@ in rec {
       BUN_VERSION = resolvedVersion;
     };
   };
+
+  mkBunDevShell = {
+    pkgs,
+    packageJson ? null,
+    version ? null,
+    extraPackages ? [],
+    extraEnv ? {},
+    extraShellHook ? "",
+  }:
+    if metaDevShell == null
+    then throw "js-harbor.bun.mkBunDevShell requires the meta-harbor flake input"
+    else let
+      toolchain = mkBunToolchain {
+        inherit pkgs packageJson version extraPackages;
+      };
+    in
+      metaDevShell.mkShell {
+        inherit pkgs;
+        packages = toolchain.packages;
+        env = toolchain.env // extraEnv;
+        inherit extraShellHook;
+      };
 
   mkBunWorkspaceDeps = {
     pkgs,
