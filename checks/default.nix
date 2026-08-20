@@ -3,6 +3,9 @@
   lib,
   system,
   packages,
+  self,
+  nixpkgs,
+  meta,
 }: let
   profilePackages = {
     cv = lib.mkTexlive {
@@ -39,7 +42,7 @@
   pdflatexSmoke = lib.mkLatexDocument {
     inherit pkgs;
     name = "tex-harbor-pdflatex-smoke";
-    src = ../fixtures/pdflatex;
+    src = ../templates/default;
     mainFile = "main.tex";
     engine = "pdflatex";
     profile = "cv";
@@ -100,4 +103,17 @@ in {
   inherit profileSmoke pdflatexSmoke lualatexSmoke xelatexSmoke nestedWorkingDirectorySmoke conferenceSmoke;
   anxPluginZenodoBuild = packages.anx-plugin-zenodo;
   inherit anxPluginPandocImport;
+
+  template-default = meta.templateTests.mkCheck {
+    inherit pkgs system;
+    flakeNix = ../templates/default/flake.nix;
+    inputs = {
+      inherit nixpkgs;
+      tex-harbor = self;
+    };
+    requiredFiles = ["flake.nix" "main.tex"];
+    requiredInputs = ["tex-harbor"];
+    commands = ["pdflatex"];
+    inherit (meta) devShellTests;
+  };
 }

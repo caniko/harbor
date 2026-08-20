@@ -62,6 +62,7 @@ decisions that cannot be shared safely across documents.
 ## Development
 
 ```bash
+nix flake init -t git+https://codeberg.org/caniko/tex-harbor.git
 nix flake check
 nix develop
 ```

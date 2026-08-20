@@ -1,6 +1,7 @@
 {
   nixLib,
   mkTexlive,
+  metaDevShell ? null,
 }: {
   mkTexDevShell = {
     pkgs,
@@ -14,10 +15,16 @@
       extraPackages = extraTexPackages;
     };
     inheritedPackages = shellArgs.packages or [];
-    forwardedArgs = builtins.removeAttrs shellArgs ["packages"];
+    forwardedArgs = builtins.removeAttrs shellArgs ["packages" "env" "shellHook"];
   in
-    pkgs.mkShell (forwardedArgs
-      // {
+    if metaDevShell == null
+    then throw "tex-harbor: mkTexDevShell requires the meta-harbor flake input"
+    else
+      metaDevShell.mkShell {
+        inherit pkgs;
         packages = [texlive] ++ extraPackages ++ inheritedPackages;
-      });
+        env = shellArgs.env or {};
+        extraShellHook = shellArgs.shellHook or "";
+        mkShellArgs = forwardedArgs;
+      };
 }
