@@ -23,5 +23,5 @@ The API is intentionally namespaced under `lib.bun` so future Node, pnpm, Yarn,
 and generic JavaScript helpers can be added without renaming the flake.
 
 ```bash
-nix flake init -t git+https://codeberg.org/caniko/js-harbor.git
+nix flake init -t github:caniko/js-harbor
 ```
