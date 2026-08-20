@@ -29,7 +29,7 @@ Zenodo build and a Pandoc import smoke test.
 ## Consumer example
 
 ```nix
-inputs.tex-harbor.url = "git+https://codeberg.org/caniko/tex-harbor.git?ref=trunk";
+inputs.tex-harbor.url = "github:caniko/tex-harbor";
 inputs.tex-harbor.inputs.nixpkgs.follows = "nixpkgs";
 
 texlive = tex-harbor.lib.mkTexlive {
@@ -62,7 +62,7 @@ decisions that cannot be shared safely across documents.
 ## Development
 
 ```bash
-nix flake init -t git+https://codeberg.org/caniko/tex-harbor.git
+nix flake init -t github:caniko/tex-harbor
 nix flake check
 nix develop
 ```

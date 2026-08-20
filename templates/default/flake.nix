@@ -2,7 +2,7 @@
   description = "LaTeX project — powered by tex-harbor";
 
   inputs = {
-    tex-harbor.url = "git+https://codeberg.org/caniko/tex-harbor.git?ref=trunk";
+    tex-harbor.url = "github:caniko/tex-harbor";
     nixpkgs.follows = "tex-harbor/nixpkgs";
     treefmt-nix.follows = "tex-harbor/treefmt-nix";
     git-hooks.follows = "tex-harbor/git-hooks";
