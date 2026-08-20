@@ -13,6 +13,15 @@
       url = "git+https://github.com/caniko/meta-harbor.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs @ {
@@ -72,6 +81,7 @@
           inherit pkgs system self;
           lib = self.lib;
           inherit bun_1_3_14 nixpkgs;
+          inherit (inputs) treefmt-nix git-hooks;
           meta = meta-harbor.lib;
         };
 
