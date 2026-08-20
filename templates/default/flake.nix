@@ -2,7 +2,7 @@
   description = "Bun project — powered by js-harbor";
 
   inputs = {
-    js-harbor.url = "git+https://codeberg.org/caniko/js-harbor.git?ref=trunk";
+    js-harbor.url = "github:caniko/js-harbor";
     nixpkgs.follows = "js-harbor/nixpkgs";
     treefmt-nix.follows = "js-harbor/treefmt-nix";
     git-hooks.follows = "js-harbor/git-hooks";
