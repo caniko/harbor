@@ -1,4 +1,4 @@
-# rs-harbor-macos-sdk-pin
+# harbor-macos-sdk-pin
 
 Single source of truth for the realized macOS SDK store path and the Attic
 cache that serves it. A pure-data Nix flake — no inputs, no per-system
@@ -42,14 +42,14 @@ All values are constants. No `flake-utils.lib.eachDefaultSystem`, no
 
 ```nix
 {
-  inputs.rs-harbor-macos-sdk-pin.url =
-    "git+ssh://git@codeberg.org/caniko/rs-harbor-macos-sdk-pin.git";
+  inputs.harbor-macos-sdk-pin.url =
+    "git+ssh://git@codeberg.org/caniko/harbor-macos-sdk-pin.git";
 
-  outputs = { rs-harbor-macos-sdk-pin, ... }: let
-    pin = rs-harbor-macos-sdk-pin;
+  outputs = { harbor-macos-sdk-pin, ... }: let
+    pin = harbor-macos-sdk-pin;
   in {
     # Thread the storePath into a project flake that supports it (e.g.
-    # rs-harbor's mkCross via `macosSdkStorePath`).
+    # harbor-rs's mkCross via `macosSdkStorePath`).
     # ...
   };
 }
@@ -78,9 +78,9 @@ mirrored to a public substituter.
 
 When a new SDK version is published to the cache:
 
-1. Run `nix run rs-harbor#publish-macos-sdk -- --archive ... --version <new>`
+1. Run `nix run harbor-rs#publish-macos-sdk -- --archive ... --version <new>`
    on a builder with access to the source archive.
 2. Copy the printed `STORE_PATH`, `RECURSIVE_HASH`, and `SDK_VERSION` into
    [flake.nix](./flake.nix).
 3. Commit and push. Downstream flakes pick it up with
-   `nix flake update rs-harbor-macos-sdk-pin`.
+   `nix flake update harbor-macos-sdk-pin`.

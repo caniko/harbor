@@ -21,7 +21,7 @@
     outputHash = "sha256-MwbyzXwxWEzOY7Z6ulHMAWYi8Nz2XE8eew/YaP1/SaE=";
 
     # Realized FOD output path. Consumers that only need a string (e.g. to
-    # pass as `macosSdkStorePath` into rs-harbor's `mkCross`) can read this
+    # pass as `macosSdkStorePath` into harbor-rs's `mkCross`) can read this
     # directly without evaluating the SDK derivation, so they never need
     # the source archive locally.
     storePath = "/nix/store/h4wg9712cqahvd47057n9jsqfn9kx389-macosx-sdk-26.1";
