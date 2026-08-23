@@ -4,13 +4,13 @@
 }: let
   resolveProfile = profile:
     if builtins.isString profile
-    then profiles.${profile} or (throw "tex-harbor: unknown TeX profile `${profile}`")
+    then profiles.${profile} or (throw "harbor-tex: unknown TeX profile `${profile}`")
     else profile;
 
   resolvePackage = ps: name:
     if builtins.hasAttr name ps
     then ps.${name}
-    else throw "tex-harbor: TeX Live package `${name}` is unavailable in this nixpkgs revision";
+    else throw "harbor-tex: TeX Live package `${name}` is unavailable in this nixpkgs revision";
 in {
   mkTexlive = {
     pkgs,

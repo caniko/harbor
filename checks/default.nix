@@ -34,7 +34,7 @@
   };
 
   profileSmoke =
-    pkgs.runCommand "tex-harbor-profile-smoke-${system}" {
+    pkgs.runCommand "harbor-tex-profile-smoke-${system}" {
       nativeBuildInputs = [profilePackages.cv profilePackages.article profilePackages.editor];
     } ''
       command -v pdflatex
@@ -48,7 +48,7 @@
 
   pdflatexSmoke = lib.mkLatexDocument {
     inherit pkgs;
-    name = "tex-harbor-pdflatex-smoke";
+    name = "harbor-tex-pdflatex-smoke";
     src = ../templates/default;
     mainFile = "main.tex";
     engine = "pdflatex";
@@ -57,7 +57,7 @@
 
   lualatexSmoke = lib.mkLatexDocument {
     inherit pkgs;
-    name = "tex-harbor-lualatex-smoke";
+    name = "harbor-tex-lualatex-smoke";
     src = ../fixtures/lualatex;
     mainFile = "main.tex";
     engine = "lualatex";
@@ -68,7 +68,7 @@
 
   xelatexSmoke = lib.mkLatexDocument {
     inherit pkgs;
-    name = "tex-harbor-xelatex-smoke";
+    name = "harbor-tex-xelatex-smoke";
     src = ../fixtures/lualatex;
     mainFile = "main.tex";
     engine = "xelatex";
@@ -79,7 +79,7 @@
 
   nestedWorkingDirectorySmoke = lib.mkLatexDocument {
     inherit pkgs;
-    name = "tex-harbor-nested-working-directory-smoke";
+    name = "harbor-tex-nested-working-directory-smoke";
     src = ../fixtures;
     workingDirectory = "lualatex";
     mainFile = "main.tex";
@@ -91,7 +91,7 @@
 
   conferenceSmoke = lib.mkLatexDocument {
     inherit pkgs;
-    name = "tex-harbor-conference-smoke";
+    name = "harbor-tex-conference-smoke";
     src = ../fixtures/conference;
     mainFile = "main.tex";
     engine = "pdflatex";
@@ -101,7 +101,7 @@
   anxPluginPandocImport = let
     pythonWithPlugin = pkgs.python3.withPackages (_: [packages.anx-plugin-pandoc]);
   in
-    pkgs.runCommand "tex-harbor-anx-plugin-pandoc-import-${system}" {} ''
+    pkgs.runCommand "harbor-tex-anx-plugin-pandoc-import-${system}" {} ''
       ${pythonWithPlugin}/bin/python -c "from anx_plugin_pandoc import main; print('import OK')"
       mkdir -p "$out"
       echo ok > "$out/result"
@@ -130,7 +130,7 @@ in
       flakeNix = ../templates/default/flake.nix;
       inputs = {
         inherit nixpkgs treefmt-nix git-hooks;
-        tex-harbor = self;
+        harbor-tex = self;
       };
       requiredFiles = [
         "flake.nix"
@@ -139,7 +139,7 @@ in
         "nix/treefmt.nix"
         "nix/pre-commit.nix"
       ];
-      requiredInputs = ["tex-harbor" "treefmt-nix" "git-hooks"];
+      requiredInputs = ["harbor-tex" "treefmt-nix" "git-hooks"];
       commands = ["pdflatex"];
       inherit (meta) devShellTests;
     };

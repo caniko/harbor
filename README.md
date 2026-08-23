@@ -1,6 +1,6 @@
-# tex-harbor
+# harbor-tex
 
-`tex-harbor` provides reusable Nix helpers for TeX and LaTeX projects. It
+`harbor-tex` provides reusable Nix helpers for TeX and LaTeX projects. It
 centralizes TeX Live profiles and the reproducible parts of PDF compilation
 while leaving manuscript layout, source trees, engine policy, and publication
 artifacts with each consumer.
@@ -29,15 +29,15 @@ Zenodo build and a Pandoc import smoke test.
 ## Consumer example
 
 ```nix
-inputs.tex-harbor.url = "github:caniko/tex-harbor";
-inputs.tex-harbor.inputs.nixpkgs.follows = "nixpkgs";
+inputs.harbor-tex.url = "github:caniko/harbor-tex";
+inputs.harbor-tex.inputs.nixpkgs.follows = "nixpkgs";
 
-texlive = tex-harbor.lib.mkTexlive {
+texlive = harbor-tex.lib.mkTexlive {
   inherit pkgs;
   profile = "article";
 };
 
-article = tex-harbor.lib.mkLatexDocument {
+article = harbor-tex.lib.mkLatexDocument {
   inherit pkgs;
   name = "article";
   src = ./article;
@@ -62,7 +62,7 @@ decisions that cannot be shared safely across documents.
 ## Development
 
 ```bash
-nix flake init -t github:caniko/tex-harbor
+nix flake init -t github:caniko/harbor-tex
 nix flake check
 nix develop
 ```

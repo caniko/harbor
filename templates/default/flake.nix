@@ -1,17 +1,17 @@
 {
-  description = "LaTeX project — powered by tex-harbor";
+  description = "LaTeX project — powered by harbor-tex";
 
   inputs = {
-    tex-harbor.url = "github:caniko/tex-harbor";
-    nixpkgs.follows = "tex-harbor/nixpkgs";
-    treefmt-nix.follows = "tex-harbor/treefmt-nix";
-    git-hooks.follows = "tex-harbor/git-hooks";
+    harbor-tex.url = "github:caniko/harbor-tex";
+    nixpkgs.follows = "harbor-tex/nixpkgs";
+    treefmt-nix.follows = "harbor-tex/treefmt-nix";
+    git-hooks.follows = "harbor-tex/git-hooks";
   };
 
   outputs = {
     self,
     nixpkgs,
-    tex-harbor,
+    harbor-tex,
     treefmt-nix,
     git-hooks,
   }: let
@@ -33,15 +33,15 @@
       };
     in {
       inherit pkgs treefmtEval pre-commit-check;
-      default = tex-harbor.lib.mkLatexDocument {
+      default = harbor-tex.lib.mkLatexDocument {
         inherit pkgs;
-        name = "tex-harbor-template";
+        name = "harbor-tex-template";
         src = ./.;
         mainFile = "main.tex";
         engine = "pdflatex";
         profile = "cv";
       };
-      shell = tex-harbor.lib.mkTexDevShell {
+      shell = harbor-tex.lib.mkTexDevShell {
         inherit pkgs;
         profile = "cv";
         extraPackages = pre-commit-check.enabledPackages;

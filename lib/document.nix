@@ -31,7 +31,7 @@
     engineArgs =
       if builtins.hasAttr engine engineArgSets
       then engineArgSets.${engine}
-      else throw "tex-harbor: unsupported LaTeX engine `${engine}`";
+      else throw "harbor-tex: unsupported LaTeX engine `${engine}`";
     allArgs =
       engineArgs
       ++ ["-interaction=nonstopmode" "-halt-on-error" "-file-line-error"]
@@ -41,13 +41,13 @@
     mainArg = nixLib.escapeShellArg mainFile;
     pdfFile = "${nixLib.removeSuffix ".tex" mainFile}.pdf";
   in
-    assert nixLib.assertMsg (!nixLib.hasInfix ".." mainFile) "tex-harbor: mainFile must stay below src";
-    assert nixLib.assertMsg (!nixLib.hasInfix ".." workingDirectory) "tex-harbor: workingDirectory must stay below src";
-    assert nixLib.assertMsg (!nixLib.hasPrefix "/" workingDirectory) "tex-harbor: workingDirectory must be relative";
-    assert nixLib.assertMsg (!nixLib.hasPrefix "/" mainFile) "tex-harbor: mainFile must be relative";
-    assert nixLib.assertMsg (nixLib.hasSuffix ".tex" mainFile) "tex-harbor: mainFile must end in .tex";
-    assert nixLib.assertMsg (nixLib.baseNameOf outputName == outputName) "tex-harbor: outputName must be a file name";
-    assert nixLib.assertMsg (nixLib.hasSuffix ".pdf" outputName) "tex-harbor: outputName must end in .pdf";
+    assert nixLib.assertMsg (!nixLib.hasInfix ".." mainFile) "harbor-tex: mainFile must stay below src";
+    assert nixLib.assertMsg (!nixLib.hasInfix ".." workingDirectory) "harbor-tex: workingDirectory must stay below src";
+    assert nixLib.assertMsg (!nixLib.hasPrefix "/" workingDirectory) "harbor-tex: workingDirectory must be relative";
+    assert nixLib.assertMsg (!nixLib.hasPrefix "/" mainFile) "harbor-tex: mainFile must be relative";
+    assert nixLib.assertMsg (nixLib.hasSuffix ".tex" mainFile) "harbor-tex: mainFile must end in .tex";
+    assert nixLib.assertMsg (nixLib.baseNameOf outputName == outputName) "harbor-tex: outputName must be a file name";
+    assert nixLib.assertMsg (nixLib.hasSuffix ".pdf" outputName) "harbor-tex: outputName must end in .pdf";
       pkgs.stdenvNoCC.mkDerivation {
         pname = name;
         inherit version;
@@ -58,7 +58,7 @@
         dontConfigure = true;
 
         buildPhase = ''
-          buildRoot="$TMPDIR/tex-harbor-build"
+          buildRoot="$TMPDIR/harbor-tex-build"
           mkdir -p "$buildRoot" "$TMPDIR/home" "$TMPDIR/texmf-home" "$TMPDIR/texmf-var" "$TMPDIR/texmf-config"
           cp -R --no-preserve=mode "$src"/. "$buildRoot"/
           cd "$buildRoot/${workingDirectory}"
@@ -72,7 +72,7 @@
         '';
 
         installPhase = ''
-          cd "$TMPDIR/tex-harbor-build/${workingDirectory}"
+          cd "$TMPDIR/harbor-tex-build/${workingDirectory}"
           mkdir -p "$out"
           test -f ${nixLib.escapeShellArg pdfFile}
           install -Dm644 ${nixLib.escapeShellArg pdfFile} "$out/${outputName}"

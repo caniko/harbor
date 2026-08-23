@@ -1,6 +1,6 @@
 {
   nixpkgs,
-  meta-harbor ? null,
+  harbor-meta ? null,
 }: let
   nixLib = nixpkgs.lib;
   profiles = import ./profiles.nix;
@@ -9,8 +9,8 @@
     inherit nixLib;
     mkTexlive = texlive.mkTexlive;
     metaDevShell =
-      if meta-harbor != null
-      then meta-harbor.lib.devShell
+      if harbor-meta != null
+      then harbor-meta.lib.devShell
       else null;
   };
   document = import ./document.nix {

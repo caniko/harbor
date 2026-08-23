@@ -18,7 +18,7 @@
     forwardedArgs = builtins.removeAttrs shellArgs ["packages" "env" "shellHook"];
   in
     if metaDevShell == null
-    then throw "tex-harbor: mkTexDevShell requires the meta-harbor flake input"
+    then throw "harbor-tex: mkTexDevShell requires the harbor-meta flake input"
     else
       metaDevShell.mkShell {
         inherit pkgs;

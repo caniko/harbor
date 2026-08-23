@@ -4,10 +4,11 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
-    meta-harbor = {
-      url = "git+https://github.com/caniko/meta-harbor.git?ref=trunk";
+    harbor-meta = {
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    meta-harbor.follows = "harbor-meta";
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -22,9 +23,10 @@
     self,
     nixpkgs,
     nixpkgs-darwin,
-    meta-harbor,
+    harbor-meta,
     treefmt-nix,
     git-hooks,
+    ...
   }: let
     systems = [
       "x86_64-linux"
@@ -32,7 +34,7 @@
       "x86_64-darwin"
       "aarch64-darwin"
     ];
-    lib = import ./lib {inherit nixpkgs meta-harbor;};
+    lib = import ./lib {inherit nixpkgs harbor-meta;};
     forAllSystems = f:
       nixpkgs.lib.genAttrs systems (system:
         f {
@@ -50,7 +52,7 @@
 
     templates.default = {
       path = ./templates/default;
-      description = "LaTeX project with tex-harbor";
+      description = "LaTeX project with harbor-tex";
     };
 
     packages = forAllSystems ({
@@ -112,7 +114,7 @@
         shellArgs = {
           packages = [pkgs.inkscape];
           shellHook = ''
-            echo "tex-harbor article shell"
+            echo "harbor-tex article shell"
             echo "  latexmk -lualatex manuscript.tex"
           '';
         };
@@ -140,7 +142,7 @@
       import ./checks {
         inherit pkgs lib system self nixpkgs treefmt-nix git-hooks;
         packages = self.packages.${system};
-        meta = meta-harbor.lib;
+        meta = harbor-meta.lib;
       });
 
     formatter = forAllSystems ({pkgs, ...}: pkgs.alejandra);
