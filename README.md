@@ -1,4 +1,4 @@
-# js-harbor
+# harbor-js
 
 Reusable JavaScript and Bun infrastructure for Nix flakes.
 
@@ -23,5 +23,5 @@ The API is intentionally namespaced under `lib.bun` so future Node, pnpm, Yarn,
 and generic JavaScript helpers can be added without renaming the flake.
 
 ```bash
-nix flake init -t github:caniko/js-harbor
+nix flake init -t github:caniko/harbor-js
 ```

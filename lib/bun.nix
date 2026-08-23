@@ -13,7 +13,7 @@
   requireSupportedSystem = system:
     if builtins.elem system supportedSystems
     then system
-    else throw "js-harbor.bun: unsupported system `${system}`; supported systems: ${lib.concatStringsSep ", " supportedSystems}";
+    else throw "harbor-js.bun: unsupported system `${system}`; supported systems: ${lib.concatStringsSep ", " supportedSystems}";
 
   sources = builtins.fromJSON (builtins.readFile "${bun-overlay}/sources.json");
 
@@ -29,7 +29,7 @@
       else builtins.match "bun@([^ ]+)" packageManager;
   in
     if match == null
-    then throw "js-harbor.bun.readPackageManagerVersion: packageManager must be `bun@<version>`"
+    then throw "harbor-js.bun.readPackageManagerVersion: packageManager must be `bun@<version>`"
     else builtins.elemAt match 0;
 
   linuxInterpreterPath = {
@@ -68,14 +68,14 @@ in rec {
     versionData =
       if builtins.hasAttr version sources
       then sources.${version}
-      else throw "js-harbor.bun.mkBunPackage: bun-overlay does not provide Bun version `${version}`";
+      else throw "harbor-js.bun.mkBunPackage: bun-overlay does not provide Bun version `${version}`";
     platform =
       if system == "x86_64-linux" && baseline
       then "x86_64-linux-baseline"
       else system;
     platformData =
       versionData.platforms.${platform}
-        or (throw "js-harbor.bun.mkBunPackage: Bun ${version} is not available for `${platform}`");
+        or (throw "harbor-js.bun.mkBunPackage: Bun ${version} is not available for `${platform}`");
     fhsRunner = mkBunFhsRunner {inherit pkgs;};
   in
     pkgs.stdenvNoCC.mkDerivation {
@@ -144,7 +144,7 @@ in rec {
       then version
       else if packageJson != null
       then readPackageManagerVersion {inherit packageJson;}
-      else throw "js-harbor.bun.mkBunToolchain: provide either `version` or `packageJson`";
+      else throw "harbor-js.bun.mkBunToolchain: provide either `version` or `packageJson`";
     baseline =
       pkgs.stdenv.hostPlatform.system
       == "x86_64-linux"
@@ -172,7 +172,7 @@ in rec {
     extraShellHook ? "",
   }:
     if metaDevShell == null
-    then throw "js-harbor.bun.mkBunDevShell requires the meta-harbor flake input"
+    then throw "harbor-js.bun.mkBunDevShell requires the harbor-meta flake input"
     else let
       toolchain = mkBunToolchain {
         inherit pkgs packageJson version extraPackages;

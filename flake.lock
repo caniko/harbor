@@ -129,7 +129,7 @@
         "type": "github"
       }
     },
-    "meta-harbor": {
+    "harbor-meta": {
       "inputs": {
         "flake-parts": "flake-parts_2",
         "nixpkgs": [
@@ -137,18 +137,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1787224113,
-        "narHash": "sha256-7Xz0gzc0Gg1DKamnT/eoytl6xUyGIfY1nZUTjQcaXjA=",
+        "lastModified": 1787508202,
+        "narHash": "sha256-+Ason9Fexdg0bnuCdb0iqPkpsg4w84VaESyGe8UiM8M=",
         "ref": "trunk",
-        "rev": "519bc9305b5ba78f37c3226a9d8427c8f635afb8",
-        "revCount": 7,
+        "rev": "6518fb096376d72944336a2fbe41cb9853f0231d",
+        "revCount": 8,
         "type": "git",
-        "url": "https://github.com/caniko/meta-harbor.git"
+        "url": "https://github.com/caniko/harbor-meta.git"
       },
       "original": {
         "ref": "trunk",
         "type": "git",
-        "url": "https://github.com/caniko/meta-harbor.git"
+        "url": "https://github.com/caniko/harbor-meta.git"
       }
     },
     "nixpkgs": {
@@ -202,7 +202,10 @@
         "bun-overlay": "bun-overlay",
         "flake-parts": "flake-parts",
         "git-hooks": "git-hooks",
-        "meta-harbor": "meta-harbor",
+        "harbor-meta": "harbor-meta",
+        "meta-harbor": [
+          "harbor-meta"
+        ],
         "nixpkgs": "nixpkgs",
         "treefmt-nix": "treefmt-nix"
       }

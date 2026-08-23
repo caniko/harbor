@@ -9,10 +9,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    meta-harbor = {
-      url = "git+https://github.com/caniko/meta-harbor.git?ref=trunk";
+    harbor-meta = {
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    meta-harbor.follows = "harbor-meta";
 
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
@@ -29,7 +30,7 @@
     self,
     nixpkgs,
     bun-overlay,
-    meta-harbor,
+    harbor-meta,
     ...
   }:
     flake-parts.lib.mkFlake {inherit inputs;} {
@@ -42,14 +43,14 @@
 
       flake = let
         lib = import ./lib {
-          inherit nixpkgs bun-overlay meta-harbor;
+          inherit nixpkgs bun-overlay harbor-meta;
         };
       in {
         inherit lib;
 
         templates.default = {
           path = ./templates/default;
-          description = "Bun project with js-harbor";
+          description = "Bun project with harbor-js";
         };
       };
 
@@ -82,7 +83,7 @@
           lib = self.lib;
           inherit bun_1_3_14 nixpkgs;
           inherit (inputs) treefmt-nix git-hooks;
-          meta = meta-harbor.lib;
+          meta = harbor-meta.lib;
         };
 
         formatter = pkgs.alejandra;

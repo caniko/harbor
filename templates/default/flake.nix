@@ -1,17 +1,17 @@
 {
-  description = "Bun project — powered by js-harbor";
+  description = "Bun project — powered by harbor-js";
 
   inputs = {
-    js-harbor.url = "github:caniko/js-harbor";
-    nixpkgs.follows = "js-harbor/nixpkgs";
-    treefmt-nix.follows = "js-harbor/treefmt-nix";
-    git-hooks.follows = "js-harbor/git-hooks";
+    harbor-js.url = "github:caniko/harbor-js";
+    nixpkgs.follows = "harbor-js/nixpkgs";
+    treefmt-nix.follows = "harbor-js/treefmt-nix";
+    git-hooks.follows = "harbor-js/git-hooks";
   };
 
   outputs = {
     self,
     nixpkgs,
-    js-harbor,
+    harbor-js,
     treefmt-nix,
     git-hooks,
   }: let
@@ -33,7 +33,7 @@
       };
     in {
       inherit treefmtEval pre-commit-check;
-      default = js-harbor.lib.mkBunDevShell {
+      default = harbor-js.lib.mkBunDevShell {
         inherit pkgs;
         packageJson = ./package.json;
         extraPackages = pre-commit-check.enabledPackages;

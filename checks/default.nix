@@ -38,12 +38,12 @@ in
         };
       in
         assert version == "1.3.14";
-          pkgs.runCommand "js-harbor-bun-package-manager-version" {} ''
+          pkgs.runCommand "harbor-js-bun-package-manager-version" {} ''
             mkdir -p $out
             echo ok > $out/result
           '';
 
-      bun-version = pkgs.runCommand "js-harbor-bun-version-${system}" {} ''
+      bun-version = pkgs.runCommand "harbor-js-bun-version-${system}" {} ''
         test "$(${bun_1_3_14}/bin/bun --version)" = "1.3.14"
         mkdir -p $out
         echo ok > $out/result
@@ -54,7 +54,7 @@ in
         flakeNix = ../templates/default/flake.nix;
         inputs = {
           inherit nixpkgs treefmt-nix git-hooks;
-          js-harbor = self;
+          harbor-js = self;
         };
         requiredFiles = [
           "flake.nix"
@@ -64,7 +64,7 @@ in
           "nix/treefmt.nix"
           "nix/pre-commit.nix"
         ];
-        requiredInputs = ["js-harbor" "treefmt-nix" "git-hooks"];
+        requiredInputs = ["harbor-js" "treefmt-nix" "git-hooks"];
         commands = ["bun"];
         env.BUN_VERSION = "1.3.14";
         inherit (meta) devShellTests;
@@ -78,9 +78,9 @@ in
         };
         target =
           targetBySystem.${system}
-        or (throw "js-harbor checks: no Bun compile target for `${system}`");
+        or (throw "harbor-js checks: no Bun compile target for `${system}`");
       in
-        pkgs.runCommand "js-harbor-bun-compile-smoke-${system}" {nativeBuildInputs = [bun_1_3_14];} ''
+        pkgs.runCommand "harbor-js-bun-compile-smoke-${system}" {nativeBuildInputs = [bun_1_3_14];} ''
           cat > hello.ts <<'EOF'
           console.log("hello")
           EOF

@@ -1,14 +1,14 @@
 {
   nixpkgs,
   bun-overlay,
-  meta-harbor ? null,
+  harbor-meta ? null,
 }: let
   bun = import ./bun.nix {
     lib = nixpkgs.lib;
     inherit bun-overlay;
     metaDevShell =
-      if meta-harbor != null
-      then meta-harbor.lib.devShell
+      if harbor-meta != null
+      then harbor-meta.lib.devShell
       else null;
   };
 in
