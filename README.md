@@ -6,7 +6,7 @@ outputs, no build steps.
 
 ## Why this exists
 
-The macOS SDK derivation in [osxcross](https://codeberg.org/caniko/osxcross)
+The macOS SDK derivation in [osxcross](https://github.com/caniko/osxcross)
 is a **fixed-output derivation** keyed on a recursive NAR hash. That means
 the realized store path is a function of `(name, outputHash)` only — it is
 identical on every Nix system that builds (or substitutes) the SDK.
