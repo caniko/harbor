@@ -43,7 +43,7 @@ All values are constants. No `flake-utils.lib.eachDefaultSystem`, no
 ```nix
 {
   inputs.harbor-macos-sdk-pin.url =
-    "git+ssh://git@codeberg.org/caniko/harbor-macos-sdk-pin.git";
+    "git+ssh://git@github.com/caniko/harbor-macos-sdk-pin.git";
 
   outputs = { harbor-macos-sdk-pin, ... }: let
     pin = harbor-macos-sdk-pin;
