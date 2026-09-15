@@ -102,8 +102,8 @@
       else mkWasmOptCompat {inherit pkgs wasmOptPackage wasmOptArgs;};
     nativeInputs =
       [rustToolchain dioxusCli pkgs.pkg-config resolvedWasmBindgen.package]
-      ++ lib.optional pkgs.stdenv.isLinux pkgs.clang
-      ++ lib.optional pkgs.stdenv.isLinux pkgs.mold
+      ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.clang
+      ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.mold
       ++ lib.optional (wasmOptCompat != null) wasmOptCompat
       ++ [pkgs.esbuild]
       ++ lib.optional (buildCache != null) buildCache.wrapper
