@@ -28,7 +28,6 @@
       url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    meta-harbor.follows = "harbor-meta";
 
     nix-opencode-lsp = {
       url = "git+https://github.com/caniko/nix-opencode-lsp.git?ref=trunk";
@@ -71,28 +70,23 @@
     };
   in
     {
-        inherit lib;
+      inherit lib;
+      treefmtModules.python = ./nix/treefmt/python.nix;
 
-        templates.default = {
-          path = ./templates/default;
-          description = "Python uv project with harbor-py";
-        };
-      }
+      templates.default = {
+        path = ./templates/default;
+        description = "Python uv project with harbor-py";
+      };
+    }
     // flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = lib.mkPkgs {inherit system;};
-      in {
-        formatter = pkgs.writeShellApplication {
-          name = "harbor-py-fmt";
-          runtimeInputs = [pkgs.nixfmt];
-          text = ''
-            if [ "$#" -eq 0 ]; then
-              find . -name '*.nix' -print0 | xargs -0 nixfmt
-            else
-              exec nixfmt "$@"
-            fi
-          '';
+        treefmt = treefmt-nix.lib.evalModule pkgs {
+          imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml self.treefmtModules.python];
+          projectRootFile = "flake.nix";
         };
+      in {
+        formatter = treefmt.config.build.wrapper;
 
         devShells = {
           opencode-lsp-python = nix-opencode-lsp.lib.mkShell {
