@@ -2,14 +2,14 @@
   description = "db-harbor - secure generic lifecycle plans and NixOS systemd wiring";
 
   inputs = {
-    rs-harbor.url = "git+https://codefloe.com/caniko/rs-harbor.git?ref=trunk&rev=7fa1c2104dab4e1dbaa1aaa6df84bba815aa282d";
+    harbor-rs.url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=7fa1c2104dab4e1dbaa1aaa6df84bba815aa282d";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
   };
 
   outputs = {
     self,
-    rs-harbor,
+    harbor-rs,
     nixpkgs,
     crane,
   }: let
@@ -21,9 +21,9 @@
       nixpkgs.lib.genAttrs systems (system: let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [(import rs-harbor.inputs.rust-overlay)];
+          overlays = [(import harbor-rs.inputs.rust-overlay)];
         };
-        toolchain = rs-harbor.lib.mkToolchain {
+        toolchain = harbor-rs.lib.mkToolchain {
           inherit pkgs;
           toolchainProfile = "stable";
         };
@@ -33,7 +33,7 @@
           craneLib = toolchain.craneLib;
         });
   in {
-    nixosModules.db-harbor = {
+    nixosModules.harbor-db = {
       lib,
       pkgs,
       ...
@@ -63,9 +63,9 @@
         };
       };
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-      buildCache = rs-harbor.lib.mkBuildCachePolicy {
+      buildCache = harbor-rs.lib.mkBuildCachePolicy {
         inherit pkgs;
-        sccachePackage = rs-harbor.packages.${pkgs.stdenv.hostPlatform.system}.sccache;
+        sccachePackage = harbor-rs.packages.${pkgs.stdenv.hostPlatform.system}.sccache;
         cacheRoot = null;
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
