@@ -7,11 +7,11 @@
     plinth = {
       url = "git+https://codeberg.org/caniko/plinth.git?ref=refs/heads/trunk";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.rs-harbor.follows = "rs-harbor";
+      inputs.harbor-rs.follows = "harbor-rs";
     };
 
-    rs-harbor = {
-      url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=9bfa8bdb0ecb22d7bc11448665f7fbaebae7a759";
+    harbor-rs = {
+      url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=9bfa8bdb0ecb22d7bc11448665f7fbaebae7a759";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -19,7 +19,7 @@
   outputs = {
     nixpkgs,
     plinth,
-    rs-harbor,
+    harbor-rs,
     ...
   }: let
     systems = ["x86_64-linux" "aarch64-linux"];
@@ -31,7 +31,7 @@
         lib = nixpkgs.lib;
         plinthProject = plinth.packages.${system}.plinth-project;
       };
-      packages = import "${rs-harbor}/nix/site.nix" {
+      packages = import "${harbor-rs}/nix/site.nix" {
         inherit pkgs projectSiteLib;
         lib = nixpkgs.lib;
       };

@@ -1,12 +1,12 @@
 {
-  description = "Bevy game project — powered by rs-harbor";
+  description = "Bevy game project — powered by harbor-rs";
 
   inputs = {
-    rs-harbor.url = "git+https://codeberg.org/caniko/rs-harbor.git?ref=trunk&rev=9bfa8bdb0ecb22d7bc11448665f7fbaebae7a759";
+    harbor-rs.url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=9bfa8bdb0ecb22d7bc11448665f7fbaebae7a759";
 
-    nixpkgs.follows = "rs-harbor/nixpkgs";
-    rust-overlay.follows = "rs-harbor/rust-overlay";
-    crane.follows = "rs-harbor/crane";
+    nixpkgs.follows = "harbor-rs/nixpkgs";
+    rust-overlay.follows = "harbor-rs/rust-overlay";
+    crane.follows = "harbor-rs/crane";
     flake-utils.url = "github:numtide/flake-utils";
 
     # Uncomment to enable AppImage packaging (Linux only):
@@ -16,7 +16,7 @@
   outputs = {
     self,
     nixpkgs,
-    rs-harbor,
+    harbor-rs,
     flake-utils,
     rust-overlay,
     ...
@@ -27,9 +27,9 @@
         overlays = [(import rust-overlay)];
       };
 
-      toolchain = rs-harbor.lib.mkToolchain {inherit pkgs;};
-      cross = rs-harbor.lib.mkCross {inherit pkgs system;};
-      cargoConfig = rs-harbor.lib.mkCargoConfig {
+      toolchain = harbor-rs.lib.mkToolchain {inherit pkgs;};
+      cross = harbor-rs.lib.mkCross {inherit pkgs system;};
+      cargoConfig = harbor-rs.lib.mkCargoConfig {
         inherit pkgs;
         extraConfig = ''
           [alias]
@@ -52,13 +52,13 @@
       packages.default = build.default;
 
       # Uncomment for AppImage packaging (requires nix-appimage input above):
-      # packages.appimage = rs-harbor.lib.mkAppImage {
+      # packages.appimage = harbor-rs.lib.mkAppImage {
       #   inherit system nix-appimage;
       #   program = "${build.default}/bin/my-bevy-game";
       # };
 
       # Uncomment for Flatpak manifest generation:
-      # packages.flatpak-manifest = (rs-harbor.lib.mkFlatpakManifest {
+      # packages.flatpak-manifest = (harbor-rs.lib.mkFlatpakManifest {
       #   inherit pkgs;
       #   appId = "com.example.MyBevyGame";
       #   pname = "my-bevy-game";
@@ -84,7 +84,7 @@
       };
 
       devShells = import ./nix/dev-shells.nix {
-        inherit pkgs rs-harbor toolchain cross cargoConfig bevyDeps;
+        inherit pkgs harbor-rs toolchain cross cargoConfig bevyDeps;
         checks = self.checks.${system};
       };
     });

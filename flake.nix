@@ -18,8 +18,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    meta-harbor = {
-      url = "git+ssh://git@codeberg.org/caniko/meta-harbor.git?ref=trunk";
+    harbor-meta = {
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -41,7 +41,7 @@
     crane,
     rust-overlay,
     osxcross,
-    meta-harbor,
+    harbor-meta,
     nix-opencode-lsp,
     nix-bundle,
     ...
@@ -57,7 +57,7 @@
       flake = let
         lib = import ./lib {
           inherit crane osxcross;
-          meta-harbor = meta-harbor.lib;
+          meta-harbor = harbor-meta.lib;
           nixBundle = nix-bundle;
         };
       in {
