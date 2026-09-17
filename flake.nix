@@ -8,7 +8,6 @@
       url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    meta-harbor.follows = "harbor-meta";
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -39,16 +38,18 @@
       nixpkgs.lib.genAttrs systems (system:
         f {
           inherit system;
-          pkgs = import (
-            if system == "x86_64-darwin"
-            then nixpkgs-darwin
-            else nixpkgs
-          ) {
-            inherit system;
-          };
+          pkgs =
+            import (
+              if system == "x86_64-darwin"
+              then nixpkgs-darwin
+              else nixpkgs
+            ) {
+              inherit system;
+            };
         });
   in {
     inherit lib;
+    treefmtModules.latex = ./nix/treefmt/latex.nix;
 
     templates.default = {
       path = ./templates/default;
@@ -145,6 +146,10 @@
         meta = harbor-meta.lib;
       });
 
-    formatter = forAllSystems ({pkgs, ...}: pkgs.alejandra);
+    formatter = forAllSystems ({pkgs, ...}:
+      (treefmt-nix.lib.evalModule pkgs {
+        imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml self.treefmtModules.latex];
+        projectRootFile = "flake.nix";
+      }).config.build.wrapper);
   };
 }
