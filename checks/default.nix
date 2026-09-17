@@ -12,7 +12,8 @@
   templateRoot = ../templates/default;
   templateFlake = builtins.readFile (templateRoot + "/flake.nix");
   templateSimit = builtins.fromTOML (builtins.readFile (templateRoot + "/simit.toml"));
-  templateTreefmt = builtins.readFile (templateRoot + "/nix/treefmt.nix");
+  templateTreefmt = (treefmt-nix.lib.evalModule pkgs (import (templateRoot + "/nix/treefmt.nix") {harbor-tex = self;})).config;
+  languageTreefmt = (treefmt-nix.lib.evalModule pkgs {imports = [self.treefmtModules.latex];}).config;
   templateHooks = builtins.readFile (templateRoot + "/nix/pre-commit.nix");
   profilePackages = {
     cv = lib.mkTexlive {
@@ -117,8 +118,9 @@ in
   assert pkgs.lib.hasInfix "git-hooks.follows" templateFlake;
   assert pkgs.lib.hasInfix "treefmtEval.config.build.check self" templateFlake;
   assert pkgs.lib.hasInfix "pre-commit-check.shellHook" templateFlake;
-  assert pkgs.lib.hasInfix "latexindent" templateTreefmt;
-  assert pkgs.lib.hasInfix "\"*.tex\"" templateTreefmt;
+  assert templateTreefmt.settings.formatter ? latexindent;
+  assert builtins.elem "*.tex" templateTreefmt.settings.formatter.latexindent.includes;
+  assert builtins.attrNames languageTreefmt.settings.formatter == ["latexindent"];
   assert pkgs.lib.hasInfix "treefmt =" templateHooks;
   assert pkgs.lib.hasInfix "nix-flake-check" templateHooks; {
     inherit profileSmoke pdflatexSmoke lualatexSmoke xelatexSmoke nestedWorkingDirectorySmoke conferenceSmoke;
