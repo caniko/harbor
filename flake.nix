@@ -33,7 +33,7 @@
           craneLib = toolchain.craneLib;
         });
   in {
-    nixosModules.harbor-db = {
+    nixosModules.db-harbor = {
       lib,
       pkgs,
       ...
