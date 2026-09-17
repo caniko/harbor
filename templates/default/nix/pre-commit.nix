@@ -1,11 +1,11 @@
 {
   pkgs,
   treefmtWrapper,
-}:
-{
+}: {
   treefmt = {
     enable = true;
     name = "treefmt";
+    package = treefmtWrapper;
     entry = "${treefmtWrapper}/bin/treefmt --fail-on-change";
     pass_filenames = false;
   };
@@ -14,8 +14,8 @@
     enable = true;
     name = "nix flake check";
     entry = "nix --extra-experimental-features 'nix-command flakes' flake check --cores 0 --max-jobs auto --no-update-lock-file";
-    extraPackages = [ pkgs.nix ];
+    extraPackages = [pkgs.nix];
     pass_filenames = false;
-    stages = [ "manual" ];
+    stages = ["manual"];
   };
 }
