@@ -3,6 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     harbor-meta = {
       url = "github:caniko/harbor-meta";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -13,6 +17,7 @@
     self,
     nixpkgs,
     harbor-meta,
+    treefmt-nix,
     ...
   }: let
     systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
@@ -20,6 +25,7 @@
     lib = import ./lib {inherit nixpkgs harbor-meta;};
   in {
     inherit lib;
+    treefmtModules.solidity = ./nix/treefmt/solidity.nix;
 
     templates.default = {
       path = ./templates/default;
@@ -41,6 +47,10 @@
         meta = harbor-meta.lib;
       });
 
-    formatter = forAllSystems (pkgs: pkgs.alejandra);
+    formatter = forAllSystems (pkgs:
+      (treefmt-nix.lib.evalModule pkgs {
+        imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml self.treefmtModules.solidity];
+        projectRootFile = "flake.nix";
+      }).config.build.wrapper);
   };
 }

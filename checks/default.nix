@@ -23,6 +23,7 @@
     inputs = {
       harbor-eth = self;
       inherit nixpkgs;
+      inherit (self.inputs) treefmt-nix;
     };
     requiredFiles = ["flake.nix" "foundry.toml" "src/Counter.sol" "test/Counter.t.sol"];
     requiredInputs = ["harbor-eth"];
