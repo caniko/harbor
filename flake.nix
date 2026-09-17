@@ -24,8 +24,8 @@
       inputs.uv2nix.follows = "uv2nix";
     };
 
-    meta-harbor = {
-      url = "git+https://codeberg.org/caniko/meta-harbor.git?ref=trunk";
+    harbor-meta = {
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -44,7 +44,7 @@
     pyproject-nix,
     uv2nix,
     pyproject-build-systems,
-    meta-harbor,
+    harbor-meta,
     nix-opencode-lsp,
     ...
   }: let
@@ -54,8 +54,9 @@
         pyproject-nix
         uv2nix
         pyproject-build-systems
-        meta-harbor
         ;
+      meta-harbor = harbor-meta;
+
       opencodeLspLib = nix-opencode-lsp.lib;
     };
   in
