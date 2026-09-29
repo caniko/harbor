@@ -68,9 +68,11 @@ in {
     (import ./portable-release.nix {
       inherit (args) pkgs;
       bundlers =
-        args.bundlers or (if nixBundle != null
-        then builtins.mapAttrs (_: value: value.nix-bundle) nixBundle.bundlers
-        else throw "harbor-rs: mkPortableBinaryRelease requires nixBundle or bundlers");
+        args.bundlers or (
+          if nixBundle != null
+          then builtins.mapAttrs (_: value: value.nix-bundle) nixBundle.bundlers
+          else throw "harbor-rs: mkPortableBinaryRelease requires nixBundle or bundlers"
+        );
     }).mkPortableBinaryRelease
     (builtins.removeAttrs args ["pkgs" "bundlers"]);
   mkPortableReleaseBinaryPackage = args:

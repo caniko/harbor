@@ -1,4 +1,7 @@
-{harbor-rs, rustfmtPackage}: {pkgs, ...}: {
+{
+  harbor-rs,
+  rustfmtPackage,
+}: {pkgs, ...}: {
   imports = [
     harbor-rs.inputs.harbor-meta.treefmtModules.nix
     harbor-rs.inputs.harbor-meta.treefmtModules.toml

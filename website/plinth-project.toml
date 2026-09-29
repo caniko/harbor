@@ -27,11 +27,11 @@ href = "/docs/"
 
 [[nav]]
 label = "Source"
-  href = "https://github.com/caniko/harbor-rs"
+href = "https://github.com/caniko/harbor-rs"
 
 [[footer_links]]
 label = "Source"
-  href = "https://github.com/caniko/harbor-rs"
+href = "https://github.com/caniko/harbor-rs"
 
 [[footer_links]]
 label = "Documentation"
@@ -60,7 +60,7 @@ primary = true
 
 [[pages.sections.ctas]]
 label = "View source"
-  href = "https://github.com/caniko/harbor-rs"
+href = "https://github.com/caniko/harbor-rs"
 
 [[pages.sections]]
 type = "feature_grid"
