@@ -12,6 +12,8 @@
 - Both templates pin the treefmt-only hook composition. Their own-lock check
   evaluates the pinned hooks and Rust formatter instead of leaving lazy
   assertions unevaluated.
+- Template lock validation uses the pinned flake evaluator to avoid a Nix 2.35.1
+  crash when resolving nested template paths.
 - Development shells report when an existing `CARGO_HOME` prevents generated
   Cargo configuration from activating, and propagate configuration installation
   failures instead of reporting successful activation.

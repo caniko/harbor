@@ -1,15 +1,18 @@
 {
   pkgs,
+  flakeCompat,
   source,
   templates,
 }: let
   checkTemplate = name: directory: let
-    # The source hash locks the local template itself, allowing pure evaluation
-    # with its complete lock graph, including follows and transitive overrides.
-    template =
-      builtins.getFlake (builtins.unsafeDiscardStringContext
-        "path:${source.outPath}?narHash=${source.narHash}&dir=${directory}");
     root = source.outPath + "/${directory}";
+    # Evaluate the complete lock graph, including follows and overrides, using
+    # the pinned evaluator. Nix 2.35.1 aborts on getFlake's nested dir= paths.
+    template =
+      (import flakeCompat {
+        src = root;
+        system = pkgs.stdenv.hostPlatform.system;
+      }).outputs;
     inherit (template.inputs) harbor-rs;
     templatePkgs = import template.inputs.nixpkgs {
       system = pkgs.stdenv.hostPlatform.system;

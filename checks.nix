@@ -1369,6 +1369,7 @@ in
     # injecting current `self` and hiding stale template locks.
     template-own-lock = import ./nix/checks/template-own-lock.nix {
       inherit pkgs;
+      flakeCompat = git-hooks.inputs.flake-compat;
       source = self;
       templates = {
         default = "templates/default";
