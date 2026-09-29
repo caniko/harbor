@@ -1365,28 +1365,16 @@ in
       assert hooks.nix-flake-check.stages == ["manual"];
         pkgs.runCommand "check-template-hooks-shape" {} "touch $out";
 
-    # Own-lock template gate: templateTests.eval injects current `self`,
-    # masking stale template locks. This reads each template's checked-in
-    # flake.lock and proves the pinned harbor-rs revision provides
-    # lib/hooks.nix (the forwarder target). Fail-closed on a missing lock
-    # entry or a rev without the file; the eval-time fetchGit is
-    # content-addressed by rev and hits the Git cache after first fetch.
-    template-own-lock = let
-      checkPinnedHooks = name: root: let
-        lock = builtins.fromJSON (builtins.readFile (root + "/flake.lock"));
-        locked = lock.nodes.harbor-rs.locked or (throw "template-own-lock ${name}: no harbor-rs.locked in flake.lock");
-        src = builtins.fetchGit {
-          url = locked.url;
-          rev = locked.rev;
-        };
-      in
-        assert pkgs.lib.assertMsg (builtins.pathExists (src + "/lib/hooks.nix"))
-        "template-own-lock ${name}: pinned harbor-rs ${locked.rev} lacks lib/hooks.nix";
-          locked.rev;
-      defaultRev = checkPinnedHooks "default" ./templates/default;
-      bevyRev = checkPinnedHooks "bevy" ./templates/bevy;
-    in
-      pkgs.runCommand "check-template-own-lock" {} "touch $out";
+    # Evaluate the real pinned hook/formatter composition, rather than
+    # injecting current `self` and hiding stale template locks.
+    template-own-lock = import ./nix/checks/template-own-lock.nix {
+      inherit pkgs;
+      source = self;
+      templates = {
+        default = "templates/default";
+        bevy = "templates/bevy";
+      };
+    };
 
     # mkDevShells returns expected shell variants
     mkDevShells-shape = let
