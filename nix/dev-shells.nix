@@ -27,12 +27,16 @@
   docsShellHook = ''
     echo "Documentation: mdbook serve docs"
   '';
+  opencodeLspShell = opencodeLsp.mkShell {
+    inherit pkgs;
+    rustAnalyzer = toolchain.rustToolchain;
+  };
 in
   (harbor.mkDevShells {
     inherit pkgs cross cargoConfig;
     inherit (toolchain) craneLib;
-    packages = [treefmtWrapper] ++ docsPackages ++ harborCiShellTools.packages ++ rsHarborShellTools.packages;
-    extraShellHook = docsShellHook + rsHarborShellTools.shellHook + harborCiShellTools.shellHook;
+    packages = [treefmtWrapper pkgs.jq] ++ docsPackages ++ harborCiShellTools.packages ++ rsHarborShellTools.packages;
+    extraShellHook = docsShellHook + rsHarborShellTools.shellHook + harborCiShellTools.shellHook + "\n" + opencodeLspShell.shellHook;
   })
   // {
     docs = harbor.mkDocsShell {
@@ -41,8 +45,5 @@ in
       packages = docsPackages;
       extraShellHook = docsShellHook;
     };
-    opencode-lsp = opencodeLsp.mkShell {
-      inherit pkgs;
-      rustAnalyzer = toolchain.rustToolchain;
-    };
+    opencode-lsp = opencodeLspShell;
   }
