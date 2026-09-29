@@ -234,13 +234,15 @@ in
         pkgs.runCommand "check-binary-release-helper-shape" {} "touch $out";
 
     binary-release-consumer-rejects-missing-system = let
-      result = builtins.tryEval (self.lib.mkReleaseBinaryPackage {
-        inherit pkgs;
-        pname = "fixture";
-        version = "0.1.0";
-        sources = {};
-        binaries = ["fixture"];
-      }).drvPath;
+      result =
+        builtins.tryEval
+        (self.lib.mkReleaseBinaryPackage {
+          inherit pkgs;
+          pname = "fixture";
+          version = "0.1.0";
+          sources = {};
+          binaries = ["fixture"];
+        }).drvPath;
     in
       assert !result.success;
         pkgs.runCommand "check-binary-release-consumer-rejects-missing-system" {} "touch $out";
@@ -282,25 +284,29 @@ in
         pkgs.runCommand "check-portable-release-helper-shape" {} "touch $out";
 
     portable-release-consumer-rejects-missing-system = let
-      result = builtins.tryEval (self.lib.mkPortableReleaseBinaryPackage {
-        inherit pkgs;
-        pname = "fixture";
-        version = "0.1.0";
-        sources = {};
-        binaries = ["fixture"];
-      }).drvPath;
+      result =
+        builtins.tryEval
+        (self.lib.mkPortableReleaseBinaryPackage {
+          inherit pkgs;
+          pname = "fixture";
+          version = "0.1.0";
+          sources = {};
+          binaries = ["fixture"];
+        }).drvPath;
     in
       assert !result.success;
         pkgs.runCommand "check-portable-release-consumer-rejects-missing-system" {} "touch $out";
 
     portable-release-producer-rejects-empty-binaries = let
-      result = builtins.tryEval (self.lib.mkPortableBinaryRelease {
-        inherit pkgs;
-        pname = "fixture";
-        version = "0.1.0";
-        artifacts.x86_64-linux.entries = {};
-        artifacts.x86_64-linux.bundler = _: pkgs.writeScript "empty-fixture-bundle" "exit 1";
-      }).releaseBundle.drvPath;
+      result =
+        builtins.tryEval
+        (self.lib.mkPortableBinaryRelease {
+          inherit pkgs;
+          pname = "fixture";
+          version = "0.1.0";
+          artifacts.x86_64-linux.entries = {};
+          artifacts.x86_64-linux.bundler = _: pkgs.writeScript "empty-fixture-bundle" "exit 1";
+        }).releaseBundle.drvPath;
     in
       assert !result.success;
         pkgs.runCommand "check-portable-release-producer-rejects-empty-binaries" {} "touch $out";
@@ -391,12 +397,14 @@ in
         version = "0.1.0";
         name = "same-name";
       };
-      result = builtins.tryEval (self.lib.mkReleaseBundle {
-        inherit pkgs;
-        pname = "fixture";
-        version = "0.1.0";
-        artifacts = {inherit one two;};
-      }).drvPath;
+      result =
+        builtins.tryEval
+        (self.lib.mkReleaseBundle {
+          inherit pkgs;
+          pname = "fixture";
+          version = "0.1.0";
+          artifacts = {inherit one two;};
+        }).drvPath;
     in
       assert !result.success;
         pkgs.runCommand "check-release-bundle-rejects-name-collisions" {} "touch $out";
@@ -1112,11 +1120,12 @@ in
         };
         mkCross = import ./lib/cross.nix {osxcross = fakeOsxcross;};
         failure =
-          builtins.tryEval (mkCross {
-              inherit pkgs system;
-              macosSdkEnvPath = toString ./tests/fixtures/macos-sdk-incomplete/MacOSX26.1.sdk;
-              osxSdkVersion = "26.1";
-            })
+          builtins.tryEval
+          (mkCross {
+            inherit pkgs system;
+            macosSdkEnvPath = toString ./tests/fixtures/macos-sdk-incomplete/MacOSX26.1.sdk;
+            osxSdkVersion = "26.1";
+          })
         .macosSdk
         .sdkRoot;
       in
@@ -1363,14 +1372,16 @@ in
     # entry or a rev without the file; the eval-time fetchGit is
     # content-addressed by rev and hits the Git cache after first fetch.
     template-own-lock = let
-      checkPinnedHooks = name: root:
-        let
-          lock = builtins.fromJSON (builtins.readFile (root + "/flake.lock"));
-          locked = lock.nodes.harbor-rs.locked or (throw "template-own-lock ${name}: no harbor-rs.locked in flake.lock");
-          src = builtins.fetchGit { url = locked.url; rev = locked.rev; };
-        in
-          assert pkgs.lib.assertMsg (builtins.pathExists (src + "/lib/hooks.nix"))
-            "template-own-lock ${name}: pinned harbor-rs ${locked.rev} lacks lib/hooks.nix";
+      checkPinnedHooks = name: root: let
+        lock = builtins.fromJSON (builtins.readFile (root + "/flake.lock"));
+        locked = lock.nodes.harbor-rs.locked or (throw "template-own-lock ${name}: no harbor-rs.locked in flake.lock");
+        src = builtins.fetchGit {
+          url = locked.url;
+          rev = locked.rev;
+        };
+      in
+        assert pkgs.lib.assertMsg (builtins.pathExists (src + "/lib/hooks.nix"))
+        "template-own-lock ${name}: pinned harbor-rs ${locked.rev} lacks lib/hooks.nix";
           locked.rev;
       defaultRev = checkPinnedHooks "default" ./templates/default;
       bevyRev = checkPinnedHooks "bevy" ./templates/bevy;
@@ -2006,11 +2017,13 @@ in
 
     # Stable Cargo configurations cannot opt into the nightly-only backend.
     mkCargoConfig-stable-rejects-cranelift = let
-      result = builtins.tryEval (self.lib.mkCargoConfig {
-        inherit pkgs;
-        channel = "stable";
-        enableCranelift = true;
-      }).configText;
+      result =
+        builtins.tryEval
+        (self.lib.mkCargoConfig {
+          inherit pkgs;
+          channel = "stable";
+          enableCranelift = true;
+        }).configText;
     in
       assert !result.success;
         pkgs.runCommand "check-mkCargoConfig-stable-rejects-cranelift" {} "touch $out";
