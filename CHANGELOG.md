@@ -9,6 +9,9 @@
 - Generated GitHub workflows scope required-gate permissions to the job, isolate
   member workflow concurrency, and preserve in-progress crate publication.
 - Pages builds retain the output link used by domain validation and artifact upload.
+- Both templates pin the treefmt-only hook composition. Their own-lock check
+  evaluates the pinned hooks and Rust formatter instead of leaving lazy
+  assertions unevaluated.
 - Development shells report when an existing `CARGO_HOME` prevents generated
   Cargo configuration from activating, and propagate configuration installation
   failures instead of reporting successful activation.
