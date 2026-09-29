@@ -1,5 +1,7 @@
 # Rust git-hooks.nix composition: harbor-meta's generic fragments plus the
-# cargo toolchain hooks. Templates forward to `mkRustHooks` instead of
+# cargo toolchain hooks. treefmt is the sole formatter; Rust formatting is
+# covered by the configured wrapper, so no separate cargo-fmt hook is emitted.
+# Templates forward to `mkRustHooks` instead of
 # copying these blocks into every project.
 {harbor-meta}: let
   metaHooks =
@@ -14,14 +16,6 @@ in {
   }:
     metaHooks.mkTreefmt {inherit treefmtWrapper;}
     // {
-      cargo-fmt = {
-        enable = true;
-        name = "cargo fmt";
-        entry = "cargo fmt --all -- --check";
-        extraPackages = pkgs.lib.optional (rustToolchain != null) rustToolchain;
-        pass_filenames = false;
-      };
-
       cargo-clippy = {
         enable = true;
         name = "cargo clippy";

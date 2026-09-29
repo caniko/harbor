@@ -1332,8 +1332,8 @@ in
 
     # Template pre-commit files are thin forwarders to lib.hooks.mkRustHooks.
     # This evaluates both forwarders and pins the composed hook shapes: the
-    # shared treefmt fragment, the three cargo hooks, and the manual-only
-    # nix flake check.
+    # shared treefmt fragment, the two cargo hooks (clippy/audit), and the manual-only
+    # nix flake check. treefmt is the sole formatter: no cargo-fmt hook.
     template-hooks-shape = let
       mkHooks = preCommitNix:
         import preCommitNix {
@@ -1345,13 +1345,14 @@ in
       hooks = mkHooks ./templates/default/nix/pre-commit.nix;
       bevyHooks = mkHooks ./templates/bevy/nix/pre-commit.nix;
     in
-      assert builtins.attrNames hooks == ["cargo-audit" "cargo-clippy" "cargo-fmt" "nix-flake-check" "treefmt"];
-      assert builtins.attrNames bevyHooks == ["cargo-audit" "cargo-clippy" "cargo-fmt" "nix-flake-check" "treefmt"];
-      assert pkgs.lib.hasInfix "cargo fmt --all" hooks.cargo-fmt.entry;
+      assert builtins.attrNames hooks == ["cargo-audit" "cargo-clippy" "nix-flake-check" "treefmt"];
+      assert builtins.attrNames bevyHooks == ["cargo-audit" "cargo-clippy" "nix-flake-check" "treefmt"];
+      assert !builtins.hasAttr "cargo-fmt" hooks;
+      assert !builtins.hasAttr "cargo-fmt" bevyHooks;
       assert pkgs.lib.hasInfix "cargo clippy --all-targets" hooks.cargo-clippy.entry;
       assert pkgs.lib.hasInfix "cargo audit" hooks.cargo-audit.entry;
       assert pkgs.lib.hasInfix "treefmt --fail-on-change" hooks.treefmt.entry;
-      assert pkgs.lib.hasInfix "cargo fmt --all" bevyHooks.cargo-fmt.entry;
+      assert pkgs.lib.hasInfix "cargo clippy --all-targets" bevyHooks.cargo-clippy.entry;
       assert hooks.nix-flake-check.stages == ["manual"];
         pkgs.runCommand "check-template-hooks-shape" {} "touch $out";
 

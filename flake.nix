@@ -119,11 +119,10 @@
         };
         cross = self.lib.mkCross {inherit pkgs system;};
         inherit (toolchain) cargoConfig;
-        treefmt = inputs.treefmt-nix.lib.evalModule pkgs {
-          imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml self.treefmtModules.rust];
-          projectRootFile = "flake.nix";
-          programs.rustfmt.package = toolchain.rustToolchain;
-        };
+        treefmt = inputs.treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {
+          harbor-rs = self;
+          rustfmtPackage = toolchain.rustToolchain;
+        });
         rsHarborVersion = (builtins.fromTOML (builtins.readFile ./cli/Cargo.toml)).package.version;
 
         bootstrapCmdsMig = import ./nix/bootstrap-cmds-mig.nix {
@@ -276,6 +275,7 @@
           harbor = self.lib;
           opencodeLsp = nix-opencode-lsp.lib;
           inherit pkgs toolchain cross cargoConfig rsHarborCli harborCi;
+          treefmtWrapper = treefmt.config.build.wrapper;
         };
 
         formatter = treefmt.config.build.wrapper;

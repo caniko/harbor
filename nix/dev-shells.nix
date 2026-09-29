@@ -7,6 +7,7 @@
   cargoConfig,
   rsHarborCli,
   harborCi,
+  treefmtWrapper,
 }: let
   docsPackages = with pkgs; [
     mdbook
@@ -30,7 +31,7 @@ in
   (harbor.mkDevShells {
     inherit pkgs cross cargoConfig;
     inherit (toolchain) craneLib;
-    packages = docsPackages ++ harborCiShellTools.packages ++ rsHarborShellTools.packages;
+    packages = [treefmtWrapper] ++ docsPackages ++ harborCiShellTools.packages ++ rsHarborShellTools.packages;
     extraShellHook = docsShellHook + rsHarborShellTools.shellHook + harborCiShellTools.shellHook;
   })
   // {
