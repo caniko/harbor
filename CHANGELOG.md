@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- Direnv loads the Rust tools and OpenCode LSP configuration through one shell,
+  preventing the two shell loads from deleting each other's cached profiles.
+- Generated GitHub workflows scope required-gate permissions to the job, isolate
+  member workflow concurrency, and preserve in-progress crate publication.
+- Pages builds retain the output link used by domain validation and artifact upload.
 - Development shells report when an existing `CARGO_HOME` prevents generated
   Cargo configuration from activating, and propagate configuration installation
   failures instead of reporting successful activation.
@@ -40,6 +45,8 @@
 
 ### Changed
 
+- CI and template pre-commit hooks use treefmt as the sole formatter, and
+  development shells include the configured treefmt wrapper.
 - Cranelift code generation is now opt-in because its unsupported LLVM `\x01`
   no-mangle marker can break C and C++ FFI linkage.
 - `mkToolchain` maps legacy crane `stdenv` arguments onto `stdenvSelector`
