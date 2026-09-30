@@ -543,6 +543,8 @@ in
       pkgs.runCommand "check-mkAndroidApkDevBuilder-runtime" {
         nativeBuildInputs = [fakeCargo fakeCargoNdk fakeGradle];
       } ''
+        export HOME="$TMPDIR/home"
+        mkdir -p "$HOME"
         export ANDROID_NDK_HOME="$PWD/ndk"
         export ANDROID_SDK_ROOT="$PWD/sdk"
         export TRACE_DIR="$PWD/trace"
