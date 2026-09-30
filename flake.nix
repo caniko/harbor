@@ -79,6 +79,10 @@
               inherit (self) lib;
               inherit (inputs) treefmt-nix rust-overlay;
             };
+            artifact-acceptance = import ./checks/artifact-acceptance.nix {
+              inherit pkgs;
+              inherit (self.lib) packageTests;
+            };
           };
 
         formatter = treefmt.config.build.wrapper;

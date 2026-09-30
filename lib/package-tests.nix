@@ -254,6 +254,7 @@
       '';
     };
 in rec {
+  inherit (import ./artifact-acceptance.nix {inherit lib;}) mkCheckedArtifact mkArtifactVerifier;
   inherit supportedKinds windowsKinds toPlanJson renderVagrantfile;
 
   mkArtifactBuilder = {
