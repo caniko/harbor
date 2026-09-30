@@ -11,6 +11,7 @@
     projectRootFile = "flake.nix";
   };
 in {
+  site-acceptance = import ./site-acceptance.nix {inherit pkgs harbor;};
   docs = harbor.mkDocs {
     inherit pkgs;
     src = templateDocs;

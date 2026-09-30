@@ -1,4 +1,4 @@
-{...}: rec {
+{packageTests}: rec {
   # Opinionated book.toml text. Mirrors the harbor-rs docs setup: coal dark
   # theme, site-url for the merged /docs/ mount, edit links to trunk.
   mkBookToml = {
@@ -81,6 +81,7 @@
     pkgs ? null,
     appSource ? null,
     appDir ? "app",
+    acceptance ? null,
   }: let
     site = projectSiteLib.mkProjectSite {
       inherit pname version domain configPath staticPaths;
@@ -91,19 +92,25 @@
     then site
     else if pkgs == null
     then throw "harbor-projects.mkSite: `pkgs` is required when `appSource` is set"
+    else if acceptance == null
+    then throw "harbor-projects.mkSite: embedded apps require artifact-bound acceptance (command and requiredTests)"
     else
-      pkgs.stdenvNoCC.mkDerivation {
-        inherit pname version;
-        dontUnpack = true;
-        phases = ["installPhase"];
-        installPhase = ''
-          mkdir -p $out
-          cp -rL --no-preserve=mode ${site}/. $out/
-          mkdir -p $out/${appDir}
-          cp -rL --no-preserve=mode ${appSource}/. $out/${appDir}/
-          test -s $out/${appDir}/index.html
-        '';
-      };
+      packageTests.mkCheckedArtifact (acceptance
+        // {
+          inherit pkgs;
+          artifact = pkgs.stdenvNoCC.mkDerivation {
+            inherit pname version;
+            dontUnpack = true;
+            phases = ["installPhase"];
+            installPhase = ''
+              mkdir -p $out
+              cp -rL --no-preserve=mode ${site}/. $out/
+              mkdir -p $out/${appDir}
+              cp -rL --no-preserve=mode ${appSource}/. $out/${appDir}/
+              test -s $out/${appDir}/index.html
+            '';
+          };
+        });
 
   # Docs dev shell. plinthProject comes from the consumer's plinth input;
   # harbor-projects deliberately does not pin plinth itself.

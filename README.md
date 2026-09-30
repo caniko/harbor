@@ -57,7 +57,7 @@ nix flake init -t github:caniko/harbor-projects
 - `mkDocs { pkgs, src, bookToml ?, pname ?, version ? }` — `mdbook build`
   derivation; `$out` is the built book. Pass `bookToml` (a store path) to
   override the consumer's `docs/book.toml`.
-- `mkSite { projectSiteLib, domain, configPath, staticPaths ?, docs, pname ?, version ?, pkgs ?, appSource ?, appDir ? }` —
+- `mkSite { projectSiteLib, domain, configPath, staticPaths ?, docs, pname ?, version ?, pkgs ?, appSource ?, appDir ?, acceptance ? }` —
   thin wrapper over `mkProjectSite { docsPackage = docs; }` so the built book
   lands at `$out/docs/`. Pass `pkgs` + `appSource` (built web root,
   `index.html` at top) to also embed the app at `$out/<appDir>/`
@@ -65,6 +65,17 @@ nix flake init -t github:caniko/harbor-projects
   subpath-safe URLs — for Dioxus, build it with `Dioxus.toml`
   `[web.app] base_path = "<appDir>"` so `dx` prefixes asset links and
   bakes the prefix into the wasm router.
+  Embedded apps require `acceptance = { command; requiredTests; ...; }`, using
+  `harbor-meta.packageTests.mkCheckedArtifact`. The command receives the assembled
+  site as `HARBOR_ARTIFACT` and must write its normalized test report to
+  `HARBOR_ACCEPTANCE_REPORT`. Pass matching backend packages through
+  `acceptance.artifacts.backend` and runtime tools through
+  `acceptance.nativeBuildInputs`. The returned deployment output is only produced
+  after every required test passes; `.harbor/acceptance.json` records test IDs,
+  tested store paths and SHA-256 file inventories. Existing embedded-app callers
+  must add an artifact-bound acceptance runner when updating this library.
+  `packageTests.mkArtifactVerifier { inherit pkgs; }` provides a read-only local
+  and HTTP identity verifier for deployment hooks.
 - `mkWebsiteMarkers { pkgs, website, title, appRoute ?, sections ?, extraGreps ?, name ? }` —
   fails when the built site's `index.html` misses the title, the
   `href="<appRoute>"` funnel link, or the rendered section markers

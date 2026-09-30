@@ -7,7 +7,7 @@
     flake-utils.url = "github:numtide/flake-utils";
 
     harbor-meta = {
-      url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk&rev=47bc4564cf35fc080e7003e95de18c57dd37e845";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
