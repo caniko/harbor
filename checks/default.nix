@@ -73,6 +73,7 @@ in
         inherit (meta) devShellTests;
       };
     }
+    // import ./node.nix {inherit pkgs lib meta;}
     // pkgs.lib.optionalAttrs pkgs.stdenvNoCC.hostPlatform.isLinux {
       bun-compile-smoke = let
         targetBySystem = {

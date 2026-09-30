@@ -52,6 +52,10 @@
           path = ./templates/default;
           description = "Bun project with harbor-js";
         };
+        templates.node = {
+          path = ./templates/node;
+          description = "Node and pnpm project with harbor-js";
+        };
       };
 
       perSystem = {
@@ -74,6 +78,8 @@
           settings.global.excludes = [".crow/**"];
         };
       in {
+        devShells.default = self.lib.node.mkNodeDevShell {inherit pkgs;};
+        devShells.node = self.lib.node.mkNodeDevShell {inherit pkgs;};
         packages =
           {
             inherit bun_1_3_14;
@@ -85,7 +91,7 @@
 
         checks = import ./checks {
           inherit pkgs system self;
-          lib = self.lib;
+          inherit (self) lib;
           inherit bun_1_3_14 nixpkgs;
           inherit (inputs) treefmt-nix git-hooks;
           meta = harbor-meta.lib;
