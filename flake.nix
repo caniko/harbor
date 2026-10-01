@@ -12,7 +12,6 @@
     self,
     harbor-rs,
     nixpkgs,
-    crane,
     ...
   }: let
     systems = [
@@ -32,7 +31,7 @@
       in
         f {
           inherit system pkgs toolchain;
-          craneLib = toolchain.craneLib;
+          inherit (toolchain) craneLib;
         });
   in {
     nixosModules.harbor-db = {
@@ -40,13 +39,16 @@
       pkgs,
       ...
     }: {
+      key = "${./nix/module.nix}:flake-wrapper";
       imports = [
-        (import ./nix/module.nix)
+        ./nix/module.nix
+        ./nix/postgres-lifecycle.nix
         (lib.mkAliasOptionModule ["services" "db-harbor"] ["services" "harbor-db"])
       ];
       services.harbor-db.package = lib.mkDefault self.packages.${pkgs.system}.harbor-db;
     };
     nixosModules.pg-backup = import ./nix/pg-backup.nix;
+    nixosModules.postgres-lifecycle = ./nix/postgres-lifecycle.nix;
     nixosModules.db-harbor = self.nixosModules.harbor-db;
     nixosModules.default = self.nixosModules.harbor-db;
 
@@ -81,6 +83,8 @@
       };
     in {
       inherit harbor-db;
+      postgres-lifecycle = import ./nix/postgres-package.nix {inherit pkgs;};
+      storage-lifecycle = import ./nix/postgres-package.nix {inherit pkgs;};
       db-harbor = harbor-db;
       # Same derivation: exports both harbor-db and the standalone
       # home-manager-backup bin. mainProgram lets `lib.getExe` resolve the
@@ -115,6 +119,19 @@
         module = self.nixosModules.default;
       };
       pg-backup-eval = pkgs.callPackage ./nix/pg-backup-eval.nix {};
+      postgres-lifecycle-eval = pkgs.callPackage ./nix/postgres-lifecycle-eval.nix {
+        module = self.nixosModules.default;
+        lifecycleModule = self.nixosModules.postgres-lifecycle;
+      };
+      postgres-crash-rollback = pkgs.callPackage ./nix/test-postgres-lifecycle.nix {};
+      postgres-interrupted-upgrade = pkgs.callPackage ./nix/test-postgres-upgrade.nix {};
+      postgres-lifecycle-test =
+        pkgs.runCommand "harbor-db-postgres-lifecycle-test" {
+          nativeBuildInputs = [pkgs.python3];
+        } ''
+          PYTHONPATH=${./python} python3 -B -m unittest discover -s ${./tests} -p 'test_*lifecycle.py'
+          touch "$out"
+        '';
       harbor-db = self.packages.${pkgs.stdenv.hostPlatform.system}.harbor-db;
       cargo-fmt = craneLib.cargoFmt {
         inherit src;
@@ -124,6 +141,11 @@
         // {
           inherit cargoArtifacts;
           cargoExtraArgs = "--all-targets --all-features --locked";
+        });
+      cargo-doc = craneLib.cargoDoc (commonArgs
+        // {
+          inherit cargoArtifacts;
+          cargoDocExtraArgs = "--no-deps --all-features";
         });
       cargo-clippy = craneLib.cargoClippy (commonArgs
         // {
