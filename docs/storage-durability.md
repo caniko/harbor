@@ -174,6 +174,11 @@ Clippy, documentation and module gates, limits parallel jobs to two, and retains
 the exact source revision, installable, build log and JSON output map. VM jobs
 require hosted KVM. A queued or skipped job is not acceptance evidence.
 
+Hosted jobs provision a root-owned sticky `/var/cache/sccache` and explicitly
+expose it to Nix sandboxes before restarting the daemon. The production package
+retains Harbor RS's managed-transport requirement and per-sandbox compiler daemon;
+the hosted disk cache satisfies the same transport contract without credentials.
+
 The workflow was generated with Simit commit
 `beea3e284a613d46468779bd998e51be2d63566c` (Simit PR #26), which supports
 `[ci.nix_build].only` for Rust flakes. Regenerate and verify with that capability:
