@@ -103,6 +103,21 @@ let
     inherit pkgs ffmpeg;
     name = "harbor-py-ffmpeg-torchcodec-abi-check";
   };
+
+  torchcodecEnv = harbor.mkUvVirtualEnv {
+    inherit pkgs python;
+    name = "torchcodec-cpu-regression-env";
+    workspaceRoot = ./fixtures/torchcodec-cpu;
+    dependencies = {
+      torch = [ ];
+      torchcodec = [ ];
+    };
+    pyprojectOverrides = final: prev: {
+      torchcodec = harbor.pythonOverrides.addTorchCodecFfmpegRuntime {
+        inherit python ffmpeg;
+      } final prev;
+    };
+  };
 in
 assert
   templateSimit.flake == {
@@ -195,6 +210,26 @@ assert pkgs.lib.hasInfix "nix-flake-check" templateHooks;
     test -x ${ffmpeg}/bin/ffmpeg
     test -e ${ffmpegAbiCheck}/result
     mkdir -p $out
+    echo ok > $out/result
+  '';
+}
+// pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+  torchcodec-runtime = pkgs.runCommand "harbor-py-torchcodec-runtime" { } ''
+    export HOME=$TMPDIR/home
+    mkdir -p "$HOME" "$out"
+    ${ffmpeg}/bin/ffmpeg -hide_banner -loglevel error \
+      -f lavfi -i sine=frequency=440:sample_rate=8000:duration=0.1 sample.wav
+    ${torchcodecEnv}/bin/python - <<'PY'
+    import torch
+    from torchcodec.decoders import AudioDecoder
+
+    assert torch.version.cuda is None
+    samples = AudioDecoder("sample.wav").get_all_samples()
+    assert samples.sample_rate == 8000
+    assert samples.data.shape[-1] == 800
+    assert torch.isfinite(samples.data).all()
+    assert samples.data.abs().sum() > 0
+    PY
     echo ok > $out/result
   '';
 }

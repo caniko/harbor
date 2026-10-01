@@ -8,26 +8,35 @@
 }:
 let
   defaultTorchCodecMissingDeps = [
+    # TorchCodec wheels bundle alternative FFmpeg 4/5/6/8 decoders.
+    # mkFfmpegCompat supplies the FFmpeg 7 decoder's ABI.
     "libavcodec.so.58"
     "libavcodec.so.59"
     "libavcodec.so.60"
+    "libavcodec.so.62"
     "libavdevice.so.58"
     "libavdevice.so.59"
     "libavdevice.so.60"
+    "libavdevice.so.62"
     "libavfilter.so.7"
     "libavfilter.so.8"
     "libavfilter.so.9"
+    "libavfilter.so.11"
     "libavformat.so.58"
     "libavformat.so.59"
     "libavformat.so.60"
+    "libavformat.so.62"
     "libavutil.so.56"
     "libavutil.so.57"
     "libavutil.so.58"
+    "libavutil.so.60"
     "libswresample.so.3"
     "libswresample.so.4"
+    "libswresample.so.6"
     "libswscale.so.5"
     "libswscale.so.6"
     "libswscale.so.7"
+    "libswscale.so.9"
   ];
 in
 rec {
