@@ -74,7 +74,10 @@
       buildCache = harbor-rs.lib.mkBuildCachePolicy {
         inherit pkgs;
         sccachePackage = harbor-rs.packages.${pkgs.stdenv.hostPlatform.system}.sccache;
-        cacheRoot = null;
+        # The pinned wrapper needs an explicit disk transport when a hosted
+        # runner has no Redis socket. It still prefers the host Redis transport
+        # and admits only the versioned nixbld-owned, group-writable namespace.
+        cacheRoot = "/var/cache/sccache";
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
       };
