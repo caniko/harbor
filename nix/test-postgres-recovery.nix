@@ -95,7 +95,11 @@ in
       recovery_config = "listen_addresses = 'localhost'\nunix_socket_directories = '/srv/recovery-socket'\nport = 55432\nrecovery_target_lsn = '" + target + "'\nrecovery_target_action = 'promote'\ndefault_transaction_read_only = on\n"
       primary.succeed("printf '%s' " + shlex.quote(recovery_config) + " > /srv/recovered/18/postgresql.conf; touch /srv/recovered/18/recovery.signal; chown postgres:postgres /srv/recovered/18/postgresql.conf /srv/recovered/18/recovery.signal")
       primary.succeed("tar -C /srv -cf /tmp/recovery.tar backup recovered")
-      primary.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/server.log -w start")
+      try:
+          primary.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/server.log -w start")
+      except Exception:
+          print(primary.succeed("cat /srv/recovered/server.log"))
+          raise
       primary.wait_until_succeeds("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
       primary.succeed(f"{command} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
       primary.fail(f"{command} inspect-recovery")  # Missing independent off-host execution.
@@ -108,7 +112,11 @@ in
       primary.copy_from_machine("/tmp/recovery.tar", "recovery-transfer")
       remote.copy_from_host(str(primary.out_dir / "recovery-transfer/recovery.tar"), "/tmp/recovery.tar")
       remote.succeed("tar -C /srv -xf /tmp/recovery.tar; chown -R postgres:postgres /srv/backup /srv/recovered")
-      remote.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/remote.log -w start")
+      try:
+          remote.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/remote.log -w start")
+      except Exception:
+          print(remote.succeed("cat /srv/recovered/remote.log"))
+          raise
       remote.wait_until_succeeds("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
       remote.succeed("jq '.recovery.receipt_file = .recovery.off_host_receipt_file' /srv/config.json > /srv/remote-config.json; chown postgres:postgres /srv/remote-config.json")
       remote.succeed("runuser -u postgres -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
