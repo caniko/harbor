@@ -267,3 +267,97 @@ and incomplete upgrade journals fail. Normal service startup never adopts.
 Remove the `switchAdoption` request after the rollout; keep the persistent
 authority record and its backups. This option verifies identity, not recovery
 coverage or application-record freshness, which remain consumer rollout gates.
+
+### Executed recovery admission
+
+`lib.postgresRecoveryReadiness = 1` advertises the optional recovery protocol.
+Consumers configure `services.harbor-db.postgresql.recovery` to require it before
+explicit adoption and activating rollouts:
+
+```nix
+services.harbor-db.postgresql.recovery = {
+  systemIdentifier = "INDEPENDENTLY_VERIFIED_NUMERIC_IDENTIFIER";
+  backupRoot = "/srv/backups/primary";
+  snapshotFile = "/srv/backups/primary/evidence/records.json";
+  receiptFile = "/srv/backups/primary/evidence/recovery.json";
+  offHostReceiptFile = "/srv/backups/primary/evidence/off-host.json";
+  sourceHostname = "primary";
+  maxAgeSeconds = 172800;
+  recordChecks.saves = {
+    database = "app";
+    sql = "SELECT mutation, geometry, review, revision FROM saves ORDER BY mutation";
+  };
+};
+```
+
+The backup layout has `LAST_SUCCESS` containing a completed backup identifier,
+`base/<identifier>/backup_manifest`, `base/<identifier>.meta.json` and the
+persistent `locks/mutate` anchor. Metadata supplies `backup_id`, `pg_major`,
+`system_identifier`, `epoch_id`, `backup_stop_lsn` and `post_backup_lsn`.
+The last LSN must be a post-backup recovery point. The tool uses the configured
+PostgreSQL package's `pg_controldata` and `pg_verifybackup` to validate actual
+retained bytes. WAL replay is established by the disposable restored server,
+not by a successful service exit or a copied report.
+
+Use the candidate's `/etc/harbor-db/postgresql.json` and package before first
+activation. Under the consumer's existing consistency window, keep application
+writers paused from backup capture through the record snapshot. Queries must
+be deterministic and cover the application records whose recovery matters.
+They run in read-only transactions; only SHA-256 digests enter evidence.
+
+For a first guarded NixOS rollout, set an explicit
+`services.harbor-db.postgresql.recoveryPreparation` request. Its absolute argv
+`readinessCommand`, `backupCommand` and `restoreCommand` are consumer-owned:
+check the live receiver/flush lag, publish the conservative backup, then restore
+and certify a disposable endpoint while it is alive. Declare only the writable
+backup/evidence and disposable paths; the module rejects primary/authority trees.
+The candidate pre-switch hook runs these commands as `postgres` before any unit
+replacement or adoption. Boot/dry/check actions cannot execute preparation.
+The consumer must hold its writer consistency window for backup through snapshot.
+
+An optional consumer `exportCommand` runs only after local acceptance, before
+the missing off-host receipt abort. It may publish the selected immutable
+backup/WAL/metadata/snapshot copy for independent transport. Its writable paths
+and `supplementaryGroups` are explicitly declared; Harbor does not perform
+transport or restore orchestration. Receipts bind the exact metadata bytes as
+well as the base manifest, replay target and record contract.
+
+Missing independent evidence aborts that activation after retaining local
+evidence. On retry, the preparation journal and source snapshot retain the same
+backup; stale, changed or incomplete existing evidence fails rather than starting
+a replacement backup. A consumer may transport the independently executed
+receipt to `offHostReceiptImportFile`. The next managed activation privately loads
+it as a systemd credential, validates its backup/query/record/hostname binding,
+then publishes it atomically under the backup/evidence leases. There is no
+executor-host override. Ordinary inspection/startup remains read-only. Retire the
+one-time preparation request after acceptance; renew stale evidence only through
+the consumer's next explicitly coordinated consistency window.
+
+1. Create and verify the completed backup and post-backup recovery point.
+2. Run `harbor-db-postgres --config <candidate-manifest> snapshot-records
+   --socket-dir /run/postgresql --port 5432` as the PostgreSQL service user.
+3. Restore into a disposable directory, replay through `post_backup_lsn`,
+   promote the disposable copy and start it with
+   `default_transaction_read_only = on`. The primary is never the drill target.
+4. Run `harbor-db-postgres --config <candidate-manifest> certify-recovery
+   --data-dir <disposable-directory> --socket-dir <local-restore-socket>
+   --port <restore-port>` while that recovered endpoint is running.
+5. For required off-host recovery, copy the same backup/metadata/snapshot and
+   query contract to the independent host. Perform a fresh restore and execute
+   the same certifier there, with that host's configured `receiptFile` selecting
+   the off-host receipt. Copy the resulting receipt back with private ownership
+   and atomic publication. The CLI records the real executor hostname; it has
+   no hostname override.
+6. Run `inspect-recovery`. It is read-only and emits JSON, as does the optional
+   `harbor-db-postgresql-recovery-check.service`. Missing/stale evidence, changed
+   query contracts or backup bytes, wrong cluster identities, incomplete replay
+   and mismatched records fail before authority creation.
+
+Evidence publication uses a separate persistent `recovery.lock` next to the
+snapshot, while retaining the backup's shared mutation lease. Read-only checks
+never create missing anchors. Adoption retains both accepted-evidence leases
+until the authority record is durably published. No service starts or repairs a
+recovery drill at boot. `offHostReceiptFile = null` explicitly selects local-only qualification;
+consumers that require independent coverage must configure the off-host path.
+Receipts are trusted service-user-owned local evidence, not remote attestation
+or a substitute for consumer-owned writer coordination and backup transport.

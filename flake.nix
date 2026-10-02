@@ -35,6 +35,8 @@
           inherit (toolchain) craneLib;
         });
   in {
+    lib.postgresRecoveryReadiness = 1;
+    lib.postgresRecoveryPreparation = 1;
     nixosModules.harbor-db = {
       lib,
       pkgs,
@@ -128,11 +130,12 @@
       };
       postgres-crash-rollback = pkgs.callPackage ./nix/test-postgres-lifecycle.nix {};
       postgres-interrupted-upgrade = pkgs.callPackage ./nix/test-postgres-upgrade.nix {};
+      postgres-recovery-acceptance = pkgs.callPackage ./nix/test-postgres-recovery.nix {};
       postgres-lifecycle-test =
         pkgs.runCommand "harbor-db-postgres-lifecycle-test" {
           nativeBuildInputs = [pkgs.python3];
         } ''
-          PYTHONPATH=${./python} python3 -B -m unittest discover -s ${./tests} -p 'test_*lifecycle.py'
+          PYTHONPATH=${./python} python3 -B -m unittest discover -s ${./tests} -p 'test_*.py'
           touch "$out"
         '';
       harbor-db = self.packages.${pkgs.stdenv.hostPlatform.system}.harbor-db;

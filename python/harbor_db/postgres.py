@@ -6,6 +6,7 @@ been verified. Old clusters are historical snapshots, never writable fallbacks.
 """
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -155,6 +156,13 @@ def reject_upgrade(config):
         raise LifecycleError("unfinished upgrade; explicit upgrade resume is required")
 
 
+def recovery_admission(config):
+    if config.get("recovery") is None:
+        return contextlib.nullcontext()
+    from .recovery import admission
+    return admission(config)
+
+
 def adopt(config, expected_identifier):
     validate_config(config)
     reject_upgrade(config)
@@ -163,7 +171,7 @@ def adopt(config, expected_identifier):
     path = state / "identity.json"
     # Only first adoption may create the anchor. A surviving writer can still
     # hold an unlinked inode; replacing it would bypass its authority lease.
-    with lock(state / "lock", create=not path.exists()):
+    with recovery_admission(config), lock(state / "lock", create=not path.exists()):
         reject_upgrade(config)
         observed = inspect_cluster(config["package"], config["data_dir"], config["major"])
         if observed != expected_identifier:
@@ -181,7 +189,7 @@ def adopt_live(config, expected_identifier, socket_dir, port):
     path = Path(config["state_dir"]) / "identity.json"
     # Later activations must coexist with the writer's shared lifetime lease.
     already_adopted = path.exists()
-    with lock(Path(config["state_dir"]) / "lock", shared=already_adopted, create=not already_adopted):
+    with recovery_admission(config), lock(Path(config["state_dir"]) / "lock", shared=already_adopted, create=not already_adopted):
         reject_upgrade(config)
         if already_adopted or path.exists():
             verify_identity(config)
@@ -406,6 +414,17 @@ def main():
         live.add_argument("--system-identifier", required=True)
         live.add_argument("--socket-dir", default="/run/postgresql")
         live.add_argument("--port", type=int, default=5432)
+    commands.add_parser("inspect-recovery", help="read-only backup and record-level recovery admission")
+    preparation = commands.add_parser("prepare-recovery", help="explicit managed backup/snapshot/restore preparation before adoption")
+    preparation.add_argument("--preparation-config", type=Path, required=True)
+    preparation.add_argument("--socket-dir", required=True)
+    preparation.add_argument("--port", type=int, required=True)
+    for command in ("snapshot-records", "certify-recovery"):
+        recovery_parser = commands.add_parser(command, help="execute record checks and publish bound recovery evidence")
+        recovery_parser.add_argument("--socket-dir", required=True)
+        recovery_parser.add_argument("--port", type=int, required=True)
+        if command == "certify-recovery":
+            recovery_parser.add_argument("--data-dir", required=True)
     migration = commands.add_parser("upgrade", help="explicit offline staged upgrade")
     migration.add_argument("--retry-incomplete", action="store_true")
     args = parser.parse_args()
@@ -420,6 +439,18 @@ def main():
             check(config)
         elif args.command == "serve":
             return serve(config)
+        elif args.command in ("inspect-recovery", "snapshot-records", "certify-recovery", "prepare-recovery"):
+            from . import recovery
+            if args.command == "inspect-recovery":
+                result = recovery.check(config)
+            elif args.command == "prepare-recovery":
+                result = recovery.prepare(config, json.loads(args.preparation_config.read_text()), args.socket_dir, args.port)
+            elif args.command == "snapshot-records":
+                result = recovery.snapshot(config, args.socket_dir, args.port)
+            else:
+                result = recovery.certify(config, args.data_dir, args.socket_dir, args.port)
+            # Receipts expose digests, never private query results or records.
+            print(json.dumps(result, sort_keys=True))
         else:
             upgrade(config, retry_incomplete=args.retry_incomplete)
     except (LifecycleError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
