@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -175,6 +175,51 @@ test("a watched input edit rejects the stale waiter and starts a fresh export", 
   const fresh = environments.resolve({ sessionID: "fresh", cwd });
   await stale;
   assert.equal((await fresh).env.PROJECT_TEST, "new");
+});
+
+test("nix-direnv retention touches preserve an unchanged cached environment", integration, async (t) => {
+  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto" });
+  const layout = path.join(cwd, ".direnv");
+  const profile = path.join(layout, "flake-profile-fixture");
+  const cache = `${profile}.rc`;
+  await mkdir(layout);
+  await symlink(cwd, profile);
+  await writeFile(cache, "cached");
+  await writeFile(path.join(cwd, ".envrc"), 'touch .direnv/flake-profile-fixture.rc\nwatch_file .direnv/flake-profile-fixture.rc\nexport PROJECT_TEST="$(cat .direnv/flake-profile-fixture.rc)"\n');
+  assert.equal((await environments.resolve({ sessionID: "prime", cwd })).env.PROJECT_TEST, "cached");
+  const before = (await stat(cache)).mtimeMs;
+  const results = await Promise.all(["one", "two", "three"].map(sessionID => environments.resolve({ sessionID, cwd })));
+  assert.deepEqual(results.map(result => result.env.PROJECT_TEST), ["cached", "cached", "cached"]);
+  assert.ok((await stat(cache)).mtimeMs > before, "native retention refreshed the profile timestamp");
+});
+
+test("a cached profile body edit rejects stale waiters even with preserved metadata", integration, async (t) => {
+  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto" });
+  const layout = path.join(cwd, ".direnv");
+  const profile = path.join(layout, "flake-profile-fixture");
+  const cache = `${profile}.rc`;
+  const started = path.join(cwd, "started");
+  await mkdir(layout);
+  await symlink(cwd, profile);
+  await writeFile(cache, "first");
+  const timestamp = Math.floor(Date.now() / 1000) - 20;
+  await utimes(cache, timestamp, timestamp);
+  await writeFile(path.join(cwd, ".envrc"), 'watch_file .direnv/flake-profile-fixture.rc\nexport PROJECT_TEST="$(cat .direnv/flake-profile-fixture.rc)"\necho started > started\nsleep 0.3\n');
+  await environments.resolve({ sessionID: "prime", cwd });
+  await rm(started);
+  const metadata = await stat(cache);
+  const stale = assert.rejects(environments.resolve({ sessionID: "stale", cwd }), /changed during preparation/);
+  let running = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try { await readFile(started); running = true; break; }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(running, "the old environment was read before the cache edit");
+  await writeFile(cache, "other");
+  await utimes(cache, metadata.atime, metadata.mtime);
+  await stale;
+  assert.equal((await environments.resolve({ sessionID: "fresh", cwd })).env.PROJECT_TEST, "other");
 });
 
 test("separate processes serialize exports through the same persistent anchor", integration, async (t) => {

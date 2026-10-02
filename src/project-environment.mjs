@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readlink, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { inflateSync } from "node:zlib";
 import path from "node:path";
@@ -32,9 +32,25 @@ async function watchGeneration(files) {
   // Bounded batches avoid exhausting file descriptors on recursive watch_dir.
   const states = [];
   for (let start = 0; start < files.length; start += 64) {
-    states.push(...await Promise.all(files.slice(start, start + 64).map(watchState)));
+    states.push(...await Promise.all(files.slice(start, start + 64).map(watchInputState)));
   }
   return createHash("sha256").update(JSON.stringify(states)).digest("hex");
+}
+
+async function watchInputState(file) {
+  const state = await watchState(file);
+  if (state[1] === null || !/^(?:flake|nix)-profile(?:-.+)?\.rc$/.test(path.basename(file))) return state;
+  const profile = file.slice(0, -3);
+  try { if (!(await lstat(profile)).isSymbolicLink()) return state; }
+  catch (error) { if (error.code === "ENOENT") return state; throw error; }
+  // nix-direnv touches its watched profile body on every GC-root refresh.
+  // Compare the body and retained target instead: manual cache edits still
+  // invalidate waiters, including edits with unchanged size and timestamps.
+  if (state[5] > 8 * 1024 * 1024) throw new Error("nix-direnv cached environment exceeds the preparation limit");
+  const contents = await readFile(file);
+  if (contents.length > 8 * 1024 * 1024) throw new Error("nix-direnv cached environment exceeds the preparation limit");
+  state[3] = state[6] = null;
+  return [...state, await readlink(profile), createHash("sha256").update(contents).digest("hex")];
 }
 
 async function validateWatches(watches) {

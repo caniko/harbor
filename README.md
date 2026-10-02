@@ -91,7 +91,9 @@ serialized per session so pending manual approvals are not duplicated.
 Identical concurrent exports also share one in-flight preparation across
 sessions. Each waiter rechecks approval, the definition and watched inputs;
 cancelling one waiter preserves the others. Completed environments remain
-direnv-owned. Separate processes serialize exports sharing a nix-direnv layout
+direnv-owned. For nix-direnv's watched profile body, freshness compares its
+contents and retained target: refreshing GC-root timestamps cannot invalidate
+an unchanged environment. Separate processes serialize exports sharing a nix-direnv layout
 through persistent, private flock anchors. Pin `setsid` and `flock` executable
 paths when configuring the Linux adapter.
 Old upstream events lacking that context fail closed. Options are `roots`,
