@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -169,6 +170,20 @@ class RecoveryReadinessTest(unittest.TestCase):
             self.snapshot()
         with self.assertRaisesRegex(ValueError, "record-level recovery"):
             recovery.check(self.config, now=self.now)
+
+    def test_record_queries_scrub_routing_and_normalize_session_output(self):
+        self.query.stop()
+        with patch.dict(os.environ, {"PGHOST": "unrelated", "PGOPTIONS": "-c TimeZone=Pacific/Auckland", "PGSERVICE": "other"}), patch.object(postgres, "run", return_value=subprocess.CompletedProcess([], 0, "record-digest\n")) as execute:
+            self.assertEqual(recovery.query(self.config, "/restore/socket", 55432, "app", "SELECT records"), "record-digest\n")
+        args, kwargs = execute.call_args
+        self.assertIn("--host=/restore/socket", args[0])
+        self.assertNotIn("PGHOST", kwargs["env"])
+        self.assertNotIn("PGOPTIONS", kwargs["env"])
+        self.assertNotIn("PGSERVICE", kwargs["env"])
+        self.assertIn("BEGIN READ ONLY", args[0][-1])
+        self.assertIn("SET LOCAL TimeZone = 'UTC'", args[0][-1])
+        with self.assertRaisesRegex(ValueError, "local Unix socket"):
+            recovery.query(self.config, "localhost", 55432, "app", "SELECT records")
 
     def test_redirected_evidence_is_rejected(self):
         self.snapshot()

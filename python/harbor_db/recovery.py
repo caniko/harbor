@@ -116,7 +116,9 @@ def query(config, socket_dir, port, database, sql):
         Path(config["package"]) / "bin/psql", "--no-psqlrc", "--no-password", "--quiet",
         f"--host={socket_dir}", f"--port={port}", "--username=postgres", f"--dbname={database}",
         "--set=ON_ERROR_STOP=1", "--tuples-only", "--no-align",
-        "--command", f"BEGIN READ ONLY;\n{sql}\n;COMMIT;",
+        "--command", ("BEGIN READ ONLY; SET LOCAL TimeZone = 'UTC'; "
+                      "SET LOCAL DateStyle = 'ISO,YMD'; SET LOCAL bytea_output = 'hex';\n"
+                      f"{sql}\n;COMMIT;"),
     ], env=env, capture_output=True, text=True, timeout=60).stdout
 
 

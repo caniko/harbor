@@ -55,6 +55,7 @@ in
           enable = true;
           package = pkgs.postgresql_18;
           dataDir = "/var/lib/postgres/18";
+          authentication = pkgs.lib.mkBefore "local replication postgres peer\n";
         };
       };
       remote = {imports = [node];};
@@ -89,6 +90,7 @@ in
       primary.succeed("printf '%s' " + shlex.quote(recovery_config) + " > /srv/recovered/18/postgresql.conf; touch /srv/recovered/18/recovery.signal; chown postgres:postgres /srv/recovered/18/postgresql.conf /srv/recovered/18/recovery.signal")
       primary.succeed("tar -C /srv -cf /tmp/recovery.tar backup recovered")
       primary.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/server.log -w start")
+      primary.wait_until_succeeds("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
       primary.succeed(f"{command} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
       primary.fail(f"{command} inspect-recovery")  # Missing independent off-host execution.
 
@@ -100,6 +102,7 @@ in
           remote.copy_from_host(transfer + "/recovery.tar", "/tmp/recovery.tar")
           remote.succeed("tar -C /srv -xf /tmp/recovery.tar; chown -R postgres:postgres /srv/backup /srv/recovered")
           remote.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/remote.log -w start")
+          remote.wait_until_succeeds("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
           remote.succeed("jq '.recovery.receipt_file = .recovery.off_host_receipt_file' /srv/config.json > /srv/remote-config.json; chown postgres:postgres /srv/remote-config.json")
           remote.succeed("runuser -u postgres -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
           remote.copy_from_vm("/srv/backup/evidence/off-host.json", transfer)
