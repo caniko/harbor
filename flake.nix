@@ -36,6 +36,7 @@
         });
   in {
     lib.postgresRecoveryReadiness = 1;
+    lib.postgresRecoveryPreparation = 1;
     nixosModules.harbor-db = {
       lib,
       pkgs,

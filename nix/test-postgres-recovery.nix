@@ -62,7 +62,13 @@ in
           authentication = pkgs.lib.mkBefore "local replication postgres peer\n";
         };
       };
-      remote = {imports = [node];};
+      remote = {
+        imports = [node];
+        users.users.can = {
+          isNormalUser = true;
+          uid = 1000;
+        };
+      };
     };
     testScript = ''
       import json
@@ -97,13 +103,19 @@ in
       primary.succeed("printf '%s' " + shlex.quote(recovery_config) + " > /srv/recovered/18/postgresql.conf; touch /srv/recovered/18/recovery.signal; chown postgres:postgres /srv/recovered/18/postgresql.conf /srv/recovered/18/recovery.signal")
       primary.succeed("tar -C /srv -cf /tmp/recovery.tar backup recovered restore-wal")
       try:
-          primary.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/server.log -w start")
+          primary.succeed("runuser -u postgres -- ${pkgs.postgresql_18}/bin/pg_ctl -p ${pkgs.postgresql_18}/bin/postgres -D /srv/recovered/18 -l /srv/recovered/server.log -w start")
       except Exception:
           print(primary.succeed("cat /srv/recovered/server.log"))
           raise
       primary.wait_until_succeeds("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
       primary.succeed(f"{command} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
       primary.fail(f"{command} inspect-recovery")  # Missing independent off-host execution.
+      # The explicit managed retry must reuse local evidence and fail before
+      # adoption without running the backup/restore commands again.
+      preparation = {"readiness_command": ["${pkgs.coreutils}/bin/true"], "backup_command": ["${pkgs.coreutils}/bin/false"], "restore_command": ["${pkgs.coreutils}/bin/false"]}
+      primary.succeed("printf '%s\\n' " + shlex.quote(json.dumps(preparation)) + " > /srv/preparation.json; chown postgres:postgres /srv/preparation.json")
+      primary.fail(f"{command} prepare-recovery --preparation-config /srv/preparation.json --socket-dir /run/postgresql --port 5432")
+      primary.succeed("test ! -e /srv/authority/identity.json; test $(cat /srv/backup/LAST_SUCCESS) = base-1")
 
       # Execute against the same restored bytes on a second, independently
       # named host, rather than copying the primary's local success receipt.
@@ -112,25 +124,29 @@ in
       # shared transport, not an arbitrary absolute host temporary directory.
       primary.copy_from_machine("/tmp/recovery.tar", "recovery-transfer")
       remote.copy_from_host(str(primary.out_dir / "recovery-transfer/recovery.tar"), "/tmp/recovery.tar")
-      remote.succeed("tar -C /srv -xf /tmp/recovery.tar; chown -R postgres:postgres /srv/backup /srv/recovered /srv/restore-wal")
+      remote.succeed("tar -C /srv -xf /tmp/recovery.tar; chown -R can:users /srv/backup /srv/recovered /srv/restore-wal /srv/recovery-socket")
+      # A can-owned restore cannot inherit Atlas's peer auth (can -> can), and
+      # its socket is private. Keep authentication/config overrides disposable.
+      remote.succeed("printf 'local all postgres peer map=recovery\\n' > /srv/recovered/pg_hba.conf; printf 'recovery can postgres\\n' > /srv/recovered/pg_ident.conf; chown can:users /srv/recovered/pg_*.conf; chmod 0600 /srv/recovered/pg_*.conf")
       try:
-          remote.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/remote.log -w start")
+          remote.succeed("runuser -u can -- ${pkgs.postgresql_18}/bin/pg_ctl -p ${pkgs.postgresql_18}/bin/postgres -D /srv/recovered/18 -o \"-c data_directory=/srv/recovered/18 -c listen_addresses= -c hba_file=/srv/recovered/pg_hba.conf -c ident_file=/srv/recovered/pg_ident.conf\" -l /srv/recovered/remote.log -w start")
       except Exception:
           print(remote.succeed("cat /srv/recovered/remote.log"))
           raise
-      remote.wait_until_succeeds("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
-      remote.succeed("jq '.recovery.receipt_file = .recovery.off_host_receipt_file' /srv/config.json > /srv/remote-config.json; chown postgres:postgres /srv/remote-config.json")
-      remote.succeed("runuser -u postgres -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
+      remote.wait_until_succeeds("runuser -u can -- psql -U postgres -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
+      remote.succeed("jq '.recovery.receipt_file = .recovery.off_host_receipt_file' /srv/config.json > /srv/remote-config.json; chown can:users /srv/remote-config.json")
+      remote.succeed("runuser -u can -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
       remote.copy_from_machine("/srv/backup/evidence/off-host.json", "recovery-transfer")
-      primary.copy_from_host(str(remote.out_dir / "recovery-transfer/off-host.json"), "/srv/backup/evidence/off-host.json")
-      primary.succeed("chown postgres:postgres /srv/backup/evidence/off-host.json")
+      primary.copy_from_host(str(remote.out_dir / "recovery-transfer/off-host.json"), "/srv/incoming/recovery-off-host")
+      primary.succeed("chown -R postgres:postgres /srv/incoming")
+      primary.succeed(f"runuser -u postgres -- env CREDENTIALS_DIRECTORY=/srv/incoming harbor-db-postgres --config /srv/config.json prepare-recovery --preparation-config /srv/preparation.json --socket-dir /run/postgresql --port 5432")
       primary.succeed(f"{command} inspect-recovery")
       primary.succeed(f"{command} adopt-live --system-identifier {identifier}")
       primary.succeed("test -s /srv/authority/identity.json")
       # Same table count cannot hide a changed review, and a corrupt retained
       # backup cannot reuse a formerly successful recovery receipt.
-      remote.succeed("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -v ON_ERROR_STOP=1 -c \"BEGIN READ WRITE; UPDATE saves SET review = 'lost-review'; COMMIT\"")
-      remote.fail("runuser -u postgres -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
+      remote.succeed("runuser -u can -- psql -U postgres -h /srv/recovery-socket -p 55432 -v ON_ERROR_STOP=1 -c \"BEGIN READ WRITE; UPDATE saves SET review = 'lost-review'; COMMIT\"")
+      remote.fail("runuser -u can -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
       primary.succeed("printf corrupt >> /srv/backup/base/base-1/PG_VERSION")
       primary.fail(f"{command} inspect-recovery")
     '';

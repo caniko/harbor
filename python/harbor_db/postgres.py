@@ -415,6 +415,10 @@ def main():
         live.add_argument("--socket-dir", default="/run/postgresql")
         live.add_argument("--port", type=int, default=5432)
     commands.add_parser("inspect-recovery", help="read-only backup and record-level recovery admission")
+    preparation = commands.add_parser("prepare-recovery", help="explicit managed backup/snapshot/restore preparation before adoption")
+    preparation.add_argument("--preparation-config", type=Path, required=True)
+    preparation.add_argument("--socket-dir", required=True)
+    preparation.add_argument("--port", type=int, required=True)
     for command in ("snapshot-records", "certify-recovery"):
         recovery_parser = commands.add_parser(command, help="execute record checks and publish bound recovery evidence")
         recovery_parser.add_argument("--socket-dir", required=True)
@@ -435,10 +439,12 @@ def main():
             check(config)
         elif args.command == "serve":
             return serve(config)
-        elif args.command in ("inspect-recovery", "snapshot-records", "certify-recovery"):
+        elif args.command in ("inspect-recovery", "snapshot-records", "certify-recovery", "prepare-recovery"):
             from . import recovery
             if args.command == "inspect-recovery":
                 result = recovery.check(config)
+            elif args.command == "prepare-recovery":
+                result = recovery.prepare(config, json.loads(args.preparation_config.read_text()), args.socket_dir, args.port)
             elif args.command == "snapshot-records":
                 result = recovery.snapshot(config, args.socket_dir, args.port)
             else:

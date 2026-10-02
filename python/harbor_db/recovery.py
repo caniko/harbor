@@ -84,7 +84,8 @@ def backup(config, settings, now):
         raise ValueError("invalid completed backup identifier")
     directory = absolute(root / "base" / identifier)
     manifest = absolute(directory / "backup_manifest")
-    meta = read_json(absolute(root / "base" / f"{identifier}.meta.json"))
+    metadata = absolute(root / "base" / f"{identifier}.meta.json")
+    meta = read_json(metadata)
     if (meta["backup_id"] != identifier or str(meta["pg_major"]) != str(config["major"])
             or meta["system_identifier"] != settings["system_identifier"]):
         raise ValueError("backup identity does not match the declared primary")
@@ -97,6 +98,7 @@ def backup(config, settings, now):
         "backup_id": identifier, "system_identifier": settings["system_identifier"],
         "major": str(config["major"]), "epoch_id": meta["epoch_id"],
         "manifest_sha256": digest(manifest), "recovery_target_lsn": meta["post_backup_lsn"],
+        "metadata_sha256": digest(metadata),
     }
 
 
@@ -240,15 +242,96 @@ def check_evidence(config, settings, directory, binding, now):
         paths.append((settings["off_host_receipt_file"], "off-host restore acceptance"))
     for path, label in paths:
         receipt = evidence(path, label, binding, settings, now)
-        if (receipt.get("status") != "ready" or receipt.get("records") != source["records"]
-                or receipt.get("snapshot_sha256") != digest(settings["snapshot_file"])
-                or receipt.get("restored_data_dir") == config["data_dir"]
-                or not receipt.get("restored_data_dir")
-                or receipt["completed_at"] < source["completed_at"]
-                or lsn(receipt.get("replay_lsn")) < lsn(binding["recovery_target_lsn"])):
-            raise ValueError(f"{label} is not complete record-level recovery evidence")
+        validate_receipt(config, settings, source, binding, receipt, label)
         if label.startswith("off-host"):
-            if not receipt.get("executor_host") or receipt["executor_host"] == settings["source_hostname"]:
-                raise ValueError("off-host recovery must execute on an independent host")
             result["off_host"] = receipt["executor_host"]
     return result
+
+
+def validate_receipt(config, settings, source, binding, receipt, label):
+    if (receipt.get("status") != "ready" or receipt.get("records") != source["records"]
+            or receipt.get("snapshot_sha256") != digest(settings["snapshot_file"])
+            or receipt.get("restored_data_dir") == config["data_dir"]
+            or not receipt.get("restored_data_dir")
+            or receipt["completed_at"] < source["completed_at"]
+            or lsn(receipt.get("replay_lsn")) < lsn(binding["recovery_target_lsn"])):
+        raise ValueError(f"{label} is not complete record-level recovery evidence")
+    if label.startswith("off-host") and (
+        not receipt.get("executor_host") or receipt["executor_host"] == settings["source_hostname"]
+    ):
+        raise ValueError("off-host recovery must execute on an independent host")
+
+
+def import_off_host(config, path, *, now=None):
+    """Validate a transported receipt, then publish it under the evidence lease."""
+    settings = policy(config)
+    if not settings.get("off_host_receipt_file"):
+        raise ValueError("off-host receipt import requires an off-host admission policy")
+    now = int(time.time()) if now is None else now
+    with lock(absolute(settings["backup_root"]) / "locks/mutate", shared=True), evidence_lease(settings):
+        directory, binding = backup(config, settings, now)
+        local = settings | {"off_host_receipt_file": None}
+        check_evidence(config, local, directory, binding, now)
+        source = evidence(settings["snapshot_file"], "record snapshot", binding, settings, now)
+        receipt = evidence(path, "off-host restore acceptance", binding, settings, now)
+        validate_receipt(config, settings, source, binding, receipt, "off-host restore acceptance")
+        write_json(absolute(settings["off_host_receipt_file"]), receipt)
+
+
+def prepare(config, preparation, socket_dir, port):
+    """Explicit managed bootstrap; ordinary admission/startup never calls this."""
+    settings = policy(config)
+    for key in ("readiness_command", "backup_command", "restore_command", "export_command"):
+        if key == "export_command" and not preparation.get(key):
+            continue
+        argv = preparation[key]
+        if not isinstance(argv, list) or not argv or any(
+            not isinstance(arg, str) or not arg or "\0" in arg for arg in argv
+        ) or not Path(argv[0]).is_absolute():
+            raise ValueError(f"{key} must be explicit absolute executable argv")
+    anchor = absolute(settings["snapshot_file"]).parent / "preparation.lock"
+    with lock(anchor, create=True):
+        postgres.inspect_live(config, settings["system_identifier"], socket_dir, port)
+        postgres.run(preparation["readiness_command"])
+        # A published snapshot binds the selected backup. Never replace that
+        # backup on retries, even when off-host evidence is still missing.
+        if not Path(settings["snapshot_file"]).exists():
+            journal = anchor.with_name("preparation.json")
+            if not journal.exists():
+                if any(Path(settings[key]).exists() for key in ("receipt_file", "off_host_receipt_file")
+                       if settings.get(key)):
+                    raise ValueError("recovery receipts exist without their bound source snapshot")
+                postgres.run(preparation["backup_command"])
+            with lock(absolute(settings["backup_root"]) / "locks/mutate", shared=True):
+                _, binding = backup(config, settings, int(time.time()))
+                if journal.exists():
+                    if read_json(absolute(journal)) != binding:
+                        raise ValueError("managed preparation backup changed before snapshot; refusing replacement")
+                else:
+                    write_json(journal, binding)
+                snapshot(config, socket_dir, port)
+        else:
+            now = int(time.time())
+            with lock(absolute(settings["backup_root"]) / "locks/mutate", shared=True), evidence_lease(settings, inspect=True):
+                directory, binding = backup(config, settings, now)
+                evidence(settings["snapshot_file"], "record snapshot", binding, settings, now)
+                verify_backup(config, directory)
+        if not Path(settings["receipt_file"]).exists():
+            postgres.run(preparation["restore_command"])
+        with lock(absolute(settings["backup_root"]) / "locks/mutate", shared=True), evidence_lease(settings, inspect=True):
+            now = int(time.time())
+            directory, binding = backup(config, settings, now)
+            check_evidence(config, settings | {"off_host_receipt_file": None}, directory, binding, now)
+        # Transport orchestration belongs to the consumer. Its explicit export
+        # command may publish a service-user-owned immutable copy for the
+        # independent executor even when final off-host admission will abort.
+        if preparation.get("export_command"):
+            postgres.run(preparation["export_command"])
+        credentials = os.environ.get("CREDENTIALS_DIRECTORY")
+        if credentials:
+            incoming = Path(credentials) / "recovery-off-host"
+            if incoming.exists():
+                import_off_host(config, incoming)
+        # Missing independent execution must abort the managed activation before
+        # authority publication, while retaining the completed local evidence.
+        return check(config)

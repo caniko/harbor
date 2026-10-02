@@ -50,11 +50,45 @@
   withoutAdoption = eval.extendModules {
     modules = [{services.harbor-db.postgresql.switchAdoption = lib.mkForce null;}];
   };
+  withPreparation = eval.extendModules {
+    modules = [
+      {
+        services.harbor-db.postgresql.recoveryPreparation = {
+          readinessCommand = ["/fixture/readiness"];
+          backupCommand = ["/fixture/backup"];
+          restoreCommand = ["/fixture/restore"];
+          readWritePaths = ["/srv/backups" "/srv/disposable"];
+          requiredMounts = ["/srv"];
+          offHostReceiptImportFile = "/srv/import/off-host.json";
+        };
+      }
+    ];
+  };
+  preparationHook = pkgs.writeText "recovery-preparation-hook" withPreparation.config.system.preSwitchChecks."00-0-harbor-db-postgresql-prepare";
 in
   mkEvalCheck {
     name = "harbor-db-postgres-lifecycle-eval";
     resultMessage = "PostgreSQL identity guard precedes initialization and upgrade is explicit";
+    nativeBuildInputs = [pkgs.python3 pkgs.bash];
+    runtimeScript = ''
+      python3 ${../tests/check_recovery_preparation_hook.py} ${preparationHook} \
+        ${pkgs.systemd}/bin/systemd-run ${pkgs.systemd}/bin/systemctl
+    '';
     assertions = [
+      {
+        name = "managed-preactivation-preparation";
+        assertion = let
+          checks = withPreparation.config.system.preSwitchChecks;
+          hook = checks."00-0-harbor-db-postgresql-prepare";
+        in
+          !(eval.config.system.preSwitchChecks ? "00-0-harbor-db-postgresql-prepare")
+          && builtins.head (builtins.attrNames checks) == "00-0-harbor-db-postgresql-prepare"
+          && lib.hasInfix "prepare-recovery --preparation-config" hook
+          && lib.hasInfix "--property=User=postgres" hook
+          && lib.hasInfix "--property=LoadCredential=recovery-off-host:" hook
+          && !lib.hasInfix "prepare-recovery" preStart;
+        message = "Preparation must be explicit, run candidate commands before admission, import private independent evidence and never bootstrap at boot.";
+      }
       {
         name = "recovery-before-adoption";
         assertion = let

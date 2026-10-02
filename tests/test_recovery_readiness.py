@@ -114,6 +114,14 @@ class RecoveryReadinessTest(unittest.TestCase):
             with self.subTest(now=now), self.assertRaisesRegex(ValueError, "timestamp"):
                 recovery.check(self.config, now=now)
 
+    def test_metadata_byte_changes_invalidate_acceptance(self):
+        self.snapshot()
+        self.certify()
+        metadata = self.backup / "base/base-1.meta.json"
+        metadata.write_text(metadata.read_text() + " ")
+        with self.assertRaisesRegex(ValueError, "different backup"):
+            recovery.check(self.config, now=self.now)
+
     def test_primary_writable_or_incomplete_restore_cannot_be_certified(self):
         self.snapshot()
         for changes in ({"data_dir": self.config["data_dir"]}, {"read_only": "off"},
@@ -219,6 +227,80 @@ class RecoveryReadinessTest(unittest.TestCase):
         path.symlink_to(path.with_suffix(".saved"))
         with self.assertRaisesRegex(ValueError, "redirected"):
             self.certify()
+
+    def test_managed_preparation_creates_first_evidence_and_reuses_it_on_retry(self):
+        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"], "restore_command": ["/fixture/restore"]}
+        off_host = self.backup / "evidence/off-host.json"
+        self.config["recovery"]["off_host_receipt_file"] = str(off_host)
+
+        def run(argv):
+            if argv == preparation["restore_command"]:
+                self.certify()
+
+        with patch.object(recovery.time, "time", return_value=self.now), patch.object(postgres, "run", side_effect=run) as execute:
+            with self.assertRaisesRegex(ValueError, "off-host"):
+                recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
+            self.assertEqual([call.args[0] for call in execute.call_args_list],
+                             [preparation["readiness_command"], preparation["backup_command"], preparation["restore_command"]])
+            execute.reset_mock()
+            with self.assertRaisesRegex(ValueError, "off-host"):
+                recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
+            execute.assert_called_once_with(preparation["readiness_command"])
+        self.assertEqual((self.backup / "LAST_SUCCESS").read_text(), "base-1\n")
+
+    def test_preparation_refuses_stale_snapshot_without_replacing_backup(self):
+        self.snapshot()
+        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"], "restore_command": ["/fixture/restore"]}
+        with patch.object(recovery.time, "time", return_value=self.now + 3601), patch.object(postgres, "run") as execute:
+            with self.assertRaisesRegex(ValueError, "timestamp"):
+                recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
+            execute.assert_called_once_with(preparation["readiness_command"])
+
+    def test_interrupted_snapshot_resumes_the_same_backup_without_recapture(self):
+        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"], "restore_command": ["/fixture/restore"]}
+        with patch.object(recovery.time, "time", return_value=self.now), patch.object(postgres, "run") as execute:
+            with patch.object(recovery, "snapshot", side_effect=RuntimeError("interrupted")), self.assertRaisesRegex(RuntimeError, "interrupted"):
+                recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
+            execute.reset_mock()
+            with patch.object(recovery, "snapshot", side_effect=RuntimeError("resumed")), self.assertRaisesRegex(RuntimeError, "resumed"):
+                recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
+            execute.assert_called_once_with(preparation["readiness_command"])
+
+    def test_failed_wal_readiness_does_not_capture_a_backup(self):
+        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"], "restore_command": ["/fixture/restore"]}
+        with patch.object(postgres, "run", side_effect=subprocess.CalledProcessError(1, preparation["readiness_command"])) as execute:
+            with self.assertRaises(subprocess.CalledProcessError):
+                recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
+            execute.assert_called_once_with(preparation["readiness_command"])
+        self.assertFalse(Path(self.config["recovery"]["snapshot_file"]).exists())
+
+    def test_export_runs_after_local_acceptance_before_missing_off_host_abort(self):
+        self.snapshot()
+        self.certify()
+        self.config["recovery"]["off_host_receipt_file"] = str(self.backup / "evidence/off-host.json")
+        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"],
+                       "restore_command": ["/fixture/restore"], "export_command": ["/fixture/export"]}
+        with patch.object(recovery.time, "time", return_value=self.now), patch.object(postgres, "run") as execute, self.assertRaisesRegex(ValueError, "off-host"):
+            recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
+        self.assertEqual([call.args[0] for call in execute.call_args_list],
+                         [preparation["readiness_command"], preparation["export_command"]])
+
+    def test_managed_import_rejects_local_or_unbound_receipts_before_publication(self):
+        self.snapshot()
+        self.certify()
+        off_host = self.backup / "evidence/off-host.json"
+        self.config["recovery"]["off_host_receipt_file"] = str(off_host)
+        incoming = self.root / "incoming.json"
+        receipt = json.loads(Path(self.config["recovery"]["receipt_file"]).read_text())
+        for changes in ({}, {"executor_host": "remote", "backup_id": "other"},
+                        {"executor_host": "remote", "records": {"reviews": "0" * 64}}):
+            write_json(incoming, receipt | changes)
+            with self.assertRaises(ValueError):
+                recovery.import_off_host(self.config, incoming, now=self.now)
+            self.assertFalse(off_host.exists())
+        write_json(incoming, receipt | {"executor_host": "independent-fixture"})
+        recovery.import_off_host(self.config, incoming, now=self.now)
+        self.assertEqual(recovery.check(self.config, now=self.now)["off_host"], "independent-fixture")
 
 
 if __name__ == "__main__":

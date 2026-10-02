@@ -54,6 +54,13 @@
     (toString cfg.switchAdoption.port)
   ]);
   serviceUserCommand = "${pkgs.util-linux}/bin/runuser -u postgres -- ${command}";
+  preparation = cfg.recoveryPreparation;
+  preparationManifest = pkgs.writeText "harbor-db-recovery-preparation.json" (builtins.toJSON {
+    readiness_command = preparation.readinessCommand;
+    backup_command = preparation.backupCommand;
+    restore_command = preparation.restoreCommand;
+    export_command = preparation.exportCommand;
+  });
 in {
   options.services.harbor-db.postgresql = {
     enable = mkEnableOption "adopted PostgreSQL identity guards and staged upgrades";
@@ -120,6 +127,69 @@ in {
               };
             });
             description = "Consumer-owned application checks, not merely database/table presence.";
+          };
+        };
+      });
+    };
+    recoveryPreparation = mkOption {
+      default = null;
+      description = ''
+        Explicit preactivation bootstrap request. Candidate commands run as
+        postgres before unit replacement, create the backup, record snapshot and
+        local restore receipt, and abort until matching independent evidence exists.
+        The consumer owns its writer consistency window, transport and restore
+        orchestration. Retire the request after rollout; ordinary startup and
+        recovery admission never execute these commands.
+      '';
+      type = types.nullOr (types.submodule {
+        options = {
+          readinessCommand = mkOption {
+            type = types.listOf types.nonEmptyStr;
+            description = "Absolute executable argv checking the live WAL receiver and measured flush lag before preparation.";
+          };
+          backupCommand = mkOption {
+            type = types.listOf types.nonEmptyStr;
+            description = "Absolute executable argv publishing a verified conservative base backup and post-backup replay point.";
+          };
+          restoreCommand = mkOption {
+            type = types.listOf types.nonEmptyStr;
+            description = "Absolute executable argv restoring and certifying the selected backup at a disposable read-only endpoint.";
+          };
+          exportCommand = mkOption {
+            type = types.listOf types.nonEmptyStr;
+            default = [];
+            description = "Optional absolute executable argv publishing the bound backup/WAL/snapshot copy for consumer-owned independent transport. Runs after local acceptance and before off-host admission.";
+          };
+          supplementaryGroups = mkOption {
+            type = types.listOf types.nonEmptyStr;
+            default = [];
+            description = "Explicit groups needed by consumer preparation/export commands.";
+          };
+          socketDir = mkOption {
+            type = types.strMatching "/[^,]*";
+            default = "/run/postgresql";
+          };
+          port = mkOption {
+            type = types.port;
+            default = 5432;
+          };
+          readWritePaths = mkOption {
+            type = types.listOf (types.strMatching "/.*");
+            description = "Consumer backup/evidence and disposable-restore paths; never the primary or authority directory.";
+          };
+          requiredMounts = mkOption {
+            type = types.listOf (types.strMatching "/.*");
+            default = [];
+          };
+          provisionDirectories = mkOption {
+            type = types.listOf (types.strMatching "/.*");
+            default = [];
+            description = "Explicit postgres-owned directories to provision before the transient unit. Must be inside readWritePaths; declared mounts are checked before creation.";
+          };
+          offHostReceiptImportFile = mkOption {
+            type = types.nullOr (types.strMatching "/.*");
+            default = null;
+            description = "Transported independent receipt. When present, systemd passes a private credential copy for validation and atomic evidence import.";
           };
         };
       });
@@ -207,11 +277,66 @@ in {
         assertion = cfg.recovery == null || cfg.switchAdoption == null || cfg.recovery.systemIdentifier == cfg.switchAdoption.systemIdentifier;
         message = "Recovery and switch adoption must name the same authoritative cluster.";
       }
+      {
+        assertion = preparation == null || (cfg.recovery != null && lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) ([preparation.readinessCommand preparation.backupCommand preparation.restoreCommand] ++ lib.optional (preparation.exportCommand != []) preparation.exportCommand));
+        message = "Managed recovery preparation requires a recovery policy and absolute executable argv.";
+      }
+      {
+        assertion =
+          preparation
+          == null
+          || lib.all (path:
+            lib.all (protected:
+              path != "/" && path != protected && !(lib.hasPrefix "${path}/" protected) && !(lib.hasPrefix "${protected}/" path)) [pg.dataDir cfg.stateDir])
+          preparation.readWritePaths;
+        message = "Managed recovery preparation must not grant writable access to the primary or authority tree.";
+      }
+      {
+        assertion = preparation == null || lib.all (path: lib.any (writable: path == writable || lib.hasPrefix "${writable}/" path) preparation.readWritePaths) preparation.provisionDirectories;
+        message = "Managed recovery provisioning must stay within the explicit writable preparation paths.";
+      }
     ];
     environment.systemPackages = [cfg.package];
     environment.etc."harbor-db/postgresql.json".source = manifest;
     systemd.tmpfiles.rules = ["d ${cfg.stateDir} 0700 postgres postgres -"];
     system.preSwitchChecks = lib.mkMerge [
+      (lib.mkIf (preparation != null) {
+        "00-0-harbor-db-postgresql-prepare" = ''
+          case "''${2-}" in
+            switch|test)
+              ${lib.optionalString (preparation.provisionDirectories != []) ''
+            ${lib.concatMapStringsSep "\n" (mount: "${pkgs.util-linux}/bin/mountpoint -q ${lib.escapeShellArg mount} || exit 1") (cfg.requiredMounts ++ preparation.requiredMounts)}
+            ${pkgs.coreutils}/bin/install -d -m 0700 -o postgres -g postgres ${lib.escapeShellArgs preparation.provisionDirectories} || exit $?
+          ''}
+              credential_args=()
+              ${lib.optionalString (preparation.offHostReceiptImportFile != null) ''
+            if [ -e ${lib.escapeShellArg preparation.offHostReceiptImportFile} ]; then
+              credential_args+=(${lib.escapeShellArg "--property=LoadCredential=recovery-off-host:${preparation.offHostReceiptImportFile}"})
+            fi
+          ''}
+              unit="harbor-db-recovery-prepare-$$"
+              # Do not release the caller's activation lease with a surviving
+              # transient backup/restore process after interruption.
+              trap '${pkgs.systemd}/bin/systemctl stop "$unit.service"' EXIT
+              trap 'exit 130' INT
+              trap 'exit 143' TERM
+              ${pkgs.systemd}/bin/systemd-run --quiet --wait --pipe --collect \
+                --unit="$unit" --property=Type=oneshot \
+                --property=User=postgres --property=Group=postgres \
+                ${lib.escapeShellArg "--property=SupplementaryGroups=${lib.concatStringsSep " " preparation.supplementaryGroups}"} \
+                --property=ProtectSystem=strict --property=PrivateTmp=true \
+                --property=NoNewPrivileges=true \
+                --property=UMask=0077 --property=TimeoutStartSec=infinity \
+                ${lib.escapeShellArg "--property=ReadWritePaths=${lib.concatStringsSep " " preparation.readWritePaths}"} \
+                ${lib.escapeShellArg "--property=RequiresMountsFor=${lib.concatStringsSep " " (cfg.requiredMounts ++ preparation.requiredMounts)}"} \
+                "''${credential_args[@]}" \
+                -- ${command} prepare-recovery --preparation-config ${preparationManifest} \
+                ${lib.escapeShellArgs ["--socket-dir" preparation.socketDir "--port" (toString preparation.port)]} || exit $?
+              trap - EXIT INT TERM
+              ;;
+          esac
+        '';
+      })
       (lib.mkIf (cfg.recovery != null) {
         # Lexical ordering rejects missing recovery evidence before any adoption.
         "00-harbor-db-postgresql-recovery" = ''

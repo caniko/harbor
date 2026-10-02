@@ -305,6 +305,34 @@ writers paused from backup capture through the record snapshot. Queries must
 be deterministic and cover the application records whose recovery matters.
 They run in read-only transactions; only SHA-256 digests enter evidence.
 
+For a first guarded NixOS rollout, set an explicit
+`services.harbor-db.postgresql.recoveryPreparation` request. Its absolute argv
+`readinessCommand`, `backupCommand` and `restoreCommand` are consumer-owned:
+check the live receiver/flush lag, publish the conservative backup, then restore
+and certify a disposable endpoint while it is alive. Declare only the writable
+backup/evidence and disposable paths; the module rejects primary/authority trees.
+The candidate pre-switch hook runs these commands as `postgres` before any unit
+replacement or adoption. Boot/dry/check actions cannot execute preparation.
+The consumer must hold its writer consistency window for backup through snapshot.
+
+An optional consumer `exportCommand` runs only after local acceptance, before
+the missing off-host receipt abort. It may publish the selected immutable
+backup/WAL/metadata/snapshot copy for independent transport. Its writable paths
+and `supplementaryGroups` are explicitly declared; Harbor does not perform
+transport or restore orchestration. Receipts bind the exact metadata bytes as
+well as the base manifest, replay target and record contract.
+
+Missing independent evidence aborts that activation after retaining local
+evidence. On retry, the preparation journal and source snapshot retain the same
+backup; stale, changed or incomplete existing evidence fails rather than starting
+a replacement backup. A consumer may transport the independently executed
+receipt to `offHostReceiptImportFile`. The next managed activation privately loads
+it as a systemd credential, validates its backup/query/record/hostname binding,
+then publishes it atomically under the backup/evidence leases. There is no
+executor-host override. Ordinary inspection/startup remains read-only. Retire the
+one-time preparation request after acceptance; renew stale evidence only through
+the consumer's next explicitly coordinated consistency window.
+
 1. Create and verify the completed backup and post-backup recovery point.
 2. Run `harbor-db-postgres --config <candidate-manifest> snapshot-records
    --socket-dir /run/postgresql --port 5432` as the PostgreSQL service user.
