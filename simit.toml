@@ -9,6 +9,7 @@ platform = "github"
 nix_builds = [
   ".#packages.x86_64-linux.storage-lifecycle",
   ".#checks.x86_64-linux.postgres-lifecycle-test",
+  ".#packages.x86_64-linux.harbor-db-cached",
   ".#checks.x86_64-linux.postgres-lifecycle-eval",
   ".#checks.x86_64-linux.postgres-crash-rollback",
   ".#checks.x86_64-linux.postgres-interrupted-upgrade",

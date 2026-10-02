@@ -27,6 +27,7 @@
         toolchain = harbor-rs.lib.mkToolchain {
           inherit pkgs;
           toolchainProfile = "stable";
+          cache.enable = false;
         };
       in
         f {
@@ -81,11 +82,10 @@
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
       };
-      harbor-db = buildCache.withRustCache {
-        package = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
-      };
+      harbor-db = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
+      harbor-db-cached = buildCache.withRustCache {package = harbor-db;};
     in {
-      inherit harbor-db;
+      inherit harbor-db harbor-db-cached;
       postgres-lifecycle = import ./nix/postgres-package.nix {inherit pkgs;};
       storage-lifecycle = import ./nix/postgres-package.nix {inherit pkgs;};
       db-harbor = harbor-db;
