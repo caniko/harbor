@@ -41,6 +41,7 @@
       "f /srv/backup/locks/mutate 0600 postgres postgres -"
       "d /srv/backup/evidence 0700 postgres postgres -"
       "d /srv/recovered 0700 postgres postgres -"
+      "d /srv/restore-wal 0700 postgres postgres -"
       "d /srv/recovery-socket 0700 postgres postgres -"
       "d /srv/authority 0700 postgres postgres -"
     ];
@@ -91,10 +92,10 @@ in
       primary.succeed(f"{command} snapshot-records --socket-dir /run/postgresql --port 5432")
       # Copy completed WAL into the disposable restore only, never modify the
       # verified base backup. Reaching target is verified through SQL below.
-      primary.succeed("runuser -u postgres -- cp -a /srv/backup/base/base-1 /srv/recovered/18; cp /var/lib/postgres/18/pg_wal/0000000* /srv/recovered/18/pg_wal/; chown -R postgres:postgres /srv/recovered")
-      recovery_config = "listen_addresses = 'localhost'\nunix_socket_directories = '/srv/recovery-socket'\nport = 55432\nrecovery_target_lsn = '" + target + "'\nrecovery_target_action = 'promote'\ndefault_transaction_read_only = on\n"
+      primary.succeed("runuser -u postgres -- cp -a /srv/backup/base/base-1 /srv/recovered/18; cp /var/lib/postgres/18/pg_wal/0000000* /srv/restore-wal/; chown -R postgres:postgres /srv/recovered /srv/restore-wal")
+      recovery_config = "listen_addresses = 'localhost'\nunix_socket_directories = '/srv/recovery-socket'\nport = 55432\nrestore_command = '${pkgs.coreutils}/bin/cp /srv/restore-wal/%f %p'\nrecovery_target_lsn = '" + target + "'\nrecovery_target_action = 'promote'\ndefault_transaction_read_only = on\n"
       primary.succeed("printf '%s' " + shlex.quote(recovery_config) + " > /srv/recovered/18/postgresql.conf; touch /srv/recovered/18/recovery.signal; chown postgres:postgres /srv/recovered/18/postgresql.conf /srv/recovered/18/recovery.signal")
-      primary.succeed("tar -C /srv -cf /tmp/recovery.tar backup recovered")
+      primary.succeed("tar -C /srv -cf /tmp/recovery.tar backup recovered restore-wal")
       try:
           primary.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/server.log -w start")
       except Exception:
@@ -111,7 +112,7 @@ in
       # shared transport, not an arbitrary absolute host temporary directory.
       primary.copy_from_machine("/tmp/recovery.tar", "recovery-transfer")
       remote.copy_from_host(str(primary.out_dir / "recovery-transfer/recovery.tar"), "/tmp/recovery.tar")
-      remote.succeed("tar -C /srv -xf /tmp/recovery.tar; chown -R postgres:postgres /srv/backup /srv/recovered")
+      remote.succeed("tar -C /srv -xf /tmp/recovery.tar; chown -R postgres:postgres /srv/backup /srv/recovered /srv/restore-wal")
       try:
           remote.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/remote.log -w start")
       except Exception:
