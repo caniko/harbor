@@ -25,7 +25,8 @@ class LifecycleError(RuntimeError):
 
 def run(argv, **kwargs):
     return subprocess.run(
-        [str(arg) for arg in argv], check=True, env={**os.environ, "LC_ALL": "C"},
+        [str(arg) for arg in argv], check=True,
+        env={**kwargs.pop("env", os.environ), "LC_ALL": "C"},
         **kwargs,
     )
 
@@ -70,10 +71,54 @@ def inspect_cluster(package, data_dir, major):
         [Path(package) / "bin/pg_controldata", data],
         capture_output=True, text=True,
     ).stdout
-    match = re.search(r"^Database system identifier:\s*([0-9]+)$", output, re.M)
+    match = re.search(r"^Database system identifier:\s*([0-9]+)$", output, re.MULTILINE)
     if not match:
         raise LifecycleError(f"cannot inspect cluster identifier at {data}")
     return match[1]
+
+
+def inspect_live(config, expected_identifier, socket_dir, port):
+    """Verify the authoritative local endpoint independently of its control file.
+
+    Called as the PostgreSQL service user, including by a NixOS pre-switch check.
+    It creates no authority state and never connects through ambient PG routing.
+    """
+    validate_config(config)
+    if (not re.fullmatch(r"[1-9][0-9]*", expected_identifier)
+            or not Path(socket_dir).is_absolute()
+            or "," in socket_dir
+            or not 1 <= port <= 65535):
+        raise LifecycleError("live inspection requires an identifier and local socket/port")
+    sql = """
+        SELECT json_build_object(
+            'data_dir', current_setting('data_directory'),
+            'major', (current_setting('server_version_num')::int / 10000)::text,
+            'system_identifier', system_identifier::text,
+            'fsync', current_setting('fsync'),
+            'full_page_writes', current_setting('full_page_writes'),
+            'synchronous_commit', current_setting('synchronous_commit'),
+            'in_recovery', pg_is_in_recovery())
+        FROM pg_control_system();
+    """
+    env = {key: value for key, value in os.environ.items() if not key.startswith("PG")}
+    env["PGCONNECT_TIMEOUT"] = "5"
+    output = run([
+        Path(config["package"]) / "bin/psql", "--no-psqlrc", "--no-password",
+        f"--host={socket_dir}", f"--port={port}", "--username=postgres",
+        "--dbname=postgres", "--set=ON_ERROR_STOP=1", "--tuples-only", "--no-align",
+        "--command", sql,
+    ], env=env, capture_output=True, text=True, timeout=15).stdout
+    observed = json.loads(output)
+    expected = {
+        "data_dir": config["data_dir"], "major": str(config["major"]),
+        "system_identifier": expected_identifier, "fsync": "on",
+        "full_page_writes": "on", "synchronous_commit": "on", "in_recovery": False,
+    }
+    if observed != expected:
+        raise LifecycleError("live endpoint differs from the declared durable primary identity")
+    if inspect_cluster(config["package"], config["data_dir"], config["major"]) != expected_identifier:
+        raise LifecycleError("live endpoint and physical cluster identifiers differ")
+    return observed
 
 
 def identity(config, identifier):
@@ -125,6 +170,25 @@ def adopt(config, expected_identifier):
             write_json(path, identity(config, observed))
 
 
+def adopt_live(config, expected_identifier, socket_dir, port):
+    """Explicit switch-time adoption; an already guarded writer needs no mutation."""
+    validate_config(config)
+    path = Path(config["state_dir"]) / "identity.json"
+    # Later activations must coexist with the writer's shared lifetime lease.
+    already_adopted = path.exists()
+    with lock(Path(config["state_dir"]) / "lock", shared=already_adopted, create=not already_adopted):
+        reject_upgrade(config)
+        if already_adopted or path.exists():
+            verify_identity(config)
+            changed = False
+        else:
+            changed = True
+        observed = inspect_live(config, expected_identifier, socket_dir, port)
+        if changed:
+            write_json(path, identity(config, expected_identifier))
+    return {"inspection": observed, "changed": changed}
+
+
 def check(config):
     validate_config(config)
     # A read-only check never creates adoption state or the lock inode.
@@ -164,7 +228,7 @@ def require_stopped(package, data):
         raise LifecycleError(f"cluster has a postmaster.pid; verify it is stopped: {data}")
     result = subprocess.run(
         [str(Path(package) / "bin/pg_ctl"), "-D", str(data), "status"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
     )
     if result.returncode == 0:
         raise LifecycleError(f"cluster is running: {data}")
@@ -329,6 +393,13 @@ def main():
     commands.add_parser("serve", help="exec PostgreSQL with its authority lease")
     adoption = commands.add_parser("adopt", help="explicitly register an existing cluster")
     adoption.add_argument("--system-identifier", required=True)
+    for command in ("inspect-live", "adopt-live"):
+        live = commands.add_parser(command, help="verify the live local primary" + (
+            " and explicitly adopt it" if command == "adopt-live" else " without writes"
+        ))
+        live.add_argument("--system-identifier", required=True)
+        live.add_argument("--socket-dir", default="/run/postgresql")
+        live.add_argument("--port", type=int, default=5432)
     migration = commands.add_parser("upgrade", help="explicit offline staged upgrade")
     migration.add_argument("--retry-incomplete", action="store_true")
     args = parser.parse_args()
@@ -336,13 +407,16 @@ def main():
         config = json.loads(args.config.read_text())
         if args.command == "adopt":
             adopt(config, args.system_identifier)
+        elif args.command in ("inspect-live", "adopt-live"):
+            operation = inspect_live if args.command == "inspect-live" else adopt_live
+            print(json.dumps(operation(config, args.system_identifier, args.socket_dir, args.port)))
         elif args.command == "check":
             check(config)
         elif args.command == "serve":
             return serve(config)
         else:
             upgrade(config, retry_incomplete=args.retry_incomplete)
-    except (LifecycleError, OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
+    except (LifecycleError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print(f"harbor-db-postgres: {error}", file=sys.stderr)
         return 1
     return 0

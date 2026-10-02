@@ -23,6 +23,15 @@ in
       };
       services.harbor-db.postgresql.enable = true;
       environment.systemPackages = [tool pkgs.postgresql_18];
+      # Model the existing unguarded primary for first-rollout live adoption.
+      systemd.services.fixture-existing-postgresql = {
+        serviceConfig = {
+          User = "postgres";
+          Group = "postgres";
+          RuntimeDirectory = "postgresql";
+          ExecStart = "${pkgs.postgresql_18}/bin/postgres -D /var/lib/postgres/18 -c unix_socket_directories=/run/postgresql";
+        };
+      };
       specialisation.compat.configuration.services.postgresql.settings.track_io_timing = true;
     };
     testScript = ''
@@ -35,7 +44,14 @@ in
       machine.succeed("install -d -o postgres -g postgres -m 0700 /var/lib/postgres/18")
       machine.succeed("runuser -u postgres -- initdb -D /var/lib/postgres/18")
       identifier = machine.succeed("runuser -u postgres -- pg_controldata /var/lib/postgres/18 | sed -n 's/^Database system identifier: *//p'").strip()
-      machine.succeed(f"runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json adopt --system-identifier {identifier}")
+      machine.succeed("systemctl start fixture-existing-postgresql")
+      machine.wait_until_succeeds("runuser -u postgres -- pg_isready -h /run/postgresql")
+      machine.succeed(f"runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json inspect-live --system-identifier {identifier}")
+      machine.succeed("test ! -e /var/lib/harbor-db/postgresql/identity.json")
+      machine.fail("runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json adopt-live --system-identifier 1")
+      machine.succeed("test ! -e /var/lib/harbor-db/postgresql/identity.json")
+      machine.succeed(f"runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json adopt-live --system-identifier {identifier}")
+      machine.succeed("systemctl stop fixture-existing-postgresql")
       machine.succeed("systemctl reset-failed postgresql; systemctl start postgresql")
       machine.wait_for_unit("postgresql.service")
       # The postmaster itself is MAINPID and retains the shared authority lease.
@@ -45,6 +61,9 @@ in
       machine.fail("runuser -u postgres -- flock -n -x /var/lib/harbor-db/postgresql/lock true")
       machine.succeed("systemctl reload postgresql")
       machine.fail(f"runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json adopt --system-identifier {identifier}")
+      # Idempotent switch-time verification succeeds with the real guarded
+      # primary retaining its shared lease; it must not reacquire exclusivity.
+      machine.succeed(f"runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json adopt-live --system-identifier {identifier}")
       machine.succeed("runuser -u postgres -- psql -v ON_ERROR_STOP=1 -f ${sql}")
       # Persistent ALTER SYSTEM values must not weaken the launcher's contract.
       machine.succeed("runuser -u postgres -- psql -c 'ALTER SYSTEM SET fsync = off'")

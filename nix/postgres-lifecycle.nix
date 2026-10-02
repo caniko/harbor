@@ -27,6 +27,15 @@
       };
     }));
   command = "${lib.getExe cfg.package} --config ${manifest}";
+  liveArgs = lib.optionalString (cfg.switchAdoption != null) (lib.escapeShellArgs [
+    "--system-identifier"
+    cfg.switchAdoption.systemIdentifier
+    "--socket-dir"
+    cfg.switchAdoption.socketDir
+    "--port"
+    (toString cfg.switchAdoption.port)
+  ]);
+  serviceUserCommand = "${pkgs.util-linux}/bin/runuser -u postgres -- ${command}";
 in {
   options.services.harbor-db.postgresql = {
     enable = mkEnableOption "adopted PostgreSQL identity guards and staged upgrades";
@@ -49,6 +58,35 @@ in {
       type = types.listOf types.str;
       default = [];
       description = "Exact mountpoints that must exist before adoption, checking or upgrade.";
+    };
+    switchAdoption = mkOption {
+      default = null;
+      description = ''
+        Explicit first-rollout adoption through NixOS switch/test pre-switch checks.
+        The live local primary, physical control file and independently recorded
+        identifier must agree, with all durability settings enabled. Boot and
+        dry/check actions inspect without adoption; normal service startup never
+        adopts. Enable only after consumer backup/record acceptance, and retire
+        the request from configuration after the rollout.
+      '';
+      type = types.nullOr (types.submodule {
+        options = {
+          systemIdentifier = mkOption {
+            type = types.strMatching "[1-9][0-9]*";
+            description = "Independently recorded authoritative PostgreSQL system identifier.";
+          };
+          socketDir = mkOption {
+            type = types.strMatching "/[^,]*";
+            default = "/run/postgresql";
+            description = "Local Unix socket directory of the existing authoritative primary.";
+          };
+          port = mkOption {
+            type = types.port;
+            default = 5432;
+            description = "Port suffix of the local PostgreSQL socket.";
+          };
+        };
+      });
     };
     upgrade = mkOption {
       default = null;
@@ -100,6 +138,18 @@ in {
     environment.systemPackages = [cfg.package];
     environment.etc."harbor-db/postgresql.json".source = manifest;
     systemd.tmpfiles.rules = ["d ${cfg.stateDir} 0700 postgres postgres -"];
+    system.preSwitchChecks = lib.mkIf (cfg.switchAdoption != null) {
+      harbor-db-postgresql-adoption = ''
+        # Verify while the old primary is still running, before NixOS stops units.
+        ${serviceUserCommand} inspect-live ${liveArgs}
+        case "''${2-}" in
+          switch|test)
+            ${pkgs.coreutils}/bin/install -d -m 0700 -o postgres -g postgres ${lib.escapeShellArg cfg.stateDir}
+            ${serviceUserCommand} adopt-live ${liveArgs}
+            ;;
+        esac
+      '';
+    };
 
     # Runs on EVERY start, in the same unit as nixpkgs' initialization code.
     # A failed guard exits before initdb can turn missing storage into an empty DB.

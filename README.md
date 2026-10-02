@@ -229,3 +229,39 @@ services.harbor-db.projects.provision = {
 `credentialArgs` appends credential file paths to the runner arguments;
 `credentialEnvironment` maps environment names to credential names. Do not put
 secret values in `args`, `environment`, or generated plans.
+
+## Existing PostgreSQL adoption through NixOS
+
+The PostgreSQL lifecycle module rejects unadopted storage before initialization.
+For an operator-authorized first rollout, after independently verifying backups,
+application records and the cluster identifier, NixOS can perform adoption while
+switching the existing primary into its guarded configuration:
+
+```nix
+services.harbor-db.postgresql = {
+  enable = true;
+  stateDir = "/srv/postgres/authority";
+  requiredMounts = ["/srv"];
+  switchAdoption = {
+    systemIdentifier = "INDEPENDENTLY_VERIFIED_NUMERIC_IDENTIFIER";
+    socketDir = "/run/postgresql";
+    port = 5432;
+  };
+};
+```
+
+Supply the actual numeric identifier; the placeholder is deliberately not valid
+configuration. The pre-switch check uses the candidate's Harbor DB and PostgreSQL
+packages under the PostgreSQL service identity, before NixOS stops the existing
+primary. `inspect-live` compares its reported data directory, major, identifier,
+recovery state and durability settings with the declared physical cluster and
+independently supplied identifier. It ignores ambient PostgreSQL routing and
+client startup files, requires local peer-authenticated access and emits JSON.
+
+Only `switch` and `test` execute `adopt-live`; boot/check/dry actions inspect
+without adoption. Existing authority is verified with a shared lease, so a later
+guarded primary remains the lease owner. Missing lock anchors, changed identities
+and incomplete upgrade journals fail. Normal service startup never adopts.
+Remove the `switchAdoption` request after the rollout; keep the persistent
+authority record and its backups. This option verifies identity, not recovery
+coverage or application-record freshness, which remain consumer rollout gates.

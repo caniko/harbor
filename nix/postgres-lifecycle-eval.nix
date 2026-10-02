@@ -24,6 +24,7 @@
           enable = true;
           stateDir = "/srv/postgres/authority";
           requiredMounts = ["/srv"];
+          switchAdoption.systemIdentifier = "12345";
           upgrade = {
             oldPackage = pkgs.postgresql_17;
             oldDataDir = "/srv/postgres/17";
@@ -35,11 +36,31 @@
   };
   preStart = eval.config.systemd.services.postgresql.preStart;
   upgrade = eval.config.systemd.services.harbor-db-postgresql-upgrade;
+  withoutAdoption = eval.extendModules {
+    modules = [{services.harbor-db.postgresql.switchAdoption = lib.mkForce null;}];
+  };
 in
   mkEvalCheck {
     name = "harbor-db-postgres-lifecycle-eval";
     resultMessage = "PostgreSQL identity guard precedes initialization and upgrade is explicit";
     assertions = [
+      {
+        name = "no-implicit-switch-adoption";
+        assertion = !(withoutAdoption.config.system.preSwitchChecks ? harbor-db-postgresql-adoption);
+        message = "A guarded cluster must not gain an implicit switch-time adoption request.";
+      }
+      {
+        name = "switch-adoption-before-unit-stop-only";
+        assertion = let
+          check = eval.config.system.preSwitchChecks.harbor-db-postgresql-adoption;
+        in
+          lib.hasInfix "runuser -u postgres --" check
+          && lib.hasInfix "inspect-live --system-identifier 12345" check
+          && lib.hasInfix "switch|test)" check
+          && lib.hasInfix "adopt-live --system-identifier 12345" check
+          && !lib.hasInfix "adopt" preStart;
+        message = "Explicit switch adoption must verify the live primary before unit stop; startup cannot adopt.";
+      }
       {
         name = "guard-before-initdb";
         assertion =
