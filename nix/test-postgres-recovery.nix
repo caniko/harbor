@@ -65,7 +65,11 @@ in
       import shlex
 
       start_all()
-      primary.wait_for_unit("postgresql.service")
+      try:
+          primary.wait_for_unit("postgresql.service")
+      except Exception:
+          print(primary.execute("systemctl status postgresql.service --no-pager -l; journalctl -u postgresql.service --no-pager -n 80"))
+          raise
       remote.wait_for_unit("multi-user.target")
       primary.succeed("runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c \"CREATE TABLE saves (mutation text PRIMARY KEY, geometry jsonb, review text, revision bigint); INSERT INTO saves VALUES ('ack-1', '{\\\"circle\\\":[10,20,30]}', 'reviewed', 42)\"")
       identifier = primary.succeed("runuser -u postgres -- psql -Atqc 'SELECT system_identifier FROM pg_control_system()'").strip()
