@@ -28,6 +28,7 @@
         toolchain = harbor-rs.lib.mkToolchain {
           inherit pkgs;
           toolchainProfile = "stable";
+          cache.enable = false;
         };
       in
         f {
@@ -76,11 +77,10 @@
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
       };
-      harbor-db = buildCache.withRustCache {
-        package = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
-      };
+      harbor-db = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
+      harbor-db-cached = buildCache.withRustCache {package = harbor-db;};
     in {
-      inherit harbor-db;
+      inherit harbor-db harbor-db-cached;
       db-harbor = harbor-db;
       # Same derivation: exports both harbor-db and the standalone
       # home-manager-backup bin. mainProgram lets `lib.getExe` resolve the
