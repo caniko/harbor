@@ -139,7 +139,7 @@ in
       remote.copy_from_machine("/srv/backup/evidence/off-host.json", "recovery-transfer")
       primary.copy_from_host(str(remote.out_dir / "recovery-transfer/off-host.json"), "/srv/incoming/recovery-off-host")
       primary.succeed("chown -R postgres:postgres /srv/incoming")
-      primary.succeed(f"runuser -u postgres -- env CREDENTIALS_DIRECTORY=/srv/incoming harbor-db-postgres --config /srv/config.json prepare-recovery --preparation-config /srv/preparation.json --socket-dir /run/postgresql --port 5432")
+      primary.succeed("runuser -u postgres -- env CREDENTIALS_DIRECTORY=/srv/incoming harbor-db-postgres --config /srv/config.json prepare-recovery --preparation-config /srv/preparation.json --socket-dir /run/postgresql --port 5432")
       primary.succeed(f"{command} inspect-recovery")
       primary.succeed(f"{command} adopt-live --system-identifier {identifier}")
       primary.succeed("test -s /srv/authority/identity.json")
