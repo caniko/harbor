@@ -6,6 +6,8 @@
 }: let
   inherit (lib) mkEnableOption mkIf mkMerge mkOption types;
   cfg = config.services.harbor-db.pgBackup;
+  durable = "${import ./postgres-package.nix {inherit pkgs;}}/bin/harbor-db-durable";
+  pruneTool = "${import ./postgres-package.nix {inherit pkgs;}}/bin/harbor-db-backup-prune";
 
   # A hostname is also used as a directory component. Keep the legacy IPv4
   # paths stable while preventing IPv6 / URI punctuation from becoming path
@@ -43,22 +45,8 @@
       wal_retain=${toString cfg.targetSettings.retain.walDays}
 
       prune_old_backups() {
-        cutoff_epoch=$(date -d "$retain_days days ago" +%s)
-        if [ -d "$backup_root/base" ]; then
-          find "$backup_root/base" -maxdepth 1 -type d -name "????-??-??" | while read -r dir; do
-            dir_date=$(basename "$dir")
-            dir_epoch=$(date -d "$dir_date" +%s 2>/dev/null || true)
-            if [ -n "$dir_epoch" ] && [ "$dir_epoch" -lt "$cutoff_epoch" ]; then
-              echo "pg-backup: pruning old base backup $dir"
-              rm -rf "$dir"
-            fi
-          done
-        fi
-
-        if [ -d "$wal_dir" ]; then
-          find "$wal_dir" -maxdepth 2 -type f -name "????????????????????????????????" \
-            -mtime +$wal_retain -delete 2>/dev/null || true
-        fi
+        ${pruneTool} --root "$backup_root" --base-days "$retain_days" \
+          --wal-days "$wal_retain" --segment-bytes ${toString cfg.targetSettings.walSegmentBytes}
       }
     '';
   in {
@@ -80,7 +68,7 @@
       serviceConfig = {
         User = "postgres";
         ExecStartPre = ["${pgReceivewalCmd} -D ${walDir} --status-interval=5 --no-loop --slot=${cfg.targetSettings.receiveWal.slotName} --create-slot --if-not-exists"];
-        ExecStart = "${pgReceivewalCmd} -D ${walDir} --verbose --slot=${cfg.targetSettings.receiveWal.slotName}";
+        ExecStart = "${pgReceivewalCmd} -D ${walDir} --verbose --synchronous --slot=${cfg.targetSettings.receiveWal.slotName}";
         Restart = "on-failure";
         RestartSec = "5s";
         RestartSteps = 6;
@@ -132,12 +120,15 @@
         set -euo pipefail
 
         backup_root="${backupRoot}"
-        date_dir="$backup_root/base/$(date -I)"
+        exec 9>>"$backup_root/BACKUP_LOCK"
+        ${pkgs.util-linux}/bin/flock -n 9
+        # Never replace the last good backup during another run on the same day.
+        date_dir="$backup_root/base/$(date -u +%Y-%m-%dT%H%M%S)-$$"
         partial_dir="$date_dir.partial"
         wal_dir="${walDir}"
-        ${pruneBackupsScript}
-
-        rm -rf "$partial_dir"
+        # Preserve any interrupted transfer, even if its generated name collides.
+        test ! -e "$partial_dir"
+        test ! -e "$date_dir"
         mkdir -p "$partial_dir"
 
         max_rate=${
@@ -160,12 +151,9 @@
           $max_rate --verbose --slot="$slot"
 
         ${cfg.targetSettings.package}/bin/pg_verifybackup "$partial_dir"
-        rm -rf "$date_dir"
-        mv "$partial_dir" "$date_dir"
-        printf '%s\n' "$(date --iso-8601=seconds)" > "$backup_root/LAST_SUCCESS.tmp"
-        chmod 0600 "$backup_root/LAST_SUCCESS.tmp"
-        mv "$backup_root/LAST_SUCCESS.tmp" "$backup_root/LAST_SUCCESS"
-        prune_old_backups
+        ${durable} publish-tree "$partial_dir" "$date_dir"
+        printf '%s\n' "$(date --iso-8601=seconds)" | ${durable} write "$backup_root/LAST_SUCCESS"
+        # The separate prune service uses the same lock; retention runs next time.
       '';
     };
 
@@ -254,6 +242,11 @@ in {
     };
 
     targetSettings = {
+      walSegmentBytes = mkOption {
+        type = types.ints.positive;
+        default = 16777216;
+        description = "Source cluster WAL segment size in bytes (initdb default: 16 MiB). Required for conservative WAL retention boundaries.";
+      };
       package = mkOption {
         type = types.package;
         default = pkgs.postgresql;

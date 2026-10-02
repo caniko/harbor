@@ -6,3 +6,38 @@ with_nextest = true
 with_docs = true
 provider = "actions"
 platform = "github"
+nix_builds = [
+  ".#packages.x86_64-linux.storage-lifecycle",
+  ".#checks.x86_64-linux.postgres-lifecycle-test",
+  ".#packages.x86_64-linux.harbor-db-cached",
+  ".#checks.x86_64-linux.postgres-lifecycle-eval",
+  ".#checks.x86_64-linux.postgres-crash-rollback",
+  ".#checks.x86_64-linux.postgres-interrupted-upgrade",
+  ".#checks.x86_64-linux.pg-backup-eval",
+  ".#checks.x86_64-linux.module-eval",
+  ".#checks.x86_64-linux.module-smoke",
+  ".#checks.x86_64-linux.harbor-db",
+  ".#checks.x86_64-linux.cargo-fmt",
+  ".#checks.x86_64-linux.cargo-test",
+  ".#checks.x86_64-linux.cargo-doc",
+  ".#checks.x86_64-linux.cargo-clippy",
+]
+
+[ci.nix_build]
+only = true
+timeout_minutes = 90
+max_parallel = 2
+max_jobs = 1
+cores = 2
+kvm = true
+capture_results = true
+artifact_retention_days = 14
+extra_setup = ['''
+test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+sudo install -d -m 1777 -o root -g root /var/cache/sccache
+test ! -L /var/cache/sccache
+test "$(stat -c '%u:%a' /var/cache/sccache)" = 0:1777
+printf '%s\n' 'extra-sandbox-paths = /var/cache/sccache' | sudo tee -a /etc/nix/nix.conf
+sudo systemctl restart nix-daemon.service
+nix config show sandbox-paths | grep -F /var/cache/sccache
+''']

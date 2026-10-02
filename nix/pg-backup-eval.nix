@@ -45,6 +45,11 @@ in
     resultMessage = "harbor-db PostgreSQL backup creates slots before streaming and verifies base backups";
     assertions = [
       {
+        name = "flush-wal-on-receipt";
+        assertion = lib.hasInfix "--synchronous" receive.ExecStart;
+        message = "WAL must be flushed on receipt, including partial segments.";
+      }
+      {
         name = "slot-create-is-pre-start";
         assertion = lib.hasInfix "--create-slot" (lib.concatStringsSep "\n" receive.ExecStartPre) && !(lib.hasInfix "--create-slot" receive.ExecStart);
         message = "pg_receivewal slot creation must be a one-shot ExecStartPre";
@@ -71,7 +76,7 @@ in
       }
       {
         name = "partial-publish";
-        assertion = lib.hasInfix ".partial" base && lib.hasInfix "mv \"$partial_dir\" \"$date_dir\"" base;
+        assertion = lib.hasInfix ".partial" base && lib.hasInfix "publish-tree \"$partial_dir\" \"$date_dir\"" base;
         message = "base backups must publish through a partial directory and atomic rename";
       }
     ];
