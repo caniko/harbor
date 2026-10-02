@@ -14,6 +14,10 @@ in
   pkgs.testers.runNixOSTest {
     name = "harbor-db-postgres-crash-rollback";
     nodes.machine = {
+      config,
+      lib,
+      ...
+    }: {
       imports = [./postgres-lifecycle.nix];
       virtualisation.memorySize = 1024;
       services.postgresql = {
@@ -33,6 +37,15 @@ in
         };
       };
       specialisation.compat.configuration.services.postgresql.settings.track_io_timing = true;
+      specialisation.adoption.configuration = {
+        # The test substitutes the independently inspected fixture identifier
+        # into this generated hook, then uses the real NixOS switch executable.
+        services.harbor-db.postgresql.switchAdoption.systemIdentifier = "12345";
+        systemd.services.fixture-existing-postgresql.enable = false;
+      };
+      environment.etc = lib.mkIf (!config.isSpecialisation) {
+        "harbor-db/adoption-check".source = config.specialisation.adoption.configuration.system.preSwitchChecksScript;
+      };
     };
     testScript = ''
       start_all()
@@ -48,11 +61,26 @@ in
       machine.wait_until_succeeds("runuser -u postgres -- pg_isready -h /run/postgresql")
       machine.succeed(f"runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json inspect-live --system-identifier {identifier}")
       machine.succeed("test ! -e /var/lib/harbor-db/postgresql/identity.json")
-      machine.fail("runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json adopt-live --system-identifier 1")
+      base_system = machine.succeed("readlink -f /run/current-system").strip()
+      candidate = f"{base_system}/specialisation/adoption"
+      original_hook = machine.succeed("readlink -f /etc/harbor-db/adoption-check").strip()
+      # Parameterize only the independently verified identifier in the real
+      # generated hook. A wrong identity must abort before stopping the primary.
+      machine.succeed(f"cp {original_hook} /run/adoption-check; chmod +x /run/adoption-check")
+      machine.succeed(f"sed 's|{original_hook}|/run/adoption-check|g' {candidate}/bin/switch-to-configuration > /run/adoption-switch; chmod +x /run/adoption-switch")
+      existing_pid = machine.succeed("systemctl show fixture-existing-postgresql -p MainPID --value").strip()
+      machine.fail("/run/adoption-switch test")
+      assert machine.succeed("systemctl show fixture-existing-postgresql -p MainPID --value").strip() == existing_pid
       machine.succeed("test ! -e /var/lib/harbor-db/postgresql/identity.json")
-      machine.succeed(f"runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json adopt-live --system-identifier {identifier}")
-      machine.succeed("systemctl stop fixture-existing-postgresql")
-      machine.succeed("systemctl reset-failed postgresql; systemctl start postgresql")
+      machine.succeed(f"sed -i 's/--system-identifier 12345/--system-identifier {identifier}/g' /run/adoption-check")
+      for action in ("boot", "dry-activate"):
+          machine.succeed(f"/run/adoption-check {candidate} {action}")
+          machine.succeed("test ! -e /var/lib/harbor-db/postgresql/identity.json; test ! -e /var/lib/harbor-db/postgresql/lock")
+      machine.succeed("/run/adoption-switch dry-activate")
+      machine.succeed("test ! -e /var/lib/harbor-db/postgresql/identity.json")
+      machine.succeed("systemctl reset-failed postgresql")
+      machine.succeed("/run/adoption-switch test")
+      machine.fail("systemctl is-active fixture-existing-postgresql")
       machine.wait_for_unit("postgresql.service")
       # The postmaster itself is MAINPID and retains the shared authority lease.
       # This verifies the real package does not close it during initialization.
@@ -64,6 +92,8 @@ in
       # Idempotent switch-time verification succeeds with the real guarded
       # primary retaining its shared lease; it must not reacquire exclusivity.
       machine.succeed(f"runuser -u postgres -- harbor-db-postgres --config /etc/harbor-db/postgresql.json adopt-live --system-identifier {identifier}")
+      machine.succeed("/run/adoption-switch test")
+      machine.wait_for_unit("postgresql.service")
       machine.succeed("runuser -u postgres -- psql -v ON_ERROR_STOP=1 -f ${sql}")
       # Persistent ALTER SYSTEM values must not weaken the launcher's contract.
       machine.succeed("runuser -u postgres -- psql -c 'ALTER SYSTEM SET fsync = off'")
@@ -90,7 +120,7 @@ in
       verify_save()
 
       # Switch to a rollback-compatible generation after an acknowledged write.
-      machine.succeed("/run/current-system/specialisation/compat/bin/switch-to-configuration test")
+      machine.succeed(f"{base_system}/specialisation/compat/bin/switch-to-configuration test")
       machine.wait_for_unit("postgresql.service")
       verify_save()
       machine.succeed("systemctl stop postgresql")

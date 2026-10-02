@@ -43,6 +43,10 @@ launcher's fresh check or prevents launch by holding the exclusive lock/journal.
 Back up the authority directory with the cluster. Provisioning and disaster
 recovery are explicit operator operations, never normal-boot initialization.
 
+Only first adoption may create the lock anchor. Repeated adoption and upgrades
+require the existing inode; a missing anchor fails without replacing it. This
+also applies when a surviving writer still holds an unlinked lock descriptor.
+
 The launcher supplies `fsync=on`, `full_page_writes=on` and
 `synchronous_commit=on` as command-line settings, outranking persistent
 `postgresql.auto.conf` values. PostgreSQL permits role/session overrides of
@@ -167,6 +171,10 @@ The VM checks use disposable databases, acknowledged structured saves, process
 SIGKILL, abrupt VM termination, compatible generation switching, missing storage
 and interruption after real initdb creates PG_VERSION. Application end-to-end
 crash and restore drills remain the consumer's responsibility.
+The adoption VM exercises the generated pre-switch hook with an independently
+inspected fixture identifier through the real NixOS switch executable. Wrong
+identity aborts before stopping the primary, inspection-only actions do not
+adopt, and later guarded switches coexist with the writer's shared lease.
 
 Hosted qualification selects the lifecycle package and each check explicitly in
 `simit.toml`. The generated matrix preserves the existing Rust format, test,
@@ -174,13 +182,19 @@ Clippy, documentation and module gates, limits parallel jobs to two, and retains
 the exact source revision, installable, build log and JSON output map. VM jobs
 require hosted KVM. A queued or skipped job is not acceptance evidence.
 
+The default `harbor-db` package and its aliases are portable uncached builds.
+`harbor-db-cached` explicitly opts into the managed compiler-cache transport and
+is qualified as an additional installable alongside the original thirteen gates.
 Hosted jobs provision a root-owned sticky `/var/cache/sccache` and explicitly
-expose it to Nix sandboxes before restarting the daemon. The package selects
-that disk cache root explicitly: mounting it alone does not supply a transport
-to the pinned Harbor RS wrapper. The wrapper creates and admits only its
+expose it to Nix sandboxes before restarting the daemon. The cached package
+selects that disk cache root explicitly: mounting it alone does not supply a
+transport to the pinned Harbor RS wrapper. The wrapper creates and admits only its
 versioned, mode-0770 `nixbld` namespace, and still prefers the host Redis socket
 when present. The managed-transport requirement and per-sandbox compiler daemon
 remain enforced; the hosted disk cache needs no credentials.
+Push and pull-request runs share a branch concurrency group by Simit policy.
+One run can be canceled when the other starts; qualification requires a complete
+successful run for the exact PR head, rather than combining jobs across runs.
 
 The workflow was generated with Simit commit
 `beea3e284a613d46468779bd998e51be2d63566c` (Simit PR #26), which supports

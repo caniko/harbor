@@ -5,9 +5,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from harbor_db import resource
-from harbor_db.durable import lock
+from harbor_db.durable import lock, write_json
 
 
 class ResourceAuthorityTest(unittest.TestCase):
@@ -37,6 +38,29 @@ class ResourceAuthorityTest(unittest.TestCase):
             resource.check(changed)
         with self.assertRaises(resource.AuthorityError):
             resource.adopt(changed, "verified-archive")
+
+    def test_adoption_cannot_replace_a_live_writers_unlinked_lock(self):
+        resource.adopt(self.config, "verified-archive")
+        anchor = self.root / "authority" / "lock"
+        with lock(anchor, shared=True):
+            anchor.unlink()
+            with self.assertRaises(FileNotFoundError):
+                resource.adopt(self.config, "verified-archive")
+            self.assertFalse(anchor.exists())
+
+    def test_interrupted_first_adoption_can_retry_with_the_same_identity(self):
+        authority = self.root / "authority" / "identity.json"
+
+        def interrupt(path, value):
+            if path == authority:
+                raise OSError("authority publication interrupted")
+            write_json(path, value)
+
+        with patch.object(resource, "write_json", side_effect=interrupt), self.assertRaisesRegex(OSError, "interrupted"):
+            resource.adopt(self.config, "verified-archive")
+        self.assertFalse(authority.exists())
+        resource.adopt(self.config, "verified-archive")
+        resource.check(self.config)
 
     def test_recreated_empty_directory_cannot_replace_adopted_storage(self):
         resource.adopt(self.config, "verified-archive")

@@ -86,6 +86,23 @@ class ClusterLifecycleTest(unittest.TestCase):
             postgres.adopt(self.config, "99999")
         self.assertFalse((self.state / "identity.json").exists())
 
+    def test_adoption_cannot_replace_a_live_writers_unlinked_lock(self):
+        self.adopt()
+        with lock(self.state / "lock", shared=True):
+            (self.state / "lock").unlink()
+            with self.assertRaises(FileNotFoundError):
+                self.adopt()
+            self.assertFalse((self.state / "lock").exists())
+
+    def test_interrupted_first_adoption_reuses_the_original_lock(self):
+        with patch.object(postgres, "write_json", side_effect=OSError("publication interrupted")), self.assertRaisesRegex(OSError, "interrupted"):
+            self.adopt()
+        inode = (self.state / "lock").stat().st_ino
+        self.assertFalse((self.state / "identity.json").exists())
+        self.adopt()
+        self.assertEqual((self.state / "lock").stat().st_ino, inode)
+        postgres.check(self.config)
+
     def live_probe(self, **changes):
         observed = {
             "data_dir": str(self.data), "major": "18", "system_identifier": "12345",
@@ -276,6 +293,25 @@ class ClusterLifecycleTest(unittest.TestCase):
             postgres.upgrade(self.config)
         self.assertTrue(stage.exists())
         self.assertFalse(self.data.exists())
+
+    def test_upgrade_and_ready_resume_require_the_existing_lock_anchor(self):
+        stage, journal = self.ready_upgrade()
+        for resume in (False, True):
+            with self.subTest(resume=resume):
+                if not resume:
+                    (self.state / "upgrade.json").unlink()
+                with lock(self.state / "lock", shared=True):
+                    (self.state / "lock").unlink()
+                    with patch.object(postgres, "require_stopped") as stopped, self.assertRaises(FileNotFoundError):
+                        postgres.upgrade(self.config)
+                    stopped.assert_not_called()
+                    self.assertFalse((self.state / "lock").exists())
+                    self.assertTrue(stage.exists())
+                    self.assertFalse(self.data.exists())
+                if not resume:
+                    # Rebuild the fixture for the journal-resumption case.
+                    with lock(self.state / "lock", create=True):
+                        write_json(self.state / "upgrade.json", journal)
 
     def interrupt_authority_publication(self, filename):
         _, journal = self.ready_upgrade()

@@ -157,13 +157,17 @@ def reject_upgrade(config):
 
 def adopt(config, expected_identifier):
     validate_config(config)
+    reject_upgrade(config)
     # State storage must be provisioned by the consumer; do not recreate it.
-    with lock(Path(config["state_dir"]) / "lock", create=True):
+    state = Path(config["state_dir"])
+    path = state / "identity.json"
+    # Only first adoption may create the anchor. A surviving writer can still
+    # hold an unlinked inode; replacing it would bypass its authority lease.
+    with lock(state / "lock", create=not path.exists()):
         reject_upgrade(config)
         observed = inspect_cluster(config["package"], config["data_dir"], config["major"])
         if observed != expected_identifier:
             raise LifecycleError("independently supplied system identifier does not match")
-        path = Path(config["state_dir"]) / "identity.json"
         if path.exists():
             verify_identity(config)
         else:
@@ -173,6 +177,7 @@ def adopt(config, expected_identifier):
 def adopt_live(config, expected_identifier, socket_dir, port):
     """Explicit switch-time adoption; an already guarded writer needs no mutation."""
     validate_config(config)
+    reject_upgrade(config)
     path = Path(config["state_dir"]) / "identity.json"
     # Later activations must coexist with the writer's shared lifetime lease.
     already_adopted = path.exists()
@@ -263,7 +268,8 @@ def upgrade(config, *, retry_incomplete=False):
     if Path(source["data_dir"]) in (target, staging, source_copy):
         raise LifecycleError("source and destination must differ")
     journal_path = state / "upgrade.json"
-    with lock(state / "lock", create=True) as lease:
+    # Upgrades always operate on adopted authority, including journal resumes.
+    with lock(state / "lock") as lease:
         if not journal_path.exists() and (state / "identity.json").exists():
             current = read_json(state / "identity.json")
             if current.get("data_dir") == str(target):

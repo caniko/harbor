@@ -119,7 +119,9 @@ def adopt(config, identifier):
     if not identifier or len(identifier) > 128:
         raise AuthorityError("a verified nonempty storage identifier is required")
     state = state_directory(config)
-    with lock(state / "lock", create=True):
+    # A registered resource must retain its original lock inode, even if a
+    # writer still holds that inode after its pathname has disappeared.
+    with lock(state / "lock", create=not (state / "identity.json").exists()):
         expected = contract(config)
         if (state / "identity.json").exists():
             if verify(config, expected)["identity"] != identifier:
