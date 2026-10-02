@@ -51,6 +51,9 @@ in
     nodes = {
       primary = {
         imports = [node];
+        # A custom dataDir is consumer-provisioned, unlike the NixOS default.
+        # The hardened PostgreSQL unit binds this path before its pre-start code.
+        systemd.tmpfiles.rules = ["d /var/lib/postgres/18 0700 postgres postgres -"];
         services.postgresql = {
           enable = true;
           package = pkgs.postgresql_18;
