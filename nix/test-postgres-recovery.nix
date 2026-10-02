@@ -63,7 +63,6 @@ in
     testScript = ''
       import json
       import shlex
-      import tempfile
 
       start_all()
       primary.wait_for_unit("postgresql.service")
@@ -97,16 +96,17 @@ in
       # Execute against the same restored bytes on a second, independently
       # named host, rather than copying the primary's local success receipt.
       primary.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -w stop")
-      with tempfile.TemporaryDirectory() as transfer:
-          primary.copy_from_vm("/tmp/recovery.tar", transfer)
-          remote.copy_from_host(transfer + "/recovery.tar", "/tmp/recovery.tar")
-          remote.succeed("tar -C /srv -xf /tmp/recovery.tar; chown -R postgres:postgres /srv/backup /srv/recovered")
-          remote.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/remote.log -w start")
-          remote.wait_until_succeeds("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
-          remote.succeed("jq '.recovery.receipt_file = .recovery.off_host_receipt_file' /srv/config.json > /srv/remote-config.json; chown postgres:postgres /srv/remote-config.json")
-          remote.succeed("runuser -u postgres -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
-          remote.copy_from_vm("/srv/backup/evidence/off-host.json", transfer)
-          primary.copy_from_host(transfer + "/off-host.json", "/srv/backup/evidence/off-host.json")
+      # The driver's target directory is relative to its retained output and
+      # shared transport, not an arbitrary absolute host temporary directory.
+      primary.copy_from_machine("/tmp/recovery.tar", "recovery-transfer")
+      remote.copy_from_host(str(primary.out_dir / "recovery-transfer/recovery.tar"), "/tmp/recovery.tar")
+      remote.succeed("tar -C /srv -xf /tmp/recovery.tar; chown -R postgres:postgres /srv/backup /srv/recovered")
+      remote.succeed("runuser -u postgres -- pg_ctl -D /srv/recovered/18 -l /srv/recovered/remote.log -w start")
+      remote.wait_until_succeeds("runuser -u postgres -- psql -h /srv/recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()' | grep -qx t")
+      remote.succeed("jq '.recovery.receipt_file = .recovery.off_host_receipt_file' /srv/config.json > /srv/remote-config.json; chown postgres:postgres /srv/remote-config.json")
+      remote.succeed("runuser -u postgres -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
+      remote.copy_from_machine("/srv/backup/evidence/off-host.json", "recovery-transfer")
+      primary.copy_from_host(str(remote.out_dir / "recovery-transfer/off-host.json"), "/srv/backup/evidence/off-host.json")
       primary.succeed("chown postgres:postgres /srv/backup/evidence/off-host.json")
       primary.succeed(f"{command} inspect-recovery")
       primary.succeed(f"{command} adopt-live --system-identifier {identifier}")
