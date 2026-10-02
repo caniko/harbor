@@ -327,8 +327,9 @@ They run in read-only transactions; only SHA-256 digests enter evidence.
 
 Evidence publication uses a separate persistent `recovery.lock` next to the
 snapshot, while retaining the backup's shared mutation lease. Read-only checks
-never create missing anchors. No service starts or repairs a recovery drill at
-boot. `offHostReceiptFile = null` explicitly selects local-only qualification;
+never create missing anchors. Adoption retains both accepted-evidence leases
+until the authority record is durably published. No service starts or repairs a
+recovery drill at boot. `offHostReceiptFile = null` explicitly selects local-only qualification;
 consumers that require independent coverage must configure the off-host path.
 Receipts are trusted service-user-owned local evidence, not remote attestation
 or a substitute for consumer-owned writer coordination and backup transport.

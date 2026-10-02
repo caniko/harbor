@@ -167,7 +167,7 @@ class ClusterLifecycleTest(unittest.TestCase):
         self.config["recovery"] = {}
         for operation in (lambda: postgres.adopt(self.config, "12345"),
                           lambda: postgres.adopt_live(self.config, "12345", "/run/postgresql", 5432)):
-            with patch("harbor_db.recovery.check", side_effect=ValueError("missing recovery acceptance")), self.assertRaisesRegex(ValueError, "missing recovery"):
+            with patch("harbor_db.recovery.admission", side_effect=ValueError("missing recovery acceptance")), self.assertRaisesRegex(ValueError, "missing recovery"):
                 operation()
             self.assertFalse((self.state / "identity.json").exists())
             self.assertFalse((self.state / "lock").exists())

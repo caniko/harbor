@@ -163,6 +163,33 @@ class RecoveryReadinessTest(unittest.TestCase):
                     self.snapshot()
         self.assertEqual(recovery.check(self.config, now=self.now)["status"], "ready")
 
+    def test_adoption_retains_recovery_evidence_until_authority_publication(self):
+        self.snapshot()
+        self.certify()
+        Path(self.config["data_dir"]).mkdir()
+        self.config.update(resource="test", required_mounts=[])
+        for operation in ("offline", "live"):
+            with self.subTest(operation=operation):
+                state = self.root / f"authority-{operation}"
+                state.mkdir()
+                self.config["state_dir"] = str(state)
+
+                def publish(path, value):
+                    for anchor in (self.backup / "locks/mutate", self.backup / "evidence/recovery.lock"):
+                        with self.assertRaises(BlockingIOError), lock(anchor):
+                            self.fail("recovery evidence changed before authority publication")
+                    write_json(path, value)
+
+                with patch.object(recovery.time, "time", return_value=self.now), patch.object(postgres, "write_json", side_effect=publish):
+                    if operation == "offline":
+                        postgres.adopt(self.config, "12345")
+                    else:
+                        postgres.adopt_live(self.config, "12345", "/run/postgresql", 5432)
+                self.assertEqual(json.loads((state / "identity.json").read_text())["system_identifier"], "12345")
+                for anchor in (self.backup / "locks/mutate", self.backup / "evidence/recovery.lock"):
+                    with lock(anchor):
+                        pass
+
     def test_new_snapshot_invalidates_prior_certification(self):
         self.snapshot()
         self.certify()

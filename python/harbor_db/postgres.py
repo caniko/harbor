@@ -6,6 +6,7 @@ been verified. Old clusters are historical snapshots, never writable fallbacks.
 """
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -155,18 +156,22 @@ def reject_upgrade(config):
         raise LifecycleError("unfinished upgrade; explicit upgrade resume is required")
 
 
+def recovery_admission(config):
+    if config.get("recovery") is None:
+        return contextlib.nullcontext()
+    from .recovery import admission
+    return admission(config)
+
+
 def adopt(config, expected_identifier):
     validate_config(config)
     reject_upgrade(config)
-    if config.get("recovery") is not None:
-        from .recovery import check as check_recovery
-        check_recovery(config)
     # State storage must be provisioned by the consumer; do not recreate it.
     state = Path(config["state_dir"])
     path = state / "identity.json"
     # Only first adoption may create the anchor. A surviving writer can still
     # hold an unlinked inode; replacing it would bypass its authority lease.
-    with lock(state / "lock", create=not path.exists()):
+    with recovery_admission(config), lock(state / "lock", create=not path.exists()):
         reject_upgrade(config)
         observed = inspect_cluster(config["package"], config["data_dir"], config["major"])
         if observed != expected_identifier:
@@ -181,13 +186,10 @@ def adopt_live(config, expected_identifier, socket_dir, port):
     """Explicit switch-time adoption; an already guarded writer needs no mutation."""
     validate_config(config)
     reject_upgrade(config)
-    if config.get("recovery") is not None:
-        from .recovery import check as check_recovery
-        check_recovery(config)
     path = Path(config["state_dir"]) / "identity.json"
     # Later activations must coexist with the writer's shared lifetime lease.
     already_adopted = path.exists()
-    with lock(Path(config["state_dir"]) / "lock", shared=already_adopted, create=not already_adopted):
+    with recovery_admission(config), lock(Path(config["state_dir"]) / "lock", shared=already_adopted, create=not already_adopted):
         reject_upgrade(config)
         if already_adopted or path.exists():
             verify_identity(config)

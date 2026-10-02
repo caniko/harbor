@@ -146,6 +146,8 @@ def evidence_lease(settings, *, inspect=False):
     # retain the backup's shared lease while certifying; it cannot race another
     # source snapshot or certifier into publishing mixed evidence.
     anchor = absolute(settings["snapshot_file"]).parent / "recovery.lock"
+    if inspect and not anchor.exists():
+        raise ValueError("missing record snapshot lease; execute record snapshot and restore certification")
     with lock(anchor, shared=inspect, create=not inspect):
         yield
 
@@ -207,14 +209,20 @@ def certify(config, data_dir, socket_dir, port, *, now=None, hostname=None):
 
 
 def check(config, *, now=None):
+    with admission(config, now=now) as result:
+        return result
+
+
+@contextlib.contextmanager
+def admission(config, *, now=None):
+    """Keep the accepted backup and evidence stable through authority publication."""
     settings = policy(config)
     now = int(time.time()) if now is None else now
     # Inspection never creates or replaces the persistent backup lock anchor.
     with lock(absolute(settings["backup_root"]) / "locks/mutate", shared=True):
         directory, binding = backup(config, settings, now)
-        evidence(settings["snapshot_file"], "record snapshot", binding, settings, now)
         with evidence_lease(settings, inspect=True):
-            return check_evidence(config, settings, directory, binding, now)
+            yield check_evidence(config, settings, directory, binding, now)
 
 
 def check_evidence(config, settings, directory, binding, now):
