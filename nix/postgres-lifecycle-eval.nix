@@ -25,6 +25,17 @@
           stateDir = "/srv/postgres/authority";
           requiredMounts = ["/srv"];
           switchAdoption.systemIdentifier = "12345";
+          recovery = {
+            systemIdentifier = "12345";
+            backupRoot = "/srv/backups";
+            snapshotFile = "/srv/backups/records.json";
+            receiptFile = "/srv/backups/recovery.json";
+            offHostReceiptFile = "/srv/backups/off-host.json";
+            recordChecks.records = {
+              database = "app";
+              sql = "SELECT count(*) FROM records";
+            };
+          };
           upgrade = {
             oldPackage = pkgs.postgresql_17;
             oldDataDir = "/srv/postgres/17";
@@ -44,6 +55,19 @@ in
     name = "harbor-db-postgres-lifecycle-eval";
     resultMessage = "PostgreSQL identity guard precedes initialization and upgrade is explicit";
     assertions = [
+      {
+        name = "recovery-before-adoption";
+        assertion = let
+          checks = eval.config.system.preSwitchChecks;
+          service = eval.config.systemd.services.harbor-db-postgresql-recovery-check;
+        in
+          lib.hasInfix "inspect-recovery" checks."00-harbor-db-postgresql-recovery"
+          && service.wantedBy == []
+          && service.serviceConfig.ReadWritePaths == []
+          && service.serviceConfig.User == "postgres"
+          && !lib.hasInfix "recovery" preStart;
+        message = "Recovery admission must be read-only, precede adoption and never start a boot-time drill.";
+      }
       {
         name = "no-implicit-switch-adoption";
         assertion = !(withoutAdoption.config.system.preSwitchChecks ? harbor-db-postgresql-adoption);

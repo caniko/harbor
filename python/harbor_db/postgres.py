@@ -158,6 +158,9 @@ def reject_upgrade(config):
 def adopt(config, expected_identifier):
     validate_config(config)
     reject_upgrade(config)
+    if config.get("recovery") is not None:
+        from .recovery import check as check_recovery
+        check_recovery(config)
     # State storage must be provisioned by the consumer; do not recreate it.
     state = Path(config["state_dir"])
     path = state / "identity.json"
@@ -178,6 +181,9 @@ def adopt_live(config, expected_identifier, socket_dir, port):
     """Explicit switch-time adoption; an already guarded writer needs no mutation."""
     validate_config(config)
     reject_upgrade(config)
+    if config.get("recovery") is not None:
+        from .recovery import check as check_recovery
+        check_recovery(config)
     path = Path(config["state_dir"]) / "identity.json"
     # Later activations must coexist with the writer's shared lifetime lease.
     already_adopted = path.exists()
@@ -406,6 +412,13 @@ def main():
         live.add_argument("--system-identifier", required=True)
         live.add_argument("--socket-dir", default="/run/postgresql")
         live.add_argument("--port", type=int, default=5432)
+    commands.add_parser("inspect-recovery", help="read-only backup and record-level recovery admission")
+    for command in ("snapshot-records", "certify-recovery"):
+        recovery_parser = commands.add_parser(command, help="execute record checks and publish bound recovery evidence")
+        recovery_parser.add_argument("--socket-dir", required=True)
+        recovery_parser.add_argument("--port", type=int, required=True)
+        if command == "certify-recovery":
+            recovery_parser.add_argument("--data-dir", required=True)
     migration = commands.add_parser("upgrade", help="explicit offline staged upgrade")
     migration.add_argument("--retry-incomplete", action="store_true")
     args = parser.parse_args()
@@ -420,6 +433,16 @@ def main():
             check(config)
         elif args.command == "serve":
             return serve(config)
+        elif args.command in ("inspect-recovery", "snapshot-records", "certify-recovery"):
+            from . import recovery
+            if args.command == "inspect-recovery":
+                result = recovery.check(config)
+            elif args.command == "snapshot-records":
+                result = recovery.snapshot(config, args.socket_dir, args.port)
+            else:
+                result = recovery.certify(config, args.data_dir, args.socket_dir, args.port)
+            # Receipts expose digests, never private query results or records.
+            print(json.dumps(result, sort_keys=True))
         else:
             upgrade(config, retry_incomplete=args.retry_incomplete)
     except (LifecycleError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:

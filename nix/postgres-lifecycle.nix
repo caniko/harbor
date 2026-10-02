@@ -15,6 +15,24 @@
       state_dir = cfg.stateDir;
       required_mounts = cfg.requiredMounts;
     }
+    // lib.optionalAttrs (cfg.recovery != null) {
+      recovery = {
+        system_identifier = cfg.recovery.systemIdentifier;
+        backup_root = cfg.recovery.backupRoot;
+        snapshot_file = cfg.recovery.snapshotFile;
+        receipt_file = cfg.recovery.receiptFile;
+        off_host_receipt_file = cfg.recovery.offHostReceiptFile;
+        source_hostname = cfg.recovery.sourceHostname;
+        max_age_seconds = cfg.recovery.maxAgeSeconds;
+        verify_timeout_seconds = cfg.recovery.verifyTimeoutSeconds;
+        record_checks =
+          lib.mapAttrsToList (name: check: {
+            inherit name;
+            inherit (check) database sql;
+          })
+          cfg.recovery.recordChecks;
+      };
+    }
     // lib.optionalAttrs (cfg.upgrade != null) {
       upgrade = {
         data_dir = cfg.upgrade.oldDataDir;
@@ -58,6 +76,53 @@ in {
       type = types.listOf types.str;
       default = [];
       description = "Exact mountpoints that must exist before adoption, checking or upgrade.";
+    };
+    recovery = mkOption {
+      default = null;
+      description = ''
+        Executed backup and record-level recovery acceptance required before
+        adoption and each activating rollout. Startup never runs a recovery drill.
+        Certification compares a disposable read-only restore with a source snapshot
+        captured in the consumer's consistency window. Off-host acceptance, when
+        configured, must certify the same backup and records on another host.
+      '';
+      type = types.nullOr (types.submodule {
+        options = {
+          systemIdentifier = mkOption {type = types.strMatching "[1-9][0-9]*";};
+          backupRoot = mkOption {type = types.strMatching "/.*";};
+          snapshotFile = mkOption {type = types.strMatching "/.*";};
+          receiptFile = mkOption {type = types.strMatching "/.*";};
+          offHostReceiptFile = mkOption {
+            type = types.nullOr (types.strMatching "/.*");
+            default = null;
+            description = "Independent off-host restore receipt; null explicitly selects local-only qualification.";
+          };
+          sourceHostname = mkOption {
+            type = types.nonEmptyStr;
+            default = config.networking.hostName;
+          };
+          maxAgeSeconds = mkOption {
+            type = types.ints.positive;
+            default = 172800;
+          };
+          verifyTimeoutSeconds = mkOption {
+            type = types.ints.positive;
+            default = 900;
+          };
+          recordChecks = mkOption {
+            type = types.attrsOf (types.submodule {
+              options = {
+                database = mkOption {type = types.nonEmptyStr;};
+                sql = mkOption {
+                  type = types.nonEmptyStr;
+                  description = "Deterministic record-level SQL; source and restored results must match exactly.";
+                };
+              };
+            });
+            description = "Consumer-owned application checks, not merely database/table presence.";
+          };
+        };
+      });
     };
     switchAdoption = mkOption {
       default = null;
@@ -134,21 +199,54 @@ in {
         assertion = cfg.upgrade == null || cfg.upgrade.validateCommand != [];
         message = "Staged PostgreSQL upgrades require consumer validation.";
       }
+      {
+        assertion = cfg.recovery == null || cfg.recovery.recordChecks != {};
+        message = "PostgreSQL recovery admission requires consumer record-level checks.";
+      }
+      {
+        assertion = cfg.recovery == null || cfg.switchAdoption == null || cfg.recovery.systemIdentifier == cfg.switchAdoption.systemIdentifier;
+        message = "Recovery and switch adoption must name the same authoritative cluster.";
+      }
     ];
     environment.systemPackages = [cfg.package];
     environment.etc."harbor-db/postgresql.json".source = manifest;
     systemd.tmpfiles.rules = ["d ${cfg.stateDir} 0700 postgres postgres -"];
-    system.preSwitchChecks = lib.mkIf (cfg.switchAdoption != null) {
-      harbor-db-postgresql-adoption = ''
-        # Verify while the old primary is still running, before NixOS stops units.
-        ${serviceUserCommand} inspect-live ${liveArgs}
-        case "''${2-}" in
-          switch|test)
-            ${pkgs.coreutils}/bin/install -d -m 0700 -o postgres -g postgres ${lib.escapeShellArg cfg.stateDir}
-            ${serviceUserCommand} adopt-live ${liveArgs}
-            ;;
-        esac
-      '';
+    system.preSwitchChecks = lib.mkMerge [
+      (lib.mkIf (cfg.recovery != null) {
+        # Lexical ordering rejects missing recovery evidence before any adoption.
+        "00-harbor-db-postgresql-recovery" = ''
+          ${serviceUserCommand} inspect-recovery
+        '';
+      })
+      (lib.mkIf (cfg.switchAdoption != null) {
+        harbor-db-postgresql-adoption = ''
+          # Verify while the old primary is still running, before NixOS stops units.
+          ${serviceUserCommand} inspect-live ${liveArgs}
+          case "''${2-}" in
+            switch|test)
+              ${pkgs.coreutils}/bin/install -d -m 0700 -o postgres -g postgres ${lib.escapeShellArg cfg.stateDir}
+              ${serviceUserCommand} adopt-live ${liveArgs}
+              ;;
+          esac
+        '';
+      })
+    ];
+
+    systemd.services.harbor-db-postgresql-recovery-check = mkIf (cfg.recovery != null) {
+      description = "Read-only PostgreSQL backup and recovery admission";
+      unitConfig.RequiresMountsFor = [cfg.recovery.backupRoot];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "postgres";
+        Group = "postgres";
+        ExecStart = "${command} inspect-recovery";
+        TimeoutStartSec = cfg.recovery.verifyTimeoutSeconds + 60;
+        ProtectSystem = "strict";
+        ReadWritePaths = [];
+        PrivateTmp = true;
+        PrivateNetwork = true;
+        NoNewPrivileges = true;
+      };
     };
 
     # Runs on EVERY start, in the same unit as nixpkgs' initialization code.

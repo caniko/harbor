@@ -163,6 +163,15 @@ class ClusterLifecycleTest(unittest.TestCase):
             self.assertEqual((self.state / "identity.json").read_bytes(), original)
         postgres.check(self.config)
 
+    def test_required_recovery_fails_before_any_adoption_state_is_created(self):
+        self.config["recovery"] = {}
+        for operation in (lambda: postgres.adopt(self.config, "12345"),
+                          lambda: postgres.adopt_live(self.config, "12345", "/run/postgresql", 5432)):
+            with patch("harbor_db.recovery.check", side_effect=ValueError("missing recovery acceptance")), self.assertRaisesRegex(ValueError, "missing recovery"):
+                operation()
+            self.assertFalse((self.state / "identity.json").exists())
+            self.assertFalse((self.state / "lock").exists())
+
     def test_live_adoption_does_not_clear_interrupted_upgrade(self):
         journal = self.state / "upgrade.json"
         journal.write_text('{"phase":"building"}')
