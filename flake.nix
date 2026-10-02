@@ -286,6 +286,11 @@
             inherit (inputs) treefmt-nix git-hooks;
             rootInputNames = builtins.attrNames inputs;
           })
+          // (import ./nix/checks-dev-sandbox.nix {
+            inherit pkgs;
+            harborRsCli = rsHarborCli;
+            inherit (self.lib) mkDevSandbox;
+          })
           // {
             treefmt-modules = import ./nix/treefmt/check.nix {
               inherit pkgs;

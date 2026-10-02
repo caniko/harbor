@@ -19,6 +19,7 @@ Reusable Rust toolchain and cross-compilation infrastructure for Nix flakes.
 - `mkPortableBinaryRelease` and `mkPortableReleaseBinaryPackage` for native applications bundled with pinned `nix-bundle`
 - `mkReleaseArtifact`, `mkReleaseArchive`, and `mkReleaseBundle` for generic flat release outputs with one versioned manifest
 - `mkDevShell`, `mkDocsShell`, and `mkDevShells` for consistent development shells
+- `mkDevSandbox` and `harbor-rs sandbox` for isolated Linux design previews, named variants and warm incremental iteration
 - `mkProjectCliShellTools` for exposing a flake-built project CLI inside direnv/dev shells
 - `mkGpuRenderPin` for visual snapshot test renderer pinning
 - `mkAppImage`, `mkFlatpakManifest`, `mkCoprSpec`, and `mkHomebrewFormula` for packaging outputs

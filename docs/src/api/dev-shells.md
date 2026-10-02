@@ -1,5 +1,9 @@
 # mkDevShell, mkDocsShell, and mkDevShells
 
+For isolated application previews and named design variants, compose the prepared
+shell with [mkDevSandbox](dev-sandbox.md). Development shells alone do not isolate
+application state or manage preview lifetimes.
+
 `mkDevShell` builds one development shell. `mkDocsShell` builds a dedicated docs/tooling shell with the same base toolchain wiring but with Windows and macOS cross environment variables disabled by default. `mkDevShells` builds the default four-shell layout used by most downstream workspaces. All generated shells include `cargo-sweep` and the shared native build tools before project-specific packages are appended.
 
 ## mkDevShell

@@ -23,6 +23,9 @@
 
 ### Added
 
+- `mkDevSandbox`, the `harbor-sandbox` library and `harbor-rs sandbox` lifecycle
+  for Linux design previews with declared source copies, private state, explicit
+  desktop capabilities and readiness-gated warm preview replacement.
 - `treefmtModules.rust` for composing rustfmt with harbor-meta Nix and TOML
   modules.
 

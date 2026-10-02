@@ -5,6 +5,7 @@ members = [
   "crates/harbor-sdk",
   "crates/harbor-cache",
   "crates/harbor-xtask",
+  "crates/harbor-sandbox",
 ]
 
 [workspace.package]
