@@ -49,6 +49,118 @@ test("invalid approval mode fails configuration validation", () => {
   assert.throws(() => createProjectEnvironments({ direnvApproval: "always" }), /auto or manual/);
 });
 
+test("bootstrap is explicitly configured and never invokes project executables", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "bootstrap-environment-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, ".envrc"), "exit 19\n");
+  const options = { roots: [root], direnv: "/missing/direnv", nix: "/missing/nix", system: "x86_64-linux", baseline: { PATH: "/tainted", PROJECT_SECRET: "tainted" } };
+  const unconfigured = createProjectEnvironments(options);
+  await assert.rejects(unconfigured.resolve({ sessionID: "a", cwd: root, environment: "bootstrap" }), /bootstrapEnvironment/);
+  const environments = createProjectEnvironments({ ...options, bootstrapEnvironment: { PATH: "/host/bin", HOME: root } });
+  const result = await environments.resolve({ sessionID: "a", cwd: root, environment: "bootstrap" });
+  assert.deepEqual(result.env, { PATH: "/host/bin", HOME: root });
+  assert.equal(result.env.PROJECT_SECRET, undefined);
+  assert.equal(result.fallback, "explicit bootstrap environment");
+  await assert.rejects(environments.resolve({ sessionID: "a", cwd: root }), /preparation failed/);
+});
+
+test("unchanged lock drift blocks repeated exports and input edits permit recovery", integration, async (t) => {
+  const events = [];
+  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto", onProgress: event => events.push(event) });
+  const counter = path.join(cwd, "exports");
+  await writeFile(path.join(cwd, "flake.lock"), "broken");
+  await writeFile(path.join(cwd, ".envrc"), `echo export >> ${JSON.stringify(counter)}\nif grep -q broken flake.lock; then\n echo "requires lock file changes but they're not allowed due to '--no-update-lock-file'" >&2\n exit 1\nfi\nexport PROJECT_TEST="repaired"\n`);
+  await assert.rejects(environments.resolve({ sessionID: "a", cwd }), { code: "LOCK_DRIFT" });
+  await assert.rejects(environments.resolve({ sessionID: "b", cwd }), { code: "LOCK_DRIFT" });
+  assert.equal((await readFile(counter, "utf8")).trim(), "export");
+  await assert.rejects(environments.resolve({ sessionID: "a", cwd, retry: true }), { code: "LOCK_DRIFT" });
+  assert.equal((await readFile(counter, "utf8")).trim().split("\n").length, 2);
+  await writeFile(path.join(cwd, "flake.lock"), "repaired");
+  assert.equal((await environments.resolve({ sessionID: "a", cwd })).env.PROJECT_TEST, "repaired");
+  assert.equal((await readFile(counter, "utf8")).trim().split("\n").length, 3);
+  assert.ok(events.some(event => event.status === "blocked"));
+});
+
+test("an inherited envrc's lock edit releases a nested flake's blocked generation", integration, async (t) => {
+  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto" });
+  const nested = path.join(cwd, "nested");
+  await mkdir(nested);
+  await writeFile(path.join(nested, "flake.nix"), "{ outputs = _: {}; }");
+  await writeFile(path.join(cwd, "flake.lock"), "broken");
+  await writeFile(path.join(cwd, ".envrc"), `if grep -q broken flake.lock; then\n echo "requires lock file changes but they're not allowed due to '--no-update-lock-file'" >&2\n exit 1\nfi\nexport PROJECT_TEST="parent-repaired"\n`);
+  await assert.rejects(environments.resolve({ sessionID: "a", cwd: nested }), { code: "LOCK_DRIFT" });
+  await writeFile(path.join(cwd, "flake.lock"), "repaired");
+  assert.equal((await environments.resolve({ sessionID: "a", cwd: nested })).env.PROJECT_TEST, "parent-repaired");
+});
+
+test("bootstrap repair bypasses a held project preparation queue", { timeout: 1000 }, async (t) => {
+  const entered = Promise.withResolvers();
+  const finish = Promise.withResolvers();
+  const barrier = createEnvironmentBarrier({ environments: {
+    async resolve(input) {
+      if (input.environment === "bootstrap") return "repair-ready";
+      entered.resolve();
+      return finish.promise;
+    },
+    release() {},
+  } });
+  t.after(async () => { finish.resolve(); await barrier.dispose(); });
+  const pending = barrier.resolve({ sessionID: "a", cwd: "/fixture" });
+  await entered.promise;
+  assert.equal(await barrier.resolve({ sessionID: "a", cwd: "/fixture", environment: "bootstrap" }), "repair-ready");
+  finish.resolve("project-ready");
+  assert.equal(await pending, "project-ready");
+});
+
+test("native Nix lock drift can be repaired through bootstrap before project execution resumes", integration, async (t) => {
+  const { projects: [cwd], baseline } = await fixture(t);
+  const input = path.join(cwd, "input");
+  await mkdir(input);
+  await writeFile(path.join(input, "flake.nix"), "{ outputs = _: {}; }");
+  // A tarball input genuinely needs a lock; local path inputs can already
+  // be treated as resolved by Nix. Everything stays offline in the fixture.
+  const archive = path.join(cwd, "input.tar");
+  await exec("tar", ["-cf", archive, "--directory", input, "."]);
+  const beforeArchive = path.join(cwd, "input-before.tar");
+  await writeFile(beforeArchive, await readFile(archive));
+  await writeFile(path.join(cwd, "flake.nix"), `{ inputs.fixture.url = ${JSON.stringify(`tarball+file://${beforeArchive}`)}; outputs = _: {}; }`);
+  await exec(nix, ["flake", "lock"], { cwd, env: baseline });
+  await writeFile(path.join(cwd, "flake.nix"), `{ inputs.fixture.url = ${JSON.stringify(`tarball+file://${archive}`)}; outputs = _: {}; }`);
+  await assert.rejects(exec(nix, ["flake", "metadata", "--no-update-lock-file"], { cwd, env: baseline }), error => {
+    assert.match(error.stderr, /requires lock file changes but they're not allowed/);
+    return true;
+  });
+  const counter = path.join(cwd, "exports");
+  await writeFile(path.join(cwd, ".envrc"), `strict_env\nwatch_file flake.nix flake.lock\necho export >> ${JSON.stringify(counter)}\n${JSON.stringify(nix)} flake metadata --no-update-lock-file >/dev/null || exit 1\nexport PROJECT_TEST="repaired"\n`);
+  const environments = createProjectEnvironments({ roots: [cwd], direnv, nix, system: "x86_64-linux", baseline, direnvApproval: "auto", bootstrapEnvironment: { PATH: baseline.PATH, HOME: baseline.HOME, NIX_CONFIG: baseline.NIX_CONFIG } });
+  await assert.rejects(environments.list(cwd), { code: "LOCK_DRIFT" });
+  await assert.rejects(environments.resolve({ sessionID: "a", cwd }), { code: "LOCK_DRIFT" });
+  await assert.rejects(environments.resolve({ sessionID: "b", cwd }), { code: "LOCK_DRIFT" });
+  assert.equal((await readFile(counter, "utf8")).trim(), "export");
+  const repair = await environments.resolve({ sessionID: "a", cwd, environment: "bootstrap" });
+  await exec(nix, ["flake", "lock"], { cwd, env: repair.env });
+  assert.equal((await environments.resolve({ sessionID: "a", cwd })).env.PROJECT_TEST, "repaired");
+  assert.equal((await readFile(counter, "utf8")).trim().split("\n").length, 2);
+});
+
+test("environment readers exclude promotion writers until export finishes", integration, async (t) => {
+  const { projects: [cwd], baseline } = await fixture(t);
+  const anchor = path.join(cwd, "definition.lock");
+  const started = path.join(cwd, "started");
+  await writeFile(path.join(cwd, ".envrc"), `echo started > ${JSON.stringify(started)}\nsleep 0.3\nexport PROJECT_TEST="read-consistent"\n`);
+  const environments = createProjectEnvironments({ roots: [cwd], direnv, nix, system: "x86_64-linux", baseline, direnvApproval: "auto", consistencyLocks: { [cwd]: anchor } });
+  const pending = environments.resolve({ sessionID: "a", cwd });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try { await readFile(started); break; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  await assert.rejects(exec("flock", ["--nonblock", "--exclusive", anchor, "true"]), { code: 1 });
+  assert.equal((await pending).env.PROJECT_TEST, "read-consistent");
+  const inode = (await stat(anchor)).ino;
+  await exec("flock", ["--nonblock", "--exclusive", anchor, "true"]);
+  assert.equal((await stat(anchor)).ino, inode);
+});
+
 test("preparation deadline configuration rejects invalid values", () => {
   for (const preparationTimeoutMs of [0, -1, 1.5, Infinity, "600000", 3_600_001]) {
     assert.throws(() => createProjectEnvironments({ preparationTimeoutMs }), /preparationTimeoutMs/);
@@ -105,12 +217,13 @@ test("slow successful export emits safe progress and respects the configured dea
 });
 
 test("concurrent sessions share one export and cancellation leaves other waiters alive", integration, async (t) => {
-  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto" });
+  const events = [];
+  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto", onProgress: event => events.push(event) });
   const counter = path.join(cwd, "exports");
   await writeFile(path.join(cwd, ".envrc"), `echo export >> ${JSON.stringify(counter)}\nsleep 0.4\nexport PROJECT_TEST="shared"\n`);
   const controller = new AbortController();
-  const cancelled = assert.rejects(environments.resolve({ sessionID: "a", cwd, signal: controller.signal }), { code: "CANCELLED" });
-  const surviving = environments.resolve({ sessionID: "b", cwd });
+  const cancelled = assert.rejects(environments.resolve({ sessionID: "a", invocationID: "sh_a", toolCallID: "call_a", cwd, signal: controller.signal }), { code: "CANCELLED" });
+  const surviving = environments.resolve({ sessionID: "b", invocationID: "sh_b", toolCallID: "call_b", cwd });
   for (let attempt = 0; attempt < 100; attempt++) {
     try { await readFile(counter); break; } catch (error) { if (error.code !== "ENOENT") throw error; }
     await new Promise(resolve => setTimeout(resolve, 10));
@@ -119,6 +232,11 @@ test("concurrent sessions share one export and cancellation leaves other waiters
   await cancelled;
   assert.equal((await surviving).env.PROJECT_TEST, "shared");
   assert.equal((await readFile(counter, "utf8")).trim(), "export");
+  const requests = events.filter(event => event.phase === "environment request");
+  assert.equal(requests.length, 2);
+  assert.equal(new Set(requests.map(event => event.preparationID)).size, 1);
+  assert.deepEqual(requests.map(event => event.invocationID).sort(), ["sh_a", "sh_b"]);
+  assert.equal(requests.filter(event => event.shared).length, 1);
   await environments.resolve({ sessionID: "c", cwd });
   assert.equal((await readFile(counter, "utf8")).trim().split("\n").length, 2, "completed snapshots are not cached");
 });

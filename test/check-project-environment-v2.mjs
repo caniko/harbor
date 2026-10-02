@@ -53,7 +53,7 @@ export default {id:"canix.env-probe", async setup(ctx) {
 }};
 `);
 await writeFile(`${a}/opencode.json`, JSON.stringify({ plugins: [
-  { package: process.env.PROJECT_ENV_PLUGIN ?? fileURLToPath(new URL("../plugins/project-environment-prototype", import.meta.url)), options: {roots:[a,b], direnv, nix, system:"x86_64-linux", serverURL:url, direnvApproval:"manual", opencode} },
+   { package: process.env.PROJECT_ENV_PLUGIN ?? fileURLToPath(new URL("../plugins/project-environment-prototype", import.meta.url)), options: {roots:[a,b], direnv, nix, system:"x86_64-linux", serverURL:url, direnvApproval:"manual", opencode, bootstrapEnvironment:{PATH:env.PATH, HOME:home}} },
   { package: probe },
 ] }));
 const child = spawn(opencode, [...sourceArgs, "--print-logs", "serve", ...(process.env.PROJECT_ENV_NATIVE_CREDENTIAL === "1" ? ["--service"] : []), "--hostname", "127.0.0.1", "--port", new URL(url).port], {cwd:a, env, stdio:["ignore","pipe","pipe"]});
@@ -170,10 +170,28 @@ try {
  }
   assert.equal(await readFile(`${root}/bypass`,"utf8"),"unapproved-again");
   console.log("PASS WITH PROPOSED CORE CHANGE: direct user shell waits and uses the fresh approved environment");
-  const denied = await create("deny");
-  await assert.rejects(command(denied,"env-probe",{command:`printf denied > '${root}/denied'`,workdir:b,tag:"denied"}));
-  await assert.rejects(readFile(`${root}/denied`),{code:"ENOENT"});
-  console.log("PASS: native shell denial prevents command side effects");
+   const denied = await create("deny");
+   const preparationBeforeDenial = log.split("environment request").length;
+   await assert.rejects(command(denied,"env-probe",{command:`printf denied > '${root}/denied'`,workdir:b,tag:"denied"}));
+   await assert.rejects(readFile(`${root}/denied`),{code:"ENOENT"});
+   assert.equal(log.split("environment request").length,preparationBeforeDenial,"denied invocation must not prepare an environment");
+   await assert.rejects(command(denied,"env-probe",{command:`printf denied > '${root}/denied'`,workdir:b,tag:"denied-bootstrap",environment:"bootstrap"}));
+   assert.equal(log.split("environment request").length,preparationBeforeDenial,"bootstrap must retain shell authorization");
+   console.log("PASS: native project and bootstrap denial prevent preparation and command side effects");
+   await writeFile(`${b}/flake.lock`,"broken");
+   await writeFile(`${b}/.envrc`, `echo export >> '${root}/exports'\nif grep -q broken flake.lock; then\n echo "requires lock file changes but they're not allowed due to '--no-update-lock-file'" >&2\n exit 1\nfi\nexport PROJECT_TEST="repaired"\n`);
+   await promisify(execFile)(direnv,["allow",b],{env});
+   await assert.rejects(command(one,"env-probe",{command:"printf should-not-run",workdir:b,tag:"drift"}));
+   await assert.rejects(command(two,"env-probe",{command:"printf should-not-run",workdir:b,tag:"blocked"}));
+   assert.equal((await readFile(`${root}/exports`,"utf8")).trim(),"export");
+   await command(one,"env-probe",{command:"printf repaired > flake.lock",workdir:b,tag:"bootstrap-repair",environment:"bootstrap"});
+   const repaired = JSON.parse(await readFile(`${root}/result-bootstrap-repair.json`,"utf8"));
+   assert.equal(repaired.output.status,"completed");
+   assert.match(await run(one,b,"project-repaired"),/repaired/);
+   assert.equal((await readFile(`${root}/exports`,"utf8")).trim().split("\n").length,2);
+   assert.match(log,/"invocationID":"sh_/);
+   assert.match(log,/"toolCallID":"call_env_probe"/);
+   console.log("PASS: one attributable drift failure, blocked repeat, explicit bootstrap repair, project-mode recovery");
   const deleting = await create();
   await writeFile(`${a}/.envrc`, 'export PROJECT_TEST="deleted-session"\n');
   const selecting = command(deleting,"project-env-select",{cwd:a,shell:"docs"}).then(()=>({ok:true}),error=>({error}));

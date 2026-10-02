@@ -100,7 +100,8 @@ Old upstream events lacking that context fail closed. Options are `roots`,
 absolute `direnv`/`nix` paths, `system`, and a loopback `serverURL`; authentication
 uses the managed backend's `OPENCODE_PASSWORD`. Operator slash commands are
 `project-env-select` (`{"cwd":"/project","shell":"docs"}`) and
-`project-env-clear` (`{"cwd":"/project"}`). Agent-side selection authorization
+`project-env-clear` (`{"cwd":"/project"}`), and `project-env-retry`
+(`{"cwd":"/project"}`) for an explicit retry of a blocked generation. Agent-side selection authorization
 is not implemented by this prototype.
 
 For a native `serve --service` backend, set `opencode` to the absolute v2
@@ -175,10 +176,33 @@ tests cover direct-user-shell identity and interruption before spawn. It is a
 contribution branch, **not an upstream merge or a production dependency**.
 
 The hook signal covers preparation and is aborted on hook completion or caller
-interruption; it is not a child-process lifetime signal. Native command
-authorization runs after this preparation hook. The configured direnv mode
-authorizes environment preparation separately: a later-denied shell command
-may have caused `.envrc` evaluation, but the command itself must not execute.
+interruption; it is not a child-process lifetime signal. The updated native shell
+tool authorizes the original command, shell and working directory **before** the
+preparation hook. Hook changes to those fields require authorization again before
+spawn. A denied original invocation executes no project preparation.
+
+`environment: "project"` is the default shell-tool mode. Use
+`environment: "bootstrap"` explicitly for repair. Configure `bootstrapEnvironment`
+as an independent string-to-string host-tool environment (requiring `PATH` and
+an absolute `HOME`); bootstrap never loads `.envrc` or session-selected environments and never
+copies the project baseline. Missing configuration fails explicitly. Bootstrap
+retains command permissions and bypasses the session preparation queue so repair
+remains available while project preparation is waiting.
+
+Recognized `LOCK_DRIFT` failures block repeated exports for the unchanged input
+generation within this plugin instance. Content changes to `.envrc`, `flake.nix`,
+or `flake.lock`, native watch changes, or `project-env-retry` release that block.
+The block is bounded and resets on plugin reload; successful caching stays with
+direnv. Progress receipts include native invocation, session, tool-call and shared
+preparation identities without environment values. Catalog queries require the
+existing lock with `--no-update-lock-file` alone: Nix's `--no-write-lock-file`
+permits an in-memory relock even when both flags are supplied.
+
+`consistencyLocks` maps canonical project roots to absolute persistent anchors.
+Exports and catalog queries take shared locks; a cooperating declaration/lock
+promotion takes the same anchor exclusively. Configure Canix's anchor as
+`/data/nvme0/can/canix/.git/environment-preparation.lock`. The lock covers definition
+visibility only; it does not replace evaluation or nix-direnv layout locks.
 
 The old registered-tool wrapper's direct-shell bypass is closed in that modified
 candidate: both paths now wait at the same hook, and native command denial still

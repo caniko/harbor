@@ -54,7 +54,7 @@
     checks = forSystems (system: let
       pkgs = nixpkgs.legacyPackages.${system};
     in {
-      environments = pkgs.runCommand "harbor-canix-llm-environments" {nativeBuildInputs = [pkgs.nodejs pkgs.util-linux];} ''
+      environments = pkgs.runCommand "harbor-canix-llm-environments" {nativeBuildInputs = [pkgs.nodejs pkgs.util-linux pkgs.gnutar];} ''
         cp -r ${./src} src
         cp -r ${./test} test
         ln -s ${self.packages.${system}.default}/lib/harbor-canix-llm/node_modules node_modules

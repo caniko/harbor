@@ -71,12 +71,17 @@ export default {
     }
     const environments = createProjectEnvironments({
       roots, direnv, nix, system, baseline: { ...process.env, ...projectXdg },
+      bootstrapEnvironment: ctx.options.bootstrapEnvironment === undefined ? undefined : {
+        ...(process.platform === "linux" ? { XDG_RUNTIME_DIR: `/run/user/${process.getuid()}` } : {}),
+        ...ctx.options.bootstrapEnvironment,
+      },
+      consistencyLocks: ctx.options.consistencyLocks,
       direnvApproval: ctx.options.direnvApproval,
       preparationTimeoutMs: ctx.options.preparationTimeoutMs,
       setsid: ctx.options.setsid,
       flock: ctx.options.flock,
       onProgress: (progress) => {
-        if (progress.phase.endsWith(" export") || progress.status === "failed") {
+        if (progress.phase.endsWith(" export") || progress.phase === "environment request" || progress.status === "failed") {
           console.info("project-environment", JSON.stringify(progress));
         }
       },
@@ -113,13 +118,17 @@ export default {
       for (const tool of editor.list()) {
         if (tool.name !== "shell") continue;
         editor.update(tool.id, (current) => {
-          current.description += "\nProject environment is resolved from the launch workdir. Set workdir explicitly when working in another project; cd inside the command does not select that project's direnv environment.";
+          current.description += "\nProject environment is resolved from the launch workdir. Set workdir explicitly when working in another project; cd inside the command does not select that project's direnv environment. Use environment=bootstrap explicitly for repair without running the project .envrc.";
         });
       }
     });
     // Explicit operator slash commands use the same configured approval mode.
     // The prototype does not expose selection as an agent-side tool.
     await ctx.command.transform((editor) => {
+      editor.add({ name: "project-env-retry", execute: async ({ sessionID, prompt }) => {
+        const { cwd = ctx.location.directory } = prompt.text ? JSON.parse(prompt.text) : {};
+        await barrier.resolve({ sessionID, cwd, retry: true });
+      } });
       editor.add({ name: "project-env-select", execute: async ({ sessionID, prompt }) => {
         const { cwd = ctx.location.directory, shell } = JSON.parse(prompt.text);
         await barrier.select({ sessionID, cwd, shell });

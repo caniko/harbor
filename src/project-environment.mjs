@@ -63,19 +63,21 @@ async function validateWatches(watches) {
   }
 }
 
-async function sharedPreparation(key, signal, prepare) {
+async function sharedPreparation(key, signal, prepare, onJoin) {
   signal?.throwIfAborted();
   let state = preparations.get(key);
+  const joined = !!state;
   if (!state) {
     const controller = new AbortController();
-    state = { controller, waiters: 0 };
-    state.promise = Promise.resolve().then(() => prepare(controller.signal)).finally(() => {
+    state = { controller, waiters: 0, id: randomUUID() };
+    state.promise = Promise.resolve().then(() => prepare(controller.signal, state.id)).finally(() => {
       if (preparations.get(key) === state) preparations.delete(key);
     });
     // The final waiter can leave before subprocess cleanup finishes.
     state.promise.catch(() => {});
     preparations.set(key, state);
   }
+  onJoin?.({ preparationID: state.id, shared: joined });
   state.waiters++;
   let abort;
   try {
@@ -126,7 +128,7 @@ const SELECTION_NEEDS_LOCAL_ENVRC = "Shell selection requires a .envrc inside th
 
 // Selection metadata only. Every launch asks direnv to evaluate from the
 // same baseline; nix-direnv owns its build cache and watch invalidation.
-export function createProjectEnvironments({ roots, direnv, nix, system, baseline, direnvApproval = "auto", preparationTimeoutMs = 600_000, onProgress, setsid = "setsid", flock = "flock" }) {
+export function createProjectEnvironments({ roots, direnv, nix, system, baseline, bootstrapEnvironment, consistencyLocks = {}, direnvApproval = "auto", preparationTimeoutMs = 600_000, onProgress, setsid = "setsid", flock = "flock" }) {
   if (!["auto", "manual"].includes(direnvApproval)) throw new Error("direnvApproval must be auto or manual");
   if (!Number.isSafeInteger(preparationTimeoutMs) || preparationTimeoutMs <= 0 || preparationTimeoutMs > 3_600_000) {
     throw new Error("preparationTimeoutMs must be a positive integer no greater than 3600000");
@@ -135,6 +137,29 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
     throw new Error("Project environments require absolute roots and executable paths");
   }
   const selections = new Map();
+  const blocked = new Map();
+  if (bootstrapEnvironment !== undefined && (!bootstrapEnvironment || typeof bootstrapEnvironment !== "object"
+    || Array.isArray(bootstrapEnvironment) || typeof bootstrapEnvironment.PATH !== "string" || !bootstrapEnvironment.PATH
+    || typeof bootstrapEnvironment.HOME !== "string" || !bootstrapEnvironment.HOME
+    || !path.isAbsolute(bootstrapEnvironment.HOME) || Object.entries(bootstrapEnvironment).some(([name, value]) =>
+      typeof value !== "string" || name.startsWith("DIRENV_") || name.startsWith("PROJECT_DEV_SHELL") || name === "NIX_DIRENV_DID_FALLBACK"))) {
+    throw new Error("bootstrapEnvironment must be an independently configured string environment without project markers");
+  }
+  const bootstrap = bootstrapEnvironment === undefined ? null : Object.freeze({ ...bootstrapEnvironment });
+  if (!consistencyLocks || typeof consistencyLocks !== "object" || Array.isArray(consistencyLocks)
+    || Object.entries(consistencyLocks).some(([root, file]) => !path.isAbsolute(root) || typeof file !== "string" || !path.isAbsolute(file))) {
+    throw new Error("consistencyLocks must map absolute project roots to absolute lock anchors");
+  }
+  async function consistencyLock(root) {
+    const file = consistencyLocks[root];
+    if (!file) return undefined;
+    const anchor = await open(file, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+    try {
+      const info = await anchor.stat();
+      if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o077)) throw new Error("Invalid environment definition lock anchor");
+    } finally { await anchor.close(); }
+    return file;
+  }
   const base = { ...baseline };
   for (const name of Object.keys(base)) {
     if (name.startsWith("DIRENV_") || name.startsWith("PROJECT_DEV_SHELL") || name === "NIX_DIRENV_DID_FALLBACK") delete base[name];
@@ -159,7 +184,8 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       // this preparation its own process group while retaining stdlib limits.
       const grouped = process.platform === "linux";
       const invocation = detail.lock ? [flock, "--exclusive", detail.lock, binary, ...args] : [binary, ...args];
-      const execution = exec(grouped ? setsid : invocation[0], grouped ? ["--", ...invocation] : invocation.slice(1), { cwd, env, signal: combined, maxBuffer: 8 * 1024 * 1024 });
+      const guarded = detail.readLock ? [flock, "--shared", detail.readLock, ...invocation] : invocation;
+      const execution = exec(grouped ? setsid : guarded[0], grouped ? ["--", ...guarded] : guarded.slice(1), { cwd, env, signal: combined, maxBuffer: 8 * 1024 * 1024 });
       child = execution.child;
       closed = new Promise((resolve) => child.once("close", resolve));
       const result = await execution;
@@ -174,13 +200,15 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       }
       if (closed) await closed;
       // Hook output can contain credentials. Never forward stdout/stderr.
-      const reason = signal?.aborted ? "cancelled" : timedOut ? "timeout"
+      const lockDrift = !signal?.aborted && !timedOut
+        && /requires lock file changes but they're not allowed/.test(error.stderr ?? "");
+      const reason = signal?.aborted ? "cancelled" : timedOut ? "timeout" : lockDrift ? "lock file changes required"
         : error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? "output limit exceeded"
           : error.signal ? `terminated by ${error.signal}` : `exit ${error.code ?? "unknown"}`;
       const result = { ...progress, status: "failed", reason, elapsedMs: Math.round(performance.now() - started) };
       onProgress?.(result);
       const failure = new Error(`Project environment preparation failed: ${result.phase}; cwd=${cwd}; envrc=${detail.envrc ?? "not yet resolved"}; approval=${detail.approval ?? "not yet checked"}; ${reason}; elapsed=${result.elapsedMs}ms; limit=${timeoutMs}ms; preparation=${progress.preparationID}`);
-      failure.code = signal?.aborted ? "CANCELLED" : timedOut ? "TIMEOUT" : "PREPARATION_FAILED";
+      failure.code = signal?.aborted ? "CANCELLED" : timedOut ? "TIMEOUT" : lockDrift ? "LOCK_DRIFT" : "PREPARATION_FAILED";
       failure.preparation = result;
       throw failure;
     } finally {
@@ -212,10 +240,12 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
     const project = await projectAt(cwd);
     if (!project.flake) return { ...project, shells: [] };
     const names = JSON.parse(await run(nix, [
-      "eval", "--no-allow-import-from-derivation", "--no-write-lock-file", "--json",
+      // Nix permits an in-memory relock with --no-write-lock-file, even when
+      // --no-update-lock-file is also present. Require the existing lock.
+      "eval", "--no-allow-import-from-derivation", "--no-update-lock-file", "--json",
       `${project.root}#devShells.${system}`, "--apply",
       "shells: builtins.filter (name: let shell = shells.${name}; in builtins.isAttrs shell && (shell.type or null) == \"derivation\") (builtins.attrNames shells)",
-    ], project.root, base, signal));
+    ], project.root, base, signal, { readLock: await consistencyLock(project.root) }));
     if (!Array.isArray(names) || names.some((name) => typeof name !== "string")) throw new Error("Invalid flake shell catalog");
     return { ...project, shells: names };
   }
@@ -273,7 +303,7 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
   // Returns the launch environment plus the fallback reason, if any. Ordinary
   // launches never fail for coverage — only approval, evaluation, cancellation
   // and explicit selection errors still reject.
-  async function capture(project, shell, signal) {
+  async function capture(project, shell, signal, context = {}, retry = false) {
     if (shell !== undefined && !project.covered) throw new Error(OUTSIDE_ROOTS);
     if (!project.covered) return { env: fallback(), reason: "outside configured project roots" };
     const env = { ...base, ...(shell === undefined ? {} : { PROJECT_DEV_SHELL: shell }) };
@@ -283,23 +313,42 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       return { env: fallback(), reason: "no in-scope project .envrc" };
     }
     let output;
+    const readLock = await consistencyLock(path.dirname(envrc));
     const hash = await revision(envrc);
-    const watchFiles = knownWatches.get(envrc) ?? [envrc];
-    const generation = await watchGeneration(watchFiles);
+    const definitions = [...new Set([envrc, ...[project.root, path.dirname(envrc)].flatMap(root => [path.join(root, "flake.nix"), path.join(root, "flake.lock")])])];
+    const watchFiles = [...new Set([...definitions, ...(knownWatches.get(envrc) ?? [])])].sort();
+    // Hash the declaration/lock pair as well as native watches: same-size edits
+    // within one timestamp tick must release a blocked generation.
+    const definitionGeneration = async () => {
+      const contents = await Promise.all(definitions.map(async file => {
+        try { return await revision(file); } catch (error) { if (error.code === "ENOENT") return null; throw error; }
+      }));
+      return createHash("sha256").update(JSON.stringify([contents, await watchGeneration(watchFiles)])).digest("hex");
+    };
+    const generation = await definitionGeneration();
     const identity = createHash("sha256").update(JSON.stringify([
       project.cwd, project.boundary, envrc, hash, generation, shell, system, direnv, nix,
-      preparationTimeoutMs, Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
+      preparationTimeoutMs, readLock, setsid, flock, Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
     ])).digest("hex");
+    if (retry) blocked.delete(identity);
+    const previous = blocked.get(identity);
+    if (previous) {
+      onProgress?.({ ...previous.preparation, ...context, phase: "environment request", status: "blocked", generation });
+      const error = new Error(`${previous.message}; repair with an explicit bootstrap invocation or retry after correcting inputs`);
+      error.code = "LOCK_DRIFT";
+      error.preparation = { ...previous.preparation, ...context, status: "blocked" };
+      throw error;
+    }
     try {
-      output = await sharedPreparation(identity, signal, async (sharedSignal) => {
+      output = await sharedPreparation(identity, signal, async (sharedSignal, preparationID) => {
         const lock = await preparationLock(envrc);
-        return run(direnv, ["export", "json"], project.cwd, env, sharedSignal, { envrc, approval: "approved", lock });
-      });
+        return run(direnv, ["export", "json"], project.cwd, env, sharedSignal, { ...context, preparationID, generation, envrc, approval: "approved", lock, readLock });
+      }, receipt => onProgress?.({ ...context, ...receipt, generation, phase: "environment request", status: "preparing", cwd: project.cwd }));
       // Every waiter rechecks native approval and definition freshness. Source
       // watch invalidation is still handled inside each direnv export.
       if (await requireApproval(project, env, signal, { forSelection: shell !== undefined }) !== envrc
         || await revision(envrc) !== hash
-        || await watchGeneration(watchFiles) !== generation) throw new Error("Project environment changed during preparation; retry");
+        || await definitionGeneration() !== generation) throw new Error("Project environment changed during preparation; retry");
     }
     catch (error) {
       // A definition can change between status and export. Turn a revoked
@@ -307,6 +356,10 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       // Recovery keeps the selection restriction so a vanishing local .envrc
       // can never prompt for or auto-allow an ancestor on selection's behalf.
       if (error.code === "CANCELLED" || error.code === "TIMEOUT") throw error;
+      if (error.code === "LOCK_DRIFT" && await definitionGeneration() === generation) {
+        if (blocked.size >= 128) blocked.delete(blocked.keys().next().value);
+        blocked.set(identity, { message: error.message, preparation: error.preparation });
+      }
       await requireApproval(project, env, signal, { forSelection: shell !== undefined });
       throw error;
     }
@@ -328,11 +381,20 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
   }
   return {
     list,
-    async resolve({ sessionID, cwd, signal }) {
+    async resolve({ sessionID, cwd, signal, environment = "project", invocationID, toolCallID, retry = false }) {
+      signal?.throwIfAborted();
+      if (!["project", "bootstrap"].includes(environment)) throw new Error("Unknown environment mode");
       const project = await projectAt(cwd);
+      const context = { sessionID, invocationID, toolCallID, environment };
+      if (environment === "bootstrap") {
+        if (!bootstrap) throw new Error("Explicit repair execution requires bootstrapEnvironment configuration");
+        signal?.throwIfAborted();
+        onProgress?.({ ...context, phase: "environment request", status: "bootstrap", cwd: project.cwd });
+        return { ...project, shell: null, env: Object.freeze({ ...bootstrap }), fallback: "explicit bootstrap environment" };
+      }
       const shell = project.covered ? selections.get(key(sessionID, project.root)) : undefined;
       if (shell !== undefined && !(await list(cwd, signal)).shells.includes(shell)) throw new Error("Selected shell is no longer in the flake");
-      const captured = await capture(project, shell, signal);
+      const captured = await capture(project, shell, signal, context, retry);
       return { ...project, shell: shell ?? null, env: captured.env, fallback: captured.reason };
     },
     async select({ sessionID, cwd, shell, signal }) {
@@ -379,6 +441,8 @@ export function createEnvironmentBarrier({ environments, requestApproval }) {
     }
     const signal = AbortSignal.any([state.controller.signal, ...(input.signal ? [input.signal] : [])]);
     signal.throwIfAborted();
+    // Repair must remain available while a project preparation is waiting.
+    if (operation === "resolve" && input.environment === "bootstrap") return environments.resolve({ ...input, signal });
     const work = state.tail.catch(() => {}).then(async () => {
       for (;;) {
         signal.throwIfAborted();
