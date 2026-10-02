@@ -5,11 +5,24 @@ workspace = true
 workspace_strategy = "members"
 required_gates = [
   { id = "harbor-ci", run = "nix develop -c harbor-ci default" },
+  { id = "sandbox-runtime", run = "bash -euc 'if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi; exec nix develop --no-update-lock-file -c cargo test --locked -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1'" },
 ]
 publish_crates = true
 platform = "github"
 provider = "actions"
 all_features = false
+nix_builds = [
+  ".#packages.x86_64-linux.harbor-rs",
+  ".#checks.x86_64-linux.dev-sandbox-contract",
+]
+
+[ci.nix_build]
+timeout_minutes = 90
+max_parallel = 2
+max_jobs = 1
+cores = 2
+capture_results = true
+artifact_retention_days = 14
 
 [ci.pages]
 repo = "caniko/harbor-rs"

@@ -46,13 +46,13 @@ jobs:
         run: nix flake check
 
       - name: Test
-        run: nix develop -c cargo test -p harbor-sdk
+        run: nix develop -c cargo test -p harbor-sandbox
 
       - name: Clippy
-        run: nix develop -c cargo clippy -p harbor-sdk --all-targets -- --deny warnings
+        run: nix develop -c cargo clippy -p harbor-sandbox --all-targets -- --deny warnings
 
       - name: Package crate
-        run: nix develop -c cargo package -p harbor-sdk --allow-dirty --list
+        run: nix develop -c cargo package -p harbor-sandbox --allow-dirty --list
 
   gate-harbor-ci:
     runs-on: ubuntu-24.04
