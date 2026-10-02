@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -22,7 +22,7 @@ async function writableDirectories(directory) {
 async function fixture(t, options = { direnvApproval: "manual" }, approved = true) {
   const root = await mkdtemp(path.join(os.tmpdir(), "project-environment-"));
   t.after(async () => { await writableDirectories(root); await rm(root, { recursive: true, force: true }); });
-  const baseline = { ...process.env, HOME: `${root}/home`, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, PROJECT_TEST_BASE: "baseline" };
+  const baseline = { ...process.env, HOME: `${root}/home`, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: `${root}/runtime`, PROJECT_TEST_BASE: "baseline" };
   // Pure fixture flakes need no downloads/builds. A private local store lets
   // the real Nix catalog query run inside the Nix check without its daemon.
   baseline.NIX_CONFIG = `experimental-features = nix-command flakes\nstore = local?root=${root}/nix\n`;
@@ -30,7 +30,7 @@ async function fixture(t, options = { direnvApproval: "manual" }, approved = tru
   for (const name of Object.keys(baseline)) if (name.startsWith("DIRENV_")) delete baseline[name];
   const system = process.arch === "arm64" ? "aarch64-linux" : "x86_64-linux";
   const projects = ["a", "b"].map((name) => path.join(root, name));
-  for (const directory of [...projects, baseline.HOME, baseline.XDG_CONFIG_HOME, baseline.XDG_DATA_HOME]) await mkdir(directory);
+  for (const directory of [...projects, baseline.HOME, baseline.XDG_CONFIG_HOME, baseline.XDG_DATA_HOME, baseline.XDG_RUNTIME_DIR]) await mkdir(directory, { mode: 0o700 });
   const envrc = (name) => `
 export PROJECT_TEST="${name}:\${PROJECT_DEV_SHELL:-default}"
 export PROJECT_DEV_SHELL_ACTIVE="\${PROJECT_DEV_SHELL:-default}"
@@ -104,6 +104,25 @@ test("slow successful export emits safe progress and respects the configured dea
   assert.equal(exportEvents[1].cwd, cwd);
 });
 
+test("concurrent sessions share one export and cancellation leaves other waiters alive", integration, async (t) => {
+  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto" });
+  const counter = path.join(cwd, "exports");
+  await writeFile(path.join(cwd, ".envrc"), `echo export >> ${JSON.stringify(counter)}\nsleep 0.4\nexport PROJECT_TEST="shared"\n`);
+  const controller = new AbortController();
+  const cancelled = assert.rejects(environments.resolve({ sessionID: "a", cwd, signal: controller.signal }), { code: "CANCELLED" });
+  const surviving = environments.resolve({ sessionID: "b", cwd });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try { await readFile(counter); break; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  controller.abort();
+  await cancelled;
+  assert.equal((await surviving).env.PROJECT_TEST, "shared");
+  assert.equal((await readFile(counter, "utf8")).trim(), "export");
+  await environments.resolve({ sessionID: "c", cwd });
+  assert.equal((await readFile(counter, "utf8")).trim().split("\n").length, 2, "completed snapshots are not cached");
+});
+
 test("cancelling an active export is reported as cancellation, not timeout", integration, async (t) => {
   const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto", preparationTimeoutMs: 5000 });
   await writeFile(path.join(cwd, ".envrc"), `echo started > ${JSON.stringify(path.join(cwd, "started"))}\nsleep 30\n`);
@@ -123,6 +142,59 @@ test("cancelling an active export is reported as cancellation, not timeout", int
   controller.abort();
   await rejected;
   assert.equal(started, true);
+});
+
+test("watched symlinks use direnv's target timestamp", integration, async (t) => {
+  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto" });
+  const target = path.join(cwd, "input");
+  await writeFile(target, "linked");
+  const old = new Date(Date.now() - 20_000);
+  await utimes(target, old, old);
+  await symlink(target, path.join(cwd, "watched"));
+  await writeFile(path.join(cwd, ".envrc"), 'watch_file watched\nexport PROJECT_TEST="$(cat watched)"\n');
+  assert.equal((await environments.resolve({ sessionID: "a", cwd })).env.PROJECT_TEST, "linked");
+});
+
+test("a watched input edit rejects the stale waiter and starts a fresh export", integration, async (t) => {
+  const { projects: [cwd], environments } = await fixture(t, { direnvApproval: "auto" });
+  const input = path.join(cwd, "input");
+  const started = path.join(cwd, "started");
+  await writeFile(input, "old");
+  await writeFile(path.join(cwd, ".envrc"), `watch_file input\nexport PROJECT_TEST="$(cat input)"\necho started > ${JSON.stringify(started)}\nsleep 0.3\n`);
+  await environments.resolve({ sessionID: "prime", cwd });
+  await rm(started);
+  const stale = assert.rejects(environments.resolve({ sessionID: "stale", cwd }), /changed during preparation/);
+  let running = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try { await readFile(started); running = true; break; }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(running, "the old export must have read its input before the edit");
+  await writeFile(input, "new");
+  const fresh = environments.resolve({ sessionID: "fresh", cwd });
+  await stale;
+  assert.equal((await fresh).env.PROJECT_TEST, "new");
+});
+
+test("separate processes serialize exports through the same persistent anchor", integration, async (t) => {
+  const { projects: [cwd], baseline, environments } = await fixture(t, { direnvApproval: "auto" });
+  const events = path.join(cwd, "events");
+  await writeFile(path.join(cwd, ".envrc"), `mkdir busy || exit 19\necho start >> ${JSON.stringify(events)}\nsleep 0.2\necho end >> ${JSON.stringify(events)}\nrmdir busy\nexport PROJECT_TEST="serialized"\n`);
+  const script = `
+    import { createProjectEnvironments } from ${JSON.stringify(new URL("../src/project-environment.mjs", import.meta.url).href)};
+    const environments = createProjectEnvironments(${JSON.stringify({ roots: [cwd], baseline, direnv, nix, system: process.arch === "arm64" ? "aarch64-linux" : "x86_64-linux", direnvApproval: "auto" })});
+    const result = await environments.resolve({ sessionID: "child", cwd: ${JSON.stringify(cwd)} });
+    if (result.env.PROJECT_TEST !== "serialized") throw new Error("wrong environment");
+  `;
+  const [parent] = await Promise.all([
+    environments.resolve({ sessionID: "parent", cwd }),
+    exec(process.execPath, ["--input-type=module", "-e", script], { env: baseline }),
+  ]);
+  assert.equal(parent.env.PROJECT_TEST, "serialized");
+  assert.deepEqual((await readFile(events, "utf8")).trim().split("\n"), ["start", "end", "start", "end"]);
+  const anchors = await readdir(path.join(baseline.XDG_RUNTIME_DIR, "harbor-canix-llm"));
+  assert.equal(anchors.length, 1, "the released anchor remains present");
 });
 
 test("auto is default and approves only when preparation is requested", integration, async (t) => {

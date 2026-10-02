@@ -1,10 +1,86 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, realpath, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { inflateSync } from "node:zlib";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const exec = promisify(execFile);
+// Only in-flight exports are shared. Completed environments remain owned by
+// direnv: arbitrary hooks and credentials must not acquire a second stale cache.
+const preparations = new Map();
+const knownWatches = new Map();
+
+function decodeWatches(value) {
+  if (typeof value !== "string") throw new Error("direnv export did not report watched inputs");
+  const watches = JSON.parse(inflateSync(Buffer.from(value, "base64url"), { maxOutputLength: 8 * 1024 * 1024 }));
+  if (!Array.isArray(watches) || watches.some(w => !path.isAbsolute(w.path ?? "") || !Number.isSafeInteger(w.modtime) || typeof w.exists !== "boolean")) {
+    throw new Error("Invalid direnv watch generation");
+  }
+  return watches;
+}
+
+async function watchState(file) {
+  try {
+    const [link, target] = await Promise.all([lstat(file), stat(file)]);
+    return [file, link.ino, link.size, link.mtimeMs, target.ino, target.size, target.mtimeMs];
+  } catch (error) { if (error.code === "ENOENT") return [file, null]; throw error; }
+}
+
+async function watchGeneration(files) {
+  // Bounded batches avoid exhausting file descriptors on recursive watch_dir.
+  const states = [];
+  for (let start = 0; start < files.length; start += 64) {
+    states.push(...await Promise.all(files.slice(start, start + 64).map(watchState)));
+  }
+  return createHash("sha256").update(JSON.stringify(states)).digest("hex");
+}
+
+async function validateWatches(watches) {
+  for (const watch of watches) {
+    const state = await watchState(watch.path);
+    if ((state[1] !== null) !== watch.exists
+      || (watch.exists && Math.floor(Math.max(state[3], state[6]) / 1000) !== watch.modtime)) {
+      throw new Error("Project watched inputs changed during preparation; retry");
+    }
+  }
+}
+
+async function sharedPreparation(key, signal, prepare) {
+  signal?.throwIfAborted();
+  let state = preparations.get(key);
+  if (!state) {
+    const controller = new AbortController();
+    state = { controller, waiters: 0 };
+    state.promise = Promise.resolve().then(() => prepare(controller.signal)).finally(() => {
+      if (preparations.get(key) === state) preparations.delete(key);
+    });
+    // The final waiter can leave before subprocess cleanup finishes.
+    state.promise.catch(() => {});
+    preparations.set(key, state);
+  }
+  state.waiters++;
+  let abort;
+  try {
+    return await Promise.race([state.promise, new Promise((_, reject) => {
+      abort = () => {
+        const error = new Error("Project environment preparation cancelled");
+        error.code = "CANCELLED";
+        error.preparation = { phase: "direnv export", reason: "cancelled", status: "failed" };
+        reject(error);
+      };
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+    })]);
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    if (--state.waiters === 0) {
+      if (preparations.get(key) === state) preparations.delete(key);
+      state.controller.abort();
+    }
+  }
+}
 
 async function revision(file) {
   return createHash("sha256").update(file).update("\n").update(await readFile(file)).digest("hex");
@@ -34,7 +110,7 @@ const SELECTION_NEEDS_LOCAL_ENVRC = "Shell selection requires a .envrc inside th
 
 // Selection metadata only. Every launch asks direnv to evaluate from the
 // same baseline; nix-direnv owns its build cache and watch invalidation.
-export function createProjectEnvironments({ roots, direnv, nix, system, baseline, direnvApproval = "auto", preparationTimeoutMs = 600_000, onProgress, setsid = "setsid" }) {
+export function createProjectEnvironments({ roots, direnv, nix, system, baseline, direnvApproval = "auto", preparationTimeoutMs = 600_000, onProgress, setsid = "setsid", flock = "flock" }) {
   if (!["auto", "manual"].includes(direnvApproval)) throw new Error("direnvApproval must be auto or manual");
   if (!Number.isSafeInteger(preparationTimeoutMs) || preparationTimeoutMs <= 0 || preparationTimeoutMs > 3_600_000) {
     throw new Error("preparationTimeoutMs must be a positive integer no greater than 3600000");
@@ -66,7 +142,8 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       // execFile does not forward a `detached` option. Linux setsid gives
       // this preparation its own process group while retaining stdlib limits.
       const grouped = process.platform === "linux";
-      const execution = exec(grouped ? setsid : binary, grouped ? ["--", binary, ...args] : args, { cwd, env, signal: combined, maxBuffer: 8 * 1024 * 1024 });
+      const invocation = detail.lock ? [flock, "--exclusive", detail.lock, binary, ...args] : [binary, ...args];
+      const execution = exec(grouped ? setsid : invocation[0], grouped ? ["--", ...invocation] : invocation.slice(1), { cwd, env, signal: combined, maxBuffer: 8 * 1024 * 1024 });
       child = execution.child;
       closed = new Promise((resolve) => child.once("close", resolve));
       const result = await execution;
@@ -160,6 +237,23 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
   // Uncovered launches keep the configured baseline; each caller gets its own
   // frozen copy so no launch can mutate the shared configuration.
   const fallback = () => Object.freeze({ ...base });
+  async function preparationLock(envrc) {
+    const directory = path.join(base.XDG_RUNTIME_DIR ?? path.join(base.HOME, ".cache"), "harbor-canix-llm");
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const metadata = await stat(directory);
+    if (await realpath(directory) !== directory || metadata.uid !== process.getuid() || (metadata.mode & 0o077)) {
+      throw new Error("Environment preparation lock directory is not private and operator-owned");
+    }
+    // Serialize all shells sharing nix-direnv's layout across processes. Never
+    // unlink the anchor: flock state belongs to its inode, not its pathname.
+    const file = path.join(directory, `${createHash("sha256").update(path.dirname(envrc)).digest("hex")}.lock`);
+    const anchor = await open(file, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+    try {
+      const info = await anchor.stat();
+      if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o077)) throw new Error("Invalid preparation lock anchor");
+    } finally { await anchor.close(); }
+    return file;
+  }
   // Returns the launch environment plus the fallback reason, if any. Ordinary
   // launches never fail for coverage — only approval, evaluation, cancellation
   // and explicit selection errors still reject.
@@ -173,7 +267,24 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       return { env: fallback(), reason: "no in-scope project .envrc" };
     }
     let output;
-    try { output = await run(direnv, ["export", "json"], project.cwd, env, signal, { envrc, approval: "approved" }); }
+    const hash = await revision(envrc);
+    const watchFiles = knownWatches.get(envrc) ?? [envrc];
+    const generation = await watchGeneration(watchFiles);
+    const identity = createHash("sha256").update(JSON.stringify([
+      project.cwd, project.boundary, envrc, hash, generation, shell, system, direnv, nix,
+      preparationTimeoutMs, Object.entries(env).sort(([a], [b]) => a.localeCompare(b)),
+    ])).digest("hex");
+    try {
+      output = await sharedPreparation(identity, signal, async (sharedSignal) => {
+        const lock = await preparationLock(envrc);
+        return run(direnv, ["export", "json"], project.cwd, env, sharedSignal, { envrc, approval: "approved", lock });
+      });
+      // Every waiter rechecks native approval and definition freshness. Source
+      // watch invalidation is still handled inside each direnv export.
+      if (await requireApproval(project, env, signal, { forSelection: shell !== undefined }) !== envrc
+        || await revision(envrc) !== hash
+        || await watchGeneration(watchFiles) !== generation) throw new Error("Project environment changed during preparation; retry");
+    }
     catch (error) {
       // A definition can change between status and export. Turn a revoked
       // approval into the same barrier; preserve unrelated evaluation errors.
@@ -185,6 +296,9 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
     }
     const patch = JSON.parse(output);
     if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("Invalid direnv environment patch");
+    const watches = decodeWatches(patch.DIRENV_WATCHES);
+    await validateWatches(watches);
+    knownWatches.set(envrc, [...new Set(watches.map(w => w.path))].sort());
     for (const [name, value] of Object.entries(patch)) {
       if (value === null) delete env[name];
       else if (typeof value === "string") env[name] = value;

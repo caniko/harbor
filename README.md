@@ -88,6 +88,12 @@ The prototype now uses a **proposed upstream shell hook API** with native
 directly: no session-global environment swapping, no shell-tool replacement,
 and no serialization of running foreground commands. Preparation alone is
 serialized per session so pending manual approvals are not duplicated.
+Identical concurrent exports also share one in-flight preparation across
+sessions. Each waiter rechecks approval, the definition and watched inputs;
+cancelling one waiter preserves the others. Completed environments remain
+direnv-owned. Separate processes serialize exports sharing a nix-direnv layout
+through persistent, private flock anchors. Pin `setsid` and `flock` executable
+paths when configuring the Linux adapter.
 Old upstream events lacking that context fail closed. Options are `roots`,
 absolute `direnv`/`nix` paths, `system`, and a loopback `serverURL`; authentication
 uses the managed backend's `OPENCODE_PASSWORD`. Operator slash commands are

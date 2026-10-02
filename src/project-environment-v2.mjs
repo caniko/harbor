@@ -74,6 +74,7 @@ export default {
       direnvApproval: ctx.options.direnvApproval,
       preparationTimeoutMs: ctx.options.preparationTimeoutMs,
       setsid: ctx.options.setsid,
+      flock: ctx.options.flock,
       onProgress: (progress) => {
         if (progress.phase.endsWith(" export") || progress.status === "failed") {
           console.info("project-environment", JSON.stringify(progress));
