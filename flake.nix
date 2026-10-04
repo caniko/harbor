@@ -4,6 +4,10 @@
   inputs = {
     harbor-rs.url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=05cc4f162b55fa904b687db1821e2463fa813e50";
     rs-harbor.follows = "harbor-rs";
+    harbor-meta = {
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=feat/shared-timezone-env&rev=44a7c7cbb0cac897bcda2f5ef010dc73362bab9e";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
   };
@@ -11,6 +15,7 @@
   outputs = {
     self,
     harbor-rs,
+    harbor-meta,
     nixpkgs,
     crane,
     ...
@@ -35,6 +40,7 @@
           craneLib = toolchain.craneLib;
         });
   in {
+    lib.timezone = harbor-meta.lib.timezone;
     nixosModules.harbor-db = {
       lib,
       pkgs,
@@ -147,8 +153,8 @@
         pkgs.rustfmt
       ];
     in {
-      default = pkgs.mkShell {inherit packages;};
-      docs = pkgs.mkShell {inherit packages;};
+      default = harbor-meta.lib.devShell.mkShell {inherit pkgs packages;};
+      docs = harbor-meta.lib.devShell.mkShell {inherit pkgs packages;};
     });
   };
 }
