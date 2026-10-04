@@ -2,7 +2,7 @@
   description = "Canix-specific LLM harness orchestration and trusted dev-shell switching";
 
   inputs = {
-    harbor-meta.url = "git+https://github.com/caniko/harbor-meta.git?rev=9e4e085ae399e7b39482a5b8e11df78a9ebd4e59";
+    harbor-meta.url = "git+https://github.com/caniko/harbor-meta.git?ref=feat/shared-timezone-env&rev=44a7c7cbb0cac897bcda2f5ef010dc73362bab9e";
     nixpkgs.follows = "harbor-meta/nixpkgs";
   };
 
@@ -13,6 +13,7 @@
   }: let
     forSystems = nixpkgs.lib.genAttrs ["x86_64-linux" "aarch64-linux"];
   in {
+    lib.timezone = harbor-meta.lib.timezone;
     lib.patchOpencode = package:
       package.overrideAttrs (old: {
         patches = (old.patches or []) ++ [./patches/opencode-shell-environment.patch];
