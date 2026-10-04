@@ -69,6 +69,7 @@
             inherit harborOpencode;
           })
           // {
+            site = import ./checks/site.nix {inherit pkgs system;};
             treefmt-modules = import ./checks/treefmt.nix {
               inherit pkgs;
               inherit (inputs) treefmt-nix;
