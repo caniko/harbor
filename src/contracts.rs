@@ -375,16 +375,6 @@ impl ExecutionPlan {
             ));
         }
         let height = case.channel_height.si("length")?;
-        let viscosity = case.kinematic_viscosity.si("kinematic_viscosity")?;
-        let acceleration = case.acceleration.si("acceleration")?.abs();
-        let velocity = acceleration * height * height / (8. * viscosity);
-        let lattice_mach =
-            3f64.sqrt() * velocity * height / f64::from(case.resolution) * 0.1 / viscosity;
-        if velocity == 0. || !lattice_mach.is_finite() || lattice_mach > 0.1 {
-            return Err(invalid(
-                "fixed BGK reference requires nonzero drive and lattice Mach <= 0.1; parameters preserved",
-            ));
-        }
         let nx = (case.length.si("length")? / height * f64::from(case.resolution)).ceil();
         let cells =
             (nx + 4.) * (f64::from(case.resolution) + 6.) * (f64::from(case.resolution) + 4.);
@@ -641,6 +631,66 @@ impl ExecutionPlan {
         }
         if !self.observation.checkpoint_times_s.is_empty() {
             return Err(Error::Unqualified("no verified checkpoint adapter".into()));
+        }
+        if self
+            .stages
+            .iter()
+            .any(|s| matches!(s.operation, StageOperation::Openlb))
+        {
+            self.validate_openlb_lattice()?;
+        }
+        Ok(())
+    }
+    fn validate_openlb_lattice(&self) -> Result<()> {
+        let c = &self.case;
+        let height = c.channel_height.si("length")?;
+        let dx = height / f64::from(c.resolution);
+        let viscosity = c.kinematic_viscosity.si("kinematic_viscosity")?;
+        let velocity =
+            c.acceleration.si("acceleration")?.abs() * height * height / (8. * viscosity);
+        // Preserve the order in OpenLB's pinned converter constructor, including
+        // Float64 tau subtraction, rather than replacing it with an ideal 0.1.
+        let dt = ((0.8f64 - 0.5) / 3.) * (dx * dx) / viscosity;
+        let mach = 3f64.sqrt() * (velocity / (dx / dt));
+        if velocity == 0. || !mach.is_finite() || mach > 0.1 {
+            return Err(invalid(
+                "fixed BGK reference requires nonzero drive and lattice Mach <= 0.1; parameters preserved",
+            ));
+        }
+        let nx = c.length.si("length")? / dx;
+        if !nx.is_finite() || nx < 1. || (nx - nx.round()).abs() > 1e-8 {
+            return Err(invalid(
+                "integral periodic lattice extent required; geometry cannot be silently rounded",
+            ));
+        }
+        // OpenLB 1.9 unitConverter.h getLatticeTime uses size_t(t/dt+0.5).
+        let lattice_time = |time: f64| -> Result<u64> {
+            let step = (time / dt + 0.5).floor();
+            if !dt.is_finite()
+                || dt <= 0.
+                || !step.is_finite()
+                || step < 0.
+                || step >= u64::MAX as f64
+            {
+                return Err(invalid("lattice time conversion overflow"));
+            }
+            Ok(step as u64)
+        };
+        let end = lattice_time(c.max_time_s)?;
+        if end == 0 || self.observation.retained_times_s.last() != Some(&c.max_time_s) {
+            return Err(invalid(
+                "native duration must reach a lattice step and final scientific state must be retained",
+            ));
+        }
+        let mut prior = None;
+        for time in &self.observation.retained_times_s {
+            let step = lattice_time(*time)?;
+            if step > end || prior == Some(step) {
+                return Err(invalid(
+                    "retained times collapse to one lattice step or exceed duration; reapprove explicitly",
+                ));
+            }
+            prior = Some(step);
         }
         Ok(())
     }

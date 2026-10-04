@@ -277,3 +277,46 @@ fn high_mach_native_reference_is_rejected_before_approval() {
     case.applicability.formulation = "periodic_forced_channel".into();
     assert!(ExecutionPlan::openlb_reference(case, "research".into()).is_err());
 }
+
+#[test]
+fn native_approval_rejects_formulation_and_lattice_time_drift() {
+    let mut case = CaseSpec::reference();
+    case.applicability.formulation = "periodic_forced_channel".into();
+    case.length.value = 0.02;
+    case.acceleration.value = 0.001;
+    case.resolution = 8;
+    case.max_time_s = 20.;
+    let plan = ExecutionPlan::openlb_reference(case, "research".into()).unwrap();
+    let mut high_mach = plan.clone();
+    high_mach.case.acceleration.value = 0.1;
+    assert!(
+        high_mach.validate().is_err(),
+        "hand-built plans must enforce the same formulation gate"
+    );
+    let mut extent = plan.clone();
+    extent.case.length.value = 0.0201;
+    assert!(
+        extent.validate().is_err(),
+        "nonintegral periodic extent cannot be silently rounded"
+    );
+    let mut collapsed = plan.clone();
+    collapsed.observation.retained_times_s = vec![0., 0.001, 20.];
+    assert!(
+        collapsed.validate().is_err(),
+        "distinct SI times collapse on this lattice"
+    );
+    let mut substep = plan.clone();
+    substep.case.max_time_s = 0.001;
+    substep.observation.retained_times_s = vec![0., 0.001];
+    assert!(
+        substep.validate().is_err(),
+        "duration must reach a lattice step"
+    );
+    let mut missing_final = plan.clone();
+    missing_final.observation.retained_times_s = vec![0., 10.];
+    assert!(
+        missing_final.validate().is_err(),
+        "numerical final state must remain available for verification"
+    );
+    assert_eq!(plan.observation.retained_times_s, vec![0., 10., 20.]);
+}
