@@ -1,4 +1,5 @@
 {harbor-meta}: rec {
+  timezone = harbor-meta.lib.timezone;
   mkNtt = {
     pkgs,
     pins,
@@ -40,6 +41,7 @@
 
   mkNttDevShell = {
     pkgs,
+    timeZone ? "UTC",
     pins,
     anchorRustToolchain,
     extraPackages ? [],
@@ -49,7 +51,7 @@
     ntt = mkNtt {inherit pkgs pins anchorRustToolchain;};
   in
     harbor-meta.lib.devShell.mkShell {
-      inherit pkgs;
+      inherit pkgs timeZone;
       fragments = [ntt.fragment];
       packages = extraPackages;
       env = extraEnv;
