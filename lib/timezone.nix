@@ -41,9 +41,18 @@ rec {
     timezone = mkEnvironment {inherit pkgs timeZone;};
   in
     shell.overrideAttrs (old:
-      timezone.env
+      (
+        if old ? TZ || old ? TZDIR
+        then
+          timezone.env
+          // (
+            if old ? env
+            then {env = builtins.removeAttrs old.env ["TZ" "TZDIR"];}
+            else {}
+          )
+        else {env = (old.env or {}) // timezone.env;}
+      )
       // {
-        env = (old.env or {}) // timezone.env;
         shellHook = timezone.validationScript + (old.shellHook or "");
         passthru =
           (old.passthru or {})

@@ -97,7 +97,7 @@
       fixtureShell {env.TZ = "UTC";};
   };
   zone = "Europe/Istanbul";
-  check = shell: assert shell.env.TZ == zone; assert shell.env.TZDIR == "/fixture/tzdata/share/zoneinfo"; true;
+  check = shell: assert (shell.env.TZ or shell.TZ) == zone; assert (shell.env.TZDIR or shell.TZDIR) == "/fixture/tzdata/share/zoneinfo"; true;
   rust = import (sources.rs + "/lib/dev-shell.nix") {metaDevShell = devShell;};
   rustArgs = {
     inherit pkgs;
@@ -177,6 +177,17 @@
   };
   checkArchive = value: assert value.TZ == zone; assert value.TZDIR == "/fixture/tzdata/share/zoneinfo"; true;
 in {
+  topLevelShellAdapter = let
+    adapted = timezone.withShell {
+      inherit pkgs;
+      shell = fixtureShell {
+        TZ = "UTC";
+        env.UNRELATED = "keep";
+      };
+      timeZone = zone;
+    };
+  in
+    assert !(adapted.env ? TZ || adapted.env ? TZDIR); assert adapted.env.UNRELATED == "keep"; check adapted;
   rustAndroidFacade = check (rustFacade.mkAndroidDevShell {
     inherit pkgs;
     timeZone = zone;
