@@ -31,4 +31,33 @@ rec {
   };
 
   mkEnv = args: (mkEnvironment args).env;
+
+  # Adapt a pre-existing shell, including shells from older pinned Harbors.
+  withShell = {
+    pkgs,
+    shell,
+    timeZone ? (shell.env.TZ or (shell.TZ or (shell.devShellSpec.env.TZ or "UTC"))),
+  }: let
+    timezone = mkEnvironment {inherit pkgs timeZone;};
+  in
+    shell.overrideAttrs (old:
+      timezone.env
+      // {
+        env = (old.env or {}) // timezone.env;
+        shellHook = timezone.validationScript + (old.shellHook or "");
+        passthru =
+          (old.passthru or {})
+          // (
+            if (old.passthru or {}) ? devShellSpec
+            then {
+              devShellSpec =
+                old.passthru.devShellSpec
+                // {
+                  env = old.passthru.devShellSpec.env // timezone.env;
+                  shellHook = timezone.validationScript + old.passthru.devShellSpec.shellHook;
+                };
+            }
+            else {}
+          );
+      });
 }

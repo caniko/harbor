@@ -23,6 +23,11 @@ package containing `share/zoneinfo`. Use `validationScript` when accepting a
 configured zone: invalid zone names fail at evaluation, and absent or non-TZif
 zone files fail at shell entry or build time without import-from-derivation.
 
+`withShell { inherit pkgs; shell = existingShell; timeZone = "Europe/Istanbul"; }`
+adapts an existing derivation, including one from an older pinned Harbor. It
+updates the exported environment and validates the zone at shell entry. When
+`timeZone` is omitted, it inherits the shell's zone or defaults to UTC.
+
 All shells composed with `lib.devShell.mkShell` include this wiring. Pass
 `timeZone = "America/New_York"`; an existing `env.TZ` override remains
 authoritative and is validated. An explicit `env.TZDIR` can select a different

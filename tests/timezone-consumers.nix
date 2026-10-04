@@ -84,6 +84,18 @@
   devShell = import (sources.meta + "/lib/shell.nix") {};
   meta = {inherit timezone devShell;};
   metaFlake.lib = meta;
+  fixtureShell = attrs: attrs // {overrideAttrs = update: fixtureShell (attrs // update attrs);};
+  rustFacade = import (sources.rs + "/lib/default.nix") {
+    crane = {};
+    osxcross = {};
+    harbor-meta = meta;
+    harbor-android.mkAndroidDevShell = {
+      pkgs,
+      androidSdk,
+      ndkVersion,
+    }:
+      fixtureShell {env.TZ = "UTC";};
+  };
   zone = "Europe/Istanbul";
   check = shell: assert shell.env.TZ == zone; assert shell.env.TZDIR == "/fixture/tzdata/share/zoneinfo"; true;
   rust = import (sources.rs + "/lib/dev-shell.nix") {metaDevShell = devShell;};
@@ -165,6 +177,31 @@
   };
   checkArchive = value: assert value.TZ == zone; assert value.TZDIR == "/fixture/tzdata/share/zoneinfo"; true;
 in {
+  rustAndroidFacade = check (rustFacade.mkAndroidDevShell {
+    inherit pkgs;
+    timeZone = zone;
+    androidSdk = "/fixture/android";
+    ndkVersion = "1";
+  });
+  shellAdapter = let
+    original = fixtureShell {
+      env.TZ = "UTC";
+      passthru.devShellSpec = {
+        env.TZ = "UTC";
+        shellHook = "";
+      };
+    };
+    adapted = timezone.withShell {
+      inherit pkgs;
+      shell = original;
+      timeZone = zone;
+    };
+    inherited = timezone.withShell {
+      inherit pkgs;
+      shell = adapted;
+    };
+  in
+    assert inherited.passthru.devShellSpec.env.TZ == zone; check inherited;
   defaultTimezone = (devShell.mkShell {inherit pkgs;}).env.TZ == "UTC";
   envOverride = check (devShell.mkShell {
     inherit pkgs;
