@@ -1,0 +1,197 @@
+{
+  description = "Local-first scientific CAD worker, isolated adapters and explicit qualification";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/73e728ddb6b7a12d18808f510813a13ee1fe4cce";
+    harbor-rs = {
+      url = "github:caniko/harbor-rs/c4ffa5d9b9232eae1f6693dfbcbcdd2548f31592";
+      flake = false;
+    };
+    harbor-py = {
+      url = "github:caniko/harbor-py/dab2acaf106eab7f94084ed8d02747c495f31737";
+      flake = false;
+    };
+    fleetix = {
+      url = "github:caniko/fleetix/2230d9ee804a66d94424a91919182e4fcca13ab2";
+      flake = false;
+    };
+    openlb = {
+      url = "git+https://gitlab.com/openlb/release.git?ref=1.9.0&rev=145cd54810b468f4b6fd3ed86b10644264841578";
+      flake = false;
+    };
+    crane.url = "github:ipetkov/crane/73b980519cefc727a5f6cc8e5c0947a2f9be6edd";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay/89e99bf0778a8f2cd18c9360c3f19c1ee47fc739";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix/7af23cfe91064865ecf2e835da28b45b3c6f49fd";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix/2f698e4b5a3c6004edaf051543542f18a36afe77";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+    };
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs/430680a19bc85a3bda55f12e4cc1a1aadcf2e478";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+    };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix/27b3b12a8e6375f28ebe122f07d230ca5459bbfa";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+  outputs = inputs @ {
+    self,
+    nixpkgs,
+    fleetix,
+    ...
+  }: let
+    system = "x86_64-linux";
+    # Import the pinned reusable APIs directly; unrelated upstream outputs remain lazy.
+    rust = import (inputs.harbor-rs + "/lib") {
+      inherit (inputs) crane;
+      osxcross = {};
+    };
+    python = import (inputs.harbor-py + "/lib") {
+      inherit nixpkgs;
+      inherit (inputs) pyproject-nix uv2nix pyproject-build-systems;
+    };
+    gpuLib = import (fleetix + "/lib/gpu.nix");
+    pkgs = python.mkPkgs {
+      inherit system;
+      overlays = [inputs.rust-overlay.overlays.default];
+      config.allowUnfree = false;
+    };
+    # A separate package set, never a broad unfree default or host driver package.
+    cudaPkgs = python.mkPkgs {
+      inherit system;
+      config = {
+        allowUnfree = false;
+        allowUnfreePredicate = p:
+          builtins.elem (pkgs.lib.getName p) [
+            "cuda_cccl"
+            "cuda_cudart"
+            "cuda_nvcc"
+            "cuda_cupti"
+            "cuda_nvrtc"
+            "cuda_cuobjdump"
+            "cuda_nvdisasm"
+            "cuda_gdb"
+            "cuda_nvml_dev"
+            "cuda_profiler_api"
+          ];
+        cudaCapabilities = ["8.6"];
+      };
+    };
+    toolchain = rust.mkToolchain {
+      inherit pkgs;
+      toolchainFile = ./rust-toolchain.toml;
+      withRustAnalyzer = false;
+      cache.enable = false;
+    };
+    inherit (toolchain) craneLib;
+    source = pkgs.lib.cleanSourceWith {
+      src = ./.;
+      filter = path: type:
+        craneLib.filterCargoSources path type || pkgs.lib.hasInfix "/profiles/" path;
+    };
+    common = {
+      src = source;
+      strictDeps = true;
+      pname = "harbor-cad";
+      version = "0.1.0";
+      CARGO_BUILD_JOBS = "2";
+      HARBOR_CAD_SYSTEMCTL = "${pkgs.systemd}/bin/systemctl";
+      HARBOR_CAD_SYSTEMD_RUN = "${pkgs.systemd}/bin/systemd-run";
+    };
+    cargoArtifacts = craneLib.buildDepsOnly common;
+    cli = craneLib.buildPackage (common // {inherit cargoArtifacts;});
+    mcpEnv = python.mkUvVirtualEnv {
+      inherit pkgs;
+      python = pkgs.python313;
+      name = "harbor-cad-mcp-env";
+      workspaceRoot = ./.;
+      dependencies = {harbor-cad-mcp = [];};
+    };
+    mcp = python.mkPythonApplicationPackage {
+      inherit pkgs;
+      name = "harbor-cad-mcp";
+      environment = mcpEnv;
+      scripts = ["harbor-cad-mcp"];
+      includeEnvironment = false;
+    };
+    testEnv = python.mkUvVirtualEnv {
+      inherit pkgs;
+      python = pkgs.python313;
+      name = "harbor-cad-tests";
+      workspaceRoot = ./.;
+      dependencies = (python.loadUvWorkspace {workspaceRoot = ./.;}).deps.all;
+    };
+    native = import ./nix/native.nix {inherit pkgs cudaPkgs inputs;};
+    format = inputs.treefmt-nix.lib.evalModule pkgs {
+      projectRootFile = "flake.nix";
+      programs.rustfmt = {
+        enable = true;
+        package = toolchain.rustToolchain;
+        edition = "2024";
+      };
+      programs.alejandra.enable = true;
+      programs.ruff-format.enable = true;
+    };
+  in {
+    lib = {
+      inherit gpuLib;
+      fleetixRevision = fleetix.rev;
+      fleetixContractDigest = builtins.hashString "sha256" (builtins.readFile (fleetix + "/lib/generated/gpu-contract.json"));
+    };
+    packages.${system} = {
+      default = cli;
+      worker = cli;
+      inherit mcp cargoArtifacts;
+      inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda runtime-cuda;
+      gui = pkgs.freecad;
+    };
+    apps.${system} = {
+      default = {
+        type = "app";
+        program = "${cli}/bin/harbor-cad";
+      };
+      mcp = {
+        type = "app";
+        program = "${mcp}/bin/harbor-cad-mcp";
+      };
+    };
+    checks.${system} = {
+      rust = cli;
+      policy = pkgs.runCommand "harbor-cad-policy" {} ''
+        test '${toString pkgs.config.allowUnfree}' = ""
+        test '${toString cudaPkgs.config.allowUnfree}' = ""
+        test '${fleetix.rev}' = '2230d9ee804a66d94424a91919182e4fcca13ab2'
+        test '${builtins.hashString "sha256" (builtins.readFile (fleetix + "/lib/generated/gpu-contract.json"))}' = "$(${cli}/bin/harbor-cad doctor | ${pkgs.jq}/bin/jq -r .fleetix_contract_digest)"
+        mkdir $out
+      '';
+      clean-runtime = pkgs.runCommand "harbor-cad-clean-runtime" {nativeBuildInputs = [pkgs.coreutils];} ''
+        mkdir -p home
+        env -i HOME=$PWD/home ${cli}/bin/harbor-cad doctor > doctor.json
+        env -i HOME=$PWD/home ${cli}/bin/harbor-cad schema > schemas.json
+        env -i HOME=$PWD/home ${mcp}/bin/harbor-cad-mcp --help > mcp.txt
+        mkdir $out; cp doctor.json schemas.json mcp.txt $out/
+      '';
+      python = pkgs.runCommand "harbor-cad-python-tests" {} ''
+        export HOME=$TMPDIR
+        export HARBOR_CAD_TEST_BINARY=${cli}/bin/harbor-cad
+        cp -r ${self}/python ./python
+        cp -r ${self}/profiles ./profiles
+        ${testEnv}/bin/python -m pytest -q python/tests
+        mkdir $out
+      '';
+    };
+    formatter.${system} = format.config.build.wrapper;
+    devShells.${system}.default = pkgs.mkShell {packages = [toolchain.rustToolchain pkgs.uv pkgs.python313 format.config.build.wrapper];};
+    nixosModules.default = import ./nix/modules.nix {inherit self;};
+    homeManagerModules.default = import ./nix/home.nix {inherit self;};
+  };
+}
