@@ -4,7 +4,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Component, Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -91,6 +91,83 @@ pub fn commit_artifact(
     })();
     let _ = fs::remove_file(&partial);
     result
+}
+fn copy_verified(source: &Path, destination: &Path, artifact: &ArtifactManifest) -> Result<()> {
+    let source = safe_path(source, &artifact.path)?;
+    let destination = safe_path(destination, &artifact.path)?;
+    let mut input = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(source)?;
+    let metadata = input.metadata()?;
+    if !metadata.is_file() || metadata.len() != artifact.bytes {
+        return Err(invalid("artifact type/size mismatch"));
+    }
+    let parent = destination
+        .parent()
+        .ok_or_else(|| invalid("artifact parent"))?;
+    fs::create_dir_all(parent)?;
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&destination)?;
+    let mut hash = Sha256::new();
+    let mut total = 0u64;
+    let mut buffer = [0u8; 65536];
+    loop {
+        let count = input.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        total = total
+            .checked_add(count as u64)
+            .ok_or_else(|| invalid("artifact size overflow"))?;
+        if total > artifact.bytes {
+            return Err(invalid("artifact grew during export"));
+        }
+        hash.update(&buffer[..count]);
+        output.write_all(&buffer[..count])?;
+    }
+    if total != artifact.bytes || format!("{:x}", hash.finalize()) != artifact.sha256 {
+        return Err(invalid("artifact checksum/size mismatch"));
+    }
+    output.sync_all()?;
+    fs::File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+fn publish_directory(partial: &Path, destination: &Path) -> Result<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let partial =
+        CString::new(partial.as_os_str().as_bytes()).map_err(|_| invalid("export path"))?;
+    let destination =
+        CString::new(destination.as_os_str().as_bytes()).map_err(|_| invalid("export path"))?;
+    // Atomic whole-directory publication, with no replacement even if a competing
+    // exporter creates the destination after the initial check.
+    let status = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            partial.as_ptr(),
+            libc::AT_FDCWD,
+            destination.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if status != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(())
+}
+fn sync_directories(root: &Path) -> Result<()> {
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            sync_directories(&entry.path())?;
+        }
+    }
+    fs::File::open(root)?.sync_all()?;
+    Ok(())
 }
 #[derive(Debug, Serialize)]
 pub struct Job {
@@ -225,7 +302,7 @@ impl Store {
         self.job(id)?;
         let mut stmt = self
             .connection
-            .prepare("SELECT manifest FROM artifacts WHERE job=?1 ORDER BY path LIMIT 256")?;
+            .prepare("SELECT manifest FROM artifacts WHERE job=?1 ORDER BY path")?;
         let rows = stmt
             .query_map([id], |r| r.get::<_, String>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -237,6 +314,49 @@ impl Store {
             params![id, manifest.path, serde_json::to_string(manifest)?],
         )?;
         Ok(())
+    }
+    pub fn export(&self, id: &str, destination: &Path) -> Result<usize> {
+        if self.job(id)?.state != "succeeded" {
+            return Err(invalid("only successful committed jobs may be exported"));
+        }
+        match fs::symlink_metadata(destination) {
+            Ok(_) => return Err(invalid("export destination already exists")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+        let name = destination
+            .file_name()
+            .ok_or_else(|| invalid("export destination name"))?;
+        let parent = destination
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let parent = fs::canonicalize(parent)?;
+        let destination = parent.join(name);
+        let partial = parent.join(format!(".harbor-cad-export-{}", uuid::Uuid::new_v4()));
+        private_dir(&partial)?;
+        let result = (|| {
+            let artifacts = self.artifacts(id)?;
+            let source = self.job_dir(id)?;
+            for artifact in &artifacts {
+                copy_verified(&source, &partial, artifact)?;
+            }
+            commit_artifact(
+                &partial,
+                "manifest.json",
+                &serde_json::to_vec_pretty(&artifacts)?,
+                "json",
+                "portable verified export",
+            )?;
+            sync_directories(&partial)?;
+            publish_directory(&partial, &destination)?;
+            fs::File::open(&parent)?.sync_all()?;
+            Ok(artifacts.len())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_dir_all(&partial);
+        }
+        result
     }
     pub fn job_dir(&self, id: &str) -> Result<PathBuf> {
         self.job(id)?;

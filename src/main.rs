@@ -194,41 +194,9 @@ fn run(cli: Cli) -> Result<()> {
                 destination,
             } => {
                 let store = Store::open(&state)?;
-                if store.job(&id)?.state != "succeeded" {
-                    return Err(invalid("only successful committed jobs may be exported"));
-                }
-                if destination.exists() {
-                    return Err(invalid("export destination already exists"));
-                }
-                let artifacts = store.artifacts(&id)?;
-                std::fs::create_dir(&destination)?;
-                let source = store.job_dir(&id)?;
-                for artifact in &artifacts {
-                    let bytes = worker::read_bounded(
-                        &harbor_cad::storage::safe_path(&source, &artifact.path)?,
-                        artifact.bytes,
-                    )?;
-                    use sha2::Digest;
-                    if format!("{:x}", sha2::Sha256::digest(&bytes)) != artifact.sha256 {
-                        return Err(invalid("artifact checksum mismatch"));
-                    }
-                    harbor_cad::storage::commit_artifact(
-                        &destination,
-                        &artifact.path,
-                        &bytes,
-                        &artifact.format,
-                        &artifact.provenance,
-                    )?;
-                }
-                harbor_cad::storage::commit_artifact(
-                    &destination,
-                    "manifest.json",
-                    &serde_json::to_vec_pretty(&artifacts)?,
-                    "json",
-                    "portable verified export",
-                )?;
+                let count = store.export(&id, &destination)?;
                 return print(
-                    &serde_json::json!({"exported":destination,"artifacts":artifacts.len(),"uploads":false}),
+                    &serde_json::json!({"exported":destination,"artifacts":count,"uploads":false}),
                 );
             }
         },
