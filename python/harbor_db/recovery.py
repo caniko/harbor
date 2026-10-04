@@ -216,7 +216,7 @@ def check(config, *, now=None):
 
 
 @contextlib.contextmanager
-def admission(config, *, now=None):
+def admission(config, *, now=None, verify_contents=True):
     """Keep the accepted backup and evidence stable through authority publication."""
     settings = policy(config)
     now = int(time.time()) if now is None else now
@@ -224,10 +224,16 @@ def admission(config, *, now=None):
     with lock(absolute(settings["backup_root"]) / "locks/mutate", shared=True):
         directory, binding = backup(config, settings, now)
         with evidence_lease(settings, inspect=True):
-            yield check_evidence(config, settings, directory, binding, now)
+            yield check_evidence(config, settings, directory, binding, now, verify_contents=verify_contents)
 
 
-def check_evidence(config, settings, directory, binding, now):
+def preflight(config, *, now=None):
+    """Early rejection only; never substitutes for byte-verified recovery admission."""
+    with admission(config, now=now, verify_contents=False) as result:
+        return result
+
+
+def check_evidence(config, settings, directory, binding, now, *, verify_contents=True):
     source = evidence(settings["snapshot_file"], "record snapshot", binding, settings, now)
     expected_names = {item["name"] for item in settings["record_checks"]}
     if set(source.get("records", {})) != expected_names or any(
@@ -235,8 +241,9 @@ def check_evidence(config, settings, directory, binding, now):
         for value in source["records"].values()
     ):
         raise ValueError("record snapshot is incomplete")
-    verify_backup(config, directory)
-    result = {"status": "ready", **binding, "off_host": None}
+    if verify_contents:
+        verify_backup(config, directory)
+    result = {"status": "ready" if verify_contents else "preflight-ready", **binding, "off_host": None}
     paths = [(settings["receipt_file"], "restore acceptance")]
     if settings.get("off_host_receipt_file"):
         paths.append((settings["off_host_receipt_file"], "off-host restore acceptance"))

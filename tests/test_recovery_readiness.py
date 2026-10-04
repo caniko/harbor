@@ -76,6 +76,35 @@ class RecoveryReadinessTest(unittest.TestCase):
             recovery.check(self.config, now=self.now)
         self.assertFalse(Path(self.config["recovery"]["receipt_file"]).exists())
 
+    def test_preflight_requires_executed_receipts_but_defers_backup_byte_verification(self):
+        self.snapshot()
+        with self.assertRaisesRegex(ValueError, "acceptance"):
+            recovery.preflight(self.config, now=self.now)
+        self.certify()
+        with patch.object(recovery, "verify_backup", side_effect=ValueError("backup bytes corrupted")) as verifier:
+            self.assertEqual(recovery.preflight(self.config, now=self.now)["status"], "preflight-ready")
+            verifier.assert_not_called()
+            with self.assertRaisesRegex(ValueError, "corrupted"):
+                recovery.check(self.config, now=self.now)
+
+    def test_preflight_refuses_changed_contract_and_expired_receipts(self):
+        self.snapshot()
+        self.certify()
+        with self.assertRaisesRegex(ValueError, "stale"):
+            recovery.preflight(self.config, now=self.now + 3601)
+        self.config["recovery"]["record_checks"][0]["sql"] = "SELECT incompatible_schema"
+        with self.assertRaisesRegex(ValueError, "contract"):
+            recovery.preflight(self.config, now=self.now)
+
+    def test_preflight_never_creates_missing_evidence_locks(self):
+        self.snapshot()
+        self.certify()
+        anchor = self.backup / "evidence/recovery.lock"
+        anchor.unlink()
+        with self.assertRaisesRegex(ValueError, "lease"):
+            recovery.preflight(self.config, now=self.now)
+        self.assertFalse(anchor.exists())
+
     def test_real_matching_checks_publish_a_bound_receipt(self):
         self.snapshot()
         result = self.certify()

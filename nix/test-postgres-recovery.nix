@@ -143,10 +143,61 @@ in
       primary.succeed(f"{command} inspect-recovery")
       primary.succeed(f"{command} adopt-live --system-identifier {identifier}")
       primary.succeed("test -s /srv/authority/identity.json")
+
+      # Execute the mandatory dispatcher with real service-user PostgreSQL and
+      # the same independently restored database evidence. Corpus initialization
+      # below is disposable fixture setup, never an admission behavior.
+      primary.succeed("install -d -o postgres -g postgres -m 0700 /srv/corpus /srv/corpus-restore /srv/corpus-authority; printf historical-objects > /srv/corpus/history; cp -p /srv/corpus/history /srv/corpus-restore/history; chown postgres:postgres /srv/corpus/history /srv/corpus-restore/history")
+      cutover = {
+          "version": 1, "enforced": True, "host": "primary", "timeout_seconds": 30,
+          "resources": {
+              "postgresql": {"kind": "postgres", "user": "postgres", "config": "/srv/config.json", "compatibility_checks": [{"database": "postgres", "sql": "SELECT count(*) = 1 FROM saves"}], "corpus_checks": {"archive": [{"root": 0, "database": "postgres", "sql": "SELECT jsonb_build_array(jsonb_build_object('path', 'history', 'directory', false))"}]}},
+              "archive": {
+                  "kind": "filesystem", "user": "postgres", "runtime_units": [], "database_resource": "postgresql",
+                  "custody_file": "/srv/corpus-authority/custody.json", "max_age_seconds": 3600,
+                  "authority": {"resource": "archive", "state_dir": "/srv/corpus-authority", "directories": ["/srv/corpus"], "binding": {"backend": "postgres"}},
+              },
+          },
+      }
+      def publish_cutover():
+          primary.succeed("printf '%s\\n' " + shlex.quote(json.dumps(cutover)) + " > /srv/cutover.json; chmod 0644 /srv/cutover.json")
+      publish_cutover()
+      gate = "harbor-db-cutover check --contract /srv/cutover.json --host primary"
+      primary.fail(gate)
+      primary.succeed("test ! -e /srv/corpus-authority/identity.json")
+      primary.succeed("harbor-db-cutover certify --contract /srv/cutover.json --host primary --resource archive --identity accepted-history --restore-root /srv/corpus-restore")
+      primary.succeed(gate)
+      primary.succeed(gate + " --phase activate")
+      cutover["resources"]["postgresql"]["corpus_checks"]["archive"][0]["sql"] = "SELECT jsonb_build_array(jsonb_build_object('path', 'missing-database-repository', 'directory', false))"
+      publish_cutover()
+      primary.fail("harbor-db-cutover certify --contract /srv/cutover.json --host primary --resource archive --identity accepted-history --restore-root /srv/corpus-restore")
+      primary.fail(gate)
+      cutover["resources"]["postgresql"]["corpus_checks"]["archive"][0]["sql"] = "SELECT jsonb_build_array(jsonb_build_object('path', 'history', 'directory', false))"
+      publish_cutover()
+      cutover["resources"]["postgresql"]["compatibility_checks"][0]["sql"] = "SELECT false"
+      publish_cutover()
+      primary.fail(gate)
+      cutover["resources"]["postgresql"]["compatibility_checks"][0]["sql"] = "SELECT count(*) = 1 FROM saves"
+      publish_cutover()
+      primary.succeed("mv /srv/corpus /srv/corpus-retained")
+      primary.fail(gate)
+      primary.succeed("test ! -e /srv/corpus; mv /srv/corpus-retained /srv/corpus")
+      primary.succeed("printf ordinary-new-state > /srv/corpus/history")
+      primary.succeed(gate + " --phase startup")
+      primary.fail(gate + " --phase activate")
+      primary.succeed("cp -p /srv/corpus-restore/history /srv/corpus/history; chown postgres:postgres /srv/corpus/history")
+      primary.succeed("harbor-db-cutover certify --contract /srv/cutover.json --host primary --resource archive --identity accepted-history --restore-root /srv/corpus-restore")
+      primary.succeed(gate)
+
       # Same table count cannot hide a changed review, and a corrupt retained
       # backup cannot reuse a formerly successful recovery receipt.
       remote.succeed("runuser -u can -- psql -U postgres -h /srv/recovery-socket -p 55432 -v ON_ERROR_STOP=1 -c \"BEGIN READ WRITE; UPDATE saves SET review = 'lost-review'; COMMIT\"")
       remote.fail("runuser -u can -- harbor-db-postgres --config /srv/remote-config.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432")
+      manifest = json.loads(primary.succeed("cat /srv/backup/base/base-1/backup_manifest"))
+      corpus_file = next(item["Path"] for item in manifest["Files"] if item["Path"].startswith("base/"))
+      primary.succeed("printf corruption >> " + shlex.quote("/srv/backup/base/base-1/" + corpus_file))
+      primary.succeed(gate)  # Early filter deliberately defers full backup bytes.
+      primary.fail(gate + " --phase activate")
       primary.succeed("printf corrupt >> /srv/backup/base/base-1/PG_VERSION")
       primary.fail(f"{command} inspect-recovery")
     '';

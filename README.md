@@ -8,6 +8,8 @@
 
 [Nix qualification workflow](.github/workflows/nix-builds.yaml)
 
+[Mandatory cutover admission and historical corpus custody](docs/cutover-admission.md)
+
 `harbor-db` provides secure generic lifecycle-operation plans and NixOS
 systemd wiring for project-owned work.
 
