@@ -1,4 +1,6 @@
-use crate::{Error, Result, contracts::*, devices, resources, science, storage::*};
+use crate::{
+    Error, Result, contracts::*, devices, lifecycle::NativeProcess, resources, science, storage::*,
+};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -155,7 +157,7 @@ fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()
     check_plan(&plan, &profile)?;
     let artifacts = safe_path(&store.root, "artifacts")?;
     let retained_disk = if artifacts.exists() {
-        disk_bytes(&artifacts)?
+        disk_bytes(&artifacts, false)?
     } else {
         0
     };
@@ -509,14 +511,30 @@ struct NativeRuntime {
     render: String,
     video: String,
 }
+fn packaged_file(path: &Path) -> Result<std::path::PathBuf> {
+    if !path.starts_with("/nix/store")
+        || path.components().count() < 4
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(invalid(
+            "packaged path must remain inside one immutable Nix store object",
+        ));
+    }
+    let canonical = fs::canonicalize(path)?;
+    if !canonical.starts_with("/nix/store") || !canonical.is_file() {
+        return Err(invalid(
+            "packaged path resolves outside the immutable store or is not a regular file",
+        ));
+    }
+    Ok(canonical)
+}
 impl NativeRuntime {
     fn load(path: &Path) -> Result<Self> {
-        if !path.starts_with("/nix/store") {
-            return Err(invalid(
-                "native manifest must be an immutable Nix store path",
-            ));
-        }
-        let runtime: Self = serde_json::from_slice(&read_bounded(path, MAX_MESSAGE)?)?;
+        let path = packaged_file(path)?;
+        let runtime: Self = serde_json::from_slice(&read_bounded(&path, MAX_MESSAGE)?)?;
+        packaged_file(Path::new(&runtime.bwrap))?;
         Ok(runtime)
     }
     fn executable(&self, operation: &StageOperation) -> Result<&str> {
@@ -530,31 +548,43 @@ impl NativeRuntime {
             StageOperation::Video => &self.video,
             _ => return Err(invalid("not a native adapter operation")),
         };
-        if !Path::new(path).starts_with("/nix/store") || !Path::new(path).is_file() {
-            return Err(Error::Unqualified(
-                "exact packaged adapter executable absent".into(),
-            ));
-        }
+        packaged_file(Path::new(path))?;
         Ok(path)
     }
 }
-fn disk_bytes(root: &Path) -> Result<u64> {
-    let mut total = 0u64;
-    for entry in fs::read_dir(root)? {
-        let entry = entry?;
-        let m = fs::symlink_metadata(entry.path())?;
-        if m.file_type().is_symlink() {
-            return Err(invalid("native output symlink rejected"));
+fn disk_bytes(root: &Path, reject_unsafe: bool) -> Result<u64> {
+    fn visit(root: &Path, reject_unsafe: bool, depth: u32, entries: &mut u64) -> Result<u64> {
+        if depth > 64 {
+            return Err(Error::Resource(
+                "bounded disk inventory depth exhausted".into(),
+            ));
         }
-        total = total
-            .checked_add(if m.is_dir() {
-                disk_bytes(&entry.path())?
-            } else {
-                m.len()
-            })
-            .ok_or_else(|| invalid("disk accounting overflow"))?;
+        let mut total = 0u64;
+        for entry in fs::read_dir(root)? {
+            let entry = entry?;
+            *entries += 1;
+            if *entries > 131072 {
+                return Err(Error::Resource(
+                    "bounded disk inventory entries exhausted".into(),
+                ));
+            }
+            let m = fs::symlink_metadata(entry.path())?;
+            if reject_unsafe && !m.is_dir() && !m.is_file() {
+                return Err(invalid("native output symlink/special entry rejected"));
+            }
+            total = total
+                .checked_add(if m.is_dir() {
+                    visit(&entry.path(), reject_unsafe, depth + 1, entries)?
+                } else {
+                    m.len()
+                })
+                .ok_or_else(|| invalid("disk accounting overflow"))?;
+        }
+        Ok(total)
     }
-    Ok(total)
+    // Quarantined failures count against admission, but never follow their
+    // symlinks or let an unsafe raw entry poison all later jobs in the root.
+    visit(root, reject_unsafe, 0, &mut 0)
 }
 fn native_stage(
     store: &Store,
@@ -571,9 +601,6 @@ fn native_stage(
             .ok_or_else(|| invalid("native runtime"))?,
     ))?;
     let exe = runtime.executable(&stage.operation)?;
-    if !Path::new(&runtime.bwrap).starts_with("/nix/store") {
-        return Err(invalid("packaged sandbox required"));
-    }
     let mut command = Command::new(&runtime.bwrap);
     command
         .env_clear()
@@ -649,7 +676,7 @@ fn native_stage(
         .to_owned();
     command
         .args(["--ro-bind"])
-        .arg(dir.join("native-plan.json"))
+        .arg(safe_path(&store.job_dir(id)?, "native-plan.json")?)
         .arg("/work/plan.json");
     command.arg("--").arg(exe).arg(&op).arg("/work/plan.json");
     let log = OpenOptions::new()
@@ -660,8 +687,7 @@ fn native_stage(
     command
         .stdin(Stdio::null())
         .stdout(log.try_clone()?)
-        .stderr(log)
-        .process_group(0);
+        .stderr(log);
     let maximum = profile.max_disk_bytes;
     unsafe {
         command.pre_exec(move || {
@@ -675,34 +701,18 @@ fn native_stage(
             Ok(())
         });
     }
-    let mut child = command.spawn()?;
-    let start = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait()? {
-            if !status.success() {
-                return Err(Error::Unqualified(format!("native {op} failed: {status}")));
+    let mut child = NativeProcess::spawn(command)?;
+    let status = child.wait(
+        Duration::from_secs(u64::from(profile.timeout_seconds)),
+        || {
+            if disk_bytes(dir, true)? > plan.observation.max_artifact_bytes {
+                return Err(Error::Resource("scientific output budget exhausted".into()));
             }
-            break;
-        }
-        let failure = if disk_bytes(dir)? > plan.observation.max_artifact_bytes {
-            Some("scientific output budget exhausted")
-        } else if start.elapsed().as_secs() > u64::from(profile.timeout_seconds) {
-            Some("native time budget exhausted")
-        } else {
-            None
-        };
-        if let Some(reason) = failure {
-            unsafe {
-                libc::kill(-(child.id() as i32), libc::SIGTERM);
-            }
-            std::thread::sleep(Duration::from_millis(200));
-            unsafe {
-                libc::kill(-(child.id() as i32), libc::SIGKILL);
-            }
-            let _ = child.wait();
-            return Err(Error::Resource(reason.into()));
-        }
-        std::thread::sleep(Duration::from_millis(50));
+            Ok(())
+        },
+    )?;
+    if !status.success() {
+        return Err(Error::Unqualified(format!("native {op} failed: {status}")));
     }
     let evidence: serde_json::Value = serde_json::from_slice(&read_bounded(
         &dir.join(format!("{op}-receipt.json")),
@@ -729,6 +739,7 @@ fn native_stage(
     )?;
     Ok(())
 }
+
 pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
     let store = Store::open(state)?;
     let profile = load_profile(profile_path)?;
@@ -751,6 +762,38 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
         rusqlite::params![invocation, id],
     )?;
     let result = execute_job(&store, &profile, id);
+    if let Err(error) = &result {
+        let saved = (|| {
+            let dir = store.job_dir(id)?;
+            let raw = safe_path(&dir, ".native-incomplete")?;
+            if !raw.exists() {
+                return Ok(());
+            }
+            let snapshot = retain_failed_native_tree(
+                &raw,
+                &dir,
+                store.plan(id)?.observation.max_artifact_bytes,
+            )?;
+            for artifact in &snapshot.artifacts {
+                store.add_artifact(id, artifact)?;
+            }
+            let report = serde_json::json!({"schema_version":1,"execution":"failed","physical_validation":"unqualified",
+                "cause":error.diagnostic(),"snapshot":snapshot,"raw_tree_retained":".native-incomplete",
+                "partial_files":"opaque failed-attempt bytes; not qualified scientific outputs"});
+            let manifest = commit_artifact(
+                &dir,
+                "native-failure.json",
+                &serde_json::to_vec_pretty(&report)?,
+                "json",
+                "failed native output inventory; omissions are explicit",
+            )?;
+            store.add_artifact(id, &manifest)?;
+            Ok::<_, Error>(())
+        })();
+        if let Err(retention) = saved {
+            store.event(id, "native_failure_retention_error", &retention.to_string())?;
+        }
+    }
     store.finish(
         id,
         if result.is_ok() { 0 } else { 1 },
@@ -880,13 +923,6 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
             _ => {
                 if !native_pending {
                     private_dir(&native_work)?;
-                    commit_artifact(
-                        &native_work,
-                        "plan.json",
-                        &serde_json::to_vec_pretty(&plan)?,
-                        "json",
-                        "approved native input copy",
-                    )?;
                     let mut normalized = plan.clone();
                     let c = &mut normalized.case;
                     for (quantity, dimension, unit) in [
@@ -900,19 +936,19 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         quantity.value = quantity.si(dimension)?;
                         quantity.unit = unit.into();
                     }
-                    commit_artifact(
-                        &native_work,
+                    store.add_artifact(id, &commit_artifact(
+                        &dir,
                         "native-plan.json",
                         &serde_json::to_vec_pretty(&normalized)?,
                         "json",
-                        "SI adapter view; original quantities remain in immutable plan.json",
-                    )?;
+                        "trusted SI adapter view; exposed only through read-only sandbox mount; original quantities in plan.json",
+                    )?)?;
                     native_pending = true;
                 }
                 native_stage(store, profile, &plan, stage, &native_work, id)?;
             }
         }
-        if disk_bytes(&dir)? > plan.observation.max_artifact_bytes {
+        if disk_bytes(&dir, true)? > plan.observation.max_artifact_bytes {
             return Err(Error::Resource(
                 "artifact budget exhausted; scientific data retained, job failed".into(),
             ));
@@ -927,4 +963,43 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         fs::remove_dir_all(&native_work)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{disk_bytes, packaged_file};
+    use std::{fs, path::Path};
+
+    #[test]
+    fn lexical_store_prefix_cannot_authorize_mutable_native_code() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = temp.path().join("manifest.json");
+        fs::write(&outside, b"{}").unwrap();
+        let escape = Path::new("/nix/store/../..").join(outside.strip_prefix("/").unwrap());
+        assert!(matches!(
+            packaged_file(&escape),
+            Err(crate::Error::Invalid(_))
+        ));
+        assert!(matches!(
+            packaged_file(&outside),
+            Err(crate::Error::Invalid(_))
+        ));
+        assert!(packaged_file(Path::new("/nix/store")).is_err());
+    }
+
+    #[test]
+    fn quarantined_unsafe_entries_are_counted_without_following_or_poisoning_admission() {
+        let temp = tempfile::tempdir().unwrap();
+        let raw = temp.path().join("quarantined");
+        fs::create_dir(&raw).unwrap();
+        let outside = temp.path().join("outside");
+        fs::write(&outside, vec![0u8; 1048576]).unwrap();
+        fs::write(raw.join("log"), b"fail").unwrap();
+        std::os::unix::fs::symlink(&outside, raw.join("escape")).unwrap();
+        assert!(disk_bytes(&raw, true).is_err());
+        assert_eq!(
+            disk_bytes(&raw, false).unwrap(),
+            4 + fs::symlink_metadata(raw.join("escape")).unwrap().len()
+        );
+    }
 }

@@ -181,6 +181,11 @@ pub fn ingest_native_tree(
         total: &mut u64,
         maximum: u64,
     ) -> Result<()> {
+        if prefix.components().count() > 64 {
+            return Err(Error::Resource(
+                "bounded native output depth exhausted".into(),
+            ));
+        }
         for entry in fs::read_dir(root.join(prefix))? {
             let entry = entry?;
             let relative = prefix.join(entry.file_name());
@@ -220,52 +225,179 @@ pub fn ingest_native_tree(
     paths.sort();
     let mut artifacts = Vec::new();
     for path in paths {
-        let mut file = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-            .open(safe_path(source, &path)?)?;
-        let bytes = file.metadata()?.len();
-        let mut hash = Sha256::new();
-        let mut count = 0u64;
-        let mut buffer = [0u8; 65536];
-        loop {
-            let n = file.read(&mut buffer)?;
-            if n == 0 {
-                break;
-            }
-            count = count
-                .checked_add(n as u64)
-                .ok_or_else(|| invalid("native size overflow"))?;
-            if count > bytes || count > maximum {
-                return Err(invalid("native output changed during ingestion"));
-            }
-            hash.update(&buffer[..n]);
-        }
-        if count != bytes {
-            return Err(invalid("native output changed during ingestion"));
-        }
-        let format = Path::new(&path)
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("binary")
-            .to_owned();
-        let manifest = ArtifactManifest {
-            schema_version: 1,
-            path,
-            sha256: format!("{:x}", hash.finalize()),
-            bytes,
-            format,
-            provenance:
-                "closed isolated native output; model/device evidence in companion receipts".into(),
-            units: None,
-            time_s: None,
-            association: None,
-        };
+        let manifest = native_manifest(
+            source,
+            &path,
+            maximum,
+            "closed isolated native output; model/device evidence in companion receipts",
+        )?;
         copy_verified(source, destination, &manifest)?;
         artifacts.push(manifest);
     }
     sync_directories(destination)?;
     Ok(artifacts)
+}
+fn native_manifest(
+    source: &Path,
+    path: &str,
+    maximum: u64,
+    provenance: &str,
+) -> Result<ArtifactManifest> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(safe_path(source, path)?)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(invalid("native output must be regular"));
+    }
+    let bytes = metadata.len();
+    if bytes > maximum {
+        return Err(Error::Resource("native snapshot budget exhausted".into()));
+    }
+    let mut hash = Sha256::new();
+    let mut count = 0u64;
+    let mut buffer = [0u8; 65536];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        count = count
+            .checked_add(n as u64)
+            .ok_or_else(|| invalid("native size overflow"))?;
+        if count > bytes || count > maximum {
+            return Err(invalid("native output changed during ingestion"));
+        }
+        hash.update(&buffer[..n]);
+    }
+    if count != bytes {
+        return Err(invalid("native output changed during ingestion"));
+    }
+    let format = Path::new(&path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("binary")
+        .to_owned();
+    Ok(ArtifactManifest {
+        schema_version: 1,
+        path: path.into(),
+        sha256: format!("{:x}", hash.finalize()),
+        bytes,
+        format,
+        provenance: provenance.into(),
+        units: None,
+        time_s: None,
+        association: None,
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct SkippedNativeFile {
+    pub path: String,
+    pub reason: String,
+}
+#[derive(Debug, Serialize)]
+pub struct FailedNativeSnapshot {
+    pub artifacts: Vec<ArtifactManifest>,
+    pub skipped: Vec<SkippedNativeFile>,
+}
+/// Called only after adapter termination. Even .partial files are preserved as
+/// opaque failed-attempt bytes, never promoted into successful scientific data.
+/// Unsafe or over-budget entries stay quarantined in the raw tree and are
+/// explicitly identified in the failure report rather than silently omitted.
+pub fn retain_failed_native_tree(
+    source: &Path,
+    destination: &Path,
+    maximum: u64,
+) -> Result<FailedNativeSnapshot> {
+    if !fs::symlink_metadata(source)?.is_dir() {
+        return Err(invalid(
+            "native failure root must be a nonsymlink directory",
+        ));
+    }
+    fn collect(
+        root: &Path,
+        prefix: &Path,
+        files: &mut Vec<String>,
+        skipped: &mut Vec<SkippedNativeFile>,
+        visited: &mut usize,
+    ) -> Result<()> {
+        if prefix.components().count() > 64 {
+            return Err(invalid("native failure tree depth limit"));
+        }
+        for entry in fs::read_dir(root.join(prefix))? {
+            let entry = entry?;
+            *visited += 1;
+            if *visited > 8192 {
+                return Err(Error::Resource(
+                    "failure inventory entry limit; raw tree preserved".into(),
+                ));
+            }
+            let relative = prefix.join(entry.file_name());
+            let path = relative
+                .to_str()
+                .ok_or_else(|| invalid("native failure path encoding"))?
+                .to_owned();
+            if path.len() > 4096 {
+                return Err(invalid("native failure path length limit"));
+            }
+            let metadata = fs::symlink_metadata(entry.path())?;
+            if metadata.is_dir() {
+                collect(root, &relative, files, skipped, visited)?;
+            } else if metadata.is_file() {
+                files.push(path);
+            } else {
+                skipped.push(SkippedNativeFile {
+                    path,
+                    reason: "unsafe symlink/special entry; raw tree quarantined".into(),
+                });
+            }
+        }
+        Ok(())
+    }
+    let target = safe_path(destination, "failed-native")?;
+    private_dir(&target)?;
+    let mut files = Vec::new();
+    let mut snapshot = FailedNativeSnapshot {
+        artifacts: Vec::new(),
+        skipped: Vec::new(),
+    };
+    collect(
+        source,
+        Path::new(""),
+        &mut files,
+        &mut snapshot.skipped,
+        &mut 0,
+    )?;
+    files.sort_by_key(|p| (!p.ends_with(".log") && !p.contains("receipt"), p.clone()));
+    let mut remaining = maximum;
+    for path in files {
+        let saved = (|| {
+            let mut manifest = native_manifest(
+                source,
+                &path,
+                remaining,
+                "failed native attempt; closed snapshot, partial files are opaque; no qualification implied",
+            )?;
+            copy_verified(source, &target, &manifest)?;
+            manifest.path = format!("failed-native/{path}");
+            Ok::<_, Error>(manifest)
+        })();
+        match saved {
+            Ok(artifact) => {
+                remaining -= artifact.bytes;
+                snapshot.artifacts.push(artifact);
+            }
+            Err(error) => snapshot.skipped.push(SkippedNativeFile {
+                path,
+                reason: error.to_string(),
+            }),
+        }
+    }
+    snapshot.skipped.sort_by(|a, b| a.path.cmp(&b.path));
+    sync_directories(&target)?;
+    Ok(snapshot)
 }
 #[derive(Debug, Serialize)]
 pub struct Job {
@@ -456,6 +588,11 @@ impl Store {
         Ok(job)
     }
     pub fn plan(&self, id: &str) -> Result<ExecutionPlan> {
+        let plan = self.recorded_plan(id)?;
+        plan.validate()?;
+        Ok(plan)
+    }
+    fn recorded_plan(&self, id: &str) -> Result<ExecutionPlan> {
         let job = self.job(id)?;
         let data: String =
             self.connection
@@ -464,7 +601,6 @@ impl Store {
         if plan.id()? != job.plan_digest {
             return Err(invalid("persisted immutable plan digest mismatch"));
         }
-        plan.validate()?;
         Ok(plan)
     }
     pub fn event(&self, id: &str, kind: &str, message: &str) -> Result<()> {
@@ -579,8 +715,9 @@ impl Store {
         })
     }
     pub fn export(&self, id: &str, destination: &Path) -> Result<usize> {
-        if self.job(id)?.state != "succeeded" {
-            return Err(invalid("only successful committed jobs may be exported"));
+        let job = self.job(id)?;
+        if !["succeeded", "failed", "cancelled"].contains(&job.state.as_str()) {
+            return Err(invalid("only terminal committed jobs may be exported"));
         }
         match fs::symlink_metadata(destination) {
             Ok(_) => return Err(invalid("export destination already exists")),
@@ -599,11 +736,25 @@ impl Store {
         let partial = parent.join(format!(".harbor-cad-export-{}", uuid::Uuid::new_v4()));
         private_dir(&partial)?;
         let result = (|| {
-            let artifacts = self.artifacts(id)?;
+            let mut artifacts = self.artifacts(id)?;
+            let registered_count = artifacts.len();
             let source = self.job_dir(id)?;
             for artifact in &artifacts {
                 copy_verified(&source, &partial, artifact)?;
             }
+            let profile = match self.job_profile(id) {
+                Ok(profile) => Some(profile),
+                Err(Error::Unqualified(_)) => None, // legacy jobs predate profile binding
+                Err(error) => return Err(error),
+            };
+            let plan = self.recorded_plan(id)?;
+            let current = plan.validate();
+            artifacts.push(commit_artifact(&partial, "execution.json", &serde_json::to_vec_pretty(&serde_json::json!({
+                "schema_version":1,"job":job,"plan":plan,"host_profile":profile,
+                "current_plan_check":{"accepted":current.is_ok(),"diagnostic":current.err().map(|e| e.diagnostic())},
+                "physical_validation":"unqualified","registered_artifacts":registered_count,
+                "completeness":"registered records only; native failure report identifies quarantined omissions"
+            }))?, "json", "terminal execution status; export does not imply scientific qualification")?);
             commit_artifact(
                 &partial,
                 "manifest.json",
@@ -614,7 +765,7 @@ impl Store {
             sync_directories(&partial)?;
             publish_directory(&partial, &destination)?;
             fs::File::open(&parent)?.sync_all()?;
-            Ok(artifacts.len())
+            Ok(registered_count)
         })();
         if result.is_err() {
             let _ = fs::remove_dir_all(&partial);

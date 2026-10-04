@@ -105,5 +105,19 @@ fn export_includes_every_registered_shard_beyond_response_page_size() {
     );
     let manifests: Vec<ArtifactManifest> =
         serde_json::from_slice(&std::fs::read(destination.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifests.len(), 302);
+    assert_eq!(
+        manifests
+            .iter()
+            .filter(|a| a.path != "execution.json")
+            .count(),
+        302
+    );
+    let execution = manifests
+        .iter()
+        .find(|a| a.path == "execution.json")
+        .unwrap();
+    let data = std::fs::read(destination.join("execution.json")).unwrap();
+    use sha2::{Digest, Sha256};
+    assert_eq!(format!("{:x}", Sha256::digest(&data)), execution.sha256);
+    assert_eq!(execution.bytes, data.len() as u64);
 }
