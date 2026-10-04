@@ -81,10 +81,7 @@
     // flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = lib.mkPkgs {inherit system;};
-        treefmt = treefmt-nix.lib.evalModule pkgs {
-          imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml self.treefmtModules.python];
-          projectRootFile = "flake.nix";
-        };
+        treefmt = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
       in {
         formatter = treefmt.config.build.wrapper;
 
@@ -93,14 +90,20 @@
             inherit pkgs;
             profiles = ["python"];
           };
-          default = self.devShells.${system}.opencode-lsp-python;
+          default = self.devShells.${system}.opencode-lsp-python.overrideAttrs (old: {
+            nativeBuildInputs = (old.nativeBuildInputs or []) ++ [treefmt.config.build.wrapper];
+          });
         };
 
-        checks = import ./checks {
-          inherit self pkgs system nixpkgs treefmt-nix git-hooks;
-          harbor = lib;
-          meta = harbor-meta.lib;
-        };
+        checks =
+          import ./checks {
+            inherit self pkgs system nixpkgs treefmt-nix git-hooks;
+            harbor = lib;
+            meta = harbor-meta.lib;
+          }
+          // {
+            formatting = treefmt.config.build.check self;
+          };
       }
     );
 }
