@@ -7,6 +7,7 @@ import argparse
 from typing import Any
 
 from mcp.server import MCPServer
+
 from .client import request
 
 
@@ -36,6 +37,21 @@ def build_server(profile: str) -> MCPServer:
         async def case_plan(case: dict[str, Any]) -> dict[str, Any]:
             """Prepare a CPU analytical-reference plan; never solve implicitly."""
             return await request("plan", case=case)
+
+        @server.tool()
+        async def case_plan_openlb_reference(case: dict[str, Any]) -> dict[str, Any]:
+            """Plan explicit native CPU OpenLB with FreeCAD geometry; systemd policy required."""
+            return await request("plan_openlb_reference", case=case)
+
+        @server.tool()
+        async def case_plan_b1(
+            case: dict[str, Any], selections: dict[str, Any]
+        ) -> dict[str, Any]:
+            """Plan required CUDA flow, independent EGL/VAAPI devices, and offline bundle.
+
+            Device selectors are explicit requests; planning does not qualify hardware.
+            """
+            return await request("plan_b1", case=case, selections=selections)
 
     if profile in {"simulation", "all"}:
 

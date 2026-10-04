@@ -139,3 +139,141 @@ fn reference_round_trip_keeps_fields_and_validation_separate() {
     assert_eq!(*result.velocity_m_s.last().unwrap(), 0.);
     assert!(channel_reference(0.1, 0.01, 1e-5, 10000001).is_err());
 }
+
+#[test]
+fn unsupported_formulation_cannot_be_run_as_an_analytical_reference() {
+    let mut case = CaseSpec::reference();
+    case.applicability.formulation = "periodic_forced_channel".into();
+    assert!(ExecutionPlan::reference(case).is_err());
+}
+
+#[test]
+fn native_cpu_plan_is_explicit_and_keeps_scientific_parameters() {
+    let mut case = CaseSpec::reference();
+    case.applicability.formulation = "periodic_forced_channel".into();
+    case.applicability.numerical_tolerance = 0.02;
+    case.length.value = 0.02;
+    case.acceleration.value = 0.001;
+    case.resolution = 16;
+    case.max_time_s = 20.;
+    let plan = ExecutionPlan::openlb_reference(case.clone(), "research".into()).unwrap();
+    plan.validate().unwrap();
+    assert_eq!(plan.case.science_id().unwrap(), case.science_id().unwrap());
+    assert!(matches!(
+        plan.stages[0].operation,
+        StageOperation::CadFixture
+    ));
+    assert!(matches!(plan.stages[1].operation, StageOperation::Openlb));
+    assert_eq!(plan.stages[1].gpu, GpuRequirement::CpuOnly);
+    assert!(plan.stages[1].selection.is_none());
+    assert_eq!(plan.observation.retained_times_s, vec![0., 10., 20.]);
+    assert!(ExecutionPlan::openlb_reference(case, "ci".into()).is_err());
+}
+
+#[test]
+fn native_tree_ingest_copies_closed_files_and_rejects_symlinks_and_partial_outputs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("native");
+    let committed = tmp.path().join("committed");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::create_dir(&committed).unwrap();
+    std::fs::create_dir(source.join("fields")).unwrap();
+    std::fs::write(source.join("fields/data.vti"), b"scientific payload").unwrap();
+    let artifacts = ingest_native_tree(&source, &committed, 1024).unwrap();
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0].path, "fields/data.vti");
+    std::fs::write(source.join("fields/data.vti"), b"changed").unwrap();
+    assert_eq!(
+        std::fs::read(committed.join("fields/data.vti")).unwrap(),
+        b"scientific payload"
+    );
+    std::os::unix::fs::symlink("/etc/passwd", source.join("escape")).unwrap();
+    assert!(ingest_native_tree(&source, &committed, 1024).is_err());
+    std::fs::remove_file(source.join("escape")).unwrap();
+    std::fs::write(source.join("unfinished.partial"), b"incomplete").unwrap();
+    assert!(ingest_native_tree(&source, &committed, 1024).is_err());
+    std::fs::remove_file(source.join("unfinished.partial")).unwrap();
+    assert!(ingest_native_tree(&source, &committed, 1).is_err());
+}
+
+#[test]
+fn b1_planning_keeps_compute_render_and_media_independent_and_required() {
+    let mut case = CaseSpec::reference();
+    case.applicability.formulation = "periodic_forced_channel".into();
+    case.acceleration.value = 0.001;
+    let selections = B1Selections {
+        compute: GpuSelection {
+            role: Role::Compute,
+            backend: "cuda".into(),
+            pci: "0000:03:00.0".into(),
+            backend_uuid: Some("GPU-synthetic".into()),
+        },
+        render: GpuSelection {
+            role: Role::Render,
+            backend: "egl".into(),
+            pci: "0000:04:00.0".into(),
+            backend_uuid: None,
+        },
+        media: GpuSelection {
+            role: Role::Media,
+            backend: "vaapi".into(),
+            pci: "0000:04:00.0".into(),
+            backend_uuid: None,
+        },
+    };
+    let plan = ExecutionPlan::b1(case.clone(), selections.clone(), "research".into()).unwrap();
+    plan.validate().unwrap();
+    assert_eq!(plan.stages.len(), 5);
+    assert_eq!(
+        plan.stages[1].selection.as_ref().unwrap().pci,
+        "0000:03:00.0"
+    );
+    assert_eq!(
+        plan.stages[2].selection.as_ref().unwrap().pci,
+        "0000:04:00.0"
+    );
+    for stage in &plan.stages[1..4] {
+        assert_eq!(stage.gpu, GpuRequirement::Required);
+        assert!(stage.vram_bytes > 0);
+    }
+    let mut invalid = selections;
+    invalid.compute.backend_uuid = None;
+    assert!(ExecutionPlan::b1(case, invalid, "research".into()).is_err());
+}
+
+#[test]
+fn persisted_service_identity_and_job_paths_cannot_redirect_operations() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("state");
+    let store = Store::open(&root).unwrap();
+    let job = store
+        .submit(
+            &ExecutionPlan::reference(CaseSpec::reference()).unwrap(),
+            "owned-unit",
+        )
+        .unwrap();
+    store
+        .connection
+        .execute(
+            "UPDATE jobs SET unit='unrelated.service' WHERE id=?1",
+            [&job.id],
+        )
+        .unwrap();
+    assert!(store.job(&job.id).is_err());
+    store
+        .connection
+        .execute(
+            "UPDATE jobs SET unit=?1 WHERE id=?2",
+            [&format!("harbor-cad-job-{}.service", job.id), &job.id],
+        )
+        .unwrap();
+    std::os::unix::fs::symlink(temp.path(), root.join("artifacts")).unwrap();
+    assert!(store.job_dir(&job.id).is_err());
+}
+
+#[test]
+fn high_mach_native_reference_is_rejected_before_approval() {
+    let mut case = CaseSpec::reference();
+    case.applicability.formulation = "periodic_forced_channel".into();
+    assert!(ExecutionPlan::openlb_reference(case, "research".into()).is_err());
+}

@@ -138,6 +138,17 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
             })?;
             let native = NativeRuntime::load(Path::new(runtime))?;
             native.executable(&stage.operation)?;
+            if matches!(stage.operation, StageOperation::Openlb) {
+                let backend = stage
+                    .selection
+                    .as_ref()
+                    .map_or("cpu", |s| s.backend.as_str());
+                if native.openlb_backend != backend {
+                    return Err(Error::Unqualified(
+                        "packaged OpenLB backend differs from approved stage; no fallback".into(),
+                    ));
+                }
+            }
         }
     }
     Ok(())
@@ -287,6 +298,14 @@ fn dispatch(
             )
         }
         Operation::Plan { case } => Ok(serde_json::to_value(ExecutionPlan::reference(*case)?)?),
+        Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
+            ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
+        )?),
+        Operation::PlanB1 { case, selections } => Ok(serde_json::to_value(ExecutionPlan::b1(
+            *case,
+            selections,
+            profile.policy.clone(),
+        )?)?),
         Operation::Submit {
             plan,
             approved_digest,
@@ -447,6 +466,7 @@ pub fn backends() -> serde_json::Value {
     serde_json::json!([
         {"adapter":"channel_reference","backend":"cpu","runtime":"implemented","numerical_verification":"analytical_residual","physical_validation":"unqualified","synthetic":true},
         {"adapter":"freecad","backend":"cpu","runtime":"unqualified","minimum_security_version":"1.1.4"},
+        {"adapter":"openlb","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"periodic_forced_channel","reference_evidence":"docs/qualification.md"},
         {"adapter":"openlb","backend":"cuda","runtime":"unqualified","precision":"float64","formulation":"incompressible BGK D3Q19"},
         {"adapter":"openlb","backend":"hip","runtime":"unqualified","reason":"separate compiler/model/hardware qualification required"},
         {"adapter":"paraview","backend":"egl","runtime":"unqualified"},
@@ -469,6 +489,7 @@ struct NativeRuntime {
     bwrap: String,
     cad: String,
     openlb: Option<String>,
+    openlb_backend: String,
     render: String,
     video: String,
 }
@@ -488,7 +509,7 @@ impl NativeRuntime {
             StageOperation::Openlb => self
                 .openlb
                 .as_deref()
-                .ok_or_else(|| Error::Unqualified("CUDA OpenLB package absent".into()))?,
+                .ok_or_else(|| Error::Unqualified("OpenLB package absent".into()))?,
             StageOperation::Render => &self.render,
             StageOperation::Video => &self.video,
             _ => return Err(invalid("not a native adapter operation")),
@@ -525,6 +546,7 @@ fn native_stage(
     plan: &ExecutionPlan,
     stage: &Stage,
     dir: &Path,
+    id: &str,
 ) -> Result<()> {
     let runtime = NativeRuntime::load(Path::new(
         profile
@@ -609,6 +631,10 @@ fn native_stage(
         .as_str()
         .ok_or_else(|| invalid("operation"))?
         .to_owned();
+    command
+        .args(["--ro-bind"])
+        .arg(dir.join("native-plan.json"))
+        .arg("/work/plan.json");
     command.arg("--").arg(exe).arg(&op).arg("/work/plan.json");
     let log = OpenOptions::new()
         .create_new(true)
@@ -676,11 +702,14 @@ fn native_stage(
         ));
     }
     store.event(
-        &store
-            .job(&dir.file_name().unwrap_or_default().to_string_lossy())?
-            .id,
+        id,
         "native_receipt",
-        &serde_json::to_string(&evidence)?,
+        &serde_json::json!({
+            "stage":stage.id, "operation":op, "receipt_sha256":digest(&evidence)?,
+            "backend":evidence["backend"], "executed":evidence["executed"],
+            "physical_validation":"unqualified"
+        })
+        .to_string(),
     )?;
     Ok(())
 }
@@ -754,6 +783,8 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         "immutable approved execution plan",
     )?;
     store.add_artifact(id, &manifest)?;
+    let native_work = dir.join(".native-incomplete");
+    let mut native_pending = false;
     for stage in &plan.stages {
         store.event(id, "stage_started", &stage.id)?;
         match stage.operation {
@@ -802,6 +833,15 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                 )?;
             }
             StageOperation::Bundle => {
+                if native_pending {
+                    for artifact in
+                        ingest_native_tree(&native_work, &dir, plan.observation.max_artifact_bytes)?
+                    {
+                        store.add_artifact(id, &artifact)?;
+                    }
+                    fs::remove_dir_all(&native_work)?;
+                    native_pending = false;
+                }
                 let bundle = serde_json::json!({"schema_version":1,"relative_paths":true,"plan":plan,
                     "artifacts":store.artifacts(id)?,"fleetix_revision":FLEETIX_REV,"fleetix_contract_digest":fleetix_digest(),
                     "physical_validation":"unqualified","private_geometry_omitted":false});
@@ -816,7 +856,40 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     )?,
                 )?;
             }
-            _ => native_stage(store, profile, &plan, stage, &dir)?,
+            _ => {
+                if !native_pending {
+                    private_dir(&native_work)?;
+                    commit_artifact(
+                        &native_work,
+                        "plan.json",
+                        &serde_json::to_vec_pretty(&plan)?,
+                        "json",
+                        "approved native input copy",
+                    )?;
+                    let mut normalized = plan.clone();
+                    let c = &mut normalized.case;
+                    for (quantity, dimension, unit) in [
+                        (&mut c.length, "length", "m"),
+                        (&mut c.channel_height, "length", "m"),
+                        (&mut c.geometry_tolerance, "length", "m"),
+                        (&mut c.kinematic_viscosity, "kinematic_viscosity", "m2/s"),
+                        (&mut c.acceleration, "acceleration", "m/s2"),
+                        (&mut c.material.density, "density", "kg/m3"),
+                    ] {
+                        quantity.value = quantity.si(dimension)?;
+                        quantity.unit = unit.into();
+                    }
+                    commit_artifact(
+                        &native_work,
+                        "native-plan.json",
+                        &serde_json::to_vec_pretty(&normalized)?,
+                        "json",
+                        "SI adapter view; original quantities remain in immutable plan.json",
+                    )?;
+                    native_pending = true;
+                }
+                native_stage(store, profile, &plan, stage, &native_work, id)?;
+            }
         }
         if disk_bytes(&dir)? > plan.observation.max_artifact_bytes {
             return Err(Error::Resource(
@@ -824,6 +897,13 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
             ));
         }
         store.event(id, "stage_finished", &stage.id)?;
+    }
+    if native_pending {
+        for artifact in ingest_native_tree(&native_work, &dir, plan.observation.max_artifact_bytes)?
+        {
+            store.add_artifact(id, &artifact)?;
+        }
+        fs::remove_dir_all(&native_work)?;
     }
     Ok(())
 }

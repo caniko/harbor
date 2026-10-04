@@ -6,8 +6,8 @@ import time
 from pathlib import Path
 
 import pytest
-from jsonschema import Draft202012Validator
 from harbor_cad_mcp.server import build_server
+from jsonschema import Draft202012Validator, ValidationError
 
 
 def binary() -> str:
@@ -19,7 +19,7 @@ def test_schema_parity_and_unknown_input_rejection():
     case = json.loads(subprocess.check_output([binary(), "case", "init"]))
     Draft202012Validator(schemas["CaseSpec"]).validate(case)
     case["execute_python"] = "print('no')"
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Draft202012Validator(schemas["CaseSpec"]).validate(case)
 
 
@@ -56,7 +56,18 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
             async with Client(params) as client:
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" in names and "results_describe" in names
+                assert "case_plan_openlb_reference" in names
                 assert not any(x in names for x in ("shell", "python", "install"))
+                # CI cannot implicitly turn a reference into an unsandboxed
+                # native job. Planning rejection is returned by the same worker.
+                native_case = dict(case)
+                native_case["applicability"] = dict(
+                    case["applicability"], formulation="periodic_forced_channel"
+                )
+                rejected = await client.call_tool(
+                    "case_plan_openlb_reference", {"case": native_case}
+                )
+                assert rejected.is_error
                 response = await client.call_tool(
                     "job_submit",
                     {

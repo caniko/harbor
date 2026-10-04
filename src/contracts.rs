@@ -258,6 +258,13 @@ pub struct GpuSelection {
     pub pci: String,
     pub backend_uuid: Option<String>,
 }
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct B1Selections {
+    pub compute: GpuSelection,
+    pub render: GpuSelection,
+    pub media: GpuSelection,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GpuRequirement {
@@ -325,6 +332,8 @@ pub struct ExecutionPlan {
 }
 impl ExecutionPlan {
     pub fn reference(case: CaseSpec) -> Result<Self> {
+        let ram_bytes = 16 * 1024 * 1024 + u64::from(case.resolution) * 160;
+        let max_artifact_bytes = 1048576u64.max(u64::from(case.resolution) * 128);
         let plan = Self {
             schema_version: 1,
             case,
@@ -334,7 +343,7 @@ impl ExecutionPlan {
                 operation: StageOperation::ChannelReference,
                 gpu: GpuRequirement::CpuOnly,
                 selection: None,
-                ram_bytes: 16 * 1024 * 1024,
+                ram_bytes,
                 vram_bytes: 0,
             }],
             transfers: vec![],
@@ -344,7 +353,7 @@ impl ExecutionPlan {
                 retained_times_s: vec![0.],
                 checkpoint_times_s: vec![],
                 preview_times_s: vec![],
-                max_artifact_bytes: 1048576,
+                max_artifact_bytes,
                 scientific_congestion: "fail".into(),
                 preview_may_drop: false,
             },
@@ -355,8 +364,147 @@ impl ExecutionPlan {
         plan.validate()?;
         Ok(plan)
     }
+    pub fn openlb_reference(case: CaseSpec, policy: String) -> Result<Self> {
+        case.validate()?;
+        if !case.geometry.synthetic
+            || case.applicability.formulation != "periodic_forced_channel"
+            || policy == "ci"
+        {
+            return Err(invalid(
+                "native CPU reference requires synthetic periodic channel and systemd policy",
+            ));
+        }
+        let height = case.channel_height.si("length")?;
+        let viscosity = case.kinematic_viscosity.si("kinematic_viscosity")?;
+        let acceleration = case.acceleration.si("acceleration")?.abs();
+        let velocity = acceleration * height * height / (8. * viscosity);
+        let lattice_mach =
+            3f64.sqrt() * velocity * height / f64::from(case.resolution) * 0.1 / viscosity;
+        if velocity == 0. || !lattice_mach.is_finite() || lattice_mach > 0.1 {
+            return Err(invalid(
+                "fixed BGK reference requires nonzero drive and lattice Mach <= 0.1; parameters preserved",
+            ));
+        }
+        let nx = (case.length.si("length")? / height * f64::from(case.resolution)).ceil();
+        let cells =
+            (nx + 4.) * (f64::from(case.resolution) + 6.) * (f64::from(case.resolution) + 4.);
+        let ram = cells * 2048. + 64. * 1024. * 1024.;
+        let disk = cells * 96. * 3. + 32. * 1024. * 1024.;
+        if !ram.is_finite() || ram > i64::MAX as f64 || disk > 1e12 {
+            return Err(invalid("native allocation/staging estimate overflow"));
+        }
+        let stages = vec![
+            Stage {
+                id: "cad".into(),
+                dependencies: vec![],
+                operation: StageOperation::CadFixture,
+                gpu: GpuRequirement::CpuOnly,
+                selection: None,
+                ram_bytes: 1024 * 1024 * 1024,
+                vram_bytes: 0,
+            },
+            Stage {
+                id: "flow".into(),
+                dependencies: vec!["cad".into()],
+                operation: StageOperation::Openlb,
+                gpu: GpuRequirement::CpuOnly,
+                selection: None,
+                ram_bytes: ram.ceil() as u64,
+                vram_bytes: 0,
+            },
+            Stage {
+                id: "bundle".into(),
+                dependencies: vec!["flow".into()],
+                operation: StageOperation::Bundle,
+                gpu: GpuRequirement::CpuOnly,
+                selection: None,
+                ram_bytes: 16 * 1024 * 1024,
+                vram_bytes: 0,
+            },
+        ];
+        let end = case.max_time_s;
+        let plan = Self {
+            schema_version: 1,
+            case,
+            stages,
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec!["channel_relative_l2_error".into()],
+                probes: vec![],
+                retained_times_s: vec![0., end / 2., end],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: disk.ceil() as u64,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        plan.validate()?;
+        Ok(plan)
+    }
     pub fn id(&self) -> Result<String> {
         digest(self)
+    }
+    pub fn b1(case: CaseSpec, selections: B1Selections, policy: String) -> Result<Self> {
+        if selections.compute.role != Role::Compute
+            || selections.compute.backend != "cuda"
+            || selections
+                .compute
+                .backend_uuid
+                .as_ref()
+                .is_none_or(|id| !token(id))
+            || selections.render.role != Role::Render
+            || selections.render.backend != "egl"
+            || selections.media.role != Role::Media
+            || selections.media.backend != "vaapi"
+        {
+            return Err(invalid(
+                "B1 requires independent CUDA UUID/PCI, EGL and VAAPI selections",
+            ));
+        }
+        let mut plan = Self::openlb_reference(case, policy)?;
+        plan.stages.pop();
+        let flow = &mut plan.stages[1];
+        flow.gpu = GpuRequirement::Required;
+        flow.selection = Some(selections.compute);
+        flow.vram_bytes = flow.ram_bytes;
+        let pixels =
+            u64::from(plan.case.presentation.width) * u64::from(plan.case.presentation.height);
+        plan.stages.extend([
+            Stage {
+                id: "render".into(),
+                dependencies: vec!["flow".into()],
+                operation: StageOperation::Render,
+                gpu: GpuRequirement::Required,
+                selection: Some(selections.render),
+                ram_bytes: 1024 * 1024 * 1024,
+                vram_bytes: 128 * 1024 * 1024 + pixels * 32,
+            },
+            Stage {
+                id: "video".into(),
+                dependencies: vec!["render".into()],
+                operation: StageOperation::Video,
+                gpu: GpuRequirement::Required,
+                selection: Some(selections.media),
+                ram_bytes: 512 * 1024 * 1024,
+                vram_bytes: 128 * 1024 * 1024 + pixels * 16,
+            },
+            Stage {
+                id: "bundle".into(),
+                dependencies: vec!["video".into()],
+                operation: StageOperation::Bundle,
+                gpu: GpuRequirement::CpuOnly,
+                selection: None,
+                ram_bytes: 16 * 1024 * 1024,
+                vram_bytes: 0,
+            },
+        ]);
+        plan.observation.max_artifact_bytes += pixels * 4 * 3 + 128 * 1024 * 1024;
+        plan.validate()?;
+        Ok(plan)
     }
     pub fn validate(&self) -> Result<()> {
         self.case.validate()?;
@@ -373,7 +521,14 @@ impl ExecutionPlan {
             return Err(invalid("bounded nonempty DAG required"));
         }
         let mut seen = BTreeSet::new();
+        let mut operations = BTreeSet::new();
         for stage in &self.stages {
+            let op_name = serde_json::to_string(&stage.operation)?;
+            if !operations.insert(op_name) {
+                return Err(invalid(
+                    "one stage per fixed-output adapter operation required",
+                ));
+            }
             if !token(&stage.id)
                 || seen.contains(&stage.id)
                 || stage.dependencies.iter().any(|d| !seen.contains(d))
@@ -385,8 +540,23 @@ impl ExecutionPlan {
             if stage.ram_bytes == 0 {
                 return Err(invalid("explicit RAM estimate required"));
             }
+            if matches!(stage.operation, StageOperation::ChannelReference)
+                && self.case.applicability.formulation != "steady_incompressible_channel"
+            {
+                return Err(invalid("analytical adapter formulation mismatch"));
+            }
+            if matches!(stage.operation, StageOperation::Openlb)
+                && (!self.case.geometry.synthetic
+                    || self.case.applicability.formulation != "periodic_forced_channel")
+            {
+                return Err(invalid(
+                    "OpenLB adapter supports only the synthetic periodic channel",
+                ));
+            }
             let expected_role = match stage.operation {
-                StageOperation::Openlb => Some(Role::Compute),
+                StageOperation::Openlb if stage.gpu != GpuRequirement::CpuOnly => {
+                    Some(Role::Compute)
+                }
                 StageOperation::Render => Some(Role::Render),
                 StageOperation::Video => Some(Role::Media),
                 _ => None,
@@ -406,6 +576,14 @@ impl ExecutionPlan {
                 return Err(invalid("CPU operation cannot claim GPU execution"));
             }
             seen.insert(stage.id.clone());
+        }
+        if let Some(index) = self
+            .stages
+            .iter()
+            .position(|s| matches!(s.operation, StageOperation::Bundle))
+            && index != self.stages.len() - 1
+        {
+            return Err(invalid("bundle must be the final stage"));
         }
         if !self.transfers.is_empty() {
             return Err(Error::Unqualified(
@@ -503,6 +681,13 @@ pub enum Operation {
     Plan {
         case: Box<CaseSpec>,
     },
+    PlanOpenlbReference {
+        case: Box<CaseSpec>,
+    },
+    PlanB1 {
+        case: Box<CaseSpec>,
+        selections: B1Selections,
+    },
     Submit {
         plan: Box<ExecutionPlan>,
         approved_digest: String,
@@ -538,5 +723,6 @@ pub fn schemas() -> serde_json::Value {
         "ExecutionPlan": schemars::schema_for!(ExecutionPlan), "TransferSpec": schemars::schema_for!(TransferSpec),
         "HostExecutionProfile": schemars::schema_for!(HostExecutionProfile), "GpuSelection": schemars::schema_for!(GpuSelection),
         "ObservationPlan": schemars::schema_for!(ObservationPlan), "ArtifactManifest": schemars::schema_for!(ArtifactManifest),
+        "B1Selections": schemars::schema_for!(B1Selections),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
 }

@@ -63,8 +63,24 @@ enum Backend {
 #[derive(Subcommand)]
 enum Case {
     Init,
-    Validate { file: PathBuf },
-    Plan { file: PathBuf },
+    Validate {
+        file: PathBuf,
+    },
+    Plan {
+        file: PathBuf,
+    },
+    PlanOpenlbReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
+    PlanB1 {
+        file: PathBuf,
+        #[arg(long)]
+        devices: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
 }
 #[derive(Subcommand)]
 enum Job {
@@ -162,6 +178,18 @@ fn run(cli: Cli) -> Result<()> {
             }
             Case::Plan { file } => {
                 let plan = ExecutionPlan::reference(read(&file)?)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Case::PlanOpenlbReference { file, policy } => {
+                let plan = ExecutionPlan::openlb_reference(read(&file)?, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Case::PlanB1 {
+                file,
+                devices,
+                policy,
+            } => {
+                let plan = ExecutionPlan::b1(read(&file)?, read(&devices)?, policy)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
             }
         },

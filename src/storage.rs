@@ -169,6 +169,104 @@ fn sync_directories(root: &Path) -> Result<()> {
     fs::File::open(root)?.sync_all()?;
     Ok(())
 }
+pub fn ingest_native_tree(
+    source: &Path,
+    destination: &Path,
+    maximum: u64,
+) -> Result<Vec<ArtifactManifest>> {
+    fn collect(
+        root: &Path,
+        prefix: &Path,
+        paths: &mut Vec<String>,
+        total: &mut u64,
+        maximum: u64,
+    ) -> Result<()> {
+        for entry in fs::read_dir(root.join(prefix))? {
+            let entry = entry?;
+            let relative = prefix.join(entry.file_name());
+            let metadata = fs::symlink_metadata(entry.path())?;
+            if metadata.file_type().is_symlink() || (!metadata.is_file() && !metadata.is_dir()) {
+                return Err(invalid("native output symlink/special file rejected"));
+            }
+            if metadata.is_dir() {
+                collect(root, &relative, paths, total, maximum)?;
+            } else {
+                let name = relative
+                    .to_str()
+                    .ok_or_else(|| invalid("native output path encoding"))?;
+                if name.ends_with(".partial")
+                    || entry.file_name().to_string_lossy().starts_with('.')
+                {
+                    return Err(invalid("incomplete native output rejected"));
+                }
+                if name == "plan.json" {
+                    continue;
+                }
+                *total = total
+                    .checked_add(metadata.len())
+                    .ok_or_else(|| invalid("native size overflow"))?;
+                if *total > maximum || paths.len() >= 8192 {
+                    return Err(Error::Resource(
+                        "bounded native output ingestion budget exhausted".into(),
+                    ));
+                }
+                paths.push(name.into());
+            }
+        }
+        Ok(())
+    }
+    let mut paths = Vec::new();
+    collect(source, Path::new(""), &mut paths, &mut 0, maximum)?;
+    paths.sort();
+    let mut artifacts = Vec::new();
+    for path in paths {
+        let mut file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(safe_path(source, &path)?)?;
+        let bytes = file.metadata()?.len();
+        let mut hash = Sha256::new();
+        let mut count = 0u64;
+        let mut buffer = [0u8; 65536];
+        loop {
+            let n = file.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
+            count = count
+                .checked_add(n as u64)
+                .ok_or_else(|| invalid("native size overflow"))?;
+            if count > bytes || count > maximum {
+                return Err(invalid("native output changed during ingestion"));
+            }
+            hash.update(&buffer[..n]);
+        }
+        if count != bytes {
+            return Err(invalid("native output changed during ingestion"));
+        }
+        let format = Path::new(&path)
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("binary")
+            .to_owned();
+        let manifest = ArtifactManifest {
+            schema_version: 1,
+            path,
+            sha256: format!("{:x}", hash.finalize()),
+            bytes,
+            format,
+            provenance:
+                "closed isolated native output; model/device evidence in companion receipts".into(),
+            units: None,
+            time_s: None,
+            association: None,
+        };
+        copy_verified(source, destination, &manifest)?;
+        artifacts.push(manifest);
+    }
+    sync_directories(destination)?;
+    Ok(artifacts)
+}
 #[derive(Debug, Serialize)]
 pub struct Job {
     pub id: String,
@@ -237,7 +335,7 @@ impl Store {
         if uuid::Uuid::parse_str(id).is_err() {
             return Err(invalid("job UUID required"));
         }
-        Ok(self.connection.query_row(
+        let job: Job = self.connection.query_row(
             "SELECT id,digest,state,unit,invocation,exit_code,created,error FROM jobs WHERE id=?1",
             [id],
             |r| {
@@ -252,7 +350,11 @@ impl Store {
                     error: r.get(7)?,
                 })
             },
-        )?)
+        )?;
+        if job.unit != format!("harbor-cad-job-{}.service", job.id) {
+            return Err(invalid("persisted unit does not match owned job identity"));
+        }
+        Ok(job)
     }
     pub fn plan(&self, id: &str) -> Result<ExecutionPlan> {
         let job = self.job(id)?;
@@ -360,7 +462,7 @@ impl Store {
     }
     pub fn job_dir(&self, id: &str) -> Result<PathBuf> {
         self.job(id)?;
-        let dir = self.root.join("artifacts").join(id);
+        let dir = safe_path(&self.root, &format!("artifacts/{id}"))?;
         fs::create_dir_all(&dir)?;
         Ok(dir)
     }
