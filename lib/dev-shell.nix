@@ -15,6 +15,7 @@
   # Build a devShell with Rust cross-compilation environment variables pre-configured.
   mkDevShell = {
     pkgs,
+    timeZone ? "UTC",
     craneLib,
     cross,
     enableWindowsEnv ? true,
@@ -104,7 +105,7 @@
     then throw "harbor-rs: mkDevShell requires the harbor-meta flake input"
     else
       metaDevShell.mkShell {
-        inherit pkgs;
+        inherit pkgs timeZone;
         packages = basePackages ++ windowsPackages ++ osxPackages ++ opencodeLspPackages ++ packages;
         env = mergedEnv;
         extraShellHook = ''
@@ -142,6 +143,7 @@
   # use `nix develop` for native and `nix develop .#cross` etc.
   mkDevShells = {
     pkgs,
+    timeZone ? "UTC",
     craneLib,
     cross,
     enableOsxcrossEnv ? true,
@@ -158,7 +160,7 @@
       osx ? false,
     }:
       mkDevShell {
-        inherit pkgs craneLib cross pkgConfigDeps packages extraEnv extraShellHook checks cargoConfig opencodeLsp;
+        inherit pkgs timeZone craneLib cross pkgConfigDeps packages extraEnv extraShellHook checks cargoConfig opencodeLsp;
         enableWindowsEnv = win;
         enableOsxcrossEnv = osx && enableOsxcrossEnv;
       };

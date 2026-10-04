@@ -19,7 +19,7 @@
     };
 
     harbor-meta = {
-      url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=feat/shared-timezone-env&rev=44a7c7cbb0cac897bcda2f5ef010dc73362bab9e";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

@@ -2,7 +2,10 @@
 # binaries.  The producer deliberately accepts already-built derivations so a
 # project can choose its own crane/cross helper while harbor-rs owns the
 # archive contract shared by all consumers.
-{pkgs}: let
+{
+  pkgs,
+  timezone ? throw "harbor-rs: archive builders require harbor-meta.lib.timezone",
+}: let
   lib = pkgs.lib;
   inherit (lib) concatStringsSep escapeShellArg optional optionalString;
   common = import ./release-common.nix {inherit lib;};
@@ -28,20 +31,26 @@
       inherit version system rustTarget binaries;
     };
     binaryArgs = concatStringsSep " " (map escapeShellArg binaries);
+    timezoneEnv = timezone.mkEnvironment {
+      inherit pkgs;
+      timeZone = spec.archiveTimezone;
+    };
   in
-    pkgs.runCommand "${pname}-${version}-${system}-release" {
-      nativeBuildInputs = [
-        pkgs.binutils
-        pkgs.coreutils
-        pkgs.file
-        pkgs.gawk
-        pkgs.gnugrep
-        pkgs.gnutar
-        pkgs.gzip
-        pkgs.jq
-      ];
-    } ''
+    pkgs.runCommand "${pname}-${version}-${system}-release" (timezoneEnv.env
+      // {
+        nativeBuildInputs = [
+          pkgs.binutils
+          pkgs.coreutils
+          pkgs.file
+          pkgs.gawk
+          pkgs.gnugrep
+          pkgs.gnutar
+          pkgs.gzip
+          pkgs.jq
+        ];
+      }) ''
       set -euo pipefail
+      ${timezoneEnv.validationScript}
       stage="$TMPDIR/stage"
       mkdir -p "$stage/bin"
 
@@ -87,9 +96,14 @@
     pname,
     version,
     artifacts,
+    archiveTimezone ? "UTC",
   }: let
     archives = lib.mapAttrs (target: spec:
-      mkArchive target (spec // {inherit pname version;}))
+      mkArchive target (spec
+        // {
+          inherit pname version;
+          archiveTimezone = spec.archiveTimezone or archiveTimezone;
+        }))
     artifacts;
     releaseArtifacts = lib.mapAttrs (target: archive: let
       spec = artifacts.${target};

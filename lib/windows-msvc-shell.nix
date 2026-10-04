@@ -12,8 +12,9 @@
 #   - extraShellHook: extra shell-hook fragment appended after SDKROOT (default "")
 #   - checks:        attrset of derivations to materialise on shell entry
 #                    (passed straight to craneLib.devShell)
-{
+{metaShellTools}: {
   pkgs,
+  timeZone ? "UTC",
   lib,
   llvmPackages,
   toolchain,
@@ -76,27 +77,31 @@
     ];
   };
 in
-  toolchain.craneLib.devShell ({
-      inherit checks;
+  metaShellTools.mkShell {
+    inherit pkgs timeZone;
+    packages =
+      (with pkgs; [
+        cmake
+        gcc
+        clang
+        mold
+        lld
+        pkg-config
+        winSdk
+        llvmPackages.clang-unwrapped
+        llvmPackages.bintools-unwrapped
+      ])
+      ++ extraPackages;
 
-      packages =
-        (with pkgs; [
-          cmake
-          gcc
-          clang
-          mold
-          lld
-          pkg-config
-          winSdk
-          llvmPackages.clang-unwrapped
-          llvmPackages.bintools-unwrapped
-        ])
-        ++ extraPackages;
-
-      shellHook = ''
-                export SDKROOT="${sdkRoot}"
-        ${extraShellHook}
-      '';
-    }
-    // baseEnv
-    // extraEnv)
+    extraShellHook = ''
+              export SDKROOT="${sdkRoot}"
+      ${extraShellHook}
+    '';
+    env = baseEnv // extraEnv;
+    builder = spec:
+      toolchain.craneLib.devShell (spec.env
+        // {
+          inherit checks;
+          inherit (spec) packages shellHook;
+        });
+  }

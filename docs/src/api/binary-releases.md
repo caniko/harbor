@@ -84,6 +84,11 @@ let
     pname = "my-app";
     version = "1.2.3";
     artifacts.x86_64-linux.entries.my-app.package = packages.my-app;
+    artifacts.x86_64-linux.extraFiles = {
+      "LICENSE" = {source = ./LICENSE;};
+      "docs/README.md" = {source = ./README.md;};
+      "start-my-app" = {source = ./scripts/start-my-app; mode = "0755";};
+    };
   };
 in {
   packages.release-bundle = release.releaseBundle;
@@ -97,7 +102,21 @@ bundle remains dependent on the host kernel and hardware interfaces (for
 example GPU drivers or PipeWire), which must be smoke-tested before switching
 the production module.
 
+`extraFiles` stages named regular files alongside `bin/` and `manifest.json`.
+Supporting files default to mode `0644`; set `mode = "0755"` for an executable
+launcher. Destinations must be relative paths without empty, `.` or `..`
+segments. Collisions with the manifest, bundled executables, or another file's
+parent/child destination are rejected during evaluation.
+
 ## Generic release bundles
+
+All archive producers use Harbor Meta's shared timezone environment. Set
+`archiveTimezone = "Europe/Istanbul"` on `mkReleaseArchive`, `mkBinaryRelease`,
+or `mkPortableBinaryRelease`; UTC is the default. Binary and portable releases
+also accept a per-artifact `archiveTimezone` override. Both `TZ` and the
+Nix-packaged `TZDIR` reach the builder, and missing zone files fail the build.
+The helper is available as `harbor-rs.lib.timezone` for other builders and
+runtime wrappers. Dev shells accept the independent `timeZone` option.
 
 Projects with more than one release format can use the format-neutral
 constructors. `mkReleaseArtifact` exposes one flat file, `mkReleaseArchive`
@@ -131,3 +150,9 @@ in
   };
 }
 ```
+
+Generic archive entries also accept `{source, mode ? "0644"}` records. A
+relative string source is resolved within `package`; an absolute path or Nix
+path can name an external supporting file. Legacy string entries retain mode
+`0755`. Both archive formats normalize timestamps, and ZIP file ordering is
+deterministic, including destinations containing spaces.
