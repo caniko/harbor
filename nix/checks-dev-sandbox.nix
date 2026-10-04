@@ -6,7 +6,9 @@
   sandbox = mkDevSandbox {
     inherit pkgs harborRsCli;
     name = "fixture-sandbox";
-    environment = {packages = [pkgs.hello];};
+    devShell = pkgs.mkShell {
+      passthru.devShellSpec = {packages = [pkgs.hello];};
+    };
     inputs = ["src" "Cargo.lock"];
     command = ["hello"];
     desktop = "headless";
@@ -18,6 +20,8 @@ in
     assert sandbox.profileData.gpu == false;
     assert sandbox.profileData.tools.dbus == "${pkgs.dbus}/bin/dbus-run-session";
       pkgs.runCommand "dev-sandbox-contract" {} ''
+        ${sandbox}/bin/fixture-sandbox --help > launcher-help.txt
+        grep -q -- --profile launcher-help.txt
         cp ${sandbox.profile} "$out"
       '';
   }

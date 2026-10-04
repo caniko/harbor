@@ -124,6 +124,7 @@ fn supervise(session: &Session, options: &RunOptions, receipt: &mut Receipt) -> 
     let mut cached_source: Option<(String, String)> = None;
     let mut settled_at = Instant::now();
     let mut attempted: Option<String> = None;
+    let mut retry_at: Option<Instant> = None;
     loop {
         if cancelled(session, options, &receipt.run_id) {
             return Ok(0);
@@ -141,9 +142,11 @@ fn supervise(session: &Session, options: &RunOptions, receipt: &mut Receipt) -> 
         if observed.as_ref() != Some(&hash) {
             observed = Some(hash.clone());
             settled_at = Instant::now();
+            retry_at = None;
         }
         let needs_build = attempted.as_ref() != Some(&hash);
         if needs_build
+            && retry_at.is_none_or(|deadline| Instant::now() >= deadline)
             && (attempted.is_none()
                 || settled_at.elapsed() >= Duration::from_millis(session.profile.debounce_ms))
         {
@@ -185,6 +188,8 @@ fn supervise(session: &Session, options: &RunOptions, receipt: &mut Receipt) -> 
                 if !options.watch {
                     return Ok(1);
                 }
+                attempted = None;
+                retry_at = Some(Instant::now() + poll.max(Duration::from_secs(1)));
             }
         }
         if let Some(child) = &mut preview
@@ -197,6 +202,8 @@ fn supervise(session: &Session, options: &RunOptions, receipt: &mut Receipt) -> 
             receipt.last_error = Some(format!("preview exited: {exit}"));
             save(session, receipt)?;
             preview = None;
+            attempted = None;
+            retry_at = Some(Instant::now() + poll.max(Duration::from_secs(1)));
         }
         thread::sleep(poll);
     }
@@ -605,6 +612,7 @@ fn script_text(session: &Session, generation: u64, command: &[String], preview: 
         let _ = writeln!(text, "exec {}", argv(command));
         return text;
     }
+    text.push_str("service_pids=()\ncheck_services() {\n for pid in \"${service_pids[@]}\"; do\n  kill -0 \"$pid\" 2>/dev/null || { printf 'private service exited: %s\\n' \"$pid\" >&2; return 1; }\n done\n}\n");
     if session.profile.desktop != Desktop::None {
         text.push_str("printf '%s\\n' 'output * resolution 1280x800' 'seat seat0 fallback true' 'font monospace 10' > \"$XDG_RUNTIME_DIR/sway.conf\"\n");
         let backend = if session.profile.desktop == Desktop::Headless {
@@ -628,21 +636,22 @@ fn script_text(session: &Session, generation: u64, command: &[String], preview: 
             )
         );
         text.push_str("while :; do\n kill -0 \"$sway_pid\" || exit 1\n for socket in \"$XDG_RUNTIME_DIR\"/wayland-*; do\n  if [ -S \"$socket\" ]; then export WAYLAND_DISPLAY=\"$socket\"; break 2; fi\n done\n sleep 0.05\ndone\n");
+        text.push_str("service_pids+=(\"$sway_pid\")\n");
     }
     for service in &session.profile.services {
-        let _ = writeln!(text, "{} &", argv(service));
+        let _ = writeln!(text, "{} &\nservice_pids+=(\"$!\")", argv(service));
     }
     let _ = writeln!(text, "{} &\npreview_pid=$!", argv(command));
     if let Some(ready) = &session.profile.ready {
         let _ = writeln!(
             text,
-            "until {}; do\n kill -0 \"$preview_pid\" || exit 1\n sleep 0.05\ndone",
+            "until {}; do\n check_services || exit 1\n kill -0 \"$preview_pid\" || exit 1\n sleep 0.05\ndone",
             argv(ready)
         );
     } else {
         text.push_str("sleep 0.2\n");
     }
-    text.push_str("kill -0 \"$preview_pid\"\nprintf ready > \"$XDG_RUNTIME_DIR/ready\"\nwhile kill -0 \"$preview_pid\" 2>/dev/null; do\n if read -r -t 0.05 control && [ \"$control\" = stop ]; then\n  kill -TERM \"$preview_pid\" 2>/dev/null || true\n  wait \"$preview_pid\" || true\n  exit 0\n fi\ndone\nwait \"$preview_pid\"\n");
+    text.push_str("check_services || exit 1\nkill -0 \"$preview_pid\"\nprintf ready > \"$XDG_RUNTIME_DIR/ready\"\nwhile kill -0 \"$preview_pid\" 2>/dev/null; do\n check_services || exit 1\n if read -r -t 0.05 control && [ \"$control\" = stop ]; then\n  kill -TERM \"$preview_pid\" 2>/dev/null || true\n  wait \"$preview_pid\" || true\n  exit 0\n fi\ndone\nwait \"$preview_pid\"\n");
     text
 }
 
