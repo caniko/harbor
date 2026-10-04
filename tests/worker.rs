@@ -12,11 +12,17 @@ impl Drop for Worker {
     }
 }
 fn start(root: &std::path::Path) -> Worker {
+    start_with_profile(
+        root,
+        std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/profiles/ci.json")),
+    )
+}
+fn start_with_profile(root: &std::path::Path, profile: &std::path::Path) -> Worker {
     let child = Command::new(env!("CARGO_BIN_EXE_harbor-cad"))
         .args(["worker", "--state"])
         .arg(root)
         .arg("--profile")
-        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/profiles/ci.json"))
+        .arg(profile)
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
         .spawn()
@@ -78,7 +84,7 @@ fn real_worker_disconnect_idempotency_restart_and_export() {
     .unwrap()
     .data
     .unwrap();
-    assert_eq!(artifacts["items"].as_array().unwrap().len(), 4);
+    assert_eq!(artifacts["items"].as_array().unwrap().len(), 5);
     assert!(artifacts["next_after"].is_null());
     let destination = temp.path().join("portable");
     let export = Command::new(env!("CARGO_BIN_EXE_harbor-cad"))
@@ -205,4 +211,55 @@ fn artifact_pages_fit_transport_and_retain_every_shard() {
         request(&socket, invalid).unwrap().error.unwrap()["code"],
         "invalid_input"
     );
+}
+
+#[test]
+fn queued_job_keeps_effective_profile_when_source_configuration_changes() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("state");
+    let store = Store::open(&root).unwrap();
+    let profile_path = temp.path().join("profile.json");
+    let profile = load_profile(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/profiles/ci.json"
+    )))
+    .unwrap();
+    std::fs::write(&profile_path, serde_json::to_vec(&profile).unwrap()).unwrap();
+    std::fs::create_dir(root.join("artifacts")).unwrap();
+    let occupied = root.join("artifacts/retained-fixture");
+    std::fs::write(&occupied, vec![0u8; profile.max_disk_bytes as usize]).unwrap();
+    let _worker = start_with_profile(&root, &profile_path);
+    let socket = root.join("worker.sock");
+    let plan = ExecutionPlan::reference(CaseSpec::reference()).unwrap();
+    let response = request(
+        &socket,
+        Operation::Submit {
+            approved_digest: plan.id().unwrap(),
+            plan: Box::new(plan),
+            idempotency_key: "frozen-queued".into(),
+        },
+    )
+    .unwrap();
+    assert!(response.ok, "{response:?}");
+    let id = response.data.unwrap()["id"].as_str().unwrap().to_owned();
+    assert_eq!(store.job(&id).unwrap().state, "queued");
+    let mut invalid = profile.clone();
+    invalid.threads = 0;
+    std::fs::write(&profile_path, serde_json::to_vec(&invalid).unwrap()).unwrap();
+    std::fs::remove_file(occupied).unwrap();
+    let deadline = Instant::now();
+    loop {
+        let job = store.job(&id).unwrap();
+        if job.state == "succeeded" {
+            break;
+        }
+        assert_ne!(job.state, "failed", "{job:?}");
+        assert!(deadline.elapsed() < Duration::from_secs(5), "{job:?}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let retained: HostExecutionProfile = serde_json::from_slice(
+        &std::fs::read(store.job_dir(&id).unwrap().join("host-profile.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(digest(&retained).unwrap(), digest(&profile).unwrap());
 }

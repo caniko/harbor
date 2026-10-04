@@ -82,3 +82,18 @@ returned `next_after` until it is null. `results describe` embeds the first
 page. Wait for a terminal job state for a stable traversal; an active job can
 still register files. Export always includes the complete registry regardless
 of page size.
+
+The worker defaults to one admitted plan per state root. It reserves the
+declared peak RAM and full output allowance; native jobs additionally reserve
+space for a verified staging copy. Existing retained artifact bytes count
+against that root's disk budget. Insufficient occupied capacity keeps a job
+queued; a plan exceeding the host's total allowance is rejected. Scientific
+parameters remain as approved.
+
+Each submission atomically binds an immutable host profile to its plan.
+The service reads a sealed copy and exports `host-profile.json`; changing the
+configuration file cannot change a queued or running job. Reusing an
+idempotency key with a different plan or profile is a conflict. Systemd's
+effective `MemoryMax` is the plan's peak estimate, within the host ceiling.
+Legacy jobs without a recorded profile remain readable and exportable, but
+cannot be relaunched automatically under a guessed profile.

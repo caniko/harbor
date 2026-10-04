@@ -12,7 +12,7 @@ pub enum Error {
     Invalid(String),
     #[error("unqualified capability: {0}")]
     Unqualified(String),
-    #[error("idempotency key already belongs to another immutable plan")]
+    #[error("idempotency key already belongs to another immutable plan or host profile")]
     IdempotencyConflict,
     #[error("resource unavailable: {0}")]
     Resource(String),

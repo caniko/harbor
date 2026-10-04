@@ -448,6 +448,25 @@ impl ExecutionPlan {
     pub fn id(&self) -> Result<String> {
         digest(self)
     }
+    pub fn peak_ram(&self) -> u64 {
+        self.stages.iter().map(|s| s.ram_bytes).max().unwrap_or(0)
+    }
+    pub fn disk_reservation(&self) -> Result<u64> {
+        let copies = if self.stages.iter().any(|s| {
+            !matches!(
+                s.operation,
+                StageOperation::ChannelReference | StageOperation::Bundle
+            )
+        }) {
+            2
+        } else {
+            1
+        };
+        self.observation
+            .max_artifact_bytes
+            .checked_mul(copies)
+            .ok_or_else(|| invalid("disk reservation overflow"))
+    }
     pub fn b1(case: CaseSpec, selections: B1Selections, policy: String) -> Result<Self> {
         if selections.compute.role != Role::Compute
             || selections.compute.backend != "cuda"

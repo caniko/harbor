@@ -295,19 +295,39 @@ impl Store {
           CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, job TEXT NOT NULL,
             time INTEGER NOT NULL, kind TEXT NOT NULL, message TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS artifacts(job TEXT NOT NULL, path TEXT NOT NULL, manifest TEXT NOT NULL,
-            PRIMARY KEY(job,path));")?;
+            PRIMARY KEY(job,path));
+          CREATE TABLE IF NOT EXISTS job_profiles(job TEXT PRIMARY KEY, digest TEXT NOT NULL, profile TEXT NOT NULL);")?;
         Ok(Self {
             connection,
             root: root.into(),
         })
     }
     pub fn submit(&self, plan: &ExecutionPlan, key: &str) -> Result<Job> {
+        self.submit_inner(plan, key, None)
+    }
+    pub fn submit_with_profile(
+        &self,
+        plan: &ExecutionPlan,
+        key: &str,
+        profile: &HostExecutionProfile,
+    ) -> Result<Job> {
+        self.submit_inner(plan, key, Some(profile))
+    }
+    fn submit_inner(
+        &self,
+        plan: &ExecutionPlan,
+        key: &str,
+        profile: Option<&HostExecutionProfile>,
+    ) -> Result<Job> {
         plan.validate()?;
         if !token(key) {
             return Err(invalid("bounded idempotency key"));
         }
         let digest = plan.id()?;
-        let tx = self.connection.unchecked_transaction()?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )?;
         if let Some((id, prior)) = tx
             .query_row("SELECT id,digest FROM jobs WHERE idem=?1", [key], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
@@ -317,6 +337,16 @@ impl Store {
             if prior != digest {
                 return Err(Error::IdempotencyConflict);
             }
+            if let Some(profile) = profile {
+                let prior: Option<String> = tx
+                    .query_row("SELECT digest FROM job_profiles WHERE job=?1", [&id], |r| {
+                        r.get(0)
+                    })
+                    .optional()?;
+                if prior.as_deref() != Some(&crate::contracts::digest(profile)?) {
+                    return Err(Error::IdempotencyConflict);
+                }
+            }
             tx.commit()?;
             return self.job(&id);
         }
@@ -324,12 +354,81 @@ impl Store {
         let unit = format!("harbor-cad-job-{id}.service");
         tx.execute("INSERT INTO jobs(id,idem,digest,plan,state,unit,created) VALUES(?1,?2,?3,?4,'queued',?5,?6)",
             params![id,key,digest,serde_json::to_string(plan)?,unit,now()])?;
+        if let Some(profile) = profile {
+            tx.execute(
+                "INSERT INTO job_profiles(job,digest,profile) VALUES(?1,?2,?3)",
+                params![
+                    id,
+                    crate::contracts::digest(profile)?,
+                    serde_json::to_string(profile)?
+                ],
+            )?;
+        }
         tx.execute(
             "INSERT INTO events(job,time,kind,message) VALUES(?1,?2,'submitted',?3)",
             params![id, now(), digest],
         )?;
         tx.commit()?;
         self.job(&id)
+    }
+    pub fn job_profile(&self, id: &str) -> Result<HostExecutionProfile> {
+        self.job(id)?;
+        let row: Option<(String, String)> = self
+            .connection
+            .query_row(
+                "SELECT digest,profile FROM job_profiles WHERE job=?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let (expected, data) = row.ok_or_else(|| {
+            Error::Unqualified(
+                "legacy job has no immutable host profile; no automatic relaunch".into(),
+            )
+        })?;
+        let profile: HostExecutionProfile = serde_json::from_str(&data)?;
+        if digest(&profile)? != expected {
+            return Err(invalid("persisted host profile digest mismatch"));
+        }
+        Ok(profile)
+    }
+    pub fn try_start(
+        &self,
+        id: &str,
+        capacity: &HostExecutionProfile,
+        retained_disk: u64,
+    ) -> Result<bool> {
+        let plan = self.plan(id)?;
+        let disk = plan.disk_reservation()?;
+        if plan.peak_ram() > capacity.max_ram_bytes || disk > capacity.max_disk_bytes {
+            return Err(Error::Resource(
+                "plan exceeds available RAM/staging capacity; parameters preserved".into(),
+            ));
+        }
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )?;
+        // Conservative default: one full-plan reservation per state root. The
+        // starting/running/cancelling state owns it across worker restarts.
+        let active: i64 = tx.query_row(
+            "SELECT count(*) FROM jobs WHERE state IN ('starting','running','cancelling')",
+            [],
+            |r| r.get(0),
+        )?;
+        if active != 0
+            || retained_disk
+                .checked_add(disk)
+                .is_none_or(|n| n > capacity.max_disk_bytes)
+        {
+            return Ok(false);
+        }
+        let started = tx.execute(
+            "UPDATE jobs SET state='starting',error=NULL WHERE id=?1 AND state='queued'",
+            [id],
+        )? == 1;
+        tx.commit()?;
+        Ok(started)
     }
     pub fn job(&self, id: &str) -> Result<Job> {
         if uuid::Uuid::parse_str(id).is_err() {
@@ -395,7 +494,7 @@ impl Store {
         Ok(())
     }
     pub fn active(&self) -> Result<Vec<String>> {
-        let mut stmt = self.connection.prepare("SELECT id FROM jobs WHERE state IN ('queued','starting','running','cancelling') ORDER BY created")?;
+        let mut stmt = self.connection.prepare("SELECT id FROM jobs WHERE state IN ('queued','starting','running','cancelling') ORDER BY created,rowid")?;
         Ok(stmt
             .query_map([], |r| r.get(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?)

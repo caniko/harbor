@@ -102,11 +102,7 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
     if plan.policy != profile.policy {
         return Err(invalid("plan policy differs from effective host profile"));
     }
-    if plan
-        .stages
-        .iter()
-        .any(|s| s.ram_bytes > profile.max_ram_bytes)
-        || plan.observation.max_artifact_bytes > profile.max_disk_bytes
+    if plan.peak_ram() > profile.max_ram_bytes || plan.disk_reservation()? > profile.max_disk_bytes
     {
         return Err(Error::Resource(
             "approved plan exceeds host RAM/disk admission budget; scientific parameters preserved"
@@ -153,20 +149,32 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
     }
     Ok(())
 }
-fn launch(
-    store: &Store,
-    profile: &HostExecutionProfile,
-    profile_path: &Path,
-    id: &str,
-) -> Result<()> {
+fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()> {
     let plan = store.plan(id)?;
-    check_plan(&plan, profile)?;
-    if !store.transition(id, "queued", "starting", None)? {
+    let profile = store.job_profile(id)?;
+    check_plan(&plan, &profile)?;
+    let artifacts = safe_path(&store.root, "artifacts")?;
+    let retained_disk = if artifacts.exists() {
+        disk_bytes(&artifacts)?
+    } else {
+        0
+    };
+    if !store.try_start(id, capacity, retained_disk)? {
         return Ok(());
     }
     let exe = std::env::current_exe()?;
     let root = fs::canonicalize(&store.root)?;
-    let profile_path = fs::canonicalize(profile_path)?;
+    let profiles = safe_path(&root, "profiles")?;
+    private_dir(&profiles)?;
+    let name = format!("{id}.json");
+    commit_artifact(
+        &profiles,
+        &name,
+        &serde_json::to_vec(&profile)?,
+        "json",
+        "immutable effective job profile",
+    )?;
+    let profile_path = profiles.join(name);
     if profile.service_mode == "foreground" {
         let mut cmd = Command::new(exe);
         cmd.args(["run-job", "--state"])
@@ -199,7 +207,7 @@ fn launch(
             .arg("--property=TimeoutStopSec=10s")
             .arg("--property=SendSIGKILL=yes")
             .arg("--property=Restart=no")
-            .arg(format!("--property=MemoryMax={}", profile.max_ram_bytes))
+            .arg(format!("--property=MemoryMax={}", plan.peak_ram()))
             .arg("--property=TasksMax=128")
             .arg(format!(
                 "--property=RuntimeMaxSec={}",
@@ -227,21 +235,16 @@ fn launch(
     store.event(id, "launched", &profile.service_mode)?;
     Ok(())
 }
-fn reconcile(
-    store: &Store,
-    profile: &HostExecutionProfile,
-    profile_path: &Path,
-    startup: bool,
-) -> Result<()> {
+fn reconcile(store: &Store, capacity: &HostExecutionProfile, startup: bool) -> Result<()> {
     for id in store.active()? {
         let job = store.job(&id)?;
         if job.state == "queued" {
-            if let Err(e) = launch(store, profile, profile_path, &id) {
+            if let Err(e) = launch(store, capacity, &id) {
                 store.transition(&id, "queued", "failed", Some(&e.to_string()))?;
                 store.transition(&id, "starting", "failed", Some(&e.to_string()))?;
                 store.event(&id, "launch_rejected", &e.to_string())?;
             }
-        } else if profile.service_mode == "foreground" {
+        } else if store.job_profile(&id)?.service_mode == "foreground" {
             if startup {
                 store.transition(
                     &id,
@@ -315,9 +318,11 @@ fn dispatch(
                 return Err(invalid("immutable plan approval digest mismatch"));
             }
             check_plan(&plan, profile)?;
-            Ok(serde_json::to_value(
-                store.submit(&plan, &idempotency_key)?,
-            )?)
+            Ok(serde_json::to_value(store.submit_with_profile(
+                &plan,
+                &idempotency_key,
+                profile,
+            )?)?)
         }
         Operation::Status { job_id } => Ok(serde_json::to_value(store.job(&job_id)?)?),
         Operation::Logs {
@@ -330,7 +335,7 @@ fn dispatch(
             if job.state == "queued" {
                 store.transition(&job_id, "queued", "cancelled", None)?;
             } else if ["running", "starting", "cancelling"].contains(&job.state.as_str()) {
-                if profile.service_mode != "systemd" {
+                if store.job_profile(&job_id)?.service_mode != "systemd" {
                     return Err(Error::Unqualified(
                         "complete-tree cancellation requires owned systemd service".into(),
                     ));
@@ -392,7 +397,7 @@ pub fn serve(state: &Path, socket: &Path, profile_path: &Path) -> Result<()> {
         }
         fs::remove_file(socket)?;
     }
-    reconcile(&store, &profile, profile_path, true)?;
+    reconcile(&store, &profile, true)?;
     let listener = UnixListener::bind(socket)?;
     fs::set_permissions(socket, fs::Permissions::from_mode(0o600))?;
     listener.set_nonblocking(true)?;
@@ -443,7 +448,7 @@ pub fn serve(state: &Path, socket: &Path, profile_path: &Path) -> Result<()> {
             }
             Err(e) => return Err(e.into()),
         }
-        reconcile(&store, &profile, profile_path, false)?;
+        reconcile(&store, &profile, false)?;
     }
 }
 pub fn request(socket: &Path, op: Operation) -> Result<Response> {
@@ -727,6 +732,11 @@ fn native_stage(
 pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
     let store = Store::open(state)?;
     let profile = load_profile(profile_path)?;
+    if digest(&profile)? != digest(&store.job_profile(id)?)? {
+        return Err(invalid(
+            "effective profile differs from immutable job binding",
+        ));
+    }
     let job = store.job(id)?;
     if !store.transition(id, "starting", "running", None)? {
         return Err(invalid("job must be starting exactly once"));
@@ -794,6 +804,16 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         "immutable approved execution plan",
     )?;
     store.add_artifact(id, &manifest)?;
+    store.add_artifact(
+        id,
+        &commit_artifact(
+            &dir,
+            "host-profile.json",
+            &serde_json::to_vec_pretty(profile)?,
+            "json",
+            "immutable effective host policy and resource limits",
+        )?,
+    )?;
     let native_work = dir.join(".native-incomplete");
     let mut native_pending = false;
     for stage in &plan.stages {

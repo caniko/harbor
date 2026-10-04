@@ -103,17 +103,17 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                     await client.call_tool("results_describe", {"job_id": job["id"]})
                 ).structured_content
                 assert "velocity_m_s" not in json.dumps(description)
-                assert len(description["artifacts"]["items"]) == 3
+                assert len(description["artifacts"]["items"]) == 4
                 assert description["artifacts"]["next_after"] is None
                 artifacts = await client.call_tool(
                     "artifact_list", {"job_id": job["id"], "limit": 1}
                 )
                 page = artifacts.structured_content
-                assert len(page["items"]) == 1 and page["total"] == 3
+                assert len(page["items"]) == 1 and page["total"] == 4
                 remaining = await client.call_tool(
                     "artifact_list", {"job_id": job["id"], "after": page["next_after"]}
                 )
-                assert len(remaining.structured_content["items"]) == 2
+                assert len(remaining.structured_content["items"]) == 3
                 assert remaining.structured_content["next_after"] is None
             async with Client(build_server("results")) as client:
                 names = {t.name for t in (await client.list_tools()).tools}

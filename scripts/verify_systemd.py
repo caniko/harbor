@@ -118,7 +118,9 @@ def main():
                 line.split("=", 1) for line in properties.splitlines() if "=" in line
             )
             assert observed["InvocationID"] == running["invocation_id"]
-            assert observed["MemoryMax"] == str(512 * 1024**2)
+            assert observed["MemoryMax"] == str(
+                max(s["ram_bytes"] for s in plan["stages"])
+            )
             assert observed["KillMode"] == "control-group"
             assert observed["TasksMax"] == "128"
             assert observed["NoNewPrivileges"] == "yes"
