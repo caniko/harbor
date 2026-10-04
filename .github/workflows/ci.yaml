@@ -5,14 +5,19 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: ${{ github.workflow_ref }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   flake-check:
+    timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - system: aarch64-darwin
@@ -39,4 +44,4 @@ jobs:
       - name: Verify runner system
         run: test "$(nix eval --impure --raw --expr builtins.currentSystem)" = "${{ matrix.system }}"
       - name: Check flake
-        run: nix flake check --no-update-lock-file --system "${{ matrix.system }}"
+        run: nix flake check --no-update-lock-file --max-jobs 1 --cores 2 --system "${{ matrix.system }}"
