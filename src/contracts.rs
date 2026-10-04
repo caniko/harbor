@@ -646,6 +646,16 @@ pub struct ArtifactManifest {
     pub time_s: Option<f64>,
     pub association: Option<String>,
 }
+pub fn default_artifact_limit() -> u32 {
+    20
+}
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactPage {
+    pub items: Vec<ArtifactManifest>,
+    pub total: u64,
+    pub next_after: Option<String>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ValidationReport {
@@ -706,6 +716,10 @@ pub enum Operation {
     },
     Artifacts {
         job_id: String,
+        #[serde(default)]
+        after: Option<String>,
+        #[serde(default = "default_artifact_limit")]
+        limit: u32,
     },
     Describe {
         job_id: String,
@@ -724,5 +738,6 @@ pub fn schemas() -> serde_json::Value {
         "HostExecutionProfile": schemars::schema_for!(HostExecutionProfile), "GpuSelection": schemars::schema_for!(GpuSelection),
         "ObservationPlan": schemars::schema_for!(ObservationPlan), "ArtifactManifest": schemars::schema_for!(ArtifactManifest),
         "B1Selections": schemars::schema_for!(B1Selections),
+        "ArtifactPage": schemars::schema_for!(ArtifactPage),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
 }

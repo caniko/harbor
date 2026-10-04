@@ -67,11 +67,19 @@ fn real_worker_disconnect_idempotency_restart_and_export() {
     std::fs::remove_file(&socket).unwrap();
     let _worker = start(&root);
     assert_eq!(request(&socket, submit).unwrap().data.unwrap()["id"], id);
-    let artifacts = request(&socket, Operation::Artifacts { job_id: id.clone() })
-        .unwrap()
-        .data
-        .unwrap();
-    assert_eq!(artifacts.as_array().unwrap().len(), 4);
+    let artifacts = request(
+        &socket,
+        Operation::Artifacts {
+            job_id: id.clone(),
+            after: None,
+            limit: 20,
+        },
+    )
+    .unwrap()
+    .data
+    .unwrap();
+    assert_eq!(artifacts["items"].as_array().unwrap().len(), 4);
+    assert!(artifacts["next_after"].is_null());
     let destination = temp.path().join("portable");
     let export = Command::new(env!("CARGO_BIN_EXE_harbor-cad"))
         .args(["artifact", "export", "--state"])
@@ -122,4 +130,79 @@ fn worker_rejects_approval_drift_unknown_operations_and_gpu_fallback() {
         false
     );
     assert!(Store::open(&root).unwrap().active().unwrap().is_empty());
+}
+
+#[test]
+fn artifact_pages_fit_transport_and_retain_every_shard() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("state");
+    let store = Store::open(&root).unwrap();
+    let job = store
+        .submit(
+            &ExecutionPlan::reference(CaseSpec::reference()).unwrap(),
+            "pages",
+        )
+        .unwrap();
+    store
+        .transition(&job.id, "queued", "starting", None)
+        .unwrap();
+    store.finish(&job.id, 0, None).unwrap();
+    let directory = store.job_dir(&job.id).unwrap();
+    for n in 0..302 {
+        let artifact = commit_artifact(
+            &directory,
+            &format!("shards/{n:04}.csv"),
+            b"x\n1\n",
+            "csv",
+            &"long provenance ".repeat(250),
+        )
+        .unwrap();
+        store.add_artifact(&job.id, &artifact).unwrap();
+    }
+    let _worker = start(&root);
+    let socket = root.join("worker.sock");
+    let mut after = None::<String>;
+    let mut paths = Vec::new();
+    loop {
+        let op = serde_json::from_value(
+            serde_json::json!({"operation":"artifacts","job_id":job.id,"after":after,"limit":100}),
+        )
+        .unwrap();
+        let response = request(&socket, op).unwrap();
+        assert!(response.ok, "{response:?}");
+        assert!(serde_json::to_vec(&response).unwrap().len() < MAX_MESSAGE as usize);
+        let page = response.data.unwrap();
+        assert_eq!(page["total"], 302);
+        for item in page["items"].as_array().unwrap() {
+            paths.push(item["path"].as_str().unwrap().to_owned());
+        }
+        after = page["next_after"].as_str().map(str::to_owned);
+        if after.is_none() {
+            break;
+        }
+        assert_eq!(after.as_ref(), paths.last());
+    }
+    assert_eq!(
+        paths,
+        (0..302)
+            .map(|n| format!("shards/{n:04}.csv"))
+            .collect::<Vec<_>>()
+    );
+    let described = request(
+        &socket,
+        Operation::Describe {
+            job_id: job.id.clone(),
+        },
+    )
+    .unwrap();
+    assert!(described.ok, "{described:?}");
+    assert_eq!(described.data.unwrap()["artifacts"]["total"], 302);
+    let invalid = serde_json::from_value(
+        serde_json::json!({"operation":"artifacts","job_id":job.id,"limit":101}),
+    )
+    .unwrap();
+    assert_eq!(
+        request(&socket, invalid).unwrap().error.unwrap()["code"],
+        "invalid_input"
+    );
 }

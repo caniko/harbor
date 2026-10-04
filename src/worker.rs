@@ -352,13 +352,21 @@ fn dispatch(
             }
             Ok(serde_json::to_value(store.job(&job_id)?)?)
         }
-        Operation::Artifacts { job_id } => Ok(serde_json::to_value(store.artifacts(&job_id)?)?),
+        Operation::Artifacts {
+            job_id,
+            after,
+            limit,
+        } => Ok(serde_json::to_value(store.artifact_page(
+            &job_id,
+            after.as_deref(),
+            limit,
+        )?)?),
         Operation::Describe { job_id } => {
             let plan = store.plan(&job_id)?;
             Ok(
                 serde_json::json!({"job":store.job(&job_id)?,"science_id":plan.case.science_id()?,
                 "execution_id":plan.id()?,"presentation_id":digest(&plan.case.presentation)?,
-                "artifacts":store.artifacts(&job_id)?,"arrays":"retained in artifacts; not embedded in responses"}),
+                "artifacts":store.artifact_page(&job_id, None, default_artifact_limit())?,"arrays":"retained in artifacts; not embedded in responses"}),
             )
         }
     }
@@ -419,13 +427,16 @@ pub fn serve(state: &Path, socket: &Path, profile_path: &Path) -> Result<()> {
                     ),
                 };
                 let data = serde_json::to_vec(&response)?;
-                if data.len() as u64 > MAX_MESSAGE {
-                    let _ = stream
-                        .write_all(b"{\"ok\":false,\"error\":{\"code\":\"response_limit\"}}\n");
+                let data = if data.len() as u64 >= MAX_MESSAGE {
+                    serde_json::to_vec(&reply(
+                        response.request_id,
+                        Err(Error::Resource("response limit; use bounded pages".into())),
+                    ))?
                 } else {
-                    let _ = stream.write_all(&data);
-                    let _ = stream.write_all(b"\n");
-                }
+                    data
+                };
+                let _ = stream.write_all(&data);
+                let _ = stream.write_all(b"\n");
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(25))

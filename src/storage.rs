@@ -411,11 +411,73 @@ impl Store {
         rows.iter().map(|s| Ok(serde_json::from_str(s)?)).collect()
     }
     pub fn add_artifact(&self, id: &str, manifest: &ArtifactManifest) -> Result<()> {
+        self.job(id)?;
+        if manifest.path.len() > 4096 {
+            return Err(invalid("artifact path limit"));
+        }
+        safe_path(&self.root, &manifest.path)?;
+        let data = serde_json::to_string(manifest)?;
+        if data.len() > 16384 {
+            return Err(invalid(
+                "artifact descriptor limit is 16 KiB; retain extended metadata in companion files",
+            ));
+        }
         self.connection.execute(
             "INSERT INTO artifacts(job,path,manifest) VALUES(?1,?2,?3)",
-            params![id, manifest.path, serde_json::to_string(manifest)?],
+            params![id, manifest.path, data],
         )?;
         Ok(())
+    }
+    pub fn artifact_page(&self, id: &str, after: Option<&str>, limit: u32) -> Result<ArtifactPage> {
+        self.job(id)?;
+        if limit == 0 || limit > 100 {
+            return Err(invalid("artifact page limit 1..100"));
+        }
+        if let Some(cursor) = after {
+            if cursor.len() > 4096 {
+                return Err(invalid("artifact cursor limit"));
+            }
+            safe_path(&self.root, cursor)?;
+        }
+        let total: i64 = self.connection.query_row(
+            "SELECT count(*) FROM artifacts WHERE job=?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        let mut stmt = self.connection.prepare(
+            "SELECT path,manifest FROM artifacts WHERE job=?1 AND path>?2 ORDER BY path LIMIT ?3",
+        )?;
+        let mut rows = stmt.query(params![id, after.unwrap_or(""), limit + 1])?;
+        let mut items = Vec::new();
+        let mut bytes = 0;
+        let mut more = false;
+        while let Some(row) = rows.next()? {
+            let path: String = row.get(0)?;
+            let data: String = row.get(1)?;
+            if data.len() > 16384 {
+                return Err(invalid("persisted artifact descriptor exceeds limit"));
+            }
+            if items.len() == limit as usize || bytes + data.len() > 24576 {
+                more = true;
+                break;
+            }
+            let item: ArtifactManifest = serde_json::from_str(&data)?;
+            if item.path != path {
+                return Err(invalid("persisted artifact path mismatch"));
+            }
+            bytes += data.len();
+            items.push(item);
+        }
+        let next_after = if more {
+            items.last().map(|a| a.path.clone())
+        } else {
+            None
+        };
+        Ok(ArtifactPage {
+            items,
+            total: total as u64,
+            next_after,
+        })
     }
     pub fn export(&self, id: &str, destination: &Path) -> Result<usize> {
         if self.job(id)?.state != "succeeded" {

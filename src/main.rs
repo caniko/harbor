@@ -113,6 +113,10 @@ enum Results {
 enum Artifact {
     List {
         id: String,
+        #[arg(long)]
+        after: Option<String>,
+        #[arg(long, default_value = "20")]
+        limit: u32,
     },
     Export {
         #[arg(long)]
@@ -215,7 +219,11 @@ fn run(cli: Cli) -> Result<()> {
             command: Results::Describe { id },
         } => Operation::Describe { job_id: id },
         Commands::Artifact { command } => match command {
-            Artifact::List { id } => Operation::Artifacts { job_id: id },
+            Artifact::List { id, after, limit } => Operation::Artifacts {
+                job_id: id,
+                after,
+                limit,
+            },
             Artifact::Export {
                 state,
                 id,

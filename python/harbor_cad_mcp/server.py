@@ -94,9 +94,16 @@ def build_server(profile: str) -> MCPServer:
             return await request("describe", job_id=job_id)
 
         @server.tool()
-        async def artifact_list(job_id: str) -> list:
-            """List retained scientific records and relative paths for offline export."""
-            return await request("artifacts", job_id=job_id)
+        async def artifact_list(
+            job_id: str, after: str | None = None, limit: int = 20
+        ) -> dict[str, Any]:
+            """Read a byte-bounded page; pass next_after until null to retain every descriptor.
+
+            For a stable full traversal, wait for a terminal job state. Export always copies all records.
+            """
+            if not 1 <= limit <= 100:
+                raise ValueError("artifact page limit 1..100 required")
+            return await request("artifacts", job_id=job_id, after=after, limit=limit)
 
     return server
 
