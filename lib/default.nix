@@ -21,6 +21,7 @@
 in
   {
     inherit bun node;
+    timezone = harbor-meta.lib.timezone;
   }
   // {
     inherit (bun) mkBunPackage mkBunToolchain mkBunDevShell mkBunWorkspaceDeps readPackageManagerVersion;

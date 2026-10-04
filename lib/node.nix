@@ -61,6 +61,7 @@
 
   mkNodeDevShell = {
     pkgs,
+    timeZone ? "UTC",
     nodejs ? pkgs.nodejs,
     pnpm ? null,
     packageJson ? null,
@@ -74,7 +75,7 @@
       toolchain = mkNodeToolchain {inherit pkgs nodejs pnpm packageJson extraPackages;};
     in
       metaDevShell.mkShell {
-        inherit pkgs extraShellHook;
+        inherit pkgs timeZone extraShellHook;
         inherit (toolchain) packages;
         env = toolchain.env // extraEnv;
       };

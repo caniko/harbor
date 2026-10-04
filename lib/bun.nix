@@ -165,6 +165,7 @@ in rec {
 
   mkBunDevShell = {
     pkgs,
+    timeZone ? "UTC",
     packageJson ? null,
     version ? null,
     extraPackages ? [],
@@ -179,7 +180,7 @@ in rec {
       };
     in
       metaDevShell.mkShell {
-        inherit pkgs;
+        inherit pkgs timeZone;
         packages = toolchain.packages;
         env = toolchain.env // extraEnv;
         inherit extraShellHook;
