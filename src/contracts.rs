@@ -1,0 +1,542 @@
+use crate::{Error, Result, science::Quantity};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
+
+pub const PROTOCOL_VERSION: u32 = 1;
+pub const FLEETIX_REV: &str = "2230d9ee804a66d94424a91919182e4fcca13ab2";
+pub const MAX_MESSAGE: u64 = 65536;
+
+pub fn digest<T: Serialize>(value: &T) -> Result<String> {
+    Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(value)?)))
+}
+pub fn invalid(message: impl Into<String>) -> Error {
+    Error::Invalid(message.into())
+}
+pub fn token(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && s.bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"_-".contains(&c))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Provenance {
+    pub source: String,
+    pub sha256: Option<String>,
+    pub synthetic: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Material {
+    pub name: String,
+    pub provenance: Provenance,
+    pub density: Quantity,
+    pub humidity_fraction: Option<f64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PhysicsApplicability {
+    pub formulation: String,
+    pub dimensionality: u8,
+    pub precision: String,
+    pub validated_reynolds_max: Option<f64>,
+    pub exclusions: Vec<String>,
+    pub numerical_tolerance: f64,
+    pub physical_validation: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Claim {
+    Velocity,
+    Cooling,
+    ResolvedIngress,
+    SnowDeposition,
+    IceDamage,
+    MaterialLifetime,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Presentation {
+    pub camera: [f64; 3],
+    pub width: u32,
+    pub height: u32,
+    pub field: String,
+    pub range: [f64; 2],
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CaseSpec {
+    pub schema_version: u32,
+    pub name: String,
+    pub geometry: Provenance,
+    pub regions: Vec<String>,
+    pub material: Material,
+    pub applicability: PhysicsApplicability,
+    pub length: Quantity,
+    pub channel_height: Quantity,
+    pub kinematic_viscosity: Quantity,
+    pub acceleration: Quantity,
+    pub geometry_tolerance: Quantity,
+    pub resolution: u32,
+    pub max_time_s: f64,
+    pub claims: Vec<Claim>,
+    pub presentation: Presentation,
+}
+impl CaseSpec {
+    pub fn reference() -> Self {
+        Self {
+            schema_version: 1,
+            name: "synthetic-channel".into(),
+            geometry: Provenance {
+                source: "synthetic parallel plates".into(),
+                sha256: None,
+                synthetic: true,
+            },
+            regions: vec!["fluid".into(), "wall".into()],
+            material: Material {
+                name: "synthetic Newtonian fluid".into(),
+                provenance: Provenance {
+                    source: "analytical fixture".into(),
+                    sha256: None,
+                    synthetic: true,
+                },
+                density: Quantity {
+                    value: 1.,
+                    unit: "kg/m3".into(),
+                },
+                humidity_fraction: None,
+            },
+            applicability: PhysicsApplicability {
+                formulation: "steady_incompressible_channel".into(),
+                dimensionality: 3,
+                precision: "float64".into(),
+                validated_reynolds_max: None,
+                exclusions: vec!["thermal coupling".into(), "wetting and ingress".into()],
+                numerical_tolerance: 1e-12,
+                physical_validation: "unqualified".into(),
+            },
+            length: Quantity {
+                value: 1.,
+                unit: "m".into(),
+            },
+            channel_height: Quantity {
+                value: 0.01,
+                unit: "m".into(),
+            },
+            kinematic_viscosity: Quantity {
+                value: 1e-5,
+                unit: "m2/s".into(),
+            },
+            acceleration: Quantity {
+                value: 0.1,
+                unit: "m/s2".into(),
+            },
+            geometry_tolerance: Quantity {
+                value: 1e-5,
+                unit: "m".into(),
+            },
+            resolution: 33,
+            max_time_s: 1.,
+            claims: vec![Claim::Velocity],
+            presentation: Presentation {
+                camera: [1., 1., 1.],
+                width: 640,
+                height: 480,
+                field: "velocity".into(),
+                range: [0., 0.125],
+            },
+        }
+    }
+    pub fn validate(&self) -> Result<()> {
+        if self.schema_version != 1 || !token(&self.name) {
+            return Err(invalid("case version/name"));
+        }
+        for (q, dimension) in [
+            (&self.length, "length"),
+            (&self.channel_height, "length"),
+            (&self.kinematic_viscosity, "kinematic_viscosity"),
+            (&self.material.density, "density"),
+        ] {
+            if q.si(dimension)? <= 0. {
+                return Err(invalid(format!("positive {dimension} required")));
+            }
+        }
+        self.acceleration.si("acceleration")?;
+        if self.geometry_tolerance.si("length")? <= 0. {
+            return Err(invalid("positive explicit CAD chord tolerance required"));
+        }
+        if !(3..=1_000_000).contains(&self.resolution)
+            || !self.max_time_s.is_finite()
+            || self.max_time_s <= 0.
+        {
+            return Err(invalid("resolution/time outside explicit limits"));
+        }
+        if self.regions.is_empty()
+            || self.regions.iter().any(|r| !token(r))
+            || self.regions.iter().collect::<BTreeSet<_>>().len() != self.regions.len()
+        {
+            return Err(invalid("regions must be unique, named and unambiguous"));
+        }
+        if let Some(h) = self.material.humidity_fraction
+            && (!h.is_finite() || !(0.0..=1.).contains(&h))
+        {
+            return Err(invalid("humidity fraction"));
+        }
+        if self.applicability.precision != "float64"
+            || self.applicability.dimensionality != 3
+            || !self.applicability.numerical_tolerance.is_finite()
+            || self.applicability.numerical_tolerance <= 0.
+        {
+            return Err(invalid(
+                "unsupported dimensionality, precision or tolerance",
+            ));
+        }
+        if self.applicability.physical_validation != "unqualified" {
+            return Err(invalid(
+                "physical validation must come from evidence, not a case assertion",
+            ));
+        }
+        for claim in &self.claims {
+            match claim {
+                Claim::Velocity => {}
+                Claim::Cooling => {
+                    return Err(invalid(
+                        "velocity alone cannot define cooling; heat-flux or correlation inputs required",
+                    ));
+                }
+                Claim::ResolvedIngress => {
+                    return Err(invalid("no validated resolved gap/wetting model"));
+                }
+                Claim::SnowDeposition => return Err(invalid("prescribed snow is not deposition")),
+                Claim::IceDamage => return Err(invalid("latent heat is not ice damage")),
+                Claim::MaterialLifetime => {
+                    return Err(invalid("dose is not calibrated material lifetime"));
+                }
+            }
+        }
+        if self.presentation.width == 0
+            || self.presentation.height == 0
+            || self.presentation.width > 4096
+            || self.presentation.height > 4096
+            || self
+                .presentation
+                .camera
+                .iter()
+                .chain(self.presentation.range.iter())
+                .any(|v| !v.is_finite())
+            || self.presentation.range[0] >= self.presentation.range[1]
+        {
+            return Err(invalid("presentation budget or fixed comparison range"));
+        }
+        Ok(())
+    }
+    pub fn science_id(&self) -> Result<String> {
+        let mut value = serde_json::to_value(self)?;
+        value
+            .as_object_mut()
+            .ok_or_else(|| invalid("case serialization"))?
+            .remove("presentation");
+        digest(&value)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    Compute,
+    Render,
+    Media,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GpuSelection {
+    pub role: Role,
+    pub backend: String,
+    pub pci: String,
+    pub backend_uuid: Option<String>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GpuRequirement {
+    Required,
+    Preferred,
+    CpuOnly,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StageOperation {
+    ChannelReference,
+    CadFixture,
+    CadInspect,
+    Openlb,
+    Render,
+    Video,
+    Bundle,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Stage {
+    pub id: String,
+    pub dependencies: Vec<String>,
+    pub operation: StageOperation,
+    pub gpu: GpuRequirement,
+    pub selection: Option<GpuSelection>,
+    pub ram_bytes: u64,
+    pub vram_bytes: u64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationPlan {
+    pub metrics: Vec<String>,
+    pub probes: Vec<[f64; 3]>,
+    pub retained_times_s: Vec<f64>,
+    pub checkpoint_times_s: Vec<f64>,
+    pub preview_times_s: Vec<f64>,
+    pub max_artifact_bytes: u64,
+    pub scientific_congestion: String,
+    pub preview_may_drop: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TransferSpec {
+    pub source_region: String,
+    pub destination_region: String,
+    pub source_quantity: String,
+    pub destination_quantity: String,
+    pub unit: String,
+    pub orientation: [f64; 3],
+    pub interpolation: String,
+    pub maximum_relative_conservation_error: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExecutionPlan {
+    pub schema_version: u32,
+    pub case: CaseSpec,
+    pub stages: Vec<Stage>,
+    pub transfers: Vec<TransferSpec>,
+    pub observation: ObservationPlan,
+    pub fleetix_revision: String,
+    pub fleetix_contract_digest: String,
+    pub policy: String,
+}
+impl ExecutionPlan {
+    pub fn reference(case: CaseSpec) -> Result<Self> {
+        let plan = Self {
+            schema_version: 1,
+            case,
+            stages: vec![Stage {
+                id: "reference".into(),
+                dependencies: vec![],
+                operation: StageOperation::ChannelReference,
+                gpu: GpuRequirement::CpuOnly,
+                selection: None,
+                ram_bytes: 16 * 1024 * 1024,
+                vram_bytes: 0,
+            }],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec!["mean_velocity".into()],
+                probes: vec![],
+                retained_times_s: vec![0.],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 1048576,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy: "ci".into(),
+        };
+        plan.validate()?;
+        Ok(plan)
+    }
+    pub fn id(&self) -> Result<String> {
+        digest(self)
+    }
+    pub fn validate(&self) -> Result<()> {
+        self.case.validate()?;
+        if self.schema_version != 1
+            || self.fleetix_revision != FLEETIX_REV
+            || self.fleetix_contract_digest != fleetix_digest()
+        {
+            return Err(invalid("schema/Fleetix source or contract drift"));
+        }
+        if !["ci", "prototype", "production", "research"].contains(&self.policy.as_str()) {
+            return Err(invalid("policy"));
+        }
+        if self.stages.is_empty() || self.stages.len() > 32 {
+            return Err(invalid("bounded nonempty DAG required"));
+        }
+        let mut seen = BTreeSet::new();
+        for stage in &self.stages {
+            if !token(&stage.id)
+                || seen.contains(&stage.id)
+                || stage.dependencies.iter().any(|d| !seen.contains(d))
+            {
+                return Err(invalid(
+                    "DAG requires unique IDs and topologically ordered dependencies",
+                ));
+            }
+            if stage.ram_bytes == 0 {
+                return Err(invalid("explicit RAM estimate required"));
+            }
+            let expected_role = match stage.operation {
+                StageOperation::Openlb => Some(Role::Compute),
+                StageOperation::Render => Some(Role::Render),
+                StageOperation::Video => Some(Role::Media),
+                _ => None,
+            };
+            if let Some(role) = expected_role {
+                if stage.gpu != GpuRequirement::Required
+                    || stage.selection.as_ref().map(|s| s.role) != Some(role)
+                {
+                    return Err(invalid(
+                        "native B1 operations require explicit role/device selection; no fallback",
+                    ));
+                }
+            } else if stage.gpu != GpuRequirement::CpuOnly
+                || stage.selection.is_some()
+                || stage.vram_bytes != 0
+            {
+                return Err(invalid("CPU operation cannot claim GPU execution"));
+            }
+            seen.insert(stage.id.clone());
+        }
+        if !self.transfers.is_empty() {
+            return Err(Error::Unqualified(
+                "coupled transfers require model-specific conservation qualification".into(),
+            ));
+        }
+        if self.observation.max_artifact_bytes < u64::from(self.case.resolution) * 128
+            || self.observation.max_artifact_bytes > 1_000_000_000_000
+            || self.observation.scientific_congestion != "fail"
+        {
+            return Err(invalid("scientific output budget/congestion policy"));
+        }
+        if self.observation.probes.len() > 256
+            || self
+                .observation
+                .probes
+                .iter()
+                .flatten()
+                .any(|v| !v.is_finite())
+        {
+            return Err(invalid("bounded finite probes required"));
+        }
+        for times in [
+            &self.observation.retained_times_s,
+            &self.observation.checkpoint_times_s,
+            &self.observation.preview_times_s,
+        ] {
+            if times.len() > 1024
+                || times
+                    .iter()
+                    .any(|t| !t.is_finite() || *t < 0. || *t > self.case.max_time_s)
+                || times.windows(2).any(|p| p[0] >= p[1])
+            {
+                return Err(invalid("ordered, bounded observation times required"));
+            }
+        }
+        if !self.observation.checkpoint_times_s.is_empty() {
+            return Err(Error::Unqualified("no verified checkpoint adapter".into()));
+        }
+        Ok(())
+    }
+}
+pub fn fleetix_digest() -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(fleetix::gpu::CONTRACT_JSON.as_bytes())
+    )
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactManifest {
+    pub schema_version: u32,
+    pub path: String,
+    pub sha256: String,
+    pub bytes: u64,
+    pub format: String,
+    pub provenance: String,
+    pub units: Option<String>,
+    pub time_s: Option<f64>,
+    pub association: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ValidationReport {
+    pub process: String,
+    pub convergence: String,
+    pub numerical_verification: String,
+    pub physical_validation: String,
+    pub limitations: Vec<String>,
+    pub moisture_risk: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HostExecutionProfile {
+    pub schema_version: u32,
+    pub policy: String,
+    pub allowed_input_root: String,
+    pub max_ram_bytes: u64,
+    pub max_disk_bytes: u64,
+    pub threads: u32,
+    pub timeout_seconds: u32,
+    pub native_runtime: Option<String>,
+    pub service_mode: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Operation {
+    Doctor,
+    BackendList,
+    Validate {
+        case: Box<CaseSpec>,
+    },
+    Plan {
+        case: Box<CaseSpec>,
+    },
+    Submit {
+        plan: Box<ExecutionPlan>,
+        approved_digest: String,
+        idempotency_key: String,
+    },
+    Status {
+        job_id: String,
+    },
+    Logs {
+        job_id: String,
+        after: u64,
+        limit: u32,
+    },
+    Cancel {
+        job_id: String,
+    },
+    Artifacts {
+        job_id: String,
+    },
+    Describe {
+        job_id: String,
+    },
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkerRequest {
+    pub protocol_version: u32,
+    pub request_id: String,
+    pub request: Operation,
+}
+pub fn schemas() -> serde_json::Value {
+    serde_json::json!({"CaseSpec": schemars::schema_for!(CaseSpec), "PhysicsApplicability": schemars::schema_for!(PhysicsApplicability),
+        "ExecutionPlan": schemars::schema_for!(ExecutionPlan), "TransferSpec": schemars::schema_for!(TransferSpec),
+        "HostExecutionProfile": schemars::schema_for!(HostExecutionProfile), "GpuSelection": schemars::schema_for!(GpuSelection),
+        "ObservationPlan": schemars::schema_for!(ObservationPlan), "ArtifactManifest": schemars::schema_for!(ArtifactManifest),
+        "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
+}

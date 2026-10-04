@@ -1,0 +1,48 @@
+pub mod contracts;
+pub mod devices;
+pub mod science;
+pub mod storage;
+pub mod worker;
+
+use serde::Serialize;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("invalid input: {0}")]
+    Invalid(String),
+    #[error("unqualified capability: {0}")]
+    Unqualified(String),
+    #[error("idempotency key already belongs to another immutable plan")]
+    IdempotencyConflict,
+    #[error("resource unavailable: {0}")]
+    Resource(String),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Sql(#[from] rusqlite::Error),
+}
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Serialize)]
+pub struct Diagnostic {
+    pub code: &'static str,
+    pub message: String,
+}
+impl Error {
+    pub fn diagnostic(&self) -> Diagnostic {
+        Diagnostic {
+            code: match self {
+                Self::Invalid(_) => "invalid_input",
+                Self::Unqualified(_) => "unqualified",
+                Self::IdempotencyConflict => "idempotency_conflict",
+                Self::Resource(_) => "resource_unavailable",
+                Self::Io(_) => "io_error",
+                Self::Json(_) => "protocol_error",
+                Self::Sql(_) => "state_error",
+            },
+            message: self.to_string(),
+        }
+    }
+}

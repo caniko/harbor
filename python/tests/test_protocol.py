@@ -1,0 +1,103 @@
+import asyncio
+import json
+import os
+import subprocess
+import time
+from pathlib import Path
+
+import pytest
+from jsonschema import Draft202012Validator
+from harbor_cad_mcp.server import build_server
+
+
+def binary() -> str:
+    return os.environ["HARBOR_CAD_TEST_BINARY"]
+
+
+def test_schema_parity_and_unknown_input_rejection():
+    schemas = json.loads(subprocess.check_output([binary(), "schema"]))
+    case = json.loads(subprocess.check_output([binary(), "case", "init"]))
+    Draft202012Validator(schemas["CaseSpec"]).validate(case)
+    case["execute_python"] = "print('no')"
+    with pytest.raises(Exception):
+        Draft202012Validator(schemas["CaseSpec"]).validate(case)
+
+
+def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters
+
+    root = tmp_path / "state"
+    profile = Path(__file__).parents[2] / "profiles" / "ci.json"
+    worker = subprocess.Popen(
+        [binary(), "worker", "--state", str(root), "--profile", str(profile.resolve())]
+    )
+    socket = root / "worker.sock"
+    monkeypatch.setenv("HARBOR_CAD_SOCKET", str(socket))
+    try:
+        deadline = time.monotonic() + 5
+        while not socket.exists():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        case = json.loads(subprocess.check_output([binary(), "case", "init"]))
+        result = json.loads(
+            subprocess.check_output(
+                [binary(), "case", "plan", "/dev/stdin"],
+                input=json.dumps(case).encode(),
+            )
+        )
+
+        async def check():
+            params = StdioServerParameters(
+                command=str(Path(os.sys.executable)),
+                args=["-m", "harbor_cad_mcp.server", "--profile", "all"],
+                env=dict(os.environ),
+            )
+            async with Client(params) as client:
+                names = {t.name for t in (await client.list_tools()).tools}
+                assert "job_submit" in names and "results_describe" in names
+                assert not any(x in names for x in ("shell", "python", "install"))
+                response = await client.call_tool(
+                    "job_submit",
+                    {
+                        "plan": result["plan"],
+                        "approved_digest": result["approval_digest"],
+                        "idempotency_key": "real-mcp-client",
+                    },
+                )
+                job = response.structured_content
+                assert job and job["id"], response
+                deadline = time.monotonic() + 10
+                while True:
+                    status = (
+                        await client.call_tool("job_status", {"job_id": job["id"]})
+                    ).structured_content
+                    if status["state"] == "succeeded":
+                        break
+                    assert status["state"] != "failed", status
+                    assert time.monotonic() < deadline
+                    await asyncio.sleep(0.02)
+                duplicate = (
+                    await client.call_tool(
+                        "job_submit",
+                        {
+                            "plan": result["plan"],
+                            "approved_digest": result["approval_digest"],
+                            "idempotency_key": "real-mcp-client",
+                        },
+                    )
+                ).structured_content
+                assert duplicate["id"] == job["id"]
+                description = (
+                    await client.call_tool("results_describe", {"job_id": job["id"]})
+                ).structured_content
+                assert "velocity_m_s" not in json.dumps(description)
+                assert len(description["artifacts"]) == 3
+            async with Client(build_server("results")) as client:
+                names = {t.name for t in (await client.list_tools()).tools}
+                assert "job_submit" not in names and "results_describe" in names
+
+        asyncio.run(check())
+    finally:
+        worker.terminate()
+        worker.wait(timeout=5)

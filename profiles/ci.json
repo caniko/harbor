@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "policy": "ci",
+  "allowed_input_root": "/nonexistent",
+  "max_ram_bytes": 67108864,
+  "max_disk_bytes": 1048576,
+  "threads": 1,
+  "timeout_seconds": 60,
+  "native_runtime": null,
+  "service_mode": "foreground"
+}
