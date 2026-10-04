@@ -4,6 +4,9 @@ Shared harbor helpers for editor and agent tooling.
 
 `harbor-meta` owns cross-language policy shared by the language harbors.
 
+[Timezone environments](docs/timezone.md) supply configurable `TZ` and a
+Nix-packaged `TZDIR` for shells, builders and runtime wrappers, defaulting to UTC.
+
 Formatting uses independent [treefmt modules](docs/treefmt.md), composed
 explicitly by each repository rather than inherited from a parent Harbor.
 

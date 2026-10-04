@@ -23,6 +23,7 @@ _: rec {
 
   mkShell = {
     pkgs,
+    timeZone ? "UTC",
     fragments ? [],
     packages ? [],
     env ? {},
@@ -30,7 +31,7 @@ _: rec {
     builder ? null,
     mkShellArgs ? {},
   }: let
-    spec = merge (
+    merged = merge (
       fragments
       ++ [
         {
@@ -39,6 +40,17 @@ _: rec {
         }
       ]
     );
+    timezone = (import ./timezone.nix).mkEnvironment {
+      inherit pkgs;
+      timeZone = merged.env.TZ or timeZone;
+    };
+    spec =
+      merged
+      // {
+        packages = merged.packages ++ timezone.packages;
+        env = timezone.env // merged.env;
+        shellHook = timezone.validationScript + merged.shellHook;
+      };
     drv =
       if builder != null
       then builder spec

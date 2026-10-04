@@ -69,6 +69,10 @@
             inherit harborOpencode;
           })
           // {
+            timezone = import ./checks/timezone.nix {
+              inherit pkgs;
+              inherit (self) lib;
+            };
             treefmt-modules = import ./checks/treefmt.nix {
               inherit pkgs;
               inherit (inputs) treefmt-nix;
