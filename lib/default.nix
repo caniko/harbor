@@ -2,6 +2,7 @@
   nixpkgs,
   harbor-meta,
 }: rec {
+  timezone = harbor-meta.lib.timezone;
   mkEthToolchain = {
     pkgs,
     foundry ? pkgs.foundry,
@@ -22,11 +23,15 @@
     shellHook = "";
   };
 
-  mkEthDevShell = {pkgs, ...} @ args:
+  mkEthDevShell = {
+    pkgs,
+    timeZone ? "UTC",
+    ...
+  } @ args:
     harbor-meta.lib.devShell.mkShell {
-      inherit pkgs;
+      inherit pkgs timeZone;
       fragments = [
-        (mkEthDevShellFragment args)
+        (mkEthDevShellFragment (builtins.removeAttrs args ["timeZone"]))
       ];
     };
 }
