@@ -7,7 +7,7 @@
     flake-utils.url = "github:numtide/flake-utils";
 
     harbor-meta = {
-      url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk&rev=47bc4564cf35fc080e7003e95de18c57dd37e845";
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=feat/shared-timezone-env&rev=44a7c7cbb0cac897bcda2f5ef010dc73362bab9e";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -52,9 +52,10 @@
       in {
         formatter = treefmt.config.build.wrapper;
 
-        devShells.default = pkgs.mkShell {
+        devShells.default = harbor-meta.lib.devShell.mkShell {
+          inherit pkgs;
           packages = [pkgs.mdbook];
-          shellHook = ''
+          extraShellHook = ''
             echo "Docs preview: mdbook serve templates/default/docs"
           '';
         };
