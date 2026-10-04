@@ -1,5 +1,6 @@
 pub mod contracts;
 pub mod devices;
+pub mod resources;
 pub mod science;
 pub mod storage;
 pub mod worker;

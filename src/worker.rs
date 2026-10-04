@@ -1,4 +1,4 @@
-use crate::{Error, Result, contracts::*, devices, science, storage::*};
+use crate::{Error, Result, contracts::*, devices, resources, science, storage::*};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -764,29 +764,20 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
     check_plan(&plan, profile)?;
     let dir = store.job_dir(id)?;
     // Hold one physical-card reservation across roles and stages, independent of worker lifetime.
-    let reservations = store.root.join("reservations");
-    fs::create_dir_all(&reservations)?;
-    let mut locks = Vec::new();
-    let keys: std::collections::BTreeSet<_> = plan
+    let keys: Vec<_> = plan
         .stages
         .iter()
         .filter_map(|s| s.selection.as_ref().map(|g| g.pci.clone()))
         .collect();
-    for pci in keys {
-        if !pci
-            .bytes()
-            .all(|c| c.is_ascii_hexdigit() || b":.".contains(&c))
-        {
-            return Err(invalid("PCI reservation identity"));
-        }
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .mode(0o600)
-            .open(reservations.join(pci))?;
+    let _locks = if keys.is_empty() {
+        Vec::new()
+    } else {
+        let reservations = resources::card_reservation_root()?;
         let start = Instant::now();
-        while file.try_lock_exclusive().is_err() {
+        loop {
+            if let Some(locks) = resources::try_reserve_cards(&reservations, &keys)? {
+                break locks;
+            }
             if start.elapsed().as_secs() > u64::from(profile.timeout_seconds) {
                 return Err(Error::Resource(
                     "physical card reservation wait expired".into(),
@@ -794,8 +785,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        locks.push(file);
-    }
+    };
     let manifest = commit_artifact(
         &dir,
         "plan.json",

@@ -97,3 +97,10 @@ idempotency key with a different plan or profile is a conflict. Systemd's
 effective `MemoryMax` is the plan's peak estimate, within the host ceiling.
 Legacy jobs without a recorded profile remain readable and exportable, but
 cannot be relaunched automatically under a guessed profile.
+
+GPU jobs share exclusive physical-card anchors under
+`/run/user/UID/harbor-cad/cards` across state roots. Compute, render and media
+selections on one PCI card share one reservation. A job holds its files across
+stages independently of the worker, and waits before executing if another job
+holds a card. Host RAM and artifact budgets are scoped to each state root;
+cross-root aggregate RAM/VRAM admission remains a separate qualification gate.
