@@ -5,8 +5,9 @@
 #
 # Android env for `cargo ndk` + Gradle. Pass `base` to overlay an existing
 # rust/dev shell; omit it for a standalone mkShell. Does not compose an SDK.
-{
+{harbor-meta}: {
   pkgs,
+  timeZone ? null,
   androidSdk,
   ndkVersion,
   rustToolchain ? null,
@@ -35,23 +36,33 @@ in
       ]
       ++ lib.optional (rustToolchain != null) rustToolchain
       ++ extraPackages;
-    hook = ''
-      export ANDROID_NDK_HOME="${ndkRoot}"
-      export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
-      export ANDROID_SDK_ROOT="${sdkRoot}"
-      export ANDROID_AVD_HOME="''${ANDROID_AVD_HOME:-$HOME/.config/.android/avd}"
-      echo "[android] ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
-    ''
-    + extraShellHook;
+    hook =
+      ''
+        export ANDROID_NDK_HOME="${ndkRoot}"
+        export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
+        export ANDROID_SDK_ROOT="${sdkRoot}"
+        export ANDROID_AVD_HOME="''${ANDROID_AVD_HOME:-$HOME/.config/.android/avd}"
+        echo "[android] ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+      ''
+      + extraShellHook;
   in
     if base != null
     then
-      base.overrideAttrs (old: {
-        buildInputs = (old.buildInputs or []) ++ packages;
-        shellHook = (old.shellHook or "") + hook;
-      })
+      harbor-meta.timezone.withShell ({
+          inherit pkgs;
+          shell = base.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ packages;
+            shellHook = (old.shellHook or "") + hook;
+          });
+        }
+        // lib.optionalAttrs (timeZone != null) {inherit timeZone;})
     else
-      pkgs.mkShell {
+      harbor-meta.devShell.mkShell {
         inherit packages;
-        shellHook = hook;
+        inherit pkgs;
+        timeZone =
+          if timeZone != null
+          then timeZone
+          else "UTC";
+        extraShellHook = hook;
       }
