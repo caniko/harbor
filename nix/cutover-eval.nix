@@ -50,7 +50,7 @@
         systemd.tmpfiles.rules = ["d '/srv/history' 0750 archive archive - -" "d \"/srv/history\" 0750 archive archive - -"];
         systemd.services.archive.serviceConfig.ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
         systemd.services.archive.serviceConfig.ExecStartPre = ["${pkgs.coreutils}/bin/true"];
-        systemd.services.archive.serviceConfig.ExecCondition = [phaseCommand "ExecCondition"];
+        systemd.services.archive.serviceConfig.ExecCondition = [(phaseCommand "ExecCondition")];
         systemd.services.archive.serviceConfig.ExecReload = phaseCommand "ExecReload";
         systemd.services.archive.serviceConfig.ExecStartPost = ["${pkgs.coreutils}/bin/true"];
         systemd.services.archive.serviceConfig.ExecStop = "${pkgs.coreutils}/bin/true";
