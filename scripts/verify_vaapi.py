@@ -98,11 +98,36 @@ def main():
     work.mkdir(mode=0o700)
     for frame in range(3):
         png(work / f"frame{frame:04d}.png", frame)
+    frames = []
+    for index, time_s in enumerate([0, 10, 20]):
+        path = work / f"frame{index:04d}.png"
+        data = path.read_bytes()
+        frames.append(
+            {
+                "path": path.name,
+                "bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "requested_s": time_s,
+                "observed_s": time_s,
+            }
+        )
+    (work / "frame-sequence.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "source": "synthetic_fixture",
+                "frames": frames,
+            }
+        )
+    )
     plan = root / "plan.json"
     plan.write_text(
         json.dumps(
             {
-                "case": {"presentation": {"width": 128, "height": 128}},
+                "case": {
+                    "geometry": {"synthetic": True},
+                    "presentation": {"width": 128, "height": 128},
+                },
                 "stages": [
                     {
                         "operation": "video",
@@ -215,6 +240,13 @@ def main():
             assert receipt["executed"] and not receipt["software_fallback"]
             assert (
                 receipt["frames"] == 3 and receipt["metadata"]["codec_name"] == "h264"
+            )
+            assert receipt["physical_times_s"] == [0, 10, 20]
+            assert (
+                receipt["frame_sequence_sha256"]
+                == hashlib.sha256(
+                    (work / "frame-sequence.json").read_bytes()
+                ).hexdigest()
             )
         report = {
             "scope": "selected-device sandboxed encoding and CPU decode of three synthetic PNGs; not worker B1, render or time-label evidence",

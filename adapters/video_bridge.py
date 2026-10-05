@@ -1,9 +1,94 @@
 """Fixed hardware encoding plus real decode, without any codec fallback."""
 
+import hashlib
 import json
+import math
+import os
+import stat
 import subprocess
 import sys
+from itertools import pairwise
 from pathlib import Path
+
+
+def closed_record(path, limit):
+    """Read bounded regular records without following frame/manifest symlinks."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        metadata = os.fstat(stream.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size <= limit:
+            raise ValueError("bounded closed regular frame record required")
+        data = stream.read(limit + 1)
+        if len(data) != metadata.st_size:
+            raise ValueError("frame record changed or exceeded its bound")
+        return data
+
+
+def frame_sequence(work, plan):
+    expected = plan["observation"]["retained_times_s"]
+    if (
+        not 0 < len(expected) <= 1024
+        or any(
+            isinstance(t, bool)
+            or not isinstance(t, (int, float))
+            or not math.isfinite(t)
+            for t in expected
+        )
+        or any(a >= b for a, b in pairwise(expected))
+    ):
+        raise ValueError("bounded ordered approved physical-time sequence required")
+    data = closed_record(work / "frame-sequence.json", 2 * 1024 * 1024)
+    sequence = json.loads(data)
+    records = sequence["frames"]
+    names = [f"frame{i:04d}.png" for i in range(len(expected))]
+    discovered = sorted(p.name for p in work.glob("frame*.png"))
+    if (
+        sequence["schema_version"] != 1
+        or len(records) != len(expected)
+        or discovered != names
+        or [r["path"] for r in records] != names
+        or [r["requested_s"] for r in records] != expected
+    ):
+        raise ValueError("frames must match every approved presentation time exactly")
+    for record in records:
+        observed = record["observed_s"]
+        if (
+            isinstance(observed, bool)
+            or not isinstance(observed, (int, float))
+            or not math.isfinite(observed)
+            or observed < 0
+        ):
+            raise ValueError("finite observed physical time required")
+        payload = closed_record(work / record["path"], 256 * 1024 * 1024)
+        if (
+            len(payload) != record["bytes"]
+            or hashlib.sha256(payload).hexdigest() != record["sha256"]
+        ):
+            raise ValueError("rendered frame checksum/size mismatch")
+    sequence_digest = hashlib.sha256(data).hexdigest()
+    if sequence["source"] == "rendered_fields":
+        receipt = json.loads(
+            closed_record(work / "render-receipt.json", 2 * 1024 * 1024)
+        )
+        if (
+            receipt["adapter"] != "ParaView"
+            or receipt["executed"] is not True
+            or receipt["software_fallback"] is not False
+            or receipt["frame_sequence_sha256"] != sequence_digest
+            or receipt["physical_times_s"] != expected
+            or receipt["frames"] != records
+        ):
+            raise ValueError("frame sequence differs from completed render receipt")
+    elif (
+        sequence["source"] != "synthetic_fixture"
+        or plan["case"]["geometry"]["synthetic"] is not True
+        or any(s["operation"] == "render" for s in plan["stages"])
+        or any(r["requested_s"] != r["observed_s"] for r in records)
+    ):
+        raise ValueError(
+            "explicit synthetic encoder fixture or completed render required"
+        )
+    return records, sequence_digest, sequence["source"]
 
 
 def main():
@@ -15,11 +100,7 @@ def main():
     )
     if selection["backend"] != "vaapi":
         raise ValueError("only explicitly selected VAAPI adapter implemented")
-    frames = sorted(Path("/work").glob("frame[0-9][0-9][0-9][0-9].png"))
-    if not frames or len(frames) > 1024:
-        raise ValueError("bounded retained frame sequence required")
-    if any(p.name != f"frame{i:04d}.png" for i, p in enumerate(frames)):
-        raise ValueError("no implicit missing-frame interpolation")
+    frames, sequence_digest, source = frame_sequence(Path("/work"), plan)
     node = f"/dev/dri/by-path/pci-{selection['pci']}-render"
     command = [
         "@ffmpeg@",
@@ -87,7 +168,7 @@ def main():
         raise RuntimeError("encoded image dimensions differ from approved presentation")
     timestamps = [float(f["best_effort_timestamp_time"]) for f in metadata["frames"]]
     if len(timestamps) != len(frames) or any(
-        abs(t - i / 24) > 1e-5 for i, t in enumerate(timestamps)
+        not math.isfinite(t) or abs(t - i / 24) > 1e-5 for i, t in enumerate(timestamps)
     ):
         raise RuntimeError(
             "decoded presentation timestamps differ from fixed 24 fps sequence"
@@ -105,10 +186,17 @@ def main():
         "frames": len(frames),
         "metadata": stream,
         "scientific_arrays": "native fields retained independently of lossy video",
-        "physical_times_s": plan["observation"]["retained_times_s"],
+        "physical_times_s": [r["requested_s"] for r in frames],
+        "observed_physical_times_s": [r["observed_s"] for r in frames],
+        "frame_sequence_sha256": sequence_digest,
+        "frame_source": source,
         "presentation_fps": 24,
         "presentation_timestamps_s": timestamps,
-        "physical_time_labels": "rendered into frames; presentation clock is independent",
+        "physical_time_labels": (
+            "rendered into frames; presentation clock is independent"
+            if source == "rendered_fields"
+            else "unqualified: synthetic encoder fixture has no scientific time labels"
+        ),
     }
     Path("/work/video-receipt.json.partial").write_text(json.dumps(receipt, indent=2))
     Path("/work/video-receipt.json.partial").replace("/work/video-receipt.json")

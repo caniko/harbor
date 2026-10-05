@@ -194,6 +194,7 @@
         mkdir adapters
         cp ${./adapters/paraview_bridge.py} adapters/paraview_bridge.py
         cp ${./adapters/freecad_bridge.py} adapters/freecad_bridge.py
+        cp ${./adapters/video_bridge.py} adapters/video_bridge.py
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
       '';

@@ -1,6 +1,7 @@
 """Numerical filtering is deliberately separate from this EGL render stage."""
 
 import ctypes as c
+import hashlib
 import json
 import os
 import sys
@@ -164,7 +165,21 @@ def main():
             or display.Representation.GetData() != "Surface"
         ):
             raise RuntimeError("rendered camera, representation or fixed scale drift")
-        frames.append({"path": filename, "label": label.Text, **time_mapping[time_s]})
+        payload = Path(f"/work/{filename}").read_bytes()
+        frames.append(
+            {
+                "path": filename,
+                "bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "label": label.Text,
+                **time_mapping[time_s],
+            }
+        )
+    sequence = json.dumps(
+        {"schema_version": 1, "source": "rendered_fields", "frames": frames}, indent=2
+    ).encode()
+    Path("/work/frame-sequence.json.partial").write_bytes(sequence)
+    Path("/work/frame-sequence.json.partial").replace("/work/frame-sequence.json")
     receipt = {
         "adapter": "ParaView",
         "backend": "egl",
@@ -186,6 +201,7 @@ def main():
         "color_field": "physVelocity",
         "color_component": "Magnitude",
         "frames": frames,
+        "frame_sequence_sha256": hashlib.sha256(sequence).hexdigest(),
         "units": "m/s",
         "physical_time_labels": True,
         "physical_validation": "unqualified",
