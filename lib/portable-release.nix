@@ -29,21 +29,24 @@
       inherit version system binaries;
       format = "nix-bundle";
     };
-    installLines = concatStringsSep "\n" (map (binary: "install -m0755 ${escapeShellArg (toString entries.${binary})} \"$out/bin/${binary}\"") binaries);
-    supportingFiles = common.stageFiles {
-      files = extraFiles;
-      root = "$out";
-      reserved = ["manifest.json"] ++ map (binary: "bin/${binary}") binaries;
-    };
-    package = pkgs.runCommand "${pname}-${version}-${system}-portable-stage" {} ''
+    stagingScript = root: let
+      installLines = concatStringsSep "\n" (map (binary: "install -m0755 ${escapeShellArg (toString entries.${binary})} \"${root}/bin/${binary}\"") binaries);
+      supportingFiles = common.stageFiles {
+        files = extraFiles;
+        inherit root;
+        reserved = ["manifest.json"] ++ map (binary: "bin/${binary}") binaries;
+      };
+    in ''
       set -euo pipefail
-      mkdir -p "$out/bin"
+      umask 022
+      mkdir -p "${root}/bin"
       ${installLines}
       ${supportingFiles}
-      cat > "$out/manifest.json" <<'MANIFEST'
+      cat > "${root}/manifest.json" <<'MANIFEST'
       ${manifest}
       MANIFEST
     '';
+    package = pkgs.runCommand "${pname}-${version}-${system}-portable-stage" {} (stagingScript "$out");
     archiveName = "${pname}-${version}-${system}-nix-bundle.tar.gz";
     timezoneEnv = timezone.mkEnvironment {
       inherit pkgs;
@@ -55,9 +58,13 @@
       }) ''
       set -euo pipefail
       ${timezoneEnv.validationScript}
+      # Store outputs normalize modes to 0444/0555. Archive the writable stage
+      # directly so declared supporting-file modes survive in the tarball.
+      stage="$TMPDIR/stage"
+      ${stagingScript "$stage"}
       mkdir -p "$out"
       tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
-        -czf "$out/${archiveName}" -C ${escapeShellArg (toString package)} .
+        -czf "$out/${archiveName}" -C "$stage" .
     '';
   in {
     inherit archive archiveName package manifest;

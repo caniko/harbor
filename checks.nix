@@ -457,6 +457,10 @@ in
             source = license;
             mode = "0755";
           };
+          extraFiles."private/readme" = {
+            source = license;
+            mode = "0600";
+          };
         };
       };
     in
@@ -464,14 +468,15 @@ in
         nativeBuildInputs = [pkgs.coreutils pkgs.gnutar pkgs.gzip];
       } ''
         tar -xzf ${release.releaseBundle}/player-0.2.0-${system}-nix-bundle.tar.gz
-         test "$(stat -c %a LICENSE)" = 644
-         test "$(stat -c %a docs/README.txt)" = 644
-         test "$(stat -c %a start-player)" = 755
-         test -x bin/player
-         cmp LICENSE ${license}
-         # Every member carries the reproducible epoch timestamp.
-         test "$(stat -c %Y LICENSE)" = 0
-         touch "$out"
+        test "$(stat -c %a LICENSE)" = 644
+        test "$(stat -c %a docs/README.txt)" = 644
+        test "$(stat -c %a start-player)" = 755
+        test "$(stat -c %a private/readme)" = 600
+        test "$(stat -c %a bin/player)" = 755
+        cmp LICENSE ${license}
+        # Every member carries the reproducible epoch timestamp.
+        test "$(stat -c %Y LICENSE)" = 0
+        touch "$out"
       '';
 
     release-file-destination-validation = let
