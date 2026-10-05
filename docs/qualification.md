@@ -201,6 +201,27 @@ digest-checked plan's output allowance, retains quarantined omissions, and
 records recovery errors in the terminal diagnostic. The worker does not attach
 to a changed service invocation.
 
+The later packaged native recovery qualifier also passed with actual FreeCAD
+and OpenLB at resolution 64. After the initial native channel VTI closed,
+owned-service SIGKILL plus worker restart produced a failed job (exit 9), and
+ordinary cancellation produced a cancelled job (exit 143). Both bundles have
+23 verified records and preserve the exact 61,287-byte initial VTI, including
+independently decoded finite Float64 velocity, pressure and material arrays
+with shape 130×68×66. The original runtime manifest and live service owner
+are retained; no successful OpenLB receipt is present. This qualifies partial
+native-field recovery, not solver resume, convergence or a completed solve.
+
+```sh
+python3 scripts/verify_native_recovery.py \
+  --executable /nix/store/CLI/bin/harbor-cad \
+  --runtime /nix/store/RUNTIME-harbor-cad-native-runtime.json \
+  --output /absolute/new/native-recovery-directory
+```
+
+The verifier freezes its CLI inode, uses a two-GiB RAM/one-GiB disk profile
+and one thread, and operates only on its own job units. Exact package,
+receipt and field hashes are in [evidence/native-recovery.json](evidence/native-recovery.json).
+
 The hosted CPU workflow is generated from `simit.toml` by Simit revision
 `afb7939d925d3e8e9b8507387ada7efad6460df8`. The installed 0.19.0 binary
 rejects `[ci].check_command`; an archived clean revision was compiled without

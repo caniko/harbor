@@ -125,6 +125,12 @@ Only selected read-only DRM/PCI metadata accompanies the render node; other
 cards, PCI config/resources and session paths stay hidden. This probe does not
 establish EGL, physical-time-label correctness or the CUDA B1 workflow.
 
+`scripts/verify_native_recovery.py --executable /nix/store/CLI/bin/harbor-cad
+--runtime /nix/store/RUNTIME.json --output /absolute/new/path` checks actual
+OpenLB partial-field recovery after owned-service SIGKILL plus worker restart
+and cancellation. Both packaged runs preserved the exact initial Float64 VTI
+in 23-record checksummed bundles, with failed/cancelled execution status.
+
 Artifact listing returns `{items, total, next_after}` with at most 100
 descriptors and 24 KiB of descriptor data per page. Use
 `artifact list JOB --after PATH --limit 20` or MCP `artifact_list` with the

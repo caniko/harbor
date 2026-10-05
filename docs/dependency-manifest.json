@@ -100,6 +100,7 @@
     "systemd_raw_recovery_receipt_sha256": "0eeee18f2fc3452522acb983bf37697d8d6e91f8e9e1ff120e7e562761c0e2b0",
     "systemd_raw_recovery_binary_sha256": "8f5067dbcf5b64c8f6d6719531cbbf5c66591f4d927e222b708cb3d60c0683c7",
     "systemd_raw_recovery_scope": "owned SIGKILL plus worker restart and ordinary cancellation exported exact synthetic opaque partial bytes; native solver outputs separately pending",
+    "systemd_native_recovery": "packaged FreeCAD/OpenLB initial VTI retained exactly after owned SIGKILL plus worker restart and ordinary cancellation; 23 checksummed records per failed/cancelled bundle; docs/evidence/native-recovery.json",
     "bwrap_primitive_receipt_sha256": "3876adcb6dda324358c3616038117f4aec7fcc3ec18b95919fc0e364781596ce",
     "bwrap_primitive_scope": "tested read-only /plan.json and store mounts, hidden host inputs/sockets/GPU nodes, isolated host-loopback network, empty output tree; full packaged sandbox separately pending",
     "observed_memory_max_bytes": 176777216,
