@@ -29,8 +29,6 @@
     src,
     pkgs,
     cargoLock,
-    pname,
-    version,
     rustToolchain,
     craneLib,
     cargoVendorDir,
@@ -199,8 +197,6 @@
         src
         pkgs
         cargoLock
-        pname
-        version
         rustToolchain
         craneLib
         cargoVendorDir
@@ -370,8 +366,6 @@
         src
         pkgs
         cargoLock
-        pname
-        version
         rustToolchain
         craneLib
         cargoVendorDir
