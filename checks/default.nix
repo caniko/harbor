@@ -145,6 +145,11 @@ in
       runHook = true;
     };
 
+    dev-shell-bash = import ./dev-shell-bash.nix {
+      inherit pkgs;
+      inherit (lib) devShell;
+    };
+
     stub-template = lib.templateTests.mkCheck {
       inherit pkgs;
       inherit (pkgs.stdenv.hostPlatform) system;

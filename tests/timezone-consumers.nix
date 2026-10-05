@@ -54,6 +54,7 @@
         inherit name;
         value = "/fixture/${name}";
       }) [
+        "bashInteractive"
         "cargo-audit"
         "cargo-deny"
         "cargo-sweep"
