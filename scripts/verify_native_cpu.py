@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import subprocess
 import time
 import xml.etree.ElementTree as ET
@@ -19,7 +20,7 @@ from verify_openlb_cpu import read_vti
 from verify_systemd import wait_job
 
 
-def verify_bundle(root, resolution):
+def verify_manifest(root):
     manifests = json.loads((root / "manifest.json").read_text())
     for manifest in manifests:
         relative = Path(manifest["path"])
@@ -34,6 +35,11 @@ def verify_bundle(root, resolution):
             or hashlib.sha256(data).hexdigest() != manifest["sha256"]
         ):
             raise ValueError("portable bundle checksum/size mismatch")
+    return manifests
+
+
+def verify_bundle(root, resolution):
+    manifests = verify_manifest(root)
     execution = json.loads((root / "execution.json").read_text())
     assert execution["job"]["state"] == "succeeded"
     assert execution["plan"]["case"]["resolution"] == resolution
@@ -195,7 +201,12 @@ def main():
                     )["data"]
                 else:
 
-                    async def submit_mcp(case, planned):
+                    async def submit_mcp(
+                        case,
+                        planned,
+                        tool="case_plan_openlb_reference",
+                        key="native-mcp",
+                    ):
                         from mcp import Client
                         from mcp.client.stdio import StdioServerParameters
 
@@ -206,9 +217,7 @@ def main():
                                 env={**environment, "HARBOR_CAD_SOCKET": str(socket)},
                             )
                         ) as client:
-                            result = await client.call_tool(
-                                "case_plan_openlb_reference", {"case": case}
-                            )
+                            result = await client.call_tool(tool, {"case": case})
                             assert (
                                 not result.is_error
                                 and result.structured_content == planned["plan"]
@@ -218,7 +227,7 @@ def main():
                                 {
                                     "plan": result.structured_content,
                                     "approved_digest": planned["approval_digest"],
-                                    "idempotency_key": "native-mcp",
+                                    "idempotency_key": key,
                                 },
                             )
                             assert (
@@ -237,11 +246,104 @@ def main():
             assert (
                 results[1]["velocity_relative_l2"] < results[0]["velocity_relative_l2"]
             )
+            # Inspect a real generated FCStd through the same approval/snapshot
+            # path, independently of solver execution. Preserve its synthetic
+            # provenance and never promote it into external engineering evidence.
+            source = root / "approved.FCStd"
+            shutil.copyfile(root / "bundle-8/source.FCStd", source)
+            source_bytes = source.read_bytes()
+            source_digest = hashlib.sha256(source_bytes).hexdigest()
+            source.chmod(0o400)
+            case["geometry"] = {
+                "source": source.name,
+                "sha256": source_digest,
+                "synthetic": True,
+            }
+            inspection_case = root / "inspection-case.json"
+            inspection_case.write_text(json.dumps(case))
+            inspection = command("case", "plan-cad-inspection", inspection_case)
+            inspection_path = root / "inspection-plan.json"
+            inspection_path.write_text(json.dumps(inspection["plan"]))
+            imports = []
+            for interface in ("CLI", "MCP", "changed-source"):
+                if interface == "changed-source":
+                    source.chmod(0o600)
+                    source.write_bytes(b"changed after immutable approval")
+                if interface == "MCP":
+                    job = asyncio.run(
+                        submit_mcp(
+                            case, inspection, "cad_plan_inspection", "inspect-mcp"
+                        )
+                    )
+                else:
+                    job = command(
+                        "--socket",
+                        socket,
+                        "job",
+                        "submit",
+                        inspection_path,
+                        "--approve",
+                        inspection["approval_digest"],
+                        "--idempotency-key",
+                        f"inspect-{interface}",
+                    )["data"]
+                owned.append(job["unit"])
+                terminal = "failed" if interface == "changed-source" else "succeeded"
+                outcome = wait_job(binary, socket, job["id"], {terminal}, timeout=190)
+                bundle = root / f"inspection-{interface}"
+                command(
+                    "artifact", "export", "--state", root / "state", job["id"], bundle
+                )
+                manifests = verify_manifest(bundle)
+                if interface == "changed-source":
+                    assert "source CAD checksum/size mismatch" in outcome["error"]
+                    assert not (bundle / "input.FCStd").exists()
+                    assert not (bundle / "cad_inspect-receipt.json").exists()
+                    source.write_bytes(source_bytes)
+                    source.chmod(0o400)
+                else:
+                    assert (
+                        source.read_bytes()
+                        == (bundle / "input.FCStd").read_bytes()
+                        == source_bytes
+                    )
+                    assert (
+                        source.stat().st_ino != (bundle / "input.FCStd").stat().st_ino
+                    )
+                    assert not any(
+                        m["path"] == "openlb-receipt.json" for m in manifests
+                    )
+                    receipt = json.loads(
+                        (bundle / "cad_inspect-receipt.json").read_text()
+                    )
+                    assert (
+                        receipt["executed"]
+                        and receipt["backend"] == "cpu"
+                        and not receipt["software_fallback"]
+                    )
+                    regions = json.loads((bundle / "regions.json").read_text())
+                    assert regions["synthetic"] and {
+                        r["name"] for r in regions["regions"]
+                    } == {"fluid"}
+                    assert math.isclose(
+                        regions["regions"][0]["volume_m3"],
+                        0.02 * 0.01 * 0.01,
+                        rel_tol=1e-12,
+                    )
+                imports.append(
+                    {
+                        "interface": interface,
+                        "job": outcome,
+                        "records": len(manifests),
+                        "source_sha256": source_digest,
+                    }
+                )
             report = {
                 "fixture": "synthetic FreeCAD channel",
                 "interfaces": ["CLI", "official MCP stdio client"],
                 "packages": {"cli": binary, "runtime": runtime, "mcp": mcp},
                 "results": results,
+                "cad_inspection": imports,
                 "physical_validation": "unqualified",
             }
             (root / "verification.json").write_text(

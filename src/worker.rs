@@ -313,6 +313,14 @@ fn dispatch(
         Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
             ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
         )?),
+        Operation::PlanCadInspection {
+            case,
+            max_artifact_bytes,
+        } => Ok(serde_json::to_value(ExecutionPlan::cad_inspection(
+            *case,
+            profile.policy.clone(),
+            max_artifact_bytes,
+        )?)?),
         Operation::PlanB1 { case, selections } => Ok(serde_json::to_value(ExecutionPlan::b1(
             *case,
             selections,

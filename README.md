@@ -92,6 +92,13 @@ Systemd jobs also require the live unit's invocation, main PID and exact cgroup
 membership; an inherited environment value alone cannot authorize execution.
 The verified identity is archived as `service-owner.json`.
 
+`case plan-cad-inspection case.json --max-artifact-bytes 67108864` prepares a
+CAD-only `cad_inspect → bundle` plan. Set `geometry.source` to a path relative to
+the worker's allowed input root and `geometry.sha256` to its lowercase SHA-256.
+The CLI returns `{approval_digest, plan}` for ordinary approved job submission;
+planning opens no document. MCP `cad_plan_inspection` exposes the same Rust
+planner in the `cad` and `all` profiles. This inspection does not launch a solver.
+
 `checks.x86_64-linux.openlb-cpu-reference` runs the procedural-STL numerical
 reference using the packaged solver. For opt-in FreeCAD integration, an existing
 systemd user manager and the separately built CLI, MCP and `runtime-cpu` are

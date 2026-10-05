@@ -53,6 +53,21 @@ def build_server(profile: str) -> MCPServer:
             """
             return await request("plan_b1", case=case, selections=selections)
 
+    if profile in {"cad", "all"}:
+
+        @server.tool()
+        async def cad_plan_inspection(
+            case: dict[str, Any], max_artifact_bytes: int = 67108864
+        ) -> dict[str, Any]:
+            """Plan digest-approved source inspection in FreeCAD's sandbox; no solver.
+
+            Source paths are relative to the worker's allowed root. Approval and
+            ordinary job submission are required before any document is opened.
+            """
+            return await request(
+                "plan_cad_inspection", case=case, max_artifact_bytes=max_artifact_bytes
+            )
+
     if profile in {"simulation", "all"}:
 
         @server.tool()

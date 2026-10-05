@@ -57,6 +57,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" in names and "results_describe" in names
                 assert "case_plan_openlb_reference" in names
+                assert "cad_plan_inspection" in names
                 assert not any(x in names for x in ("shell", "python", "install"))
                 # CI cannot implicitly turn a reference into an unsandboxed
                 # native job. Planning rejection is returned by the same worker.
@@ -66,6 +67,18 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 )
                 rejected = await client.call_tool(
                     "case_plan_openlb_reference", {"case": native_case}
+                )
+                assert rejected.is_error
+                inspected = dict(
+                    case,
+                    geometry={
+                        "source": "approved.FCStd",
+                        "sha256": "a" * 64,
+                        "synthetic": True,
+                    },
+                )
+                rejected = await client.call_tool(
+                    "cad_plan_inspection", {"case": inspected}
                 )
                 assert rejected.is_error
                 response = await client.call_tool(
@@ -118,6 +131,10 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
             async with Client(build_server("results")) as client:
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" not in names and "results_describe" in names
+                assert "cad_plan_inspection" not in names
+            async with Client(build_server("cad")) as client:
+                names = {t.name for t in (await client.list_tools()).tools}
+                assert "cad_plan_inspection" in names and "job_submit" not in names
 
         asyncio.run(check())
     finally:

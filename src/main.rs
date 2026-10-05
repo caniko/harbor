@@ -74,6 +74,13 @@ enum Case {
         #[arg(long, default_value = "research")]
         policy: String,
     },
+    PlanCadInspection {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+        #[arg(long, default_value = "67108864")]
+        max_artifact_bytes: u64,
+    },
     PlanB1 {
         file: PathBuf,
         #[arg(long)]
@@ -186,6 +193,14 @@ fn run(cli: Cli) -> Result<()> {
             }
             Case::PlanOpenlbReference { file, policy } => {
                 let plan = ExecutionPlan::openlb_reference(read(&file)?, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Case::PlanCadInspection {
+                file,
+                policy,
+                max_artifact_bytes,
+            } => {
+                let plan = ExecutionPlan::cad_inspection(read(&file)?, policy, max_artifact_bytes)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
             }
             Case::PlanB1 {

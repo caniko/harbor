@@ -171,6 +171,40 @@ fn native_cpu_plan_is_explicit_and_keeps_scientific_parameters() {
 }
 
 #[test]
+fn cad_inspection_binds_a_source_digest_and_has_no_implicit_solver() {
+    let mut case = CaseSpec::reference();
+    case.geometry = Provenance {
+        source: "channel.FCStd".into(),
+        sha256: Some("a".repeat(64)),
+        synthetic: false,
+    };
+    let plan =
+        ExecutionPlan::cad_inspection(case.clone(), "research".into(), 64 * 1024 * 1024).unwrap();
+    assert_eq!(plan.case.science_id().unwrap(), case.science_id().unwrap());
+    assert_eq!(plan.stages.len(), 2);
+    assert!(matches!(
+        plan.stages[0].operation,
+        StageOperation::CadInspect
+    ));
+    assert!(matches!(plan.stages[1].operation, StageOperation::Bundle));
+    assert!(plan.observation.retained_times_s.is_empty());
+    assert!(ExecutionPlan::cad_inspection(case, "ci".into(), 64 * 1024 * 1024).is_err());
+    for sha in [None, Some("b".repeat(63)), Some("g".repeat(64))] {
+        let mut corrupted = plan.clone();
+        corrupted.case.geometry.sha256 = sha;
+        assert!(corrupted.validate().is_err());
+    }
+    for source in ["", "../outside.FCStd", "/absolute.FCStd"] {
+        let mut corrupted = plan.clone();
+        corrupted.case.geometry.source = source.into();
+        assert!(corrupted.validate().is_err());
+    }
+    let mut changed = plan.clone();
+    changed.case.geometry.sha256 = Some("b".repeat(64));
+    assert_ne!(plan.id().unwrap(), changed.id().unwrap());
+}
+
+#[test]
 fn native_tree_ingest_copies_closed_files_and_rejects_symlinks_and_partial_outputs() {
     let tmp = tempfile::tempdir().unwrap();
     let source = tmp.path().join("native");

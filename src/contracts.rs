@@ -364,6 +364,52 @@ impl ExecutionPlan {
         plan.validate()?;
         Ok(plan)
     }
+    /// Inspect approved source CAD in the native importer; no solver is implied.
+    pub fn cad_inspection(case: CaseSpec, policy: String, max_artifact_bytes: u64) -> Result<Self> {
+        if policy == "ci" {
+            return Err(invalid("native CAD inspection requires systemd policy"));
+        }
+        let plan = Self {
+            schema_version: 1,
+            case,
+            stages: vec![
+                Stage {
+                    id: "cad".into(),
+                    dependencies: vec![],
+                    operation: StageOperation::CadInspect,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 1024 * 1024 * 1024,
+                    vram_bytes: 0,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec!["cad".into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 16 * 1024 * 1024,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec!["geometry_regions".into()],
+                probes: vec![],
+                retained_times_s: vec![],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        plan.validate()?;
+        Ok(plan)
+    }
     pub fn openlb_reference(case: CaseSpec, policy: String) -> Result<Self> {
         case.validate()?;
         if !case.geometry.synthetic
@@ -560,6 +606,21 @@ impl ExecutionPlan {
             {
                 return Err(invalid(
                     "OpenLB adapter supports only the synthetic periodic channel",
+                ));
+            }
+            if matches!(stage.operation, StageOperation::CadInspect)
+                && (self.case.geometry.sha256.as_ref().is_none_or(|s| {
+                    s.len() != 64
+                        || !s
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                }) || self.case.geometry.source.is_empty()
+                    || std::path::Path::new(&self.case.geometry.source)
+                        .components()
+                        .any(|c| !matches!(c, std::path::Component::Normal(_))))
+            {
+                return Err(invalid(
+                    "CAD inspection requires a scoped relative source and lowercase SHA-256 approval",
                 ));
             }
             let expected_role = match stage.operation {
@@ -762,6 +823,10 @@ pub enum Operation {
     },
     PlanOpenlbReference {
         case: Box<CaseSpec>,
+    },
+    PlanCadInspection {
+        case: Box<CaseSpec>,
+        max_artifact_bytes: u64,
     },
     PlanB1 {
         case: Box<CaseSpec>,

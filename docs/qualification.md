@@ -152,7 +152,7 @@ Local Rust checks used `rustc 1.100.0-nightly (574ff7d98 2026-09-14)` from the
 approved Canix environment. The locked CLI package also built with the declared
 Rust 1.94.0 toolchain. Python checks used Python 3.13.15 and uv 0.12.5.
 
-Latest local checks passed: 36 Rust integration tests plus four worker unit tests, Clippy with
+Latest local checks passed: 37 Rust integration tests plus four worker unit tests, Clippy with
 `-D warnings`, two official-MCP/Python tests, Ruff lint/format checks, and
 scoped treefmt. The actual OpenLB CPU and user-manager tests above are
 separate opt-in runtime evidence.
@@ -165,6 +165,13 @@ selected runtime manifest. `scripts/verify_native_cpu.py` prepares the packaged
 FreeCAD → CPU OpenLB → portable-bundle qualification through CLI and MCP; its
 packaged synthetic-fixture run passed. The CPU runtime does not select
 ParaView/media closures.
+
+The CAD-only planner exposes `case plan-cad-inspection` and MCP
+`cad_plan_inspection` in the cad/all profiles. It binds an explicit relative
+source and lowercase SHA-256, retains the caller's case and uses only the
+importer and bundle stages. Hand-built plans receive the same source/digest
+checks. CPU protocol tests prove the CI policy rejects native inspection and
+that the cad profile cannot submit jobs implicitly.
 
 An actual regression test proved that an environment-only fake `INVOCATION_ID`
 could previously execute a service job. Job startup now verifies the live unit's
