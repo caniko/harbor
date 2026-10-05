@@ -45,6 +45,24 @@ pub fn pci_key(pci: &str) -> Result<String> {
 /// Hold these files in the job process. A busy card releases the entire attempted
 /// set; callers wait before starting stages. Anchors are never unlinked.
 pub fn try_reserve_cards(root: &Path, pcis: &[String]) -> Result<Option<Vec<File>>> {
+    let held = try_lock_cards(root, pcis)?;
+    let journal = if root
+        == Path::new(&format!("/run/user/{}/harbor-cad/cards", unsafe {
+            libc::geteuid()
+        })) {
+        crate::admission::shared_root()?
+    } else {
+        root.parent()
+            .ok_or_else(|| invalid("card reservation parent"))?
+            .join("admission")
+    };
+    if held.is_some() && crate::admission::cards_reserved(&journal, pcis)? {
+        return Ok(None);
+    }
+    Ok(held)
+}
+
+pub(crate) fn try_lock_cards(root: &Path, pcis: &[String]) -> Result<Option<Vec<File>>> {
     if pcis.is_empty() {
         return Ok(Some(Vec::new()));
     }

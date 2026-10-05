@@ -1,3 +1,4 @@
+pub mod admission;
 pub mod authority;
 pub mod contracts;
 pub mod devices;
