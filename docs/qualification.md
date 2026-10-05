@@ -318,7 +318,7 @@ remain recorded upstream requirements. Generation defaults are preserved.
 |---|---|
 | A0 | Partial: locked CPU packages/parity/contracts passed; production importer closure-only isolation, resource controls and descendant cleanup passed for controlled fixtures; other native policies remain separately unqualified |
 | A1 | Analytical airflow reference plus real low-Mach OpenLB CPU velocity/refinement check; thermal/wetting/FEM references incomplete |
-| B1 | Packaged FreeCAD→CPU OpenLB→bundle passed through CLI/MCP; retained CPU fields→EGL surfaces→VAAPI adapter probes passed; required CUDA solver/worker integration unqualified |
+| B1 | Packaged FreeCAD→CPU OpenLB→bundle passed through CLI/MCP; scoped HIP numerical reference and retained CPU fields→EGL surfaces→VAAPI adapter probes passed; durable HIP solver/worker integration unqualified; CUDA best-effort |
 | B2 | Renderer/media RAM/CPU/wall/output measured; no qualified numerical GPU filter, per-process VRAM peak or complete topology/ghost-cell round trip |
 | C–F | Not implemented |
 

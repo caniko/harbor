@@ -1,5 +1,7 @@
 use crate::{
     Error, Result,
+    admission::Admission,
+    authority::{ExecutionAuthorization, HostAuthority},
     contracts::*,
     devices,
     execution::{ExecutionBinding, packaged_file},
@@ -166,10 +168,27 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
     }
     Ok(())
 }
-fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()> {
+fn launch(
+    store: &Store,
+    capacity: &HostExecutionProfile,
+    id: &str,
+    admission: Option<&Admission>,
+) -> Result<()> {
     let plan = store.plan(id)?;
     let profile = store.job_profile(id)?;
     check_plan(&plan, &profile)?;
+    if let Some(authorization) = store.execution_authorization(id)? {
+        authorization.verify(&plan, &profile, &store.execution_binding(id)?)?;
+        let admission = admission
+            .ok_or_else(|| invalid("authorized job requires its same-user admission policy"))?;
+        if !admission.reserve(store, id)? {
+            return Ok(());
+        }
+    } else if admission.is_some() {
+        return Err(Error::Unqualified(
+            "historical job has no authority binding; no automatic policy upgrade".into(),
+        ));
+    }
     let artifacts = safe_path(&store.root, "artifacts")?;
     let retained_disk = if artifacts.exists() {
         disk_bytes(&artifacts, false)?
@@ -230,6 +249,7 @@ fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()
             .arg("--property=SendSIGKILL=yes")
             .arg("--property=Restart=no")
             .arg(format!("--property=MemoryMax={}", plan.peak_ram()))
+            .arg("--property=MemorySwapMax=0")
             .arg("--property=TasksMax=128")
             .arg(format!(
                 "--property=RuntimeMaxSec={}",
@@ -271,11 +291,24 @@ fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()
     store.event(id, "launched", &profile.service_mode)?;
     Ok(())
 }
-fn reconcile(store: &Store, capacity: &HostExecutionProfile, startup: bool) -> Result<()> {
+fn reconcile(
+    store: &Store,
+    capacity: &HostExecutionProfile,
+    startup: bool,
+    admission: Option<&Admission>,
+) -> Result<()> {
+    if let Some(admission) = admission {
+        admission.reconcile(|store, job| {
+            if store.job_profile(&job.id)?.service_mode == "foreground" {
+                return Ok(false);
+            }
+            owned_service_closed(store, job, &unit_info(&job.unit)?)
+        })?;
+    }
     for id in store.active()? {
         let job = store.job(&id)?;
         if job.state == "queued" {
-            if let Err(e) = launch(store, capacity, &id) {
+            if let Err(e) = launch(store, capacity, &id, admission) {
                 store.transition(&id, "queued", "failed", Some(&e.to_string()))?;
                 store.transition(&id, "starting", "failed", Some(&e.to_string()))?;
                 store.event(&id, "launch_rejected", &e.to_string())?;
@@ -388,6 +421,7 @@ fn owned_service_closed(store: &Store, job: &Job, info: &BTreeMap<String, String
 fn dispatch(
     store: &Store,
     profile: &HostExecutionProfile,
+    authority: Option<&HostAuthority>,
     op: Operation,
 ) -> Result<serde_json::Value> {
     match op {
@@ -428,6 +462,9 @@ fn dispatch(
                 return Ok(serde_json::to_value(job)?);
             }
             check_plan(&plan, profile)?;
+            if let Some(authority) = authority {
+                authority.authorize(&plan, profile)?;
+            }
             let mut files = BTreeMap::new();
             if let Some(path) = &profile.native_runtime {
                 let runtime = NativeRuntime::load(Path::new(path))?;
@@ -459,12 +496,20 @@ fn dispatch(
             }
             let binding =
                 ExecutionBinding::capture(&plan, profile, &std::env::current_exe()?, files)?;
-            Ok(serde_json::to_value(store.submit_for_execution(
-                &plan,
-                &idempotency_key,
-                profile,
-                &binding,
-            )?)?)
+            let job = if let Some(authority) = authority {
+                let authorization =
+                    ExecutionAuthorization::capture(&plan, profile, &binding, authority)?;
+                store.submit_authorized(
+                    &plan,
+                    &idempotency_key,
+                    profile,
+                    &binding,
+                    &authorization,
+                )?
+            } else {
+                store.submit_for_execution(&plan, &idempotency_key, profile, &binding)?
+            };
+            Ok(serde_json::to_value(job)?)
         }
         Operation::Status { job_id } => Ok(serde_json::to_value(store.job(&job_id)?)?),
         Operation::Logs {
@@ -530,14 +575,42 @@ fn dispatch(
                 serde_json::json!({"job":store.job(&job_id)?,"science_id":plan.case.science_id()?,
                 "execution_id":plan.id()?,"presentation_id":digest(&plan.case.presentation)?,
                 "execution_binding":binding,
+                "execution_authorization":store.execution_authorization(&job_id)?,
                 "artifacts":store.artifact_page(&job_id, None, default_artifact_limit())?,"arrays":"retained in artifacts; not embedded in responses"}),
             )
         }
     }
 }
 pub fn serve(state: &Path, socket: &Path, profile_path: &Path) -> Result<()> {
+    serve_authorized(state, socket, profile_path, None)
+}
+pub fn serve_authorized(
+    state: &Path,
+    socket: &Path,
+    profile_path: &Path,
+    authority_path: Option<&Path>,
+) -> Result<()> {
     let store = Store::open(state)?;
     let profile = load_profile(profile_path)?;
+    let authority: Option<HostAuthority> = authority_path
+        .map(|path| -> Result<_> {
+            let value: HostAuthority = serde_json::from_slice(&read_bounded(path, MAX_MESSAGE)?)?;
+            value.validate()?;
+            Ok(value)
+        })
+        .transpose()?;
+    if authority.is_some() && profile.service_mode != "systemd" {
+        return Err(invalid(
+            "shared durable admission requires systemd service-tree ownership",
+        ));
+    }
+    let admission = authority
+        .as_ref()
+        .map(|a| Admission::open(&crate::admission::shared_root()?, a))
+        .transpose()?;
+    if let Some(admission) = &admission {
+        admission.register_state(&fs::canonicalize(state)?)?;
+    }
     let lock = OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -556,7 +629,7 @@ pub fn serve(state: &Path, socket: &Path, profile_path: &Path) -> Result<()> {
         }
         fs::remove_file(socket)?;
     }
-    reconcile(&store, &profile, true)?;
+    reconcile(&store, &profile, true, admission.as_ref())?;
     let listener = UnixListener::bind(socket)?;
     fs::set_permissions(socket, fs::Permissions::from_mode(0o600))?;
     listener.set_nonblocking(true)?;
@@ -578,7 +651,7 @@ pub fn serve(state: &Path, socket: &Path, profile_path: &Path) -> Result<()> {
                                 {
                                     Err(invalid("protocol version/request ID"))
                                 } else {
-                                    dispatch(&store, &profile, request.request)
+                                    dispatch(&store, &profile, authority.as_ref(), request.request)
                                 };
                                 reply(request.request_id, result)
                             }
@@ -607,7 +680,7 @@ pub fn serve(state: &Path, socket: &Path, profile_path: &Path) -> Result<()> {
             }
             Err(e) => return Err(e.into()),
         }
-        reconcile(&store, &profile, false)?;
+        reconcile(&store, &profile, false, admission.as_ref())?;
     }
 }
 pub fn request(socket: &Path, op: Operation) -> Result<Response> {
@@ -1000,6 +1073,11 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
     binding.verify(&store.plan(id)?, &profile)?;
     binding.verify_running_runner(&profile)?;
     crate::retention::verify_ready(&store.root, id, &binding, profile.service_mode == "systemd")?;
+    if let Some(authorization) = store.execution_authorization(id)? {
+        authorization.verify(&store.plan(id)?, &profile, &binding)?;
+        Admission::open(&crate::admission::shared_root()?, &authorization.authority)?
+            .verify(&store, id)?;
+    }
     if !store.transition(id, "starting", "running", None)? {
         return Err(invalid("job must be starting exactly once"));
     }
@@ -1103,8 +1181,19 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         .iter()
         .filter_map(|s| s.selection.as_ref().map(|g| g.pci.clone()))
         .collect();
+    let authorized = store.execution_authorization(id)?.is_some();
     let _locks = if keys.is_empty() {
         Vec::new()
+    } else if authorized {
+        // Durable admission already owns these cards. Never spend the service
+        // deadline waiting; legacy probe locks were checked before launch.
+        resources::try_lock_cards(&resources::card_reservation_root()?, &keys)?.ok_or_else(
+            || {
+                Error::Resource(
+                    "selected card became busy before launch; no runtime wait or fallback".into(),
+                )
+            },
+        )?
     } else {
         let reservations = resources::card_reservation_root()?;
         let start = Instant::now();
@@ -1128,6 +1217,18 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         "immutable approved execution plan",
     )?;
     store.add_artifact(id, &manifest)?;
+    if let Some(authorization) = store.execution_authorization(id)? {
+        store.add_artifact(
+            id,
+            &commit_artifact(
+                &dir,
+                "execution-authorization.json",
+                &serde_json::to_vec_pretty(&authorization)?,
+                "json",
+                "immutable host/device authority bound to exact plan/profile/execution",
+            )?,
+        )?;
+    }
     store.add_artifact(
         id,
         &commit_artifact(

@@ -3,7 +3,10 @@
 import argparse
 import hashlib
 import json
+import os
+import pwd
 import socket as unix_socket
+import sqlite3
 import subprocess
 import time
 from pathlib import Path
@@ -61,6 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--authority", type=Path)
     args = parser.parse_args()
     source_binary = Path(args.executable).resolve(strict=True)
     if not source_binary.is_relative_to("/nix/store") or not source_binary.is_file():
@@ -91,9 +95,10 @@ def main():
     owned = []
 
     def start_worker():
-        process = subprocess.Popen(
-            [binary, "worker", "--state", str(state), "--profile", str(profile)]
-        )
+        arguments = [binary, "worker", "--state", str(state), "--profile", str(profile)]
+        if args.authority:
+            arguments.extend(["--authority", str(args.authority.resolve(strict=True))])
+        process = subprocess.Popen(arguments)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             if process.poll() is not None:
@@ -146,7 +151,7 @@ def main():
                     "--user",
                     "show",
                     job["unit"],
-                    "--property=InvocationID,MainPID,ControlGroup,MemoryMax,TasksMax,KillMode,CPUQuotaPerSecUSec,NoNewPrivileges",
+                    "--property=InvocationID,MainPID,ControlGroup,MemoryMax,MemorySwapMax,TasksMax,KillMode,CPUQuotaPerSecUSec,NoNewPrivileges",
                 ],
                 text=True,
             )
@@ -160,6 +165,7 @@ def main():
             assert observed["KillMode"] == "control-group"
             assert observed["TasksMax"] == "128"
             assert observed["NoNewPrivileges"] == "yes"
+            assert observed["MemorySwapMax"] == "0"
             owner = json.loads(
                 (state / "artifacts" / job["id"] / "service-owner.json").read_text()
             )
@@ -227,6 +233,27 @@ def main():
                 assert failure["execution"] == outcome["state"]
                 assert failure["physical_validation"] == "unqualified"
             wait_retention_release(state, job)
+            if args.authority:
+                ledger = (
+                    Path(pwd.getpwuid(os.geteuid()).pw_dir)
+                    / ".local/state/harbor-cad/admission/admission.sqlite3"
+                )
+
+                deadline = time.monotonic() + 10
+                while True:
+                    with sqlite3.connect(
+                        f"file:{ledger}?mode=ro", uri=True
+                    ) as connection:
+                        present = connection.execute(
+                            "SELECT count(*) FROM reservations WHERE id=?", (job["id"],)
+                        ).fetchone()[0]
+                    if not present:
+                        break
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            "closed service admission reservation retained"
+                        )
+                    time.sleep(0.01)
             receipts.append(
                 {
                     "test": key,
@@ -236,6 +263,7 @@ def main():
                     "packaged_binary_sha256": expected_hash,
                     "active_runtime_retention": retention,
                     "terminal_runtime_released": True,
+                    "shared_admission_released": True if args.authority else None,
                     "raw_fixture_scope": "synthetic interrupted-adapter bytes; not native solver evidence"
                     if key != "restart"
                     else None,

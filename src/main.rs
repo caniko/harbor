@@ -15,6 +15,10 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Commands {
+    Authority {
+        #[command(subcommand)]
+        command: Authority,
+    },
     Doctor,
     Backend {
         #[command(subcommand)]
@@ -29,6 +33,8 @@ enum Commands {
         state: PathBuf,
         #[arg(long)]
         profile: PathBuf,
+        #[arg(long)]
+        authority: Option<PathBuf>,
     },
     #[command(hide = true)]
     RunJob {
@@ -55,6 +61,10 @@ enum Commands {
         command: Artifact,
     },
     Qualify,
+}
+#[derive(Subcommand)]
+enum Authority {
+    Install { file: PathBuf },
 }
 #[derive(Subcommand)]
 enum Backend {
@@ -151,6 +161,16 @@ fn main() {
 }
 fn run(cli: Cli) -> Result<()> {
     let op = match cli.command {
+        Commands::Authority {
+            command: Authority::Install { file },
+        } => {
+            let authority: harbor_cad::authority::HostAuthority = read(&file)?;
+            let root = harbor_cad::admission::shared_root()?;
+            harbor_cad::admission::Admission::install(&root, &authority)?;
+            return print(
+                &serde_json::json!({"authority_digest":digest(&authority)?,"admission_root":root}),
+            );
+        }
         Commands::Doctor => {
             return print(&worker::doctor()?);
         }
@@ -171,9 +191,13 @@ fn run(cli: Cli) -> Result<()> {
             }
             return Ok(());
         }
-        Commands::Worker { state, profile } => {
+        Commands::Worker {
+            state,
+            profile,
+            authority,
+        } => {
             let socket = cli.socket.unwrap_or_else(|| state.join("worker.sock"));
-            return worker::serve(&state, &socket, &profile);
+            return worker::serve_authorized(&state, &socket, &profile, authority.as_deref());
         }
         Commands::RunJob { state, profile, id } => {
             return worker::run_job(&state, &profile, &id);

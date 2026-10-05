@@ -159,7 +159,7 @@ performs an opt-in three-frame 128×128 synthetic encoding/decode probe. The
 selected Radeon RX 7900 XTX passed with H.264 VAAPI and actual CPU decoding.
 Only selected read-only DRM/PCI metadata accompanies the render node; other
 cards, PCI config/resources and session paths stay hidden. This probe does not
-establish EGL, physical-time-label correctness or the CUDA B1 workflow.
+establish EGL, physical-time-label correctness or the HIP-first B1 workflow.
 
 `scripts/verify_native_recovery.py --executable /nix/store/CLI/bin/harbor-cad
 --runtime /nix/store/RUNTIME.json --output /absolute/new/path` checks actual
@@ -170,7 +170,7 @@ in 23-record checksummed bundles, with failed/cancelled execution status.
 Retained resolution-16 CPU OpenLB fields also passed selected-device EGL surface
 rendering and VAAPI encoding/CPU decode on the RX 7900 XTX. The three 640×480
 decoded frames preserve units, a fixed velocity scale and 0/10/20 s labels.
-Native fields remain unchanged; required CUDA OpenLB/worker B1 is unqualified.
+Native fields remain unchanged; durable HIP OpenLB/worker B1 is unqualified.
 `scripts/verify_egl_fields.py` and `examples/native_stage_probe.rs` reproduce this
 opt-in adapter probe with production DRM containment and shared card reservations.
 See [the rendering recipe and measured evidence](docs/qualification.md#retained-field-egl-surfaces-and-vaapi-video).
@@ -196,7 +196,12 @@ tree. After confirmed owned-service termination, restart reconciliation and
 cancellation register bounded closed raw records before the terminal state.
 Recovery errors are included in the terminal diagnostic and retain the raw tree.
 
-The worker defaults to one admitted plan per state root. It reserves the
+Workers may opt into the versioned [host authority and shared admission](docs/host-authority.md)
+with `worker --authority /absolute/authority.json`. This binds exact route/device
+authorization and uses one durable same-user RAM/filesystem/card reservation
+journal before service launch. Historical approvals retain their identities.
+
+The legacy worker defaults to one admitted plan per state root. It reserves the
 declared peak RAM and full output allowance; native jobs additionally reserve
 space for a verified staging copy. Existing retained artifact bytes count
 against that root's disk budget. Insufficient occupied capacity keeps a job
