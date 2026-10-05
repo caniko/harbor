@@ -733,8 +733,7 @@ fn native_stage(
     if !status.success() {
         return Err(Error::Unqualified(format!("native {op} failed: {status}")));
     }
-    let evidence: serde_json::Value =
-        serde_json::from_slice(&read_bounded(&receipt, MAX_MESSAGE)?)?;
+    let evidence = read_native_receipt(&receipt)?;
     validate_native_receipt(stage, &evidence)?;
     store.event(
         id,
@@ -747,6 +746,23 @@ fn native_stage(
         .to_string(),
     )?;
     Ok(())
+}
+
+fn read_native_receipt(path: &Path) -> Result<serde_json::Value> {
+    let input = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let metadata = input.metadata()?;
+    if !metadata.is_file() || metadata.len() > MAX_MESSAGE {
+        return Err(invalid("native receipt must be a bounded regular file"));
+    }
+    let mut bytes = Vec::new();
+    input.take(MAX_MESSAGE + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_MESSAGE {
+        return Err(invalid("native receipt grew beyond its response budget"));
+    }
+    Ok(serde_json::from_slice(&bytes)?)
 }
 
 fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Result<()> {
@@ -1010,7 +1026,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{disk_bytes, packaged_file, validate_native_receipt};
+    use super::{disk_bytes, packaged_file, read_native_receipt, validate_native_receipt};
     use crate::contracts::{CaseSpec, ExecutionPlan};
     use std::{fs, path::Path};
 
@@ -1067,5 +1083,27 @@ mod tests {
             corrupted[field] = value;
             assert!(validate_native_receipt(flow, &corrupted).is_err());
         }
+    }
+
+    #[test]
+    fn native_receipt_rejects_special_symlink_and_oversized_records() {
+        use std::{
+            ffi::CString,
+            os::unix::{ffi::OsStrExt, fs::symlink},
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let regular = temp.path().join("receipt.json");
+        fs::write(&regular, br#"{"executed":true}"#).unwrap();
+        assert_eq!(read_native_receipt(&regular).unwrap()["executed"], true);
+        let link = temp.path().join("alias.json");
+        symlink(&regular, &link).unwrap();
+        assert!(read_native_receipt(&link).is_err());
+        let fifo = temp.path().join("pipe.json");
+        let name = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        // SAFETY: name is NUL-terminated and lives for the complete call.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        assert!(read_native_receipt(&fifo).is_err());
+        fs::write(&regular, vec![b' '; super::MAX_MESSAGE as usize + 1]).unwrap();
+        assert!(read_native_receipt(&regular).is_err());
     }
 }
