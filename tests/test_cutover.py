@@ -236,6 +236,15 @@ class FilesystemCutoverTests(unittest.TestCase):
             self.certify()
         self.assertFalse((self.state / "identity.json").exists())
 
+    def test_startup_uses_authority_roots_during_application_file_turnover(self):
+        self.certify()
+        # Ordinary application maintenance can temporarily leave only the root
+        # authority marker. Startup is an identity check, not a new custody proof.
+        shutil.rmtree(self.source / "historical.git")
+        cutover.check_resource(self.config, phase="startup", now=100)
+        with self.assertRaisesRegex(ValueError, "empty"):
+            cutover.check_resource(self.config, phase="preflight", now=100)
+
     def test_promisor_marker_cannot_claim_complete_history(self):
         repository = self.source / "promisor.git"
         subprocess.run(["git", "init", "--bare", str(repository)], check=True, capture_output=True)

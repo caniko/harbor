@@ -242,8 +242,10 @@ def check_resource(config, *, phase, now=None):
         raise ValueError("unsupported cutover phase")
     now = int(time.time()) if now is None else now
     if config["kind"] == "filesystem":
-        # Missing/empty roots are rejected before authority or receipt inspection.
-        metadata = inventory(config, contents=False)
+        # Startup validates adopted roots/identity under the writer lease. A
+        # corpus walk would race ordinary file turnover and block SSH commands.
+        # Deployment still rejects missing/empty or changed contents up front.
+        metadata = inventory(config, contents=False) if phase != "startup" else None
         authority = config["authority"]
         with resource.inspection(authority) as adopted:
             receipt = read_json(recovery.absolute(config["custody_file"]))
