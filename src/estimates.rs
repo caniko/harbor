@@ -49,6 +49,9 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
     if let Some(source) = &plan.source {
         output = add(output, source.bytes)?;
     }
+    if let Some(frames) = &plan.frames {
+        output = add(output, frames.bytes)?;
+    }
     let mut stages = Vec::new();
     for stage in &plan.stages {
         let mut vram = 0;

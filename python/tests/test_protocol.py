@@ -148,7 +148,9 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" not in names and "results_describe" in names
                 assert "cad_plan_inspection" not in names
-                assert "render_plan" in names and "presentation_submit" in names
+                assert {"render_plan", "video_plan", "presentation_submit"}.issubset(
+                    names
+                )
                 rejected = await client.call_tool(
                     "presentation_submit",
                     {

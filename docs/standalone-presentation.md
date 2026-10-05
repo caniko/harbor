@@ -67,8 +67,42 @@ to preserve strict typed field decoding.
 
 The `results` and `all` profiles expose `render_plan(request_spec)` and
 `presentation_submit(plan, approved_digest, idempotency_key)`. The latter accepts
-only source-bound version-2 plans. Simulation submissions retain the existing
+only source-bound presentation plans (version 2 for rendering, version 3 for
+independent video). Simulation submissions retain the existing
 `simulation`/`all` profile boundary. Status, logs and artifacts remain bounded.
+
+## Independent video
+
+`video REQUEST.json` plans a separate hardware encoding job from a completed
+registered render job:
+
+```json
+{
+  "source_job": "UUID-of-a-completed-render-job",
+  "media": {
+    "role": "media",
+    "backend": "vaapi",
+    "pci": "0000:03:00.0",
+    "backend_uuid": null
+  }
+}
+```
+
+The frame-bound version-3 plan contains video → bundle. It retains the source
+science identity and separately approves the original rendering execution,
+authorization, frame-sequence checksum and copied frame bytes. Frames and original
+render receipts receive distinct verified inodes under `retained-frames/` before
+acknowledgment; the encoder sees them read-only. The worker rechecks the closed
+graph, hashes, physical times, PNG dimensions and original receipt before and
+after encoding. Original rendering provenance is retained in
+`source-rendering.json`; the new video receipt records `source_render_execution_id`
+alongside its own `presentation_execution_id` and source-science `execution_id`.
+
+MCP `video_plan` and `presentation_submit` expose this in `results`/`all`.
+Version-1/2 serialization remains unchanged; frame properties require version 3.
+Pass `--independent-video` to the packaged qualifier to exercise this separate
+CLI/MCP capability. No native execution is established by PNG-header contract
+fixtures in the Rust test suite.
 
 ## Qualification
 

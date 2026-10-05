@@ -341,6 +341,24 @@ pub struct PresentationRequest {
     pub media: Option<GpuSelection>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FrameSource {
+    pub job_id: String,
+    pub plan_digest: String,
+    pub execution_binding_digest: String,
+    pub authorization_digest: String,
+    pub sequence_sha256: String,
+    pub bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct VideoRequest {
+    pub source_job: String,
+    pub media: GpuSelection,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionPlan {
@@ -354,6 +372,8 @@ pub struct ExecutionPlan {
     pub policy: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<RetainedSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frames: Option<FrameSource>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -371,6 +391,14 @@ struct ExecutionPlanRecord {
     policy: String,
     #[serde(default, deserialize_with = "retained_source")]
     source: Option<RetainedSource>,
+    #[serde(default, deserialize_with = "frame_source")]
+    frames: Option<FrameSource>,
+}
+
+fn frame_source<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<FrameSource>, D::Error> {
+    FrameSource::deserialize(decoder).map(Some)
 }
 
 fn retained_source<'de, D: serde::Deserializer<'de>>(
@@ -383,11 +411,11 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> std::result::Result<Self, D::Error> {
         use serde::de::Error;
         let plan = ExecutionPlanRecord::deserialize(decoder)?;
-        match (plan.schema_version, &plan.source) {
-            (1, None) | (2, Some(_)) => {}
+        match (plan.schema_version, &plan.source, &plan.frames) {
+            (1, None, None) | (2, Some(_), None) | (3, Some(_), Some(_)) => {}
             _ => {
                 return Err(D::Error::custom(
-                    "explicit v1 or source-bound v2 execution plan required",
+                    "explicit v1, source-bound v2 or frame-bound v3 execution plan required",
                 ));
             }
         }
@@ -402,16 +430,81 @@ impl JsonSchema for ExecutionPlan {
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
-            properties["schema_version"]["enum"] = serde_json::json!([1, 2]);
+            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3]);
         }
         schema.insert("allOf".into(), serde_json::json!([
-            {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"required":["source"]}}},
-            {"if":{"properties":{"schema_version":{"const":2}}},"then":{"required":["source"],"properties":{"source":{"type":"object"}}}}
+            {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]}]}}},
+            {"if":{"properties":{"schema_version":{"const":2}}},"then":{"required":["source"],"properties":{"source":{"type":"object"}},"not":{"required":["frames"]}}},
+            {"if":{"properties":{"schema_version":{"const":3}}},"then":{"required":["source","frames"],"properties":{"source":{"type":"object"},"frames":{"type":"object"}}}}
         ]));
         schema
     }
 }
 impl ExecutionPlan {
+    pub fn video(
+        render: &Self,
+        source: RetainedSource,
+        frames: FrameSource,
+        request: VideoRequest,
+        policy: String,
+    ) -> Result<Self> {
+        if frames.job_id != request.source_job
+            || frames.plan_digest != render.id()?
+            || render.case.science_id()? != source.science_id
+            || !render
+                .stages
+                .iter()
+                .any(|s| matches!(s.operation, StageOperation::Render))
+            || request.media.role != Role::Media
+        {
+            return Err(invalid(
+                "video requires approved rendered-frame science and an independent media role",
+            ));
+        }
+        let mut plan = Self {
+            schema_version: 3,
+            case: render.case.clone(),
+            source: Some(source),
+            frames: Some(frames),
+            stages: vec![
+                Stage {
+                    id: "video".into(),
+                    dependencies: vec![],
+                    operation: StageOperation::Video,
+                    gpu: GpuRequirement::Required,
+                    selection: Some(request.media),
+                    ram_bytes: 1,
+                    vram_bytes: 0,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec!["video".into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 16 * 1024 * 1024,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec![],
+                probes: vec![],
+                retained_times_s: render.observation.retained_times_s.clone(),
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 0,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
     pub fn presentation(
         original: &Self,
         source: RetainedSource,
@@ -485,6 +578,7 @@ impl ExecutionPlan {
             fleetix_contract_digest: fleetix_digest(),
             policy,
             source: Some(source),
+            frames: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -520,6 +614,7 @@ impl ExecutionPlan {
             fleetix_contract_digest: fleetix_digest(),
             policy: "ci".into(),
             source: None,
+            frames: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -567,6 +662,7 @@ impl ExecutionPlan {
             fleetix_contract_digest: fleetix_digest(),
             policy,
             source: None,
+            frames: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -630,6 +726,7 @@ impl ExecutionPlan {
             fleetix_contract_digest: fleetix_digest(),
             policy,
             source: None,
+            frames: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -718,8 +815,8 @@ impl ExecutionPlan {
     pub fn validate(&self) -> Result<()> {
         self.case.validate()?;
         if !matches!(
-            (self.schema_version, &self.source),
-            (1, None) | (2, Some(_))
+            (self.schema_version, &self.source, &self.frames),
+            (1, None, None) | (2, Some(_), None) | (3, Some(_), Some(_))
         ) || self.fleetix_revision != FLEETIX_REV
             || self.fleetix_contract_digest != fleetix_digest()
         {
@@ -753,6 +850,7 @@ impl ExecutionPlan {
                 || !self.observation.metrics.is_empty()
                 || !self.observation.probes.is_empty()
                 || !self.observation.preview_times_s.is_empty()
+                || !self.observation.checkpoint_times_s.is_empty()
                 || self.observation.preview_may_drop
             {
                 return Err(invalid(
@@ -760,7 +858,7 @@ impl ExecutionPlan {
                 ));
             }
             let operations: Vec<_> = self.stages.iter().map(|s| &s.operation).collect();
-            if !matches!(
+            let render = matches!(
                 operations.as_slice(),
                 [StageOperation::Render, StageOperation::Bundle]
                     | [
@@ -768,10 +866,37 @@ impl ExecutionPlan {
                         StageOperation::Video,
                         StageOperation::Bundle
                     ]
-            ) {
+            );
+            let video = matches!(
+                operations.as_slice(),
+                [StageOperation::Video, StageOperation::Bundle]
+            );
+            if (self.frames.is_none() && !render) || (self.frames.is_some() && !video) {
                 return Err(invalid(
-                    "source-bound plans permit only render, optional video and bundle",
+                    "source-bound plans permit only retained-field rendering or independent frame video",
                 ));
+            }
+            if let Some(frames) = &self.frames {
+                let hashes = [
+                    &frames.plan_digest,
+                    &frames.execution_binding_digest,
+                    &frames.authorization_digest,
+                    &frames.sequence_sha256,
+                ];
+                if uuid::Uuid::parse_str(&frames.job_id).is_err()
+                    || frames.bytes == 0
+                    || frames.bytes > self.observation.max_artifact_bytes
+                    || hashes.iter().any(|h| {
+                        h.len() != 64
+                            || !h
+                                .bytes()
+                                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    })
+                {
+                    return Err(invalid(
+                        "exact bounded frame-source execution identities required",
+                    ));
+                }
             }
             for (index, stage) in self.stages.iter().enumerate() {
                 let dependencies = if index == 0 {
@@ -1060,6 +1185,9 @@ pub enum Operation {
     PlanPresentation {
         request: Box<PresentationRequest>,
     },
+    PlanVideo {
+        request: Box<VideoRequest>,
+    },
     Submit {
         plan: Box<ExecutionPlan>,
         approved_digest: String,
@@ -1107,5 +1235,7 @@ pub fn schemas() -> serde_json::Value {
         "FieldSnapshot": schemars::schema_for!(crate::fields::FieldSnapshot),
         "RetainedSource": schemars::schema_for!(RetainedSource),
         "PresentationRequest": schemars::schema_for!(PresentationRequest),
+        "FrameSource": schemars::schema_for!(FrameSource),
+        "VideoRequest": schemars::schema_for!(VideoRequest),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
 }

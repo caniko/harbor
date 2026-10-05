@@ -26,6 +26,7 @@ def main():
     for name in ("executable", "runtime", "mcp", "authority", "source-state", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument("--source-job", required=True)
+    parser.add_argument("--independent-video", action="store_true")
     args = parser.parse_args()
     binary, runtime, mcp = (
         p.resolve(strict=True) for p in (args.executable, args.runtime, args.mcp)
@@ -186,10 +187,10 @@ def main():
             "media": devices["media"] if video else None,
         }
 
-    def planned(spec, name):
+    def planned(spec, name, operation="render"):
         path = root / f"request-{name}.json"
         path.write_text(json.dumps(spec))
-        return command("--socket", endpoint, "render", path)["data"]
+        return command("--socket", endpoint, operation, path)["data"]
 
     def submit(plan, key):
         path = root / f"plan-{key}.json"
@@ -206,7 +207,7 @@ def main():
             key,
         )["data"]
 
-    async def mcp_submit(spec):
+    async def mcp_submit(spec, key="presentation-mcp", tool="render_plan"):
         from mcp import Client
         from mcp.client.stdio import StdioServerParameters
 
@@ -217,7 +218,7 @@ def main():
                 env={**environment, "HARBOR_CAD_SOCKET": str(endpoint)},
             )
         ) as client:
-            prepared = await client.call_tool("render_plan", {"request_spec": spec})
+            prepared = await client.call_tool(tool, {"request_spec": spec})
             assert not prepared.is_error, prepared
             plan = prepared.structured_content
             response = await client.call_tool(
@@ -225,7 +226,7 @@ def main():
                 {
                     "plan": plan["plan"],
                     "approved_digest": plan["approval_digest"],
-                    "idempotency_key": "presentation-mcp",
+                    "idempotency_key": key,
                 },
             )
             assert not response.is_error, response
@@ -264,6 +265,12 @@ def main():
                     )
                     assert parent_file.read_bytes() == child_file.read_bytes()
                     assert parent_file.stat().st_ino != child_file.stat().st_ino
+                # Controlled fork only: acknowledged jobs must use their own
+                # committed inodes, including through worker restart/retry.
+                if interface == "cli":
+                    (copied / "retained-fields/snapshot.json").write_bytes(
+                        b"changed after acknowledgment"
+                    )
                 running = wait_job(str(binary), endpoint, job["id"], {"running"})
                 active_retention = retention_snapshot(state, job, binary)
                 assert admission_record(state, job) is not None
@@ -275,6 +282,10 @@ def main():
                     str(binary), endpoint, job["id"], {"succeeded"}, timeout=130
                 )
                 assert outcome["invocation_id"] == running["invocation_id"]
+                if interface == "cli":
+                    (copied / "retained-fields/snapshot.json").write_bytes(
+                        snapshot_bytes
+                    )
                 wait_retention_release(state, job)
                 wait_admission_release(state, job)
                 bundle = root / f"bundle-{interface}"
@@ -317,6 +328,84 @@ def main():
                         "reservation_and_roots_released": True,
                     }
                 )
+            independent = []
+            if args.independent_video:
+                source_render = results[0]["job"]["id"]
+                for interface in ("cli", "mcp"):
+                    spec = {"source_job": source_render, "media": devices["media"]}
+                    key = f"independent-video-{interface}"
+                    if interface == "cli":
+                        plan = planned(spec, key, "video")
+                        job = submit(plan, key)
+                    else:
+                        plan, job = asyncio.run(mcp_submit(spec, key, "video_plan"))
+                    owned.append(job["unit"])
+                    frames = state / "artifacts" / job["id"] / "retained-frames"
+                    parent = state / "artifacts" / source_render
+                    assert (frames / "frame-sequence.json").read_bytes() == (
+                        parent / "frame-sequence.json"
+                    ).read_bytes()
+                    assert (frames / "frame0000.png").stat().st_ino != (
+                        parent / "frame0000.png"
+                    ).stat().st_ino
+                    wait_job(
+                        str(binary), endpoint, job["id"], {"succeeded"}, timeout=130
+                    )
+                    assert submit(plan, key)["id"] == job["id"]
+                    wait_retention_release(state, job)
+                    wait_admission_release(state, job)
+                    bundle = root / f"bundle-{key}"
+                    command("artifact", "export", "--state", state, job["id"], bundle)
+                    records = verify_manifest(bundle)
+                    receipt = json.loads((bundle / "video-receipt.json").read_text())
+                    assert receipt["frames"] == 2 and receipt["physical_times_s"] == [
+                        0,
+                        20,
+                    ]
+                    assert (
+                        receipt["source_render_execution_id"]
+                        == plan["plan"]["frames"]["plan_digest"]
+                    )
+                    assert (
+                        receipt["presentation_execution_id"] == plan["approval_digest"]
+                    )
+                    events = command(
+                        "--socket", endpoint, "job", "logs", job["id"], "--limit", 100
+                    )["data"]
+                    assert {
+                        e["message"] for e in events if e["kind"] == "stage_started"
+                    } == {"video", "bundle"}
+                    independent.append(
+                        {
+                            "interface": interface,
+                            "job": job,
+                            "bundle_records": len(records),
+                            "video": receipt,
+                            "reservation_and_roots_released": True,
+                        }
+                    )
+            immutable = planned(requested(False), "mutation")
+            (copied / "retained-fields/snapshot.json").write_bytes(
+                b"changed before acknowledgment"
+            )
+            path = root / "plan-mutation.json"
+            path.write_text(json.dumps(immutable["plan"]))
+            assert (
+                command(
+                    "--socket",
+                    endpoint,
+                    "job",
+                    "submit",
+                    path,
+                    "--approve",
+                    immutable["approval_digest"],
+                    "--idempotency-key",
+                    "reject-source-mutation",
+                    allow_error=True,
+                )["ok"]
+                is False
+            )
+            (copied / "retained-fields/snapshot.json").write_bytes(snapshot_bytes)
             plan = planned(requested(True), "cancel")
             job = submit(plan, "presentation-cancel")
             owned.append(job["unit"])
@@ -345,6 +434,9 @@ def main():
                     "mcp": str(mcp),
                 },
                 "results": results,
+                "independent_video": independent,
+                "source_mutation_before_acknowledgment": "rejected",
+                "source_mutation_after_acknowledgment": "original committed child inodes used through restart/retry",
                 "cancellation": "complete tree; source bytes preserved; roots/reservation released",
                 "unretained_time": "rejected",
                 "original_source": "all registered hashes unchanged",

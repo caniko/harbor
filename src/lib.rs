@@ -5,6 +5,7 @@ pub mod devices;
 pub mod estimates;
 pub mod execution;
 pub mod fields;
+pub mod frames;
 pub mod lifecycle;
 pub mod presentation;
 pub mod resources;

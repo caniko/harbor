@@ -109,14 +109,19 @@ def build_server(profile: str) -> MCPServer:
             return await request("plan_presentation", request=request_spec)
 
         @server.tool()
+        async def video_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan independent hardware encoding from registered rendered frames."""
+            return await request("plan_video", request=request_spec)
+
+        @server.tool()
         async def presentation_submit(
             plan: dict[str, Any], approved_digest: str, idempotency_key: str
         ) -> dict[str, Any]:
             """Submit only an approved source-bound presentation; return a durable job ID."""
-            if plan.get("schema_version") != 2 or not isinstance(
+            if plan.get("schema_version") not in {2, 3} or not isinstance(
                 plan.get("source"), dict
             ):
-                raise ValueError("source-bound version-2 presentation plan required")
+                raise ValueError("source-bound presentation plan required")
             return await request(
                 "submit",
                 plan=plan,

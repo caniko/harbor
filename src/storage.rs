@@ -646,6 +646,7 @@ impl Store {
             )?;
         }
         crate::presentation::retain(self, &id, plan)?;
+        crate::frames::retain(self, &id, plan)?;
         tx.execute(
             "INSERT INTO events(job,time,kind,message) VALUES(?1,?2,'submitted',?3)",
             params![id, now(), digest],

@@ -152,12 +152,8 @@ pub(crate) fn retain(store: &Store, id: &str, plan: &ExecutionPlan) -> Result<()
         store.add_artifact(id, &intent)?;
         Ok(())
     })();
-    if staging.exists() {
-        let _ = fs::remove_dir_all(staging);
-    }
-    if result.is_err() && destination.exists() {
-        let _ = fs::remove_dir_all(destination);
-    }
+    // Failed submission copies remain under the durable intent. Recovery
+    // removes them only after re-verifying the original authorized source.
     result
 }
 
@@ -174,6 +170,7 @@ pub(crate) fn recover_orphan(store: &Store, id: &str) -> Result<()> {
     let expected: RetainedSource = serde_json::from_slice(&data)?;
     if let Ok((_, _, original)) = source(store, &expected.job_id)
         && digest(&original)? == digest(&expected)?
+        && crate::frames::orphan_source_intact(store, &root)?
     {
         fs::remove_dir_all(&root)?;
         fs::File::open(root.parent().ok_or_else(|| invalid("orphan parent"))?)?.sync_all()?;
@@ -380,5 +377,47 @@ mod tests {
             recover_orphan(&store, &orphan).unwrap();
             assert_eq!(directory.exists(), !intact);
         }
+    }
+
+    #[test]
+    fn orphan_recovery_preserves_copied_frames_without_an_intact_original_rendering() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open(&temp.path().join("state")).unwrap();
+        let id = archived_source(&store);
+        let (_, _, bound) = source(&store, &id).unwrap();
+        let orphan = uuid::Uuid::new_v4().to_string();
+        let directory = store.root.join(format!("artifacts/{orphan}"));
+        private_dir(&directory).unwrap();
+        commit_artifact(
+            &directory,
+            "source-retention.json",
+            &serde_json::to_vec(&bound).unwrap(),
+            "json",
+            "orphan fixture",
+        )
+        .unwrap();
+        let missing = FrameSource {
+            job_id: uuid::Uuid::new_v4().to_string(),
+            plan_digest: "a".repeat(64),
+            execution_binding_digest: "b".repeat(64),
+            authorization_digest: "c".repeat(64),
+            sequence_sha256: "d".repeat(64),
+            bytes: 1234,
+        };
+        commit_artifact(
+            &directory,
+            "frame-retention.json",
+            &serde_json::to_vec(&missing).unwrap(),
+            "json",
+            "orphan fixture",
+        )
+        .unwrap();
+        fs::write(
+            directory.join("only-retained-frame"),
+            b"sole retained frame bytes",
+        )
+        .unwrap();
+        recover_orphan(&store, &orphan).unwrap();
+        assert!(directory.join("only-retained-frame").exists());
     }
 }

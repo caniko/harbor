@@ -22,6 +22,16 @@ Recorded qualification does not qualify a changed runtime or another host.
 
 ## Requirement map
 
+Post-P1b local verification also passes the complete CPU gate with 39 Python
+cases, strict version-3 frame approvals, copied-frame/time/dimension checks,
+source-loss orphan preservation and concurrent admission bootstrap. Bundled
+SQLite is upgraded to 3.53.2 through rusqlite 0.40.2 to include the upstream
+WAL-reset fix; updated `Cargo.lock` SHA-256 is
+`cebcbe7034f99fd0bbd82cbb7cda0df6630e01dff47603abaf8fc3ca010148f8`.
+Generated CI drift check passes. Packaged candidate evaluation reached the
+600-second wait limit while another Canix operation owned the host guard; no
+lease bypass or resource override was used.
+
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
 | §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |
@@ -62,7 +72,7 @@ Recorded qualification does not qualify a changed runtime or another host.
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |
 | P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | implemented, CPU verified; packaged qualification next |
-| P1b | independent registered-frame video plans, lifecycle and source mutation rejection | pending |
+| P1b | independent registered-frame video plans, lifecycle and source mutation rejection | implemented; CPU tests pass; packaged lifecycle qualification pending |
 | P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | pending |
 | P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | pending |

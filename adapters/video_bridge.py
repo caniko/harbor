@@ -80,6 +80,13 @@ def frame_sequence(work, plan):
         ):
             raise ValueError("frame sequence differs from completed render receipt")
         binding = field_binding()
+        original_render = os.environ.get("HARBOR_CAD_FRAME_SOURCE_EXECUTION_ID")
+        if original_render:
+            binding.pop("presentation_execution_id", None)
+            if "presentation_execution_id" in sequence:
+                binding["presentation_execution_id"] = original_render
+            elif sequence.get("execution_id") != original_render:
+                raise ValueError("original B1 render execution identity mismatch")
         if any(sequence.get(k) != v or receipt.get(k) != v for k, v in binding.items()):
             raise ValueError(
                 "frame sequence differs from exact retained scientific snapshot"
@@ -125,7 +132,9 @@ def main():
     )
     if selection["backend"] != "vaapi":
         raise ValueError("only explicitly selected VAAPI adapter implemented")
-    frames, sequence_digest, source = frame_sequence(Path("/work"), plan)
+    frame_root = Path(os.environ.get("HARBOR_CAD_FRAMES_DIRECTORY", "/work"))
+    frames, sequence_digest, source = frame_sequence(frame_root, plan)
+    original_render = os.environ.get("HARBOR_CAD_FRAME_SOURCE_EXECUTION_ID")
     node = f"/dev/dri/by-path/pci-{selection['pci']}-render"
     command = [
         "@ffmpeg@",
@@ -139,7 +148,7 @@ def main():
         "-framerate",
         "24",
         "-i",
-        "/work/frame%04d.png",
+        str(frame_root / "frame%04d.png"),
         "-vf",
         "format=nv12,hwupload",
         "-c:v",
@@ -201,6 +210,7 @@ def main():
     Path("/work/video.partial").replace("/work/video.mp4")
     receipt = {
         **field_binding(),
+        **({"source_render_execution_id": original_render} if original_render else {}),
         "adapter": "FFmpeg",
         "backend": "vaapi",
         "encoder": "h264_vaapi",

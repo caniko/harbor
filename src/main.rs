@@ -60,6 +60,10 @@ enum Commands {
     Render {
         request: PathBuf,
     },
+    /// Plan hardware encoding from an immutable registered rendered-frame job.
+    Video {
+        request: PathBuf,
+    },
     Artifact {
         #[command(subcommand)]
         command: Artifact,
@@ -270,6 +274,9 @@ fn run(cli: Cli) -> Result<()> {
             command: Results::Describe { id },
         } => Operation::Describe { job_id: id },
         Commands::Render { request } => Operation::PlanPresentation {
+            request: read(&request)?,
+        },
+        Commands::Video { request } => Operation::PlanVideo {
             request: read(&request)?,
         },
         Commands::Artifact { command } => match command {

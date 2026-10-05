@@ -464,6 +464,15 @@ fn dispatch(
             let plan = crate::presentation::plan(store, *request, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::PlanVideo { request } => {
+            if authority.is_none() {
+                return Err(Error::Unqualified(
+                    "independent video requires authoritative admission".into(),
+                ));
+            }
+            let plan = crate::frames::plan(store, *request, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::Submit {
             plan,
             approved_digest,
@@ -541,6 +550,8 @@ fn dispatch(
                 if let Some(source) = &plan.source {
                     let bytes = source
                         .bytes
+                        .checked_add(plan.frames.as_ref().map_or(0, |f| f.bytes))
+                        .ok_or_else(|| invalid("frame staging budget overflow"))?
                         .checked_add(16 * 1024 * 1024)
                         .ok_or_else(|| invalid("source staging budget overflow"))?;
                     if bytes
@@ -957,6 +968,19 @@ fn native_stage(
     } else {
         None
     };
+    if let Some(frames) = &plan.frames {
+        if !matches!(stage.operation, StageOperation::Video) {
+            return Err(invalid("retained frames mount only in video stage"));
+        }
+        let (root, _) = crate::frames::registered(store, id, plan)?;
+        command.args(["--ro-bind"]).arg(root).arg("/inputs/frames");
+        command.args(["--setenv", "HARBOR_CAD_FRAMES_DIRECTORY", "/inputs/frames"]);
+        command.args([
+            "--setenv",
+            "HARBOR_CAD_FRAME_SOURCE_EXECUTION_ID",
+            &frames.plan_digest,
+        ]);
+    }
     let mut hip_identity = None;
     if let Some(selection) = &stage.selection {
         if selection.role != Role::Compute {
@@ -1075,6 +1099,16 @@ fn native_stage(
     }
     let evidence = read_native_receipt(&receipt)?;
     validate_native_receipt(stage, &evidence)?;
+    if let Some(frames) = &plan.frames {
+        crate::frames::registered(store, id, plan)?;
+        if evidence["source_render_execution_id"] != frames.plan_digest
+            || evidence["frame_sequence_sha256"] != frames.sequence_sha256
+        {
+            return Err(invalid(
+                "independent video receipt differs from immutable source frames",
+            ));
+        }
+    }
     if let Some((snapshot, manifest_digest)) = retained_fields {
         let (_, _, observed_digest) = crate::fields::registered(store, id)?;
         if observed_digest != manifest_digest

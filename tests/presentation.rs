@@ -135,6 +135,65 @@ fn presentation_media_is_independent_and_all_source_hashes_are_approved() {
 }
 
 #[test]
+fn independent_video_has_only_media_stages_and_preserves_source_science() {
+    let original = source_plan();
+    let render =
+        ExecutionPlan::presentation(&original, source(&original), request(), "research".into())
+            .unwrap();
+    let frames = FrameSource {
+        job_id: "84cba551-04aa-4c3a-ac32-b6527625fb29".into(),
+        plan_digest: render.id().unwrap(),
+        execution_binding_digest: "1".repeat(64),
+        authorization_digest: "2".repeat(64),
+        sequence_sha256: "3".repeat(64),
+        bytes: 8192,
+    };
+    let request = VideoRequest {
+        source_job: frames.job_id.clone(),
+        media: GpuSelection {
+            role: Role::Media,
+            backend: "vaapi".into(),
+            pci: "0000:03:00.0".into(),
+            backend_uuid: None,
+        },
+    };
+    let plan = ExecutionPlan::video(
+        &render,
+        source(&original),
+        frames,
+        request,
+        "research".into(),
+    )
+    .unwrap();
+    assert_eq!(plan.schema_version, 3);
+    assert_eq!(
+        plan.case.science_id().unwrap(),
+        original.case.science_id().unwrap()
+    );
+    assert_eq!(
+        plan.observation.retained_times_s,
+        render.observation.retained_times_s
+    );
+    assert!(matches!(plan.stages[0].operation, StageOperation::Video));
+    assert!(matches!(plan.stages[1].operation, StageOperation::Bundle));
+    assert_eq!(plan.stages.len(), 2);
+    let json = serde_json::to_value(&plan).unwrap();
+    assert_eq!(
+        serde_json::from_value::<ExecutionPlan>(json.clone())
+            .unwrap()
+            .id()
+            .unwrap(),
+        plan.id().unwrap()
+    );
+    let mut forged = json;
+    forged["schema_version"] = 2.into();
+    assert!(serde_json::from_value::<ExecutionPlan>(forged).is_err());
+    let mut forged = plan;
+    forged.stages.insert(0, render.stages[0].clone());
+    assert!(forged.validate().is_err());
+}
+
+#[test]
 fn presentation_rejects_unretained_times_invalid_routes_and_solver_injection() {
     let original = source_plan();
     let mut bad = request();

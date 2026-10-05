@@ -189,6 +189,64 @@ def test_native_frames_are_bound_to_completed_render(monkeypatch, tmp_path, dama
         assert not encoded
 
 
+@pytest.mark.parametrize("old_presentation", [False, True])
+@pytest.mark.parametrize("changed", [False, True])
+def test_independent_video_keeps_original_render_and_new_encoding_identities(
+    monkeypatch, tmp_path, old_presentation, changed
+):
+    sequence(tmp_path, (0, 20))
+    snapshot = tmp_path / "snapshot.json"
+    snapshot.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "artifact_id": "a" * 64,
+                "science_id": "b" * 64,
+                "execution_id": "c" * 64,
+            }
+        )
+    )
+    binding = {
+        "field_snapshot_sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+        "field_artifact_id": "a" * 64,
+        "science_id": "b" * 64,
+        "execution_id": "c" * 64,
+    }
+    original_render = "d" * 64 if old_presentation else "c" * 64
+    if old_presentation:
+        binding["presentation_execution_id"] = original_render
+    manifest_path = tmp_path / "frame-sequence.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(binding, source="rendered_fields")
+    manifest_path.write_text(json.dumps(manifest))
+    receipt = {
+        **binding,
+        "adapter": "ParaView",
+        "executed": True,
+        "software_fallback": False,
+        "frame_sequence_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        "frames": manifest["frames"],
+        "physical_times_s": [0, 20],
+    }
+    (tmp_path / "render-receipt.json").write_text(json.dumps(receipt))
+    monkeypatch.setenv("HARBOR_CAD_FIELD_SNAPSHOT", str(snapshot))
+    monkeypatch.setenv("HARBOR_CAD_PRESENTATION_EXECUTION_ID", "e" * 64)
+    monkeypatch.setenv(
+        "HARBOR_CAD_FRAME_SOURCE_EXECUTION_ID", "f" * 64 if changed else original_render
+    )
+    module, encoded = run_video(monkeypatch, tmp_path, (0, 20))
+    if changed:
+        with pytest.raises(ValueError):
+            module.main()
+        assert not encoded
+    else:
+        module.main()
+        receipt = json.loads((tmp_path / "video-receipt.json").read_text())
+        assert receipt["presentation_execution_id"] == "e" * 64
+        assert receipt["source_render_execution_id"] == original_render
+        assert receipt["execution_id"] == "c" * 64
+
+
 @pytest.mark.parametrize("damage", [None, "sequence", "render", "snapshot"])
 def test_video_requires_exact_scientific_snapshot_before_encoding(
     monkeypatch, tmp_path, damage
