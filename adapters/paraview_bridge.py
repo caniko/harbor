@@ -98,6 +98,8 @@ def main():
     os.environ["VTK_DEFAULT_OPENGL_WINDOW"] = "vtkEGLRenderWindow"
     from paraview import simple as pv
 
+    # The pinned simple.Render resets the camera on its first call by default.
+    pv._DisableFirstRenderCameraReset()
     fields = velocity_collection(Path("/work"))
     source = pv.OpenDataFile(str(fields))
     source.UpdatePipelineInformation()
@@ -108,8 +110,10 @@ def main():
     ]
     view.CameraPosition = plan["case"]["presentation"]["camera"]
     display = pv.Show(source, view)
-    pv.ColorBy(display, ("POINTS", "physVelocity"))
+    display.Representation = "Surface"
+    pv.ColorBy(display, ("POINTS", "physVelocity", "Magnitude"))
     lookup = pv.GetColorTransferFunction("physVelocity")
+    lookup.AutomaticRescaleRangeMode = "Never"
     lookup.RescaleTransferFunction(*plan["case"]["presentation"]["range"])
     display.SetScalarBarVisibility(view, True)
     scalar_bar = pv.GetScalarBar(lookup, view)
@@ -128,6 +132,7 @@ def main():
         raise ValueError(
             "requested physical times were not retained; solving is not a render operation"
         )
+    frames = []
     for i, time_s in enumerate(retained):
         label.Text = f"Synthetic channel | physical time {time_mapping[time_s]['observed_s']:.9g} s"
         view.ViewTime = time_mapping[time_s]["step"]
@@ -149,7 +154,17 @@ def main():
             raise RuntimeError("software graphics fallback rejected")
         window.MakeCurrent()
         observed_node = egl_context_device(node)
-        pv.SaveScreenshot(f"/work/frame{i:04d}.png", view)
+        filename = f"frame{i:04d}.png"
+        pv.SaveScreenshot(f"/work/{filename}", view)
+        observed_camera = list(view.CameraPosition)
+        observed_range = [lookup.RGBPoints[0], lookup.RGBPoints[-4]]
+        if (
+            observed_camera != plan["case"]["presentation"]["camera"]
+            or observed_range != plan["case"]["presentation"]["range"]
+            or display.Representation.GetData() != "Surface"
+        ):
+            raise RuntimeError("rendered camera, representation or fixed scale drift")
+        frames.append({"path": filename, "label": label.Text, **time_mapping[time_s]})
     receipt = {
         "adapter": "ParaView",
         "backend": "egl",
@@ -164,6 +179,13 @@ def main():
         "numerical_filter": False,
         "time_mapping": list(time_mapping.values()),
         "fixed_range": plan["case"]["presentation"]["range"],
+        "observed_camera": observed_camera,
+        "camera_focal_point": list(view.CameraFocalPoint),
+        "camera_view_up": list(view.CameraViewUp),
+        "representation": display.Representation.GetData(),
+        "color_field": "physVelocity",
+        "color_component": "Magnitude",
+        "frames": frames,
         "units": "m/s",
         "physical_time_labels": True,
         "physical_validation": "unqualified",
