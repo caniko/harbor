@@ -36,7 +36,7 @@
     "license": "LGPL-2.0-or-later (Nixpkgs metadata)",
     "security_gate": "Version >=1.1.4 required before opening a document; isolated patched importer remains mandatory",
     "python_abi": "FreeCAD's own Nixpkgs interpreter/dependencies; isolated from MCP and ParaView",
-    "build": "passed as runtime-cpu dependency", "runtime": "synthetic fixture passed through CLI/MCP", "sandbox": "actual CPU fixture execution passed; full production importer policy unqualified"
+    "build": "passed as runtime-cpu dependency", "runtime": "synthetic fixture and CAD-only source inspection passed through packaged CLI/MCP; changed approved source rejected", "sandbox": "actual CPU fixture/source inspection passed; full production importer policy unqualified"
   },
   "openlb": {
     "version": "1.9.0",
@@ -73,8 +73,9 @@
   "ffmpeg": {
     "source_definition": "pkgs.ffmpeg from the declared immutable Nixpkgs revision",
     "adapter": "VAAPI H.264, NV12 upload, actual CPU decode and decoded frame/timestamp checks",
-    "build_runtime_license_configuration": "Must be captured from the realized derivation before qualification",
-    "runtime": "unqualified"
+    "build_runtime_license_configuration": "Realized FFmpeg 9.0.1, GCC 16.2.0; --enable-gpl --enable-version3 --disable-nonfree; complete configuration retained in qualification process.log",
+    "runtime": "selected AMD Radeon RX 7900 XTX at 0000:03:00.0; three 128x128 frames hardware-encoded and CPU-decoded; B1/EGL/time labels separately unqualified",
+    "evidence": "docs/evidence/inspection-media.json"
   },
   "mcp": {
     "version": "2.3.0",
@@ -91,7 +92,8 @@
     "native_hardening_revision": "30a0c939eb69e9ba794f472de7391a800e91c3de",
     "native_input_receipt_revision": "0facca23e010f4941fd0fd8f5af26c6e3257756f",
     "service_owner_plan_mount_revision": "3bd597f6d2beaac0f64a38698174edabd6102b55",
-    "cpu_checks": {"rust_unit_tests": 4, "rust_integration_tests": 37, "official_mcp_python_tests": 2, "clippy": "passed with -D warnings"},
+    "native_dri_binding_revision": "2863fa5b18d661dd00b33f7b69acc2e2846dc305",
+    "cpu_checks": {"rust_unit_tests": 5, "rust_integration_tests": 37, "official_mcp_python_tests": 2, "clippy": "passed with -D warnings"},
     "systemd_receipt_sha256": "03758eb00d174725aa31346c62f6fb3d198e224f6fe0cf896bdaa8042052394e",
     "systemd_owner_receipt_sha256": "6383e16e32d94da3674c7a08eef23718806bf2e46ad0392eacdb0f68e23227c1",
     "systemd_owner_frozen_binary_sha256": "832a5713b05bc82e35b7642d5b6e9fe3af2a3eed1ca0c2078431953ab15087a3",
@@ -104,7 +106,7 @@
     "cpu_quota": "1 CPU",
     "tasks_max": 128,
     "kill_mode": "control-group",
-    "runtime_guarantees": "Tested analytical job crash/restart and cancellation; native descendants and GPU sandbox separately unqualified",
+    "runtime_guarantees": "Tested analytical job crash/restart and cancellation; actual Bubblewrap detached-session cleanup on exit/timeout/monitor failure passed; selected DRM metadata/node and VAAPI probes passed; full production isolation remains unqualified",
     "admission": "One immutable plan/profile reservation per state root; retained artifacts and native copy staging counted",
     "physical_card_anchors": "/run/user/UID/harbor-cad/cards shared across state roots; actual GPU execution separately unqualified"
   },

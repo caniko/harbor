@@ -152,7 +152,7 @@ Local Rust checks used `rustc 1.100.0-nightly (574ff7d98 2026-09-14)` from the
 approved Canix environment. The locked CLI package also built with the declared
 Rust 1.94.0 toolchain. Python checks used Python 3.13.15 and uv 0.12.5.
 
-Latest local checks passed: 37 Rust integration tests plus four worker unit tests, Clippy with
+Latest local checks passed: 37 Rust integration tests plus five Rust unit tests, Clippy with
 `-D warnings`, two official-MCP/Python tests, Ruff lint/format checks, and
 scoped treefmt. The actual OpenLB CPU and user-manager tests above are
 separate opt-in runtime evidence.
@@ -233,6 +233,43 @@ Read-only inventory exposed AMD devices at `0000:03:00.0` (with a render
 node) and `0000:7d:00.0` (without a render alias); no CUDA device was
 available. Inventory is not EGL/VAAPI execution evidence. CUDA UUID/minor
 correlation and per-device sandbox mounts remain explicit rejection gates.
+
+### Packaged CAD inspection and selected-device media
+
+Five additional Canix gates passed against `96d3942838179fefa664373be7816c6fcfd8c026`:
+CLI, MCP, media, Python protocol tests and clean runtime. The packaged inspection
+verifier passed real FCStd import through both CLI and MCP, preserving source
+bytes and producing 12 checksummed records per CAD-only bundle. Changing the
+approved source caused a failed job before importer launch, with no input
+snapshot/import receipt and seven checksummed diagnostic records. The full
+resolution-8/16 CPU reference also passed again.
+
+The actual `NativeProcess` library with packaged Bubblewrap 0.12.0 stopped a
+detached-session child's writer on normal exit, timeout and monitor rejection.
+Its scratch harness used dependencies with exact source/checksum parity to
+the repository lock. This closes that bounded detached-descendant gate;
+worker SIGKILL/systemd cancellation evidence is recorded independently above.
+
+The packaged FFmpeg 9.0.1 adapter encoded three explicitly synthetic 128×128
+PNGs with `h264_vaapi` on `0000:03:00.0`, observed as Radeon RX 7900 XTX through
+Mesa Gallium 26.2.1/radeonsi. Actual CPU decoding verified three yuv420p frames,
+dimensions and presentation timestamps 0, 0.041667 and 0.083333 s at 24 fps.
+Observed configuration enables GPL/version3 and disables nonfree. This qualifies
+only the selected media adapter probe, not EGL, physical-time labels or B1.
+
+Initial probing exposed a sandbox defect: libdrm 2.4.134's `drmNodeIsDRM`
+requires selected-device sysfs metadata even with an open render FD. Its official
+archive was verified against locked Nixpkgs' SHA-256. The production Rust binding
+now correlates the live character-device major/minor, DRM sysfs entry and exact
+PCI device, mounting six PCI metadata attributes and the selected render sysfs
+directory read-only. PCI config/resources, other cards and the rest of sysfs
+stay hidden. Actual production-library encoding and mount-isolation probes
+passed under a bounded systemd service. A separate 64×64 fixture correctly
+failed the driver's reported 128×128 hardware minimum; the qualifier now uses
+an explicit 128×128 fixture and does not resize user frames.
+
+Exact build outputs, qualification hashes and scoped source evidence are in
+[evidence/inspection-media.json](evidence/inspection-media.json).
 
 ## Canix package evaluation and realization
 

@@ -117,6 +117,14 @@ client, checks retained fields and every exported checksum, and keeps physical
 validation explicitly unqualified. Its packaged run passed with velocity errors
 of 1.1124% and 0.2781%, respectively; each bundle has 28 verified records.
 
+`scripts/verify_vaapi.py --runtime /nix/store/RUNTIME.json --media
+/nix/store/MEDIA/bin/harbor-cad-video --pci 0000:03:00.0 --output /absolute/new/path`
+performs an opt-in three-frame 128×128 synthetic encoding/decode probe. The
+selected Radeon RX 7900 XTX passed with H.264 VAAPI and actual CPU decoding.
+Only selected read-only DRM/PCI metadata accompanies the render node; other
+cards, PCI config/resources and session paths stay hidden. This probe does not
+establish EGL, physical-time-label correctness or the CUDA B1 workflow.
+
 Artifact listing returns `{items, total, next_after}` with at most 100
 descriptors and 24 KiB of descriptor data per page. Use
 `artifact list JOB --after PATH --limit 20` or MCP `artifact_list` with the
