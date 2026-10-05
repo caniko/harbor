@@ -455,6 +455,15 @@ fn dispatch(
             selections,
             profile.policy.clone(),
         )?)?),
+        Operation::PlanPresentation { request } => {
+            if authority.is_none() {
+                return Err(Error::Unqualified(
+                    "standalone presentation requires authoritative admission".into(),
+                ));
+            }
+            let plan = crate::presentation::plan(store, *request, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::Submit {
             plan,
             approved_digest,
@@ -465,6 +474,11 @@ fn dispatch(
             }
             if let Some(job) = store.existing_submission(&plan, &idempotency_key, profile)? {
                 return Ok(serde_json::to_value(job)?);
+            }
+            if plan.source.is_some() && authority.is_none() {
+                return Err(Error::Unqualified(
+                    "standalone presentation requires authoritative admission".into(),
+                ));
             }
             if authority.is_none()
                 && plan.stages.iter().any(|s| {
@@ -515,13 +529,33 @@ fn dispatch(
             let job = if let Some(authority) = authority {
                 let authorization =
                     ExecutionAuthorization::capture(&plan, profile, &binding, authority)?;
-                store.submit_authorized(
-                    &plan,
-                    &idempotency_key,
-                    profile,
-                    &binding,
-                    &authorization,
-                )?
+                let submit = || {
+                    store.submit_authorized(
+                        &plan,
+                        &idempotency_key,
+                        profile,
+                        &binding,
+                        &authorization,
+                    )
+                };
+                if let Some(source) = &plan.source {
+                    let bytes = source
+                        .bytes
+                        .checked_add(16 * 1024 * 1024)
+                        .ok_or_else(|| invalid("source staging budget overflow"))?;
+                    if bytes
+                        .checked_add(disk_bytes(&store.root, false)?)
+                        .is_none_or(|n| n > profile.max_disk_bytes)
+                    {
+                        return Err(Error::Resource(
+                            "insufficient state-root capacity for immutable source staging".into(),
+                        ));
+                    }
+                    Admission::open(&crate::admission::shared_root()?, authority)?
+                        .retain_inputs(store, bytes, submit)?
+                } else {
+                    submit()?
+                }
             } else {
                 store.submit_for_execution(&plan, &idempotency_key, profile, &binding)?
             };
@@ -889,7 +923,14 @@ fn native_stage(
         StageOperation::Render | StageOperation::Video
     ) {
         let (root, snapshot, manifest_digest) = crate::fields::registered(store, id)?;
-        if snapshot.science_id != plan.case.science_id()?
+        if plan.source.is_some() {
+            crate::presentation::verify(plan, &snapshot, &manifest_digest)?;
+            command.args([
+                "--setenv",
+                "HARBOR_CAD_PRESENTATION_EXECUTION_ID",
+                &plan.id()?,
+            ]);
+        } else if snapshot.science_id != plan.case.science_id()?
             || snapshot.execution_id != plan.id()?
             || snapshot.execution_binding_digest != digest(&store.execution_binding(id)?)?
         {
@@ -1041,6 +1082,7 @@ fn native_stage(
             || evidence["field_artifact_id"] != snapshot.artifact_id
             || evidence["science_id"] != snapshot.science_id
             || evidence["execution_id"] != snapshot.execution_id
+            || (plan.source.is_some() && evidence["presentation_execution_id"] != plan.id()?)
         {
             return Err(invalid(
                 "presentation receipt lacks exact retained-field identity",

@@ -564,6 +564,13 @@ impl Store {
         authorization: Option<&ExecutionAuthorization>,
     ) -> Result<Job> {
         plan.validate()?;
+        if plan.source.is_some()
+            && (profile.is_none() || binding.is_none() || authorization.is_none())
+        {
+            return Err(invalid(
+                "source-bound submissions require immutable profile, execution and authorization",
+            ));
+        }
         if !token(key) {
             return Err(invalid("bounded idempotency key"));
         }
@@ -638,6 +645,7 @@ impl Store {
                 ],
             )?;
         }
+        crate::presentation::retain(self, &id, plan)?;
         tx.execute(
             "INSERT INTO events(job,time,kind,message) VALUES(?1,?2,'submitted',?3)",
             params![id, now(), digest],
@@ -728,6 +736,7 @@ impl Store {
                 |r| r.get(0),
             )?;
             if !exists {
+                crate::presentation::recover_orphan(self, &id)?;
                 crate::retention::release(&self.root, &id, None)?;
             } else {
                 let job = self.job(&id)?;

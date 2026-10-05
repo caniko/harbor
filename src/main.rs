@@ -56,6 +56,10 @@ enum Commands {
         #[command(subcommand)]
         command: Results,
     },
+    /// Plan presentation from a registered source job; submit its approved plan with job submit.
+    Render {
+        request: PathBuf,
+    },
     Artifact {
         #[command(subcommand)]
         command: Artifact,
@@ -265,6 +269,9 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Results {
             command: Results::Describe { id },
         } => Operation::Describe { job_id: id },
+        Commands::Render { request } => Operation::PlanPresentation {
+            request: read(&request)?,
+        },
         Commands::Artifact { command } => match command {
             Artifact::List { id, after, limit } => Operation::Artifacts {
                 job_id: id,

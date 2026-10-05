@@ -1,0 +1,87 @@
+# Acceptance and execution ledger
+
+Baseline: `d9aff76f71f7bd6b06ec54d1fad277271d1a0516`, branch
+`implementation/local-worker`. This ledger records scoped evidence and remaining
+acceptance work against [the implementation specification](implementation-spec.md).
+Recorded qualification does not qualify a changed runtime or another host.
+
+## Baseline verification — 2026-10-06
+
+- `python3 scripts/check_cpu.py`: passed before this slice and after the
+  source-bound presentation implementation; Rust tests, Clippy `-D warnings`,
+  locked build, formatting, Ruff and 35 Python cases.
+- `treefmt -C <repository> --config-file <repository>/treefmt.toml`: passed.
+- Compatible pinned Simit `init ci --check --diff`: passed. Hosted CI remains
+  unexecuted because work is local.
+- `flake.lock` SHA-256:
+  `c82b720484076521ba2a59ca4bf891873b69971a0c9766bd7f58c181d403a807`.
+- `Cargo.lock` SHA-256:
+  `086eb4d8227bbdaf2e376c1eba42ec43cba8bdb09d5805b8a17a2a8fbce68ae6`.
+- `uv.lock` SHA-256:
+  `b1d44d4f31b32796c5f759964ff934aa9933f6df769f6888ed17982ab7fe0f25`.
+
+## Requirement map
+
+| Specification | Implementation / verification owner | Evidence / remaining acceptance |
+|---|---|---|
+| §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |
+| §1 selected native stacks; no extra mandatory framework | `nix/native.nix`, `nix/openlb.nix` | FreeCAD/OpenLB/ParaView/FFmpeg packaged; Gmsh/FEM/spectral integration pending |
+| §2 Harbor and Fleetix merged PR #3 | `flake.nix`, `Cargo.toml`, `build.rs` | pinned signatures/contracts; source and digest drift tests |
+| §2 packages, modules, clean-runtime discovery | `flake.nix`, `nix/modules.nix`, `tests/worker.rs` | lightweight CLI/MCP and native packages built; remaining backend packages pending |
+| §2 independent interpreters and immutable ABIs | `nix/native.nix`, `docs/dependency-manifest.json` | importer/MCP/EGL executed outside development shell; FEM/spectral ABI sets pending |
+| §2 locks, native patches, GPU architecture | lock files, `patches/`, `nix/openlb.nix` | immutable pins and `gfx1100`; compatible filter/FEM/Dr.Jit sets pending |
+| §2 unfree, driver boundary, caches and closure retention | `flake.nix`, `src/retention.rs` | scoped policy, no host activation; active roots/recovery qualified |
+| §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
+| §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
+| §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1/v2 plans and original approval compatibility tested; recipe-specific contracts pending |
+| §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
+| §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs` | channel SI/identity/rejection tests; thermal/contact/optical units/materials pending |
+| §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
+| §4 allocated solver resources, unresolved paths | `src/estimates.rs`, `adapters/openlb_channel.cpp` | channel allocation/Mach/model gates; other formulations and local-gap resolution gates pending |
+| §5 cold start and expansion/contact | recipe contracts and native FEM adapters | transient history, heater energy, contact data, conservative temperature transfer pending |
+| §5 airflow/wetting/snow/freezing | OpenLB recipe drivers | synthetic single-phase flow qualified; local wetting, prescribed coverage, freezing conservation/refinement pending |
+| §5 solar/UV, angular inputs and dose | atmospheric/spectral adapters | orientation/occlusion/reflection/unit/temporal tests and GPU transport pending |
+| §5 typed one-way transfers and convection | `TransferSpec` | typed conservative transfers pending; velocity-to-convection inference rejected by scope |
+| §5 moisture-risk entry | channel applicability/reports | missing-input label implemented; combined recipe screening/inapplicability pending |
+| §6 durable lifecycle/idempotency/services | `src/lifecycle.rs`, `src/worker.rs`, `src/storage.rs` | restart/disconnect/owned tree/cancel/partial output qualified; logout/reboot/resume pending |
+| §6 patched importer and operation policies | `src/sandbox.rs`, `adapters/import_policy.py`, device sandbox | importer and selected single-KFD HIP scope qualified; broader solver/JIT/filter policies pending |
+| §6 typed input, argument arrays and credential denial | worker operations, bounded protocol, native sandbox | unknown/path/symlink/session/network canaries tested |
+| §7 independent observations and congestion | `ObservationPlan`, native channel output | fixed retained times and fail-on-budget; bounded configurable probes/reductions pending |
+| §7 arrays and format round trips | `src/fields.rs`, retained-field verifiers | Float64 image graph preserved; broad topology/ghost/node-cell round trips pending |
+| §7 atomic committed data/exports and sole-source safety | `src/storage.rs`, `src/presentation.rs` | distinct verified source copies, staging intents, atomic bundle/checksum tests |
+| §7 compute filters vs presentation | `adapters/paraview_bridge.py`, `adapters/video_bridge.py` | EGL/VAAPI recorded; actual qualified numerical filter pending |
+| §7 portable provenance and retained re-render | immutable snapshot, source-bound v2 plan | CPU gates pass; packaged standalone qualification next |
+| §7 Catalyst/Conduit | optional optimization | deferred until measured baseline justifies it |
+| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render surfaces; CAD regions/export/variant, sample/compare and independent video pending |
+| §9 CI and negative tests | `scripts/check_cpu.py`, generated workflow, tests | local gate green; hardware gates remain opt-in and scoped |
+
+## Ordered runnable slices
+
+| Slice | Acceptance | State |
+|---|---|---|
+| P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |
+| P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | implemented, CPU verified; packaged qualification next |
+| P1b | independent registered-frame video plans, lifecycle and source mutation rejection | pending |
+| P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | pending |
+| P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | pending |
+| P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | pending |
+| P5 / C | native thermal/contact/moisture/coupling slice | pending |
+| P6 / D | native local water, prescribed snow and retained-water freezing | pending |
+| P7 / E | native atmosphere/spectral irradiance/dose slice | pending |
+| P8 / F | bounded studies, retention/recovery/resume, measurements and product closure | pending |
+
+## External qualification prerequisites
+
+- Multi-GPU KFD exclusion needs multiple supported live devices and matched
+  running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
+- Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.
+  CUDA remains best-effort; available AMD work continues independently.
+- The existing pinned ParaView renderer has no established HIP numerical filter
+  stack. Resolve exact bundled VTK/filter-library compatibility before packaging
+  that separate compute stage.
+- Real environmental claims need geometry, material/contact/wetting/optical data,
+  operating histories, acceptance limits and prototype evidence. Synthetic native
+  reference implementation can progress; missing physical inputs stay explicit.
+- Paperclip revised-attempt-2 audit remains independent. Its recorded exit 1 and
+  failed tests/build do not establish full application qualification.

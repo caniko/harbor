@@ -320,6 +320,29 @@ pub struct TransferSpec {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct RetainedSource {
+    pub job_id: String,
+    pub plan_digest: String,
+    pub execution_binding_digest: String,
+    pub authorization_digest: String,
+    pub snapshot_sha256: String,
+    pub artifact_id: String,
+    pub science_id: String,
+    pub bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PresentationRequest {
+    pub source_job: String,
+    pub times_s: Vec<f64>,
+    pub presentation: Presentation,
+    pub render: GpuSelection,
+    pub media: Option<GpuSelection>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExecutionPlan {
     pub schema_version: u32,
     pub case: CaseSpec,
@@ -329,8 +352,144 @@ pub struct ExecutionPlan {
     pub fleetix_revision: String,
     pub fleetix_contract_digest: String,
     pub policy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<RetainedSource>,
+}
+
+// Decode versions explicitly: v1's field set remains strict, and v2 requires
+// an immutable source. The remote record shares the exact existing field types.
+#[derive(Deserialize, JsonSchema)]
+#[serde(remote = "ExecutionPlan", deny_unknown_fields)]
+struct ExecutionPlanRecord {
+    schema_version: u32,
+    case: CaseSpec,
+    stages: Vec<Stage>,
+    transfers: Vec<TransferSpec>,
+    observation: ObservationPlan,
+    fleetix_revision: String,
+    fleetix_contract_digest: String,
+    policy: String,
+    #[serde(default, deserialize_with = "retained_source")]
+    source: Option<RetainedSource>,
+}
+
+fn retained_source<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<RetainedSource>, D::Error> {
+    RetainedSource::deserialize(decoder).map(Some)
+}
+
+impl<'de> Deserialize<'de> for ExecutionPlan {
+    fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> std::result::Result<Self, D::Error> {
+        use serde::de::Error;
+        let plan = ExecutionPlanRecord::deserialize(decoder)?;
+        match (plan.schema_version, &plan.source) {
+            (1, None) | (2, Some(_)) => {}
+            _ => {
+                return Err(D::Error::custom(
+                    "explicit v1 or source-bound v2 execution plan required",
+                ));
+            }
+        }
+        Ok(plan)
+    }
+}
+
+impl JsonSchema for ExecutionPlan {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ExecutionPlan".into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut schema = ExecutionPlanRecord::json_schema(generator);
+        if let Some(properties) = schema.get_mut("properties") {
+            properties["schema_version"]["enum"] = serde_json::json!([1, 2]);
+        }
+        schema.insert("allOf".into(), serde_json::json!([
+            {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"required":["source"]}}},
+            {"if":{"properties":{"schema_version":{"const":2}}},"then":{"required":["source"],"properties":{"source":{"type":"object"}}}}
+        ]));
+        schema
+    }
 }
 impl ExecutionPlan {
+    pub fn presentation(
+        original: &Self,
+        source: RetainedSource,
+        request: PresentationRequest,
+        policy: String,
+    ) -> Result<Self> {
+        if source.job_id != request.source_job
+            || source.plan_digest != original.id()?
+            || source.science_id != original.case.science_id()?
+            || request
+                .times_s
+                .iter()
+                .any(|t| !original.observation.retained_times_s.contains(t))
+            || request.render.role != Role::Render
+            || request
+                .media
+                .as_ref()
+                .is_some_and(|s| s.role != Role::Media)
+        {
+            return Err(invalid(
+                "presentation source, retained times or operation roles differ",
+            ));
+        }
+        let mut case = original.case.clone();
+        case.presentation = request.presentation;
+        let mut stages = vec![Stage {
+            id: "render".into(),
+            dependencies: vec![],
+            operation: StageOperation::Render,
+            gpu: GpuRequirement::Required,
+            selection: Some(request.render),
+            ram_bytes: 1,
+            vram_bytes: 0,
+        }];
+        if let Some(media) = request.media {
+            stages.push(Stage {
+                id: "video".into(),
+                dependencies: vec!["render".into()],
+                operation: StageOperation::Video,
+                gpu: GpuRequirement::Required,
+                selection: Some(media),
+                ram_bytes: 1,
+                vram_bytes: 0,
+            });
+        }
+        stages.push(Stage {
+            id: "bundle".into(),
+            dependencies: vec![if stages.len() == 1 { "render" } else { "video" }.into()],
+            operation: StageOperation::Bundle,
+            gpu: GpuRequirement::CpuOnly,
+            selection: None,
+            ram_bytes: 16 * 1024 * 1024,
+            vram_bytes: 0,
+        });
+        let mut plan = Self {
+            schema_version: 2,
+            case,
+            stages,
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec![],
+                probes: vec![],
+                retained_times_s: request.times_s,
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 0,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+            source: Some(source),
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
     pub fn reference(case: CaseSpec) -> Result<Self> {
         let ram_bytes = 16 * 1024 * 1024 + u64::from(case.resolution) * 160;
         let max_artifact_bytes = 1048576u64.max(u64::from(case.resolution) * 128);
@@ -360,6 +519,7 @@ impl ExecutionPlan {
             fleetix_revision: FLEETIX_REV.into(),
             fleetix_contract_digest: fleetix_digest(),
             policy: "ci".into(),
+            source: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -406,6 +566,7 @@ impl ExecutionPlan {
             fleetix_revision: FLEETIX_REV.into(),
             fleetix_contract_digest: fleetix_digest(),
             policy,
+            source: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -468,6 +629,7 @@ impl ExecutionPlan {
             fleetix_revision: FLEETIX_REV.into(),
             fleetix_contract_digest: fleetix_digest(),
             policy,
+            source: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -555,14 +717,84 @@ impl ExecutionPlan {
     }
     pub fn validate(&self) -> Result<()> {
         self.case.validate()?;
-        if self.schema_version != 1
-            || self.fleetix_revision != FLEETIX_REV
+        if !matches!(
+            (self.schema_version, &self.source),
+            (1, None) | (2, Some(_))
+        ) || self.fleetix_revision != FLEETIX_REV
             || self.fleetix_contract_digest != fleetix_digest()
         {
             return Err(invalid("schema/Fleetix source or contract drift"));
         }
         if !["ci", "prototype", "production", "research"].contains(&self.policy.as_str()) {
             return Err(invalid("policy"));
+        }
+        if let Some(source) = &self.source {
+            let hashes = [
+                &source.plan_digest,
+                &source.execution_binding_digest,
+                &source.authorization_digest,
+                &source.snapshot_sha256,
+                &source.artifact_id,
+                &source.science_id,
+            ];
+            if self.policy == "ci"
+                || uuid::Uuid::parse_str(&source.job_id).is_err()
+                || hashes.iter().any(|s| {
+                    s.len() != 64
+                        || !s
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                })
+                || source.science_id != self.case.science_id()?
+                || source.bytes == 0
+                || source.bytes > self.observation.max_artifact_bytes
+                || self.case.presentation.field != "velocity"
+                || self.observation.retained_times_s.is_empty()
+                || !self.observation.metrics.is_empty()
+                || !self.observation.probes.is_empty()
+                || !self.observation.preview_times_s.is_empty()
+                || self.observation.preview_may_drop
+            {
+                return Err(invalid(
+                    "presentation requires exact source science, retained times and bounded supported fields",
+                ));
+            }
+            let operations: Vec<_> = self.stages.iter().map(|s| &s.operation).collect();
+            if !matches!(
+                operations.as_slice(),
+                [StageOperation::Render, StageOperation::Bundle]
+                    | [
+                        StageOperation::Render,
+                        StageOperation::Video,
+                        StageOperation::Bundle
+                    ]
+            ) {
+                return Err(invalid(
+                    "source-bound plans permit only render, optional video and bundle",
+                ));
+            }
+            for (index, stage) in self.stages.iter().enumerate() {
+                let dependencies = if index == 0 {
+                    vec![]
+                } else {
+                    vec![self.stages[index - 1].id.clone()]
+                };
+                if stage.dependencies != dependencies
+                    || stage.selection.as_ref().is_some_and(|s| {
+                        s.backend_uuid.is_some()
+                            || s.backend
+                                != if s.role == Role::Render {
+                                    "egl"
+                                } else {
+                                    "vaapi"
+                                }
+                    })
+                {
+                    return Err(invalid(
+                        "presentation requires exact sequential dependencies and EGL/VAAPI roles",
+                    ));
+                }
+            }
         }
         if self.stages.is_empty() || self.stages.len() > 32 {
             return Err(invalid("bounded nonempty DAG required"));
@@ -825,6 +1057,9 @@ pub enum Operation {
         case: Box<CaseSpec>,
         selections: B1Selections,
     },
+    PlanPresentation {
+        request: Box<PresentationRequest>,
+    },
     Submit {
         plan: Box<ExecutionPlan>,
         approved_digest: String,
@@ -870,5 +1105,7 @@ pub fn schemas() -> serde_json::Value {
         "HostAuthority": schemars::schema_for!(crate::authority::HostAuthority),
         "ExecutionAuthorization": schemars::schema_for!(crate::authority::ExecutionAuthorization),
         "FieldSnapshot": schemars::schema_for!(crate::fields::FieldSnapshot),
+        "RetainedSource": schemars::schema_for!(RetainedSource),
+        "PresentationRequest": schemars::schema_for!(PresentationRequest),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
 }

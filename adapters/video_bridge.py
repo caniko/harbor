@@ -104,12 +104,16 @@ def field_binding():
     snapshot = json.loads(data)
     if snapshot["schema_version"] != 1:
         raise ValueError("unsupported retained-field snapshot")
-    return {
+    binding = {
         "field_snapshot_sha256": hashlib.sha256(data).hexdigest(),
         "field_artifact_id": snapshot["artifact_id"],
         "science_id": snapshot["science_id"],
         "execution_id": snapshot["execution_id"],
     }
+    execution = os.environ.get("HARBOR_CAD_PRESENTATION_EXECUTION_ID")
+    if execution:
+        binding["presentation_execution_id"] = execution
+    return binding
 
 
 def main():

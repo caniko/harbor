@@ -18,6 +18,18 @@ def test_schema_parity_and_unknown_input_rejection():
     schemas = json.loads(subprocess.check_output([binary(), "schema"]))
     case = json.loads(subprocess.check_output([binary(), "case", "init"]))
     Draft202012Validator(schemas["CaseSpec"]).validate(case)
+    planned = json.loads(
+        subprocess.check_output(
+            [binary(), "case", "plan", "/dev/stdin"], input=json.dumps(case).encode()
+        )
+    )["plan"]
+    Draft202012Validator(schemas["ExecutionPlan"]).validate(planned)
+    injected = dict(planned, source=None)
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schemas["ExecutionPlan"]).validate(injected)
+    incomplete_v2 = dict(planned, schema_version=2)
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schemas["ExecutionPlan"]).validate(incomplete_v2)
     case["execute_python"] = "print('no')"
     with pytest.raises(ValidationError):
         Draft202012Validator(schemas["CaseSpec"]).validate(case)
@@ -136,6 +148,16 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" not in names and "results_describe" in names
                 assert "cad_plan_inspection" not in names
+                assert "render_plan" in names and "presentation_submit" in names
+                rejected = await client.call_tool(
+                    "presentation_submit",
+                    {
+                        "plan": result["plan"],
+                        "approved_digest": result["approval_digest"],
+                        "idempotency_key": "no-simulation-in-results",
+                    },
+                )
+                assert rejected.is_error
             async with Client(build_server("cad")) as client:
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "cad_plan_inspection" in names and "job_submit" not in names

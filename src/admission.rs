@@ -443,6 +443,46 @@ impl Admission {
         Ok(true)
     }
 
+    /// Serialize immutable input staging against the same filesystem accounting
+    /// used for launch. The writer lease ends as soon as the copies are committed.
+    pub(crate) fn retain_inputs<T>(
+        &self,
+        store: &Store,
+        bytes: u64,
+        commit: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        let root = fs::canonicalize(&store.root)?;
+        self.register_state(&root)?;
+        let device = self.filesystem(&root)?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )?;
+        self.verify_policy(&tx)?;
+        let budget = &self.authority.filesystems[self.filesystems[&device]];
+        let mut occupied = bytes;
+        for state in Self::roots(&tx)? {
+            if self.filesystem(&state)? == device {
+                occupied = sum(occupied, tree_bytes(&state, device, &mut 0, 0)?)?;
+            }
+        }
+        for reservation in Self::reservations(&tx)? {
+            if reservation.filesystem == device {
+                occupied = sum(occupied, reservation.disk)?;
+            }
+        }
+        if occupied > budget.max_bytes
+            || sum(bytes, budget.free_headroom_bytes)? > available_disk(&root)?
+        {
+            return Err(Error::Resource(
+                "insufficient authoritative capacity to retain immutable source inputs".into(),
+            ));
+        }
+        let result = commit()?;
+        tx.commit()?;
+        Ok(result)
+    }
+
     pub fn verify(&self, store: &Store, id: &str) -> Result<()> {
         self.verify_policy(&self.connection)?;
         let authorization = store

@@ -46,6 +46,9 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
         )
     });
     let mut output = if native { 16 * MIB } else { MIB };
+    if let Some(source) = &plan.source {
+        output = add(output, source.bytes)?;
+    }
     let mut stages = Vec::new();
     for stage in &plan.stages {
         let mut vram = 0;

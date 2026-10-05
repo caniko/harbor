@@ -99,6 +99,13 @@ and exposed read-only; subsequent changes to the original file cannot alter the
 importer's input. Every native stage requires a fresh matching adapter/backend
 receipt with actual execution and no software fallback.
 
+Standalone `render REQUEST.json` plans presentation from a completed registered
+field snapshot. Its approved version-2 plan uses only render, optional video and
+bundle stages; source science and original authorization remain immutable.
+MCP `render_plan` and `presentation_submit` expose this through `results`/`all`.
+See [standalone presentation](docs/standalone-presentation.md) for the request,
+source-retention contract and opt-in packaged qualifier.
+
 Systemd jobs also require the live unit's invocation, main PID and exact cgroup
 membership; an inherited environment value alone cannot authorize execution.
 The verified identity is archived as `service-owner.json`.

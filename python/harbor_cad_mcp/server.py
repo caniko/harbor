@@ -104,6 +104,27 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"results", "all"}:
 
         @server.tool()
+        async def render_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan retained-field presentation with exact source binding and independent devices."""
+            return await request("plan_presentation", request=request_spec)
+
+        @server.tool()
+        async def presentation_submit(
+            plan: dict[str, Any], approved_digest: str, idempotency_key: str
+        ) -> dict[str, Any]:
+            """Submit only an approved source-bound presentation; return a durable job ID."""
+            if plan.get("schema_version") != 2 or not isinstance(
+                plan.get("source"), dict
+            ):
+                raise ValueError("source-bound version-2 presentation plan required")
+            return await request(
+                "submit",
+                plan=plan,
+                approved_digest=approved_digest,
+                idempotency_key=idempotency_key,
+            )
+
+        @server.tool()
         async def results_describe(job_id: str) -> dict[str, Any]:
             """Return hashes/provenance and artifact descriptors, never scientific arrays."""
             return await request("describe", job_id=job_id)

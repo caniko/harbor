@@ -102,6 +102,9 @@ def main():
             "science_id": snapshot["science_id"],
             "execution_id": snapshot["execution_id"],
         }
+        execution = os.environ.get("HARBOR_CAD_PRESENTATION_EXECUTION_ID")
+        if execution:
+            field_binding["presentation_execution_id"] = execution
     if plan["case"]["presentation"]["field"] != "velocity":
         raise ValueError("only explicitly selected velocity rendering implemented")
     stage = next(s for s in plan["stages"] if s["operation"] == "render")
