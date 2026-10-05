@@ -60,6 +60,32 @@ def wait_retention_release(state, job, timeout=10):
         time.sleep(0.01)
 
 
+def admission_record(state, job):
+    ledger = (
+        Path(pwd.getpwuid(os.geteuid()).pw_dir)
+        / ".local/state/harbor-cad/admission/admission.sqlite3"
+    )
+    with sqlite3.connect(f"file:{ledger}?mode=ro", uri=True) as database:
+        records = [
+            json.loads(row[0])
+            for row in database.execute("SELECT record FROM reservations")
+        ]
+    matches = [r for r in records if r["root"] == str(state) and r["id"] == job["id"]]
+    if len(matches) > 1:
+        raise ValueError("ambiguous same-user reservation")
+    return matches[0] if matches else None
+
+
+def wait_admission_release(state, job, timeout=10):
+    deadline = time.monotonic() + timeout
+    while admission_record(state, job) is not None:
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                "closed service still owns durable admission reservation"
+            )
+        time.sleep(0.01)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", required=True)

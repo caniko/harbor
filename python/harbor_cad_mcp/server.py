@@ -47,7 +47,7 @@ def build_server(profile: str) -> MCPServer:
         async def case_plan_b1(
             case: dict[str, Any], selections: dict[str, Any]
         ) -> dict[str, Any]:
-            """Plan required CUDA flow, independent EGL/VAAPI devices, and offline bundle.
+            """Plan required HIP or CUDA flow, independent EGL/VAAPI devices, and offline bundle.
 
             Device selectors are explicit requests; planning does not qualify hardware.
             """

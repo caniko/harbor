@@ -2,7 +2,8 @@
 
 Kills only its own service after the initial VTI closes, then verifies recovery
 after worker restart and ordinary cancellation. Interrupted solving never counts
-as numerical success. Requires an existing user manager and CPU native runtime.
+as numerical success. Requires an existing user manager; HIP additionally needs
+explicit devices and authoritative shared admission.
 """
 
 import argparse
@@ -16,7 +17,13 @@ from pathlib import Path
 
 from verify_native_cpu import verify_manifest
 from verify_openlb_cpu import read_vti
-from verify_systemd import retention_snapshot, wait_job, wait_retention_release
+from verify_systemd import (
+    admission_record,
+    retention_snapshot,
+    wait_admission_release,
+    wait_job,
+    wait_retention_release,
+)
 
 
 def main():
@@ -24,7 +31,11 @@ def main():
     parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--authority", type=Path)
+    parser.add_argument("--devices", type=Path)
     args = parser.parse_args()
+    if args.devices is not None and args.authority is None:
+        raise ValueError("GPU recovery requires explicit authority")
     source = args.executable.resolve(strict=True)
     if not source.is_relative_to("/nix/store") or not source.is_file():
         raise ValueError("exact packaged runner required")
@@ -71,7 +82,12 @@ def main():
 
     def start(log):
         process = subprocess.Popen(
-            [str(binary), "worker", "--state", str(state), "--profile", str(profile)],
+            [str(binary), "worker", "--state", str(state), "--profile", str(profile)]
+            + (
+                ["--authority", str(args.authority.resolve(strict=True))]
+                if args.authority
+                else []
+            ),
             env=environment,
             stdout=log,
             stderr=subprocess.STDOUT,
@@ -113,7 +129,17 @@ def main():
             case["applicability"]["formulation"] = "periodic_forced_channel"
             case["applicability"]["numerical_tolerance"] = 0.05
             (root / "case.json").write_text(json.dumps(case))
-            approved = command("case", "plan-openlb-reference", root / "case.json")
+            approved = (
+                command(
+                    "case",
+                    "plan-b1",
+                    root / "case.json",
+                    "--devices",
+                    args.devices.resolve(strict=True),
+                )
+                if args.devices
+                else command("case", "plan-openlb-reference", root / "case.json")
+            )
             (root / "plan.json").write_text(json.dumps(approved["plan"]))
             receipts = []
             for scenario in ("forced-death", "cancel"):
@@ -133,6 +159,9 @@ def main():
                     str(binary), socket, job["id"], {"running"}, timeout=10
                 )
                 retention = retention_snapshot(state, job, binary)
+                reservation = admission_record(state, job) if args.authority else None
+                if args.authority:
+                    assert reservation is not None
                 raw = state / "artifacts" / job["id"] / ".native-incomplete"
                 deadline = time.monotonic() + 45
                 initial = None
@@ -191,6 +220,8 @@ def main():
                     str(binary), socket, job["id"], {terminal}, timeout=15
                 )
                 wait_retention_release(state, job)
+                if args.authority:
+                    wait_admission_release(state, job)
                 bundle = root / f"bundle-{scenario}"
                 command("artifact", "export", "--state", state, job["id"], bundle)
                 records = verify_manifest(bundle)
@@ -238,6 +269,8 @@ def main():
                         "outcome": outcome,
                         "service_owner": owner,
                         "active_runtime_retention": retention,
+                        "active_reservation": reservation,
+                        "admission_released": args.authority is not None,
                         "terminal_runtime_released": True,
                         "initial_field": str(relative),
                         "initial_field_sha256": initial_hash,
@@ -251,6 +284,10 @@ def main():
                 )
             report = {
                 "scope": "actual packaged FreeCAD/OpenLB initial VTI retained after owned SIGKILL plus worker restart and ordinary cancellation; interrupted solving not numerical success",
+                "backend": json.loads(runtime.read_text())["openlb_backend"],
+                "authority": str(args.authority.resolve(strict=True))
+                if args.authority
+                else None,
                 "source_cli": str(source),
                 "packaged_cli_sha256": expected,
                 "runtime": str(runtime),
