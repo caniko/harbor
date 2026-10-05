@@ -1,4 +1,6 @@
-use crate::{Error, Result, contracts::*, execution::ExecutionBinding};
+use crate::{
+    Error, Result, authority::ExecutionAuthorization, contracts::*, execution::ExecutionBinding,
+};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -491,14 +493,15 @@ impl Store {
           CREATE TABLE IF NOT EXISTS artifacts(job TEXT NOT NULL, path TEXT NOT NULL, manifest TEXT NOT NULL,
             PRIMARY KEY(job,path));
           CREATE TABLE IF NOT EXISTS job_profiles(job TEXT PRIMARY KEY, digest TEXT NOT NULL, profile TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS job_executions(job TEXT PRIMARY KEY, digest TEXT NOT NULL, binding TEXT NOT NULL);")?;
+          CREATE TABLE IF NOT EXISTS job_executions(job TEXT PRIMARY KEY, digest TEXT NOT NULL, binding TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS job_authorizations(job TEXT PRIMARY KEY, digest TEXT NOT NULL, authorization TEXT NOT NULL);")?;
         Ok(Self {
             connection,
             root: root.into(),
         })
     }
     pub fn submit(&self, plan: &ExecutionPlan, key: &str) -> Result<Job> {
-        self.submit_inner(plan, key, None, None)
+        self.submit_inner(plan, key, None, None, None)
     }
     pub fn submit_with_profile(
         &self,
@@ -506,7 +509,7 @@ impl Store {
         key: &str,
         profile: &HostExecutionProfile,
     ) -> Result<Job> {
-        self.submit_inner(plan, key, Some(profile), None)
+        self.submit_inner(plan, key, Some(profile), None, None)
     }
     pub fn submit_for_execution(
         &self,
@@ -515,7 +518,18 @@ impl Store {
         profile: &HostExecutionProfile,
         binding: &ExecutionBinding,
     ) -> Result<Job> {
-        self.submit_inner(plan, key, Some(profile), Some(binding))
+        self.submit_inner(plan, key, Some(profile), Some(binding), None)
+    }
+    pub fn submit_authorized(
+        &self,
+        plan: &ExecutionPlan,
+        key: &str,
+        profile: &HostExecutionProfile,
+        binding: &ExecutionBinding,
+        authorization: &ExecutionAuthorization,
+    ) -> Result<Job> {
+        authorization.verify(plan, profile, binding)?;
+        self.submit_inner(plan, key, Some(profile), Some(binding), Some(authorization))
     }
     pub fn existing_submission(
         &self,
@@ -543,6 +557,7 @@ impl Store {
         key: &str,
         profile: Option<&HostExecutionProfile>,
         binding: Option<&ExecutionBinding>,
+        authorization: Option<&ExecutionAuthorization>,
     ) -> Result<Job> {
         plan.validate()?;
         if !token(key) {
@@ -609,6 +624,16 @@ impl Store {
                 ],
             )?;
         }
+        if let Some(authorization) = authorization {
+            tx.execute(
+                "INSERT INTO job_authorizations(job,digest,authorization) VALUES(?1,?2,?3)",
+                params![
+                    id,
+                    crate::contracts::digest(authorization)?,
+                    serde_json::to_string(authorization)?
+                ],
+            )?;
+        }
         tx.execute(
             "INSERT INTO events(job,time,kind,message) VALUES(?1,?2,'submitted',?3)",
             params![id, now(), digest],
@@ -655,6 +680,25 @@ impl Store {
             return Err(invalid("persisted execution binding digest mismatch"));
         }
         Ok(binding)
+    }
+    pub fn execution_authorization(&self, id: &str) -> Result<Option<ExecutionAuthorization>> {
+        self.job(id)?;
+        let row: Option<(String, String)> = self
+            .connection
+            .query_row(
+                "SELECT digest,authorization FROM job_authorizations WHERE job=?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        row.map(|(expected, data)| {
+            let authorization: ExecutionAuthorization = serde_json::from_str(&data)?;
+            if digest(&authorization)? != expected {
+                return Err(invalid("persisted execution authorization digest mismatch"));
+            }
+            Ok(authorization)
+        })
+        .transpose()
     }
     pub fn cleanup_retention(&self, mut closed: impl FnMut(&Job) -> Result<bool>) -> Result<()> {
         let parent = safe_path(&self.root, "retentions")?;
@@ -957,6 +1001,7 @@ impl Store {
             let current = plan.validate();
             artifacts.push(commit_artifact(&partial, "execution.json", &serde_json::to_vec_pretty(&serde_json::json!({
                 "schema_version":1,"job":job,"plan":plan,"host_profile":profile,"execution_binding":binding,
+                "execution_authorization":self.execution_authorization(id)?,
                 "current_plan_check":{"accepted":current.is_ok(),"diagnostic":current.err().map(|e| e.diagnostic())},
                 "physical_validation":"unqualified","registered_artifacts":registered_count,
                 "completeness":"registered records only; native failure report identifies quarantined omissions"

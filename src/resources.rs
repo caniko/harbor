@@ -24,7 +24,7 @@ pub fn card_reservation_root() -> Result<PathBuf> {
     Ok(application.join("cards"))
 }
 
-fn pci_key(pci: &str) -> Result<String> {
+pub fn pci_key(pci: &str) -> Result<String> {
     let bytes = pci.as_bytes();
     if bytes.len() != 12
         || bytes[4] != b':'
@@ -35,6 +35,7 @@ fn pci_key(pci: &str) -> Result<String> {
             .enumerate()
             .all(|(i, c)| [4, 7, 10].contains(&i) || c.is_ascii_hexdigit())
         || !(b'0'..=b'7').contains(&bytes[11])
+        || !u8::from_str_radix(&pci[8..10], 16).is_ok_and(|device| device <= 31)
     {
         return Err(invalid("canonical PCI domain:bus:device.function required"));
     }

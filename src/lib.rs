@@ -1,3 +1,4 @@
+pub mod authority;
 pub mod contracts;
 pub mod devices;
 pub mod estimates;
