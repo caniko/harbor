@@ -106,7 +106,7 @@ fn real_worker_disconnect_idempotency_restart_and_export() {
         operation: StageOperation::Bundle,
         gpu: GpuRequirement::CpuOnly,
         selection: None,
-        ram_bytes: 1048576,
+        ram_bytes: 16 * 1024 * 1024,
         vram_bytes: 0,
     });
     let submit = Operation::Submit {

@@ -420,15 +420,6 @@ impl ExecutionPlan {
                 "native CPU reference requires synthetic periodic channel and systemd policy",
             ));
         }
-        let height = case.channel_height.si("length")?;
-        let nx = (case.length.si("length")? / height * f64::from(case.resolution)).ceil();
-        let cells =
-            (nx + 4.) * (f64::from(case.resolution) + 6.) * (f64::from(case.resolution) + 4.);
-        let ram = cells * 2048. + 64. * 1024. * 1024.;
-        let disk = cells * 96. * 3. + 32. * 1024. * 1024.;
-        if !ram.is_finite() || ram > i64::MAX as f64 || disk > 1e12 {
-            return Err(invalid("native allocation/staging estimate overflow"));
-        }
         let stages = vec![
             Stage {
                 id: "cad".into(),
@@ -445,7 +436,7 @@ impl ExecutionPlan {
                 operation: StageOperation::Openlb,
                 gpu: GpuRequirement::CpuOnly,
                 selection: None,
-                ram_bytes: ram.ceil() as u64,
+                ram_bytes: 0,
                 vram_bytes: 0,
             },
             Stage {
@@ -459,7 +450,7 @@ impl ExecutionPlan {
             },
         ];
         let end = case.max_time_s;
-        let plan = Self {
+        let mut plan = Self {
             schema_version: 1,
             case,
             stages,
@@ -470,7 +461,7 @@ impl ExecutionPlan {
                 retained_times_s: vec![0., end / 2., end],
                 checkpoint_times_s: vec![],
                 preview_times_s: vec![],
-                max_artifact_bytes: disk.ceil() as u64,
+                max_artifact_bytes: 0,
                 scientific_congestion: "fail".into(),
                 preview_may_drop: false,
             },
@@ -478,6 +469,7 @@ impl ExecutionPlan {
             fleetix_contract_digest: fleetix_digest(),
             policy,
         };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
         Ok(plan)
     }
@@ -557,7 +549,7 @@ impl ExecutionPlan {
                 vram_bytes: 0,
             },
         ]);
-        plan.observation.max_artifact_bytes += pixels * 4 * 3 + 128 * 1024 * 1024;
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
         Ok(plan)
     }
@@ -700,6 +692,7 @@ impl ExecutionPlan {
         {
             self.validate_openlb_lattice()?;
         }
+        crate::estimates::minimum(self)?.validate(self)?;
         Ok(())
     }
     fn validate_openlb_lattice(&self) -> Result<()> {
