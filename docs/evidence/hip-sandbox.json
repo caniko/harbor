@@ -8,6 +8,7 @@
   "report": {"path": "hip-sandbox-4/verification.json", "sha256": "886987a1abc1413ea87887375796306601a65f4bfeb181be22f3250dac261e87"},
   "kernel_release": "7.2.8-cachyos-lto",
   "kernel_source_matched": false,
+  "raw_kfd_vm": {"path": "kfd-vm-2/verification.json", "sha256": "1aa26e1d6e53d2545a1c7f470a5845b3f25cff11fd5c2f111e08e4dfafaf5648", "uapi_major": 1, "uapi_minor": 23, "invalid_fd_errno": 22, "non_drm_fd_errno": 22, "unavailable_gpu_id_errno": 22, "exact_selected_drm_fd_and_gpu_id_errno": 0},
   "rocm_revision": "c2d94761153e1033a91744842dfc66eddd631fde",
   "sources": [
     {"url": "https://github.com/ROCm/rocm-systems/blob/c2d94761153e1033a91744842dfc66eddd631fde/projects/clr/rocclr/device/rocm/rocdevice.cpp", "path": "research/rocdevice.cpp", "sha256": "95943ee943a8b645f4becf5b477595f56db8338b8bc19f7db4ba9bf18ff18974"},
@@ -22,6 +23,6 @@
   "sandbox_inventory": "exactly one matching HIP device",
   "kfd_only_negative": {"probe_exit_code": 1, "native_log": "no ROCm-capable device is detected", "render_node_denied": true},
   "multi_gpu_exclusion": "unqualified; candidate rejects another KFD GPU node",
-  "durable_worker_hip": "unqualified; worker still rejects compute sandboxing",
+  "durable_worker_hip": "unqualified; authority-bound single-KFD-GPU support implemented, packaged qualification pending",
   "physical_validation": "unqualified"
 }

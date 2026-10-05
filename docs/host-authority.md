@@ -84,7 +84,9 @@ Services explicitly receive `MemorySwapMax=0` in addition to RAM/CPU/task limits
 
 Legacy workers without `--authority` retain the previously documented per-root
 CPU-reference behavior. They do not qualify aggregate capacity or GPU execution.
-GPU worker submission and KFD isolation remain separately gated.
+HIP submissions require this authority and the independently correlated exact
+PCI/UUID. Its single-KFD-GPU worker policy rejects another exposed compute GPU;
+durable GPU qualification and multi-GPU exclusion remain separate evidence gates.
 
 ## Qualification
 

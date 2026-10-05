@@ -12,6 +12,20 @@ use std::{
 };
 
 pub const SANDBOX_POLICY: &str = "harbor-cad-native-v2";
+pub const HIP_SANDBOX_POLICY: &str = "harbor-cad-native-hip-single-kfd-v1";
+
+fn sandbox_policy(plan: &ExecutionPlan) -> &'static str {
+    if plan.stages.iter().any(|stage| {
+        stage
+            .selection
+            .as_ref()
+            .is_some_and(|s| s.role == Role::Compute && s.backend == "hip")
+    }) {
+        HIP_SANDBOX_POLICY
+    } else {
+        SANDBOX_POLICY
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -114,7 +128,7 @@ impl ExecutionBinding {
         Ok(Self {
             schema_version: 1,
             runner_protocol: PROTOCOL_VERSION,
-            sandbox_policy: SANDBOX_POLICY.into(),
+            sandbox_policy: sandbox_policy(plan).into(),
             plan_digest: plan.id()?,
             host_profile_digest: digest(profile)?,
             runner: FileIdentity::capture(runner, profile.service_mode == "systemd")?,
@@ -132,7 +146,7 @@ impl ExecutionBinding {
     pub fn verify(&self, plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()> {
         if self.schema_version != 1
             || self.runner_protocol != PROTOCOL_VERSION
-            || self.sandbox_policy != SANDBOX_POLICY
+            || self.sandbox_policy != sandbox_policy(plan)
         {
             return Err(Error::Unqualified(
                 "unsupported execution binding/policy version; no automatic relaunch".into(),

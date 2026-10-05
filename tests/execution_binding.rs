@@ -29,6 +29,41 @@ fn binding_rejects_changed_runner_and_unknown_policy_without_rewriting_approvals
 }
 
 #[test]
+fn hip_binding_cannot_reuse_the_historical_generic_native_policy() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runner = temporary.path().join("runner");
+    fs::write(&runner, b"binding-only fixture; never executed").unwrap();
+    let mut case = CaseSpec::reference();
+    case.applicability.formulation = "periodic_forced_channel".into();
+    case.acceleration.value = 0.001;
+    let selection = |role, backend: &str, uuid| GpuSelection {
+        role,
+        backend: backend.into(),
+        pci: "0000:03:00.0".into(),
+        backend_uuid: uuid,
+    };
+    let plan = ExecutionPlan::b1(
+        case,
+        B1Selections {
+            compute: selection(Role::Compute, "hip", Some("GPU-exact-fixture".into())),
+            render: selection(Role::Render, "egl", None),
+            media: selection(Role::Media, "vaapi", None),
+        },
+        "research".into(),
+    )
+    .unwrap();
+    let approved = plan.id().unwrap();
+    let mut profile = profile();
+    profile.policy = "research".into();
+    let mut binding = ExecutionBinding::capture(&plan, &profile, &runner, BTreeMap::new()).unwrap();
+    assert_eq!(binding.sandbox_policy, HIP_SANDBOX_POLICY);
+    binding.verify(&plan, &profile).unwrap();
+    binding.sandbox_policy = SANDBOX_POLICY.into();
+    assert!(binding.verify(&plan, &profile).is_err());
+    assert_eq!(plan.id().unwrap(), approved);
+}
+
+#[test]
 fn legacy_plan_profile_and_export_keep_exact_identities_without_inventing_execution_binding() {
     let temporary = tempfile::tempdir().unwrap();
     let store = Store::open(&temporary.path().join("state")).unwrap();

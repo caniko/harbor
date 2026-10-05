@@ -121,14 +121,19 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
     }
     for stage in &plan.stages {
         if let Some(selection) = &stage.selection {
-            // Runtime adapters correlate UUIDs themselves; never treat a Mesa selector as CUDA identity.
+            // HIP is independently correlated through PCI/DRM/KFD; a Mesa selector is not CUDA identity.
             let inventory = devices::inventory()?;
-            devices::resolve(
+            let resolved = devices::resolve(
                 &inventory,
                 selection.role,
                 &selection.backend,
                 Some(&selection.pci),
             )?;
+            if selection.backend == "hip" && resolved.backend_uuid != selection.backend_uuid {
+                return Err(invalid(
+                    "approved HIP UUID differs from exact PCI/KFD identity",
+                ));
+            }
         }
         if !matches!(
             stage.operation,
@@ -460,6 +465,17 @@ fn dispatch(
             }
             if let Some(job) = store.existing_submission(&plan, &idempotency_key, profile)? {
                 return Ok(serde_json::to_value(job)?);
+            }
+            if authority.is_none()
+                && plan.stages.iter().any(|s| {
+                    s.selection
+                        .as_ref()
+                        .is_some_and(|g| g.role == Role::Compute && g.backend == "hip")
+                })
+            {
+                return Err(Error::Unqualified(
+                    "HIP submission requires authoritative same-user admission".into(),
+                ));
             }
             check_plan(&plan, profile)?;
             if let Some(authority) = authority {
@@ -868,6 +884,7 @@ fn native_stage(
     } else {
         command.args(["--ro-bind", "/nix/store", "/nix/store"]);
     }
+    let mut hip_identity = None;
     if let Some(selection) = &stage.selection {
         if selection.role != Role::Compute {
             let binding = devices::DrmSandbox::resolve(&selection.pci)?;
@@ -877,6 +894,26 @@ fn native_stage(
                 "dri_binding_verified",
                 &serde_json::to_string(&binding)?,
             )?;
+        } else if selection.backend == "hip" {
+            if store.execution_authorization(id)?.is_none() {
+                return Err(Error::Unqualified(
+                    "HIP worker execution requires authoritative shared admission".into(),
+                ));
+            }
+            let binding = devices::HipSandbox::resolve(
+                &selection.pci,
+                selection
+                    .backend_uuid
+                    .as_deref()
+                    .ok_or_else(|| invalid("exact HIP UUID required"))?,
+            )?;
+            binding.apply(&mut command);
+            store.event(
+                id,
+                "hip_binding_verified",
+                &serde_json::to_string(&binding)?,
+            )?;
+            hip_identity = Some(binding.identity);
         } else {
             // NVIDIA nodes require UUID→minor correlation and a tested per-device mount policy.
             return Err(Error::Unqualified(
@@ -947,6 +984,13 @@ fn native_stage(
     let status = child.wait(
         Duration::from_secs(u64::from(profile.timeout_seconds)),
         || {
+            if let Some(identity) = &hip_identity
+                && devices::HipIdentity::resolve(&identity.pci)? != *identity
+            {
+                return Err(Error::Unqualified(
+                    "HIP topology/device identity changed during execution".into(),
+                ));
+            }
             if disk_bytes(dir, true)? > plan.observation.max_artifact_bytes {
                 return Err(Error::Resource("scientific output budget exhausted".into()));
             }
@@ -958,6 +1002,9 @@ fn native_stage(
     }
     let evidence = read_native_receipt(&receipt)?;
     validate_native_receipt(stage, &evidence)?;
+    if let Some(identity) = hip_identity {
+        identity.verify_receipt(&evidence)?;
+    }
     store.event(
         id,
         "native_receipt",

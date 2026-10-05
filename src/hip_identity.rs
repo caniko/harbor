@@ -11,7 +11,7 @@ use std::{
     process::Command,
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct HipIdentity {
     pub pci: String,
     pub render_node: String,
@@ -99,6 +99,33 @@ fn properties(path: &Path) -> Result<BTreeMap<String, u64>> {
 }
 
 impl HipIdentity {
+    pub fn verify_receipt(&self, receipt: &serde_json::Value) -> Result<()> {
+        let compiled = receipt["compiled_hip_version"]
+            .as_u64()
+            .filter(|v| *v > 0)
+            .ok_or_else(|| invalid("compiled HIP version missing"))?;
+        if receipt["adapter"] != "OpenLB"
+            || receipt["backend"] != "hip"
+            || receipt["pci"] != self.pci
+            || receipt["backend_uuid"] != self.backend_uuid
+            || receipt["architecture"] != self.architecture
+            || receipt["compiled_architecture"] != self.architecture
+            || receipt["hip_runtime_version"].as_u64() != Some(compiled)
+            || receipt["hip_driver_version"].as_u64() != Some(compiled)
+            || receipt["source_revision"] != "145cd54810b468f4b6fd3ed86b10644264841578"
+            || receipt["executed"] != true
+            || receipt["software_fallback"] != false
+            || receipt["precision"] != "float64"
+            || receipt["gpu_blocks"] != 1
+            || receipt["gpu_kernel_completion_verified"] != true
+        {
+            return Err(Error::Unqualified(
+                "HIP receipt differs from exact device/source/compiled-runtime identity; no fallback".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn resolve(pci: &str) -> Result<Self> {
         let drm = DrmSandbox::resolve(pci)?;
         if attribute(&drm.sysfs_device.join("vendor"))?.trim() != "0x1002"

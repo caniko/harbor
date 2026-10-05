@@ -158,8 +158,22 @@ initialization with `no ROCm-capable device is detected`.
 [`evidence/hip-sandbox.json`](evidence/hip-sandbox.json) binds the immutable ROCm
 sources, exact command, candidate source hashes and report. This is observed
 runtime compatibility on the single-KFD-GPU host. Running-kernel source matching,
-raw KFD exclusion of another GPU and durable worker HIP remain separate gates;
-the production worker still rejects compute sandboxing.
+raw KFD exclusion of another GPU and durable worker HIP remain separate gates.
+
+`scripts/verify_kfd_vm.py` additionally tests raw VM acquisition in fresh
+namespaces on the running kernel, without a HIP runtime. KFD reports UAPI 1.23.
+Invalid/non-DRM descriptors and an unavailable GPU ID return `EINVAL`; the
+exact selected render FD plus KFD GPU ID succeeds. The `/dev/kfd`-only namespace
+has no render node. These are direct observed ioctl results, not a claim that
+the exploratory Linux v6.18 source matches the installed kernel.
+
+Authority-bound HIP worker support now uses the distinct immutable policy
+`harbor-cad-native-hip-single-kfd-v1`. It rejects another exposed KFD GPU,
+rechecks topology during execution and requires exact PCI/UUID/architecture,
+Float64, one GPU block, kernel completion, pinned OpenLB source and matching
+compiled/runtime/driver HIP versions in the receipt. Older HIP packages lacking
+the compiled-version receipt reject. Packaged durable CLI/MCP qualification is
+still pending.
 
 ## Real systemd lifecycle
 

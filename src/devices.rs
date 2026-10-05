@@ -72,6 +72,7 @@ pub fn resolve(
         .filter(|d| pci.is_none_or(|id| id == d.pci))
         .filter(|d| match backend {
             "cuda" => d.vendor == "nvidia",
+            "hip" => d.vendor == "amd",
             "egl" | "vaapi" => d.render_node.is_some(),
             _ => false,
         })
@@ -83,9 +84,16 @@ pub fn resolve(
         )));
     }
     let device = candidates[0];
-    if role == Role::Compute && (backend != "cuda" || device.backend_uuid.is_none()) {
-        return Err(Error::Unqualified("CUDA UUID/PCI correlation must be established by the adapter; HIP separately unqualified".into()));
-    }
+    let backend_uuid = if role == Role::Compute && backend == "hip" {
+        Some(HipIdentity::resolve(&device.pci)?.backend_uuid)
+    } else {
+        if role == Role::Compute && (backend != "cuda" || device.backend_uuid.is_none()) {
+            return Err(Error::Unqualified(
+                "CUDA UUID/PCI correlation must be established by the adapter; no fallback".into(),
+            ));
+        }
+        device.backend_uuid.clone()
+    };
     if (role == Role::Render && backend != "egl") || (role == Role::Media && backend != "vaapi") {
         return Err(invalid("operation/backend mismatch"));
     }
@@ -108,7 +116,7 @@ pub fn resolve(
         role,
         backend: backend.into(),
         render_node: device.render_node.clone(),
-        backend_uuid: device.backend_uuid.clone(),
+        backend_uuid,
         qualified: false,
     })
 }

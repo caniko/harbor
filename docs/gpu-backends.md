@@ -69,7 +69,12 @@ GPU compilation/linking; resident stepping preserves the native solver state
 between output observations.
 
 The native result is a formulation/precision/card-specific qualification.
-Worker KFD isolation, aggregate RAM/disk/VRAM admission, durable GPU CLI/MCP B1,
+Selected-node sandbox compatibility and raw KFD VM acquisition on the running
+kernel have since passed the scoped probes in
+[`evidence/hip-sandbox.json`](evidence/hip-sandbox.json). Authority-bound worker
+support uses `harbor-cad-native-hip-single-kfd-v1`, requires exact device and
+compiled/runtime receipts, and rejects another exposed KFD GPU. Multi-GPU
+exclusion, aggregate RAM/disk/VRAM admission, durable GPU CLI/MCP B1,
 GPU filters, convergence and physical validation still need their own gates.
 
 ## Implementation and acceptance

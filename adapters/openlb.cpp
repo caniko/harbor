@@ -167,6 +167,7 @@ int main(int argc, char** argv) {
     hip_check(hipDriverGetVersion(&driverVersion));
     receipt["hip_runtime_version"]=runtimeVersion;
     receipt["hip_driver_version"]=driverVersion;
+    receipt["compiled_hip_version"]=HIP_VERSION;
 #else
     if (plan.contains("stages")) {
       for (const auto& stage : plan.at("stages")) {
