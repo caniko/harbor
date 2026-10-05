@@ -44,6 +44,15 @@
     inherit pkgs;
     shell = nested;
   };
+  retargeted = timezone.withShell {
+    inherit pkgs;
+    shell = repeated;
+    timeZone = "UTC";
+  };
+  legacy = adapt {
+    env = spec.env;
+    shellHook = (timezone.mkEnvironment {inherit pkgs;}).validationScript + spec.shellHook;
+  };
   # mkShell can attach metadata after the original overrideAttrs closure exists.
   attached = timezone.withShell {
     inherit pkgs;
@@ -70,6 +79,9 @@ in
   assert mixed.TZDIR == "/custom/zoneinfo" && !(mixed.env ? TZDIR);
   assert default.env.TZDIR == "${pkgs.buildPackages.tzdata}/share/zoneinfo";
   assert repeated.env == nested.env;
+  assert repeated.shellHook == nested.shellHook;
+  assert retargeted.shellHook == (timezone.mkEnvironment {inherit pkgs;}).shellHook + spec.shellHook;
+  assert legacy.shellHook == nested.shellHook;
   assert attached.passthru.devShellSpec.env == nested.passthru.devShellSpec.env;
   assert topLevel.passthru.devShellSpec.env.UNRELATED == topLevel.env.UNRELATED;
   assert changedHook.passthru.devShellSpec.shellHook == changedHook.shellHook;
@@ -78,5 +90,10 @@ in
     value.passthru.devShellSpec.env.TZDIR
     == "/custom/zoneinfo"
     && value.passthru.devShellSpec.env.TZ == "Europe/Istanbul"
-    && value.shellHook == (timezone.mkEnvironment {inherit pkgs;}).validationScript + spec.shellHook)
+    && value.shellHook
+    == (timezone.mkEnvironment {
+      inherit pkgs;
+      timeZone = "Europe/Istanbul";
+    }).shellHook
+    + spec.shellHook)
   [topLevel nested]; true
