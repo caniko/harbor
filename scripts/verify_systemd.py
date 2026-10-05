@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import shutil
 import socket as unix_socket
 import subprocess
 import time
@@ -28,23 +27,48 @@ def wait_job(binary, socket, job, states, timeout=30):
     raise TimeoutError(f"job did not reach {states}")
 
 
+def retention_snapshot(state, job, binary):
+    directory = state / "retentions" / job["id"]
+    intent = json.loads((directory / "intent.json").read_text())
+    ready = json.loads((directory / "ready.json").read_text())
+    binding = intent["binding"]
+    assert intent["job"] == job["id"] and intent["systemd"] is True
+    assert binding["runner"]["path"] == str(Path(binary).resolve(strict=True))
+    assert (
+        ready["binding_digest"]
+        == hashlib.sha256(
+            json.dumps(binding, separators=(",", ":"), ensure_ascii=False).encode()
+        ).hexdigest()
+    )
+    assert intent["roots"]
+    for index, target in enumerate(intent["roots"]):
+        link = directory / f"root-{index:04d}"
+        assert link.is_symlink() and str(link.readlink()) == target
+        assert Path(target).exists()
+    return {"directory": str(directory), "intent": intent, "ready": ready}
+
+
+def wait_retention_release(state, job, timeout=10):
+    deadline = time.monotonic() + timeout
+    directory = state / "retentions" / job["id"]
+    while directory.exists():
+        if time.monotonic() >= deadline:
+            raise TimeoutError("terminal job runtime roots were not safely released")
+        time.sleep(0.01)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", required=True)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    source_binary = Path(args.executable).resolve()
+    source_binary = Path(args.executable).resolve(strict=True)
+    if not source_binary.is_relative_to("/nix/store") or not source_binary.is_file():
+        raise ValueError("exact packaged runner required for owned systemd execution")
     root = args.output.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=False)
-    # Cargo may atomically replace a development executable while a worker is
-    # alive. Freeze one verified inode so current_exe() never names a deleted
-    # image during this opt-in qualification.
-    binary_path = root / "harbor-cad-tested"
     expected_hash = hashlib.sha256(source_binary.read_bytes()).hexdigest()
-    shutil.copyfile(source_binary, binary_path)
-    binary_path.chmod(0o500)
-    assert hashlib.sha256(binary_path.read_bytes()).hexdigest() == expected_hash
-    binary = str(binary_path)
+    binary = str(source_binary)
     state = root / "state"
     socket = state / "worker.sock"
     profile = root / "profile.json"
@@ -115,6 +139,7 @@ def main():
             )["data"]
             owned.append(job["unit"])
             running = wait_job(binary, socket, job["id"], {"running"})
+            retention = retention_snapshot(state, job, binary)
             properties = subprocess.check_output(
                 [
                     "systemctl",
@@ -153,12 +178,14 @@ def main():
             if key == "restart":
                 worker.kill()
                 worker.wait(timeout=5)
+                assert Path(retention["directory"]).exists()
                 socket.unlink(missing_ok=True)
                 worker = start_worker()
                 outcome = wait_job(binary, socket, job["id"], {"succeeded"})
             elif key == "forced-death":
                 worker.kill()
                 worker.wait(timeout=5)
+                assert Path(retention["directory"]).exists()
                 subprocess.run(
                     [
                         "systemctl",
@@ -199,13 +226,16 @@ def main():
                 failure = json.loads((bundle / "native-failure.json").read_text())
                 assert failure["execution"] == outcome["state"]
                 assert failure["physical_validation"] == "unqualified"
+            wait_retention_release(state, job)
             receipts.append(
                 {
                     "test": key,
                     "effective_properties": observed,
                     "service_owner": owner,
                     "source_binary": str(source_binary),
-                    "frozen_binary_sha256": expected_hash,
+                    "packaged_binary_sha256": expected_hash,
+                    "active_runtime_retention": retention,
+                    "terminal_runtime_released": True,
                     "raw_fixture_scope": "synthetic interrupted-adapter bytes; not native solver evidence"
                     if key != "restart"
                     else None,

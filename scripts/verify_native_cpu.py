@@ -17,7 +17,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from verify_openlb_cpu import read_vti
-from verify_systemd import wait_job
+from verify_systemd import wait_job, wait_retention_release
 
 
 def verify_manifest(root):
@@ -112,8 +112,13 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     binary, runtime, mcp = (
-        str(p.resolve()) for p in (args.executable, args.runtime, args.mcp)
+        str(p.resolve(strict=True)) for p in (args.executable, args.runtime, args.mcp)
     )
+    if any(
+        not Path(p).is_relative_to("/nix/store") or not Path(p).is_file()
+        for p in (binary, runtime, mcp)
+    ):
+        raise ValueError("exact packaged CLI, runtime and MCP required")
     root = args.output.resolve()
     root.mkdir(parents=True, mode=0o700, exist_ok=False)
     socket = root / "state/worker.sock"
@@ -238,6 +243,7 @@ def main():
                     job = asyncio.run(submit_mcp(case, planned))
                 owned.append(job["unit"])
                 wait_job(binary, socket, job["id"], {"succeeded"}, timeout=190)
+                wait_retention_release(root / "state", job)
                 bundle = root / f"bundle-{resolution}"
                 command(
                     "artifact", "export", "--state", root / "state", job["id"], bundle
@@ -315,6 +321,7 @@ def main():
                     else "succeeded"
                 )
                 outcome = wait_job(binary, socket, job["id"], {terminal}, timeout=190)
+                wait_retention_release(root / "state", job)
                 bundle = root / f"inspection-{interface}"
                 command(
                     "artifact", "export", "--state", root / "state", job["id"], bundle

@@ -9,7 +9,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import socket as unix_socket
 import subprocess
 import time
@@ -17,7 +16,7 @@ from pathlib import Path
 
 from verify_native_cpu import verify_manifest
 from verify_openlb_cpu import read_vti
-from verify_systemd import wait_job
+from verify_systemd import retention_snapshot, wait_job, wait_retention_release
 
 
 def main():
@@ -27,16 +26,15 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     source = args.executable.resolve(strict=True)
+    if not source.is_relative_to("/nix/store") or not source.is_file():
+        raise ValueError("exact packaged runner required")
     runtime = args.runtime.resolve(strict=True)
     if not runtime.is_relative_to("/nix/store") or not runtime.is_file():
         raise ValueError("immutable packaged runtime required")
     root = args.output.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=False)
-    # Bind one inode even if another Cargo build replaces the development CLI.
-    binary = root / "harbor-cad-tested"
+    binary = source
     expected = hashlib.sha256(source.read_bytes()).hexdigest()
-    shutil.copyfile(source, binary)
-    binary.chmod(0o500)
     assert hashlib.sha256(binary.read_bytes()).hexdigest() == expected
     profile = root / "profile.json"
     profile.write_text(
@@ -134,6 +132,7 @@ def main():
                 running = wait_job(
                     str(binary), socket, job["id"], {"running"}, timeout=10
                 )
+                retention = retention_snapshot(state, job, binary)
                 raw = state / "artifacts" / job["id"] / ".native-incomplete"
                 deadline = time.monotonic() + 45
                 initial = None
@@ -168,6 +167,7 @@ def main():
                 if scenario == "forced-death":
                     worker.kill()
                     worker.wait(timeout=5)
+                    assert Path(retention["directory"]).exists()
                     subprocess.run(
                         [
                             "systemctl",
@@ -190,6 +190,7 @@ def main():
                 outcome = wait_job(
                     str(binary), socket, job["id"], {terminal}, timeout=15
                 )
+                wait_retention_release(state, job)
                 bundle = root / f"bundle-{scenario}"
                 command("artifact", "export", "--state", state, job["id"], bundle)
                 records = verify_manifest(bundle)
@@ -236,6 +237,8 @@ def main():
                         "test": scenario,
                         "outcome": outcome,
                         "service_owner": owner,
+                        "active_runtime_retention": retention,
+                        "terminal_runtime_released": True,
                         "initial_field": str(relative),
                         "initial_field_sha256": initial_hash,
                         "retained_initial_field_unchanged": True,
@@ -249,7 +252,7 @@ def main():
             report = {
                 "scope": "actual packaged FreeCAD/OpenLB initial VTI retained after owned SIGKILL plus worker restart and ordinary cancellation; interrupted solving not numerical success",
                 "source_cli": str(source),
-                "frozen_cli_sha256": expected,
+                "packaged_cli_sha256": expected,
                 "runtime": str(runtime),
                 "resolution": 64,
                 "results": receipts,

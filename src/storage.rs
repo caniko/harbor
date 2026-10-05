@@ -594,6 +594,12 @@ impl Store {
                 plan,
                 profile.ok_or_else(|| invalid("execution profile required"))?,
             )?;
+            crate::retention::prepare(
+                &self.root,
+                &id,
+                binding,
+                profile.is_some_and(|p| p.service_mode == "systemd"),
+            )?;
             tx.execute(
                 "INSERT INTO job_executions(job,digest,binding) VALUES(?1,?2,?3)",
                 params![
@@ -649,6 +655,53 @@ impl Store {
             return Err(invalid("persisted execution binding digest mismatch"));
         }
         Ok(binding)
+    }
+    pub fn cleanup_retention(&self, mut closed: impl FnMut(&Job) -> Result<bool>) -> Result<()> {
+        let parent = safe_path(&self.root, "retentions")?;
+        if !parent.exists() {
+            return Ok(());
+        }
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )?;
+        for entry in fs::read_dir(parent)? {
+            let entry = entry?;
+            let id = entry
+                .file_name()
+                .into_string()
+                .map_err(|_| invalid("retention job name"))?;
+            if uuid::Uuid::parse_str(&id).is_err() || !entry.file_type()?.is_dir() {
+                return Err(invalid("unexpected retention directory"));
+            }
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM jobs WHERE id=?1)",
+                [&id],
+                |r| r.get(0),
+            )?;
+            if !exists {
+                crate::retention::release(&self.root, &id, None)?;
+            } else {
+                let job = self.job(&id)?;
+                if ["queued", "starting", "running", "cancelling"].contains(&job.state.as_str()) {
+                    continue;
+                }
+                if closed(&job)? {
+                    crate::retention::release(
+                        &self.root,
+                        &id,
+                        Some(&self.execution_binding(&id)?),
+                    )?;
+                    self.event(
+                        &id,
+                        "runtime_released",
+                        "terminal job and complete execution tree verified closed",
+                    )?;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(())
     }
     pub fn try_start(
         &self,

@@ -30,3 +30,34 @@ compatible migration.
 
 `execution-binding.json` is a checksummed job artifact. `execution.json` also
 includes the durable binding so early failures can still be diagnosed.
+
+## Durable closure retention
+
+Systemd submission registers indirect Nix GC roots for the bound runner, runtime
+manifest, Bubblewrap and selected adapter store objects. Nix's reference graph
+retains their transitive closures. The job can only be acknowledged or launched
+after all roots are registered, their targets checked and `ready.json` synced.
+Root management accepts already-realized non-derivation paths with builds and
+substitution disabled. Package realization remains an ordinary Canix operation.
+Foreground CI jobs record an empty root set and retain their weaker guarantees.
+
+The order is **durable filesystem intent → registered roots → durable ready
+record → SQLite job/profile/binding commit → acknowledgement**. A SQLite writer
+transaction covers registration and commit. Lost acknowledgements reuse the
+existing job; they do not register another root set. The worker's cleanup holds
+the same writer lock, so an uncommitted submission cannot be mistaken for an
+orphan while its registration is in progress.
+
+Worker restart removes uncommitted orphan intents and roots. Queued and active
+jobs keep their roots. Queued cancellation is recoverable. Terminal status alone
+does not release a systemd runtime: the unit must be absent or inactive/failed
+with matching invocation, and any live or recorded cgroup must be absent or have
+`populated 0` (including descendants). Ambiguous ownership retains roots. Cleanup
+unlinks only that job's verified root links and metadata, syncing deletion and
+keeping the intent until the links are gone. It never deletes store objects or
+touches another job's links. The durable database binding remains exportable.
+
+Unit tests substitute only the GC-registration boundary to exercise partial
+registration, lost registration acknowledgement, orphan recovery, committed
+submission, duplicate reuse, restart, queued cancellation and delayed tree
+termination. Packaged qualifiers separately verify the actual Nix/systemd path.

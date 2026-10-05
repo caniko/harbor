@@ -160,8 +160,6 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
 fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()> {
     let plan = store.plan(id)?;
     let profile = store.job_profile(id)?;
-    let binding = store.execution_binding(id)?;
-    binding.verify(&plan, &profile)?;
     check_plan(&plan, &profile)?;
     let artifacts = safe_path(&store.root, "artifacts")?;
     let retained_disk = if artifacts.exists() {
@@ -172,6 +170,9 @@ fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()
     if !store.try_start(id, capacity, retained_disk)? {
         return Ok(());
     }
+    let binding = store.execution_binding(id)?;
+    binding.verify(&plan, &profile)?;
+    crate::retention::verify_ready(&store.root, id, &binding, profile.service_mode == "systemd")?;
     let exe = &binding.runner.path;
     let root = fs::canonicalize(&store.root)?;
     let profiles = safe_path(&root, "profiles")?;
@@ -277,11 +278,7 @@ fn reconcile(store: &Store, capacity: &HostExecutionProfile, startup: bool) -> R
                     "interrupted",
                     Some("unit invocation identity changed; refusing attachment/cancellation"),
                 )?;
-            } else if info
-                .get("ActiveState")
-                .is_some_and(|s| s == "inactive" || s == "failed")
-                || info.get("LoadState").is_some_and(|s| s == "not-found")
-            {
+            } else if owned_service_closed(store, &job, &info)? {
                 let code = info
                     .get("ExecMainStatus")
                     .and_then(|s| s.parse().ok())
@@ -301,7 +298,67 @@ fn reconcile(store: &Store, capacity: &HostExecutionProfile, startup: bool) -> R
             }
         }
     }
+    store.cleanup_retention(|job| {
+        if store.job_profile(&job.id)?.service_mode == "foreground" {
+            return Ok(true);
+        }
+        owned_service_closed(store, job, &unit_info(&job.unit)?)
+    })?;
     Ok(())
+}
+fn owned_service_closed(store: &Store, job: &Job, info: &BTreeMap<String, String>) -> Result<bool> {
+    let missing = info.get("LoadState").map(String::as_str) == Some("not-found");
+    if !missing
+        && (!info
+            .get("ActiveState")
+            .is_some_and(|s| s == "inactive" || s == "failed")
+            || job.invocation_id.as_ref().is_some_and(|id| {
+                info.get("InvocationID")
+                    .is_some_and(|observed| !observed.is_empty() && observed != id)
+            }))
+    {
+        return Ok(false);
+    }
+    let mut groups: Vec<String> = info
+        .get("ControlGroup")
+        .filter(|g| !g.is_empty())
+        .cloned()
+        .into_iter()
+        .collect();
+    let owner = safe_path(
+        &store.root,
+        &format!("artifacts/{}/service-owner.json", job.id),
+    )?;
+    if owner.exists() {
+        let owner = read_native_receipt(&owner)?;
+        if owner["unit"] != job.unit
+            || job
+                .invocation_id
+                .as_ref()
+                .is_some_and(|id| owner["invocation"] != *id)
+        {
+            return Err(invalid("persisted service owner differs from job identity"));
+        }
+        groups.push(
+            owner["control_group"]
+                .as_str()
+                .ok_or_else(|| invalid("recorded service cgroup missing"))?
+                .into(),
+        );
+    }
+    for group in groups {
+        let relative = group
+            .strip_prefix('/')
+            .ok_or_else(|| invalid("absolute service cgroup required"))?;
+        let path = safe_path(Path::new("/sys/fs/cgroup"), relative)?;
+        match fs::read_to_string(path.join("cgroup.events")) {
+            Ok(events) if events.lines().any(|l| l == "populated 0") => {}
+            Ok(_) => return Ok(false),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(true)
 }
 fn dispatch(
     store: &Store,
@@ -399,6 +456,11 @@ fn dispatch(
                 let result = systemctl(&["stop", &job.unit])?;
                 if !result.status.success() {
                     return Err(Error::Resource("owned unit cancellation failed".into()));
+                }
+                if !owned_service_closed(store, &store.job(&job_id)?, &unit_info(&job.unit)?)? {
+                    return Err(Error::Resource(
+                        "owned service tree has not fully terminated; retention preserved".into(),
+                    ));
                 }
                 let reason = closed_service_reason(
                     store,
@@ -882,6 +944,7 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
     let binding = store.execution_binding(id)?;
     binding.verify(&store.plan(id)?, &profile)?;
     binding.verify_running_runner(&profile)?;
+    crate::retention::verify_ready(&store.root, id, &binding, profile.service_mode == "systemd")?;
     if !store.transition(id, "starting", "running", None)? {
         return Err(invalid("job must be starting exactly once"));
     }

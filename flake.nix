@@ -106,6 +106,7 @@
       CARGO_BUILD_JOBS = "2";
       HARBOR_CAD_SYSTEMCTL = "${pkgs.systemd}/bin/systemctl";
       HARBOR_CAD_SYSTEMD_RUN = "${pkgs.systemd}/bin/systemd-run";
+      HARBOR_CAD_NIX_STORE = "${pkgs.nix}/bin/nix-store";
     };
     cargoArtifacts = craneLib.buildDepsOnly common;
     cli = craneLib.buildPackage (common // {inherit cargoArtifacts;});
