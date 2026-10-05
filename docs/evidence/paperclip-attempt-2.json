@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "scope": "independent read-only audit of retained revised broader attempt 2; no rerun",
+  "source_revision": "1534e50a53f51ef0d77cd9c2fcda0bb52992576e",
+  "signature_verified": true,
+  "signing_fingerprint": "818D507F1E62139F8A17EAA64623DEA06FDACFE1",
+  "evidence_root": "/data/nvme0/can/ProjectState/paperclip-integration-f136d9-20260930/continuation-20261005/green-reviewed-1534e50a",
+  "independent_audit": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/paperclip-attempt-2-audit.json",
+  "independent_audit_sha256": "a30db969a3c33f54ad0085c20e175dd077cf6207cf79f42a10058ac9968f1bf7",
+  "raw_exit_code": 1,
+  "recorded_inputs_and_step_log_hashes_verified": true,
+  "source_before_after_equal": true,
+  "private_runtime": {
+    "path": "/data/scratch/tmp/opencode/pc1534-ynphmqfe",
+    "observed_uid": 1000,
+    "observed_mode": "0700",
+    "recorded_inode_and_device_match": true
+  },
+  "steps": {
+    "native_rebuild": 0,
+    "native_load": 0,
+    "recursive_typecheck": 0,
+    "repo_tests": 1,
+    "repo_build": 1
+  },
+  "observed_failures": {
+    "adapter_utils": "6 failed files, 23 failed tests; timeout and git-behaviour failures retained in raw log; root cause not inferred",
+    "build": "ETXTBSY while copying paperclip-runnerd into packages/paperclip-runner/dist/bin"
+  },
+  "complete_application_qualified": false
+}
