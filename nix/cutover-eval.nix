@@ -3,6 +3,21 @@
   module,
 }: let
   inherit (pkgs) lib;
+  literalArgument = ''literal; argument "with quotes"'';
+  phaseWriter = pkgs.writeText "harbor-db-cutover-phase-writer.py" ''
+    import json
+    import sys
+    from pathlib import Path
+
+    phase = sys.argv[1]
+    ready = Path(sys.argv[2])
+    pending = ready.with_suffix(".tmp")
+    pending.write_text(json.dumps({"phase": phase, "arguments": sys.argv[3:]}))
+    pending.replace(ready)
+    sys.stdin.read(1)
+    raise SystemExit({"ExecCondition": 17, "ExecReload": 23}[phase])
+  '';
+  phaseCommand = phase: "${pkgs.python3}/bin/python3 ${phaseWriter} ${phase} HARBOR_DB_PHASE_READY ${lib.escapeShellArg literalArgument}";
   eval = import "${pkgs.path}/nixos/lib/eval-config.nix" {
     system = pkgs.stdenv.hostPlatform.system;
     modules = [
@@ -35,6 +50,11 @@
         systemd.tmpfiles.rules = ["d '/srv/history' 0750 archive archive - -" "d \"/srv/history\" 0750 archive archive - -"];
         systemd.services.archive.serviceConfig.ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
         systemd.services.archive.serviceConfig.ExecStartPre = ["${pkgs.coreutils}/bin/true"];
+        systemd.services.archive.serviceConfig.ExecCondition = [phaseCommand "ExecCondition"];
+        systemd.services.archive.serviceConfig.ExecReload = phaseCommand "ExecReload";
+        systemd.services.archive.serviceConfig.ExecStartPost = ["${pkgs.coreutils}/bin/true"];
+        systemd.services.archive.serviceConfig.ExecStop = "${pkgs.coreutils}/bin/true";
+        systemd.services.archive.serviceConfig.ExecStopPost = ["${pkgs.coreutils}/bin/true"];
       }
     ];
   };
@@ -47,6 +67,13 @@
   # Keep successful assertions' messages lazy, as NixOS itself does.
   harborFailures = assertions: lib.filter (item: !item.assertion && lib.hasPrefix "Harbor-DB" item.message) assertions;
   succeeds = harborFailures config.assertions == [];
+  commandPhases = ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload" "ExecStop" "ExecStopPost"];
+  commandPhaseFixture = pkgs.writeText "harbor-db-cutover-command-phases.json" (builtins.toJSON {
+    manifest = config.services.harbor-db.cutover.manifest;
+    checker = "${config.services.harbor-db.cutover.package}/bin/harbor-db-cutover";
+    inherit literalArgument;
+    commands = lib.genAttrs commandPhases (phase: lib.toList config.systemd.services.archive.serviceConfig.${phase});
+  });
 in
   (import ./eval-checks.nix {inherit pkgs;}).mkEvalCheck {
     name = "harbor-db-cutover-eval";
@@ -94,6 +121,14 @@ in
         message = "the real service process must retain custody's shared authority lease";
       }
       {
+        name = "all-seven-command-phases-retain-resource-lease";
+        assertion = lib.all (phase:
+          lib.all (command: lib.hasInfix "harbor-db-cutover serve" command || lib.hasInfix "--phase startup" command)
+          (lib.toList config.systemd.services.archive.serviceConfig.${phase}))
+        commandPhases;
+        message = "conditions, reloads and every startup/shutdown command must retain the writer authority lease";
+      }
+      {
         name = "activation-does-not-create-missing-history";
         assertion =
           !(lib.hasInfix "install -d" config.system.activationScripts.harbor-db-establish-data-directories.text)
@@ -124,5 +159,7 @@ in
       assert manifest['enforced'] is True
       assert manifest['resources']['history']['authority']['directories'] == ['/srv/history']
       PY
+      PYTHONPATH=${config.services.harbor-db.cutover.package}/lib \
+        ${pkgs.python3}/bin/python3 ${../tests/check_cutover_command_phases.py} ${commandPhaseFixture} > "$out/command-phases.json"
     '';
   }

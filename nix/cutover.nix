@@ -69,10 +69,10 @@
       else if command == startupCheck
       then command
       else if !(lib.hasPrefix "/" command)
-      then throw "Harbor-DB guarded ExecStart must use an absolute executable without systemd privilege/argv modifiers: ${name}"
+      then throw "Harbor-DB guarded writer command must use an absolute executable without systemd privilege/argv modifiers: ${name}"
       else "${cfg.package}/bin/harbor-db-cutover serve --contract ${manifest} --host ${config.networking.hostName} --resource ${lib.head names} -- ${command}";
     startupCheck = "+${cfg.package}/bin/harbor-db-cutover check --contract ${manifest} --host ${config.networking.hostName} --phase startup";
-    commands = lib.filterAttrs (key: _: lib.elem key ["ExecStartPre" "ExecStart" "ExecStartPost" "ExecStop" "ExecStopPost"]) service;
+    commands = lib.filterAttrs (key: _: lib.elem key ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload" "ExecStop" "ExecStopPost"]) service;
   in
     if !cfg.enable || names == []
     then service

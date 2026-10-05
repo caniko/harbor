@@ -34,9 +34,11 @@ must resolve `HEAD` to a commit. Shallow history, partial clones and external
 object alternates cannot claim complete custody. The immutable `git_executable`
 is part of the resource contract. Activation repeats these integrity checks.
 
-All declared systemd writer phases (`ExecStartPre`, `ExecStart`, `ExecStartPost`,
-`ExecStop` and `ExecStopPost`) retain the authority lease. Applications that use
-system OpenSSH must also set their service user's shell to the packaged
+Cutover capability version 3 guards all seven declared systemd writer phases
+(`ExecCondition`, `ExecStartPre`, `ExecStart`, `ExecStartPost`, `ExecReload`,
+`ExecStop` and `ExecStopPost`) with the authority lease. This includes conditions
+before startup admission and reloads invoked independently of startup. Applications
+that use system OpenSSH must also set their service user's shell to the packaged
 `harbor-db-cutover-shell` and declare the underlying absolute `login_shell`.
 This shell selects the resource by the authenticated effective user, validates
 startup custody, then execs the real shell with the shared lease inherited.

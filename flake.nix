@@ -37,7 +37,7 @@
   in {
     lib.postgresRecoveryReadiness = 1;
     lib.postgresRecoveryPreparation = 1;
-    lib.cutoverPreflight = 2;
+    lib.cutoverPreflight = 3;
     nixosModules.harbor-db = {
       lib,
       pkgs,
