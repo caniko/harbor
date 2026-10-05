@@ -1,5 +1,4 @@
 {
-  nixLib,
   mkTexlive,
   metaDevShell ? null,
 }: {

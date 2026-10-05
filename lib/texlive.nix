@@ -1,7 +1,4 @@
-{
-  nixLib,
-  profiles,
-}: let
+{profiles}: let
   resolveProfile = profile:
     if builtins.isString profile
     then profiles.${profile} or (throw "harbor-tex: unknown TeX profile `${profile}`")
