@@ -63,7 +63,7 @@ child.stderr.on("data", chunk => { log += chunk; });
 const closed = new Promise(resolve => child.once("close",resolve));
 const headers = {Authorization:`Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`, "Content-Type":"application/json"};
 async function request(method, endpoint, body) {
-  const response = await fetch(url + endpoint, {method,headers,body:body === undefined ? undefined : JSON.stringify(body),signal:AbortSignal.timeout(30_000)});
+   const response = await fetch(url + endpoint, {method,headers,body:body === undefined ? undefined : JSON.stringify(body),signal:AbortSignal.timeout(180_000)});
   const text = await response.text();
   if (!response.ok) throw new Error(`${response.status}: ${text}`);
   return text ? JSON.parse(text) : undefined;
@@ -100,7 +100,9 @@ try {
    const prior = new Set((await request("GET",`/api/session/${session}/form`)).data.map(item=>item.id));
    const pending = action().then(value=>({value}),error=>({error}));
    let approval;
-   for(let i=0;i<100;i++) {
+    // Selection first evaluates the native Nix catalog (a 120s bounded
+    // operation), then requests approval. Do not abort it after only 5s.
+    for(let i=0;i<2600;i++) {
      approval=(await request("GET",`/api/session/${session}/form`)).data.find(item=>!prior.has(item.id));
      if(approval) break;
      await new Promise(resolve=>setTimeout(resolve,50));
