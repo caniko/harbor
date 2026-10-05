@@ -2,7 +2,7 @@
   pkgs,
   lib,
 }: let
-  timezone = lib.timezone;
+  inherit (lib) timezone;
   utc = timezone.mkEnvironment {inherit pkgs;};
   istanbul = timezone.mkEnvironment {
     inherit pkgs;
@@ -16,11 +16,13 @@
     inherit pkgs;
     env.TZ = "America/New_York";
   };
+  nativeShells = import ../tests/timezone-native-shell.nix {inherit pkgs timezone;};
 in
+  assert import ../tests/timezone-shell.nix {inherit timezone pkgs;};
   assert utc.env.TZ == "UTC";
   assert istanbul.env.TZDIR == "${pkgs.buildPackages.tzdata}/share/zoneinfo";
-  assert shell.devShellSpec.env.TZ == "Europe/Istanbul";
-  assert overridden.devShellSpec.env.TZ == "America/New_York";
+  assert shell.passthru.devShellSpec.env.TZ == "Europe/Istanbul";
+  assert overridden.passthru.devShellSpec.env.TZ == "America/New_York";
   assert builtins.all (name: !(builtins.tryEval (timezone.validateName name)).success)
   ["" "../UTC" "/etc/localtime" "Europe//Istanbul" "UTC\n" ":UTC" "UTC;false"];
     pkgs.runCommand "harbor-meta-timezone" {} ''
@@ -37,6 +39,11 @@ in
       ${utc.validationScript}
       test "$(date -d @946684800 +%H:%M:%z)" = "19:00:-0500"
       test "$(date -d @1593561600 +%H:%M:%z)" = "20:00:-0400"
+      ${pkgs.lib.concatMapStringsSep "\n" (shell: ''
+        export TZ=${pkgs.lib.escapeShellArg shell.env.TZ}
+        export TZDIR=${pkgs.lib.escapeShellArg shell.env.TZDIR}
+        ${shell.shellHook}
+      '') (builtins.attrValues nativeShells)}
       export TZ=Missing/Zone
       if ( ${utc.validationScript} ); then
         echo "missing timezone unexpectedly accepted" >&2

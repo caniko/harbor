@@ -36,34 +36,43 @@ rec {
   withShell = {
     pkgs,
     shell,
-    timeZone ? (shell.env.TZ or (shell.TZ or (shell.devShellSpec.env.TZ or "UTC"))),
+    timeZone ? (shell.env.TZ or (shell.TZ or (shell.passthru.devShellSpec.env.TZ or (shell.devShellSpec.env.TZ or "UTC")))),
   }: let
     timezone = mkEnvironment {inherit pkgs timeZone;};
   in
-    shell.overrideAttrs (old:
+    shell.overrideAttrs (old: let
+      passthru = (shell.passthru or {}) // (old.passthru or {});
+      # TZ selects the requested zone; retain the shell owner's database in
+      # either export style and mirror that effective value in shell metadata.
+      env =
+        timezone.env
+        // {
+          TZDIR = old.TZDIR or (old.env.TZDIR or (passthru.devShellSpec.env.TZDIR or timezone.env.TZDIR));
+        };
+    in
       (
         if old ? TZ || old ? TZDIR
         then
-          timezone.env
+          env
           // (
             if old ? env
             then {env = builtins.removeAttrs old.env ["TZ" "TZDIR"];}
             else {}
           )
-        else {env = (old.env or {}) // timezone.env;}
+        else {env = (old.env or {}) // env;}
       )
       // {
         shellHook = timezone.validationScript + (old.shellHook or "");
         passthru =
-          (old.passthru or {})
+          passthru
           // (
-            if (old.passthru or {}) ? devShellSpec
+            if passthru ? devShellSpec
             then {
               devShellSpec =
-                old.passthru.devShellSpec
+                passthru.devShellSpec
                 // {
-                  env = old.passthru.devShellSpec.env // timezone.env;
-                  shellHook = timezone.validationScript + old.passthru.devShellSpec.shellHook;
+                  env = passthru.devShellSpec.env // (old.env or {}) // env;
+                  shellHook = timezone.validationScript + (old.shellHook or "");
                 };
             }
             else {}

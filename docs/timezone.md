@@ -27,6 +27,9 @@ zone files fail at shell entry or build time without import-from-derivation.
 adapts an existing derivation, including one from an older pinned Harbor. It
 updates the exported environment and validates the zone at shell entry. When
 `timeZone` is omitted, it inherits the shell's zone or defaults to UTC.
+An explicit `TZDIR` in either the top-level attributes or `env` is preserved,
+including in `devShellSpec`; the entry hook validates the selected zone against
+that database.
 
 All shells composed with `lib.devShell.mkShell` include this wiring. Pass
 `timeZone = "America/New_York"`; an existing `env.TZ` override remains
