@@ -242,7 +242,12 @@ pub(crate) fn release(root: &Path, id: &str, binding: Option<&ExecutionBinding>)
     } else {
         None
     };
-    if let Some(binding) = binding {
+    // An interrupted final rmdir can leave an empty directory after intent
+    // deletion. The caller has already proved terminal tree closure; there are
+    // no remaining roots or records to authorize in this state.
+    if let Some(binding) = binding
+        && intent.is_some()
+    {
         let recorded = intent
             .as_ref()
             .ok_or_else(|| invalid("job retention intent missing"))?;
@@ -253,6 +258,9 @@ pub(crate) fn release(root: &Path, id: &str, binding: Option<&ExecutionBinding>)
     let mut entries = Vec::new();
     for entry in fs::read_dir(&dir)? {
         let entry = entry?;
+        if binding.is_some() && intent.is_none() {
+            return Err(invalid("nonempty committed retention lacks its intent"));
+        }
         let name = entry
             .file_name()
             .into_string()

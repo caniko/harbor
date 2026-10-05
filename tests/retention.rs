@@ -159,4 +159,17 @@ fn queued_cancellation_is_recoverable_without_releasing_another_job() {
         .unwrap();
     assert!(!store.root.join("retentions").join(&first.id).exists());
     assert!(store.root.join("retentions").join(&other.id).exists());
+
+    // Interruption after unlinking the final intent, before removing the empty
+    // directory, must remain recoverable on the next worker restart.
+    let dir = store.root.join("retentions").join(&other.id);
+    store
+        .transition(&other.id, "queued", "cancelled", None)
+        .unwrap();
+    fs::remove_file(dir.join("ready.json")).unwrap();
+    fs::remove_file(dir.join("intent.json")).unwrap();
+    drop(store);
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    store.cleanup_retention(|_| Ok(true)).unwrap();
+    assert!(!dir.exists());
 }
