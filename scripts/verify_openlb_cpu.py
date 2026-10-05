@@ -73,9 +73,9 @@ def read_vti(path):
     return image, extent, shape, fields
 
 
-def run(executable, root, resolution, selection=None, env=None):
+def prepare_fixture(root, resolution, selection=None):
     directory = root / f"resolution-{resolution}"
-    directory.mkdir()
+    directory.mkdir(mode=0o700)
     box_stl(directory / "fluid.stl")
     plan = {
         "case": {
@@ -99,6 +99,11 @@ def run(executable, root, resolution, selection=None, env=None):
             {"operation": "openlb", "gpu": "required", "selection": selection}
         ]
     (directory / "plan.json").write_text(json.dumps(plan))
+    return directory
+
+
+def run(executable, root, resolution, selection=None, env=None):
+    directory = prepare_fixture(root, resolution, selection)
     with (directory / "process.log").open("w") as log:
         subprocess.run(
             [executable, "openlb", "plan.json"],
@@ -109,6 +114,10 @@ def run(executable, root, resolution, selection=None, env=None):
             timeout=180,
             env=env,
         )
+    return verify_fields(directory, resolution, selection)
+
+
+def verify_fields(directory, resolution, selection=None):
     receipt = json.loads((directory / "openlb-receipt.json").read_text())
     backend = "cpu" if selection is None else selection["backend"]
     if receipt["backend"] != backend or not receipt["executed"]:

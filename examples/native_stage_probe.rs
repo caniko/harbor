@@ -1,8 +1,8 @@
 //! Opt-in adapter probe using the production DRM binding and process containment.
-//! Worker ownership, admission and CUDA solving remain separate qualification gates.
+//! Worker ownership/admission and multi-GPU exclusion remain separate gates.
 use clap::Parser;
 use harbor_cad::{
-    devices::DrmSandbox,
+    devices::{DrmSandbox, HipSandbox},
     lifecycle::NativeProcess,
     resources::{card_reservation_root, try_reserve_cards},
     storage::private_dir,
@@ -24,6 +24,12 @@ struct Arguments {
     work: PathBuf,
     plan: PathBuf,
     operation: String,
+    #[arg(long)]
+    uuid: Option<String>,
+    #[arg(long, requires = "uuid")]
+    inventory_only: bool,
+    #[arg(long, requires = "inventory_only")]
+    deny_render_node: bool,
 }
 
 fn packaged(path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -39,8 +45,11 @@ fn packaged(path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Arguments::parse();
-    if !matches!(args.operation.as_str(), "render" | "video") {
-        return Err("only render/video probes supported".into());
+    if !matches!(args.operation.as_str(), "render" | "video" | "openlb") {
+        return Err("only render/video/openlb probes supported".into());
+    }
+    if args.inventory_only && args.operation != "openlb" {
+        return Err("HIP inventory probe requires the OpenLB operation".into());
     }
     let bwrap = packaged(&args.bwrap)?;
     let executable = packaged(&args.executable)?;
@@ -58,7 +67,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         thread::sleep(Duration::from_millis(100));
     };
-    let binding = DrmSandbox::resolve(&args.pci)?;
     let mut command = Command::new(bwrap);
     command
         .env_clear()
@@ -98,15 +106,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ])
         .arg(&work)
         .args(["/work", "--chdir", "/work"]);
-    binding.apply(&mut command);
+    let binding = if args.operation == "openlb" {
+        let binding = HipSandbox::resolve(
+            &args.pci,
+            args.uuid.as_deref().ok_or("exact HIP UUID required")?,
+        )?;
+        binding.apply(&mut command);
+        serde_json::to_value(binding)?
+    } else {
+        let binding = DrmSandbox::resolve(&args.pci)?;
+        binding.apply(&mut command);
+        serde_json::to_value(binding)?
+    };
+    if args.deny_render_node {
+        command.args(["--tmpfs", "/dev/dri"]);
+    }
     command
         .arg("--ro-bind")
         .arg(plan)
         .arg("/plan.json")
         .arg("--")
-        .arg(executable)
-        .arg(&args.operation)
-        .arg("/plan.json");
+        .arg(executable);
+    if args.inventory_only {
+        command.arg("--gpu-inventory");
+    } else {
+        command.arg(&args.operation).arg("/plan.json");
+    }
     let log = OpenOptions::new()
         .create_new(true)
         .write(true)

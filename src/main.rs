@@ -69,6 +69,7 @@ enum Authority {
 #[derive(Subcommand)]
 enum Backend {
     List,
+    HipIdentity { pci: String },
 }
 #[derive(Subcommand)]
 enum Case {
@@ -174,8 +175,15 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Doctor => {
             return print(&worker::doctor()?);
         }
-        Commands::Backend { .. } => {
+        Commands::Backend {
+            command: Backend::List,
+        } => {
             return print(&worker::backends());
+        }
+        Commands::Backend {
+            command: Backend::HipIdentity { pci },
+        } => {
+            return print(&harbor_cad::devices::HipIdentity::resolve(&pci)?);
         }
         Commands::Qualify => {
             return print(

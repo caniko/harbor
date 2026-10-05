@@ -3,6 +3,9 @@ use crate::{
     contracts::{Role, invalid},
 };
 use serde::{Deserialize, Serialize};
+#[path = "hip_identity.rs"]
+mod hip_identity;
+pub use hip_identity::{HipIdentity, HipSandbox};
 use std::{
     collections::BTreeSet,
     fs,
@@ -192,6 +195,10 @@ impl DrmSandbox {
     }
     /// Append only a verified render node and read-only selected-device metadata.
     pub fn apply(&self, command: &mut Command) {
+        self.apply_compute(command);
+        command.args(["--ro-bind", "/run/opengl-driver", "/run/opengl-driver"]);
+    }
+    pub(crate) fn apply_compute(&self, command: &mut Command) {
         command.args(["--dev-bind"]).arg(&self.node).arg(&self.node);
         command
             .args(["--dir", "/dev/dri/by-path", "--symlink"])
@@ -209,8 +216,7 @@ impl DrmSandbox {
             .arg(self.sysfs_device.join("subsystem"))
             .args(["--dir", "/sys/dev/char", "--symlink"])
             .arg(&self.sysfs_render)
-            .arg(&self.sysfs_alias)
-            .args(["--ro-bind", "/run/opengl-driver", "/run/opengl-driver"]);
+            .arg(&self.sysfs_alias);
     }
 }
 

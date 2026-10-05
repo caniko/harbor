@@ -138,6 +138,29 @@ Clippy with warnings denied, Treefmt and Ruff. Neither this controlled probe nor
 capacity/VRAM admission, durable worker GPU execution, CLI/MCP B1, GPU filters or
 physical validation. The worker continues to reject unqualified GPU execution.
 
+## HIP sandbox candidate
+
+`backend hip-identity <pci>` now correlates the selected AMD PCI device, its
+amdgpu driver, DRM character-device minor, KFD node/GPU ID, nonzero PCI/KFD
+unique ID and GFX target. ROCr 7.2.3 formats the unique ID as ASCII hexadecimal;
+CLR copies those 16 characters into `hipUUID`. The adapter's hexadecimal byte
+encoding is therefore independently reproducible from the observed sysfs ID.
+The parser rejects malformed/duplicate attributes, links, topology generation
+drift and a second KFD GPU node.
+
+The candidate sandbox mounts the selected render node and `/dev/kfd`, with
+read-only topology/CPU/NUMA metadata. The unchanged resolution-8/16 Float64
+channel passed with errors `0.011124428266122175` and
+`0.0027813873418746048`. Its inventory reported exactly the selected HIP
+PCI/UUID. Removing the render node while retaining `/dev/kfd` rejected ROCm
+initialization with `no ROCm-capable device is detected`.
+
+[`evidence/hip-sandbox.json`](evidence/hip-sandbox.json) binds the immutable ROCm
+sources, exact command, candidate source hashes and report. This is observed
+runtime compatibility on the single-KFD-GPU host. Running-kernel source matching,
+raw KFD exclusion of another GPU and durable worker HIP remain separate gates;
+the production worker still rejects compute sandboxing.
+
 ## Real systemd lifecycle
 
 ```sh
