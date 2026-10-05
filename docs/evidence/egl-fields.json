@@ -32,6 +32,17 @@
   "verification_sha256": "09782ce9e683378d4bfe8b0c9aa9c93ce24085e13fe08cf09ef86a7d378604f3",
   "source_bundle": "/data/scratch/tmp/opencode/harbor-cad-packaged-inspection-96d3942/bundle-16",
   "source_bundle_verification": "every original manifest checksum/size checked; science parameters unchanged; no scientific files added, removed or altered by render/media probes",
+  "reader_roundtrip": {
+    "verification": "/data/scratch/tmp/opencode/harbor-cad-paraview-reader-roundtrip-20261005/verification.json",
+    "verification_sha256": "28e6007035f09283a9c49c578295070692c1b9b0ad0bb5626363dba33685c35d",
+    "reader_code": "/data/scratch/tmp/opencode/harbor-cad-paraview-reader-roundtrip-20261005/reader-code.py",
+    "reader_code_sha256": "5ffe9e1b5b69290c87d5a70379f0825b4e0d164cef5dea3438b13ed495c54e58",
+    "runtime": "same exact packaged ParaView pvpython; separate CPU-only device-free Bubblewrap and bounded user service",
+    "verified": "PVD→VTM→ImageData at steps 0/2560/5120: bit-exact little-endian Float64 velocity/pressure/material arrays against independent zlib decoding, component counts, point association, full extents, SI origin and spacing",
+    "point_shape": [34, 20, 18], "points": 12240,
+    "cell_arrays": 0, "ghost_array_present": false,
+    "scope_boundary": "only this synthetic single-block ImageData case; cell/ghost arrays, other topologies, multiblock/partition families, GPU filters and VTKHDF remain unqualified"
+  },
   "device": {"pci": "0000:03:00.0", "render_node": "/dev/dri/renderD128", "gpu": "AMD Radeon RX 7900 XTX", "egl": "1.5", "opengl": "4.6 Compatibility Profile; Mesa 26.2.1/radeonsi", "identity": "EGL_DEVICE_EXT from the initialized current display matches the selected DRM node", "software_fallback": false},
   "presentation": {
     "dimensions": [640, 480], "camera": [0.04, 0.025, 0.03],
@@ -72,5 +83,16 @@
   },
   "worker_b1": "unqualified; no CUDA device/UUID or real GPU OpenLB execution available",
   "gpu_filter": "unqualified",
+  "packaged_python_check": {
+    "source_revision": "3abc66716d05d7f1ee017345316891d34b6a0652",
+    "command": "canix --output json cache binary build .#checks.x86_64-linux.python --include-tests --no-push --max-jobs 1 --cores 2",
+    "log": "/data/scratch/tmp/opencode/harbor-cad-canix-python-3abc667/python-attempt-1.log",
+    "log_sha256": "a48512fe292d56fb36f50bae1eec2177b2b0dd47143940261ccf76f4c38b8fb3",
+    "derivation": "/nix/store/8qr2v0qf74cdy4j12ns9lp4vdvn620i6-harbor-cad-python-tests.drv",
+    "output": "/nix/store/zjgifp0d2j9k64a8p15w2nb267rwwz2q-harbor-cad-python-tests",
+    "result": "passed all seven Python cases, including official MCP client and render contracts, without native/GPU discovery",
+    "rebuilt_cli_dependency": "/nix/store/0s1z3jdcsm2qglblqnzkrac8izf2gqpy-harbor-cad-0.1.0",
+    "cli_sha256": "dbd8bc5f61060a49904df29a840e616e35fbb14d4bdc9e324e59688fcc8d2b80"
+  },
   "physical_validation": "unqualified"
 }

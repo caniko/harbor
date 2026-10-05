@@ -367,6 +367,14 @@ python3 scripts/verify_egl_fields.py \
 The script records receipts and hashes; independent image inspection is required
 to qualify label pixels for a new run. Exact package/code/video/decode hashes,
 resources and rejection evidence are in [evidence/egl-fields.json](evidence/egl-fields.json).
+An additional CPU-only probe used the same packaged ParaView PVD/VTM reader
+at every retained step, comparing its actual ImageData arrays with independent
+zlib decoding. All velocity, pressure and material Float64 payloads matched
+bit-for-bit, with their component counts, point association, complete extents,
+SI origin and spacing. This 34×20×18-point fixture has no cell or ghost arrays;
+the result does not qualify other topologies or partition/ghost handling.
+The rebuilt hardware-independent Nix Python check also passed all seven
+protocol/render-contract cases under ordinary Canix admission against `3abc667`.
 This closes the bounded selected-device field-render/media adapter probe,
 while required GPU OpenLB, worker B1, numerical GPU filters and physical
 validation retain their separate gates.
