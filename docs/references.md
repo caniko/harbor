@@ -18,5 +18,6 @@ Use these primary sources to verify APIs, security, licensing and build compatib
 | R12 | Job-service lifecycle, effective resource limits, JIT/devices and sandbox policy | https://github.com/systemd/systemd/tree/main/man · https://github.com/containers/bubblewrap |
 | R13 | Official MCP Python SDK, current imports and implemented protocol features | https://github.com/modelcontextprotocol/python-sdk · https://github.com/modelcontextprotocol/python-sdk/releases |
 | R14 | Nix indirect GC roots, closure retention and already-realized store objects | https://nix.dev/manual/nix/2.28/command-ref/nix-store/realise · https://nix.dev/manual/nix/2.28/package-management/garbage-collection |
+| R15 | HIP runtime identities, AMD compatibility, Vulkan precision and backend selection | https://rocm.docs.amd.com/projects/HIP/en/latest/ · https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibility.html · https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceFeatures.html · [exact-source backend decision](gpu-backends.md) |
 
 The dependency manifest must record source revision/hash, patches, license, compiler/runtime ABI, applicable security fixes, and separate build, runtime and numerical qualification evidence.

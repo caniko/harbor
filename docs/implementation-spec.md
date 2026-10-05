@@ -17,7 +17,7 @@ Rust owns contracts, validation, scheduling, resources, lifecycle and artifacts.
 | Stage | Selected stack | Execution |
 |---|---|---|
 | CAD / FEM mesh | Security-patched FreeCAD; Gmsh | CPU; optional GPU viewport |
-| Airflow / local water / qualified phase change | Public OpenLB; model-specific drivers | CUDA first; HIP separately qualified |
+| Airflow / local water / qualified phase change | Public OpenLB; model-specific drivers | HIP/ROCm first on AMD; CUDA best-effort; each backend separately qualified |
 | Thermal / mechanical / contact | CalculiX + compatible PaStiX4CalculiX/PaRSEC | Hybrid CUDA; independent CPU references |
 | Spectral exposure | libRadtran → matched Mitsuba/Dr.Jit | CPU atmosphere; qualified CUDA/OptiX transport |
 | Scientific filters | Compatible ParaView/VTK/Viskores | Qualified GPU-filter allowlist |
@@ -25,6 +25,10 @@ Rust owns contracts, validation, scheduling, resources, lifecycle and artifacts.
 | Later optimization | Catalyst/Conduit; qualified VTKHDF | Optional after baseline delivery |
 
 Do not add another mandatory physics framework, cloud service, network database or web dashboard. Public source availability and an exact model/backend benchmark—not announcements—determine support. [R04–R10]
+
+The GPU priority follows the researched decision in `gpu-backends.md`. Vulkan
+remains a candidate for workloads with an actual supported implementation; API
+portability alone does not qualify an OpenLB solver or establish performance parity.
 
 ## 2. Nix and Harbor integration
 

@@ -270,6 +270,24 @@ fn b1_planning_keeps_compute_render_and_media_independent_and_required() {
         assert_eq!(stage.gpu, GpuRequirement::Required);
         assert!(stage.vram_bytes > 0);
     }
+    let mut hip = selections.clone();
+    hip.compute.backend = "hip".into();
+    hip.compute.backend_uuid = Some("GPU-0123456789abcdef0123456789abcdef".into());
+    let hip_plan = ExecutionPlan::b1(case.clone(), hip.clone(), "research".into()).unwrap();
+    assert_eq!(
+        hip_plan.case.science_id().unwrap(),
+        plan.case.science_id().unwrap()
+    );
+    assert_ne!(hip_plan.id().unwrap(), plan.id().unwrap());
+    assert_eq!(
+        serde_json::to_value(hip_plan.stages[1].selection.as_ref().unwrap()).unwrap(),
+        serde_json::to_value(&hip.compute).unwrap()
+    );
+    assert_eq!(hip_plan.stages[1].gpu, GpuRequirement::Required);
+    for unsupported in ["vulkan", "rocm", "cpu"] {
+        hip.compute.backend = unsupported.into();
+        assert!(ExecutionPlan::b1(case.clone(), hip.clone(), "research".into()).is_err());
+    }
     let mut invalid = selections;
     invalid.compute.backend_uuid = None;
     assert!(ExecutionPlan::b1(case, invalid, "research".into()).is_err());

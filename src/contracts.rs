@@ -497,7 +497,7 @@ impl ExecutionPlan {
     }
     pub fn b1(case: CaseSpec, selections: B1Selections, policy: String) -> Result<Self> {
         if selections.compute.role != Role::Compute
-            || selections.compute.backend != "cuda"
+            || !["hip", "cuda"].contains(&selections.compute.backend.as_str())
             || selections
                 .compute
                 .backend_uuid
@@ -509,7 +509,7 @@ impl ExecutionPlan {
             || selections.media.backend != "vaapi"
         {
             return Err(invalid(
-                "B1 requires independent CUDA UUID/PCI, EGL and VAAPI selections",
+                "B1 requires independent HIP or CUDA UUID/PCI, EGL and VAAPI selections",
             ));
         }
         let mut plan = Self::openlb_reference(case, policy)?;

@@ -642,8 +642,9 @@ pub fn backends() -> serde_json::Value {
         {"adapter":"channel_reference","backend":"cpu","runtime":"implemented","numerical_verification":"analytical_residual","physical_validation":"unqualified","synthetic":true},
         {"adapter":"freecad","backend":"cpu","runtime":"unqualified","minimum_security_version":"1.1.4"},
         {"adapter":"openlb","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"periodic_forced_channel","reference_evidence":"docs/qualification.md"},
-        {"adapter":"openlb","backend":"cuda","runtime":"unqualified","precision":"float64","formulation":"incompressible BGK D3Q19"},
-        {"adapter":"openlb","backend":"hip","runtime":"unqualified","reason":"separate compiler/model/hardware qualification required"},
+        {"adapter":"openlb","backend":"hip","runtime":"unqualified","priority":"primary","precision":"float64","formulation":"periodic_forced_channel","reason":"compiler/model/hardware and KFD sandbox qualification required","decision_evidence":"docs/gpu-backends.md"},
+        {"adapter":"openlb","backend":"cuda","runtime":"unqualified","priority":"best_effort","precision":"float64","formulation":"periodic_forced_channel"},
+        {"adapter":"openlb","backend":"vulkan","runtime":"unsupported","reason":"no Vulkan backend in pinned OpenLB; Float64 and workload performance require separate evidence","decision_evidence":"docs/gpu-backends.md"},
         {"adapter":"paraview","backend":"egl","runtime":"unqualified"},
         {"adapter":"ffmpeg","backend":"vaapi","runtime":"unqualified"}
     ])
