@@ -351,6 +351,17 @@ remain recorded upstream requirements. Generation defaults are preserved.
 
 ## Current gate status
 
+The packaged authority-bound shared-admission verifier passed on 2026-10-05.
+Separate private state roots shared RAM limits, including while the first worker
+was dead, and counted quarantined bytes against a common filesystem budget.
+All three jobs completed with the original immutable authorization in verified
+exports. Its extended systemd restart/forced-death/cancel cases preserved the
+exact invocation owner and released both admission reservations and runtime
+roots after complete-tree closure. Live controls included zero swap, one CPU,
+128 tasks, no-new-privileges and control-group termination. Exact commands,
+package and report hashes are in [evidence/shared-admission.json](evidence/shared-admission.json).
+This is CPU lifecycle/admission evidence; GPU VRAM and B1 remain independent.
+
 | Gate | Status |
 |---|---|
 | A0 | Partial: locked CPU packages/parity/contracts passed; production importer closure-only isolation, resource controls and descendant cleanup passed for controlled fixtures; other native policies remain separately unqualified |
