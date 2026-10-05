@@ -66,6 +66,78 @@ periodic extents with walls only in y and checks the STL dimensions and
 expected fluid-cell count. It rejects other voxel geometries rather than
 claiming generic CAD-flow support.
 
+## Actual OpenLB HIP reference
+
+The source at `dca055fd03ef4b4a80d2f104b1aff204ff520510` adds packaged HIP
+execution of the same **procedural STL** channel. The [backend decision](gpu-backends.md)
+prioritizes HIP/ROCm for AMD OpenLB and defers CUDA to best-effort. OpenLB has no
+Vulkan backend at the existing immutable pin; equal-accuracy Vulkan/HIP
+performance remains unmeasured.
+
+`openlb-hip`, the updated CPU reference and `runtime-hip` passed guarded Canix
+packaging. ROCm runtime 7.2.3 and AMD Clang 22.0.0-rocm came from the existing
+locked Nixpkgs. Matching rocThrust/rocPRIM are explicit build dependencies;
+compile and link architecture is `gfx1100`, with no native GPU auto-detection.
+The dependency-scan patch uses host-only preprocessing because the pinned
+compiler otherwise emits binary offload data into Make's `.d` file. Numerical
+compilation and linking retain the GPU target. The upstream version banner
+still says `1.8r1`; receipts identify the exact pinned 1.9.0 source revision.
+
+The clean runtime identifies **RX 7900 XTX**, PCI `0000:03:00.0`, `gfx1100`,
+25,753,026,560 bytes reported total VRAM and an exact HIP UUID. The tested host
+kernel was `7.2.8-cachyos-lto`. This is measured compatibility for the fixture,
+not support for all Radeon GPUs or an AMD-supported NixOS configuration.
+
+The first GPU run retained fields but correctly **failed** the unchanged 0.05
+velocity gate with error `0.9615692648832852`. Inspection of pinned
+`gpu/hip/column.hh` established that `setProcessingContext(Simulation)` uploads
+host mirrors. Calling it every lattice step reset GPU populations to the last
+observation. The adapter now keeps steps resident and changes context at output
+boundaries. The same model, resolution, duration, precision and tolerances then
+passed:
+
+| Resolution | CPU analytical velocity relative L2 | HIP analytical velocity relative L2 | Maximum retained CPU/HIP velocity relative L2 difference |
+|---|---:|---:|---:|
+| 8 | 0.01112442826614978 | 0.011124428266122175 | 3.124827453983309e-14 |
+| 16 | 0.0027813873419648702 | 0.0027813873418746048 | 1.0485508411701897e-13 |
+
+Every 0/10/20-s retained PVD→VTM→VTI step was decoded independently. Float64
+payloads, topology, coordinates and components were checked; material IDs
+matched exactly and full retained velocity agreement passed `1e-10` relative
+L2. Finite Float64 pressure differences were recorded diagnostically; pressure
+accuracy and convergence remain unqualified. A changed retained velocity was
+also rejected by the comparison verifier.
+
+Each HIP receipt verifies exact PCI/UUID, compiled/runtime architecture, one
+local HIP block, kernel completion and no CPU block fallback. Six negative
+cases rejected before solver output: duplicate OpenLB stages, stale UUID,
+wrong backend, missing card, `HSA_OVERRIDE_GFX_VERSION` spoofing and executing a
+GPU-required plan with the CPU package.
+
+The trusted numerical fixture runs through `examples/openlb_hip_probe.rs`,
+using the production physical-card reservation and native-process helpers.
+`scripts/verify_openlb_hip.py` verifies cgroup v2 service limits before starting:
+at most 2 GiB RAM, zero swap, two CPUs and 128 tasks. The final service recorded
+those exact kernel controls, a 354,652,160-byte RAM peak, 4.729-second reported
+runtime and a 900-second deadline. These include both CPU/HIP runs and rejection
+checks; they are not comparative solver-performance or VRAM-peak measurements.
+Systemd's successful transient service was unloaded after exit, so subsequent
+default `systemctl show` values are not used as runtime-control evidence.
+
+Exact commands, source/binary hashes, package roots, failed attempts and the
+final report at `hip-qualified/verification.json` are recorded in
+[`evidence/gpu-backends.json`](evidence/gpu-backends.json), under
+`/data/scratch/tmp/opencode/harbor-cad-amd-20261005/`. The final repackaged HIP
+executable is byte-identical to the executable used by that report; only the
+dependency patch's whitespace context changed. The runtime JSON includes the
+separately packaged CAD, HIP solver, EGL renderer and VAAPI encoder.
+
+The final native-language gate passed **52 Rust tests**, **31 Python cases**,
+Clippy with warnings denied, Treefmt and Ruff. Neither this controlled probe nor
+`runtime-hip` qualifies production KFD/selected-device isolation, cross-root
+capacity/VRAM admission, durable worker GPU execution, CLI/MCP B1, GPU filters or
+physical validation. The worker continues to reject unqualified GPU execution.
+
 ## Real systemd lifecycle
 
 ```sh

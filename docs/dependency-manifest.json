@@ -58,8 +58,9 @@
     "cpu_velocity_verification": "passed at resolutions 8 and 16, independently decoded retained VTK",
     "pressure_verification": "unqualified beyond finite Float64 round trip",
     "physical_validation": "unqualified",
-    "cuda": {"architecture": "sm_86", "build": "unqualified", "runtime": "unqualified", "sandbox": "unqualified"},
-    "hip": "separate unimplemented compiler/model/hardware qualification"
+    "cuda": {"priority": "best_effort", "architecture": "sm_86", "build": "unqualified", "runtime": "unqualified", "sandbox": "unqualified"},
+    "hip": {"priority": "primary_on_amd", "architecture": "gfx1100", "precision": "float64", "rocm_runtime": "7.2.3", "rocm_compiler_package": "22.0.0-rocm", "build": "passed in Nix sandbox with explicit architecture", "runtime": "bounded native procedural probe passed on RX 7900 XTX; worker unqualified", "numerical": "periodic_forced_channel Float64 forced BGK D3Q19, resolutions 8/16; analytical and retained CPU velocity agreement passed", "sandbox": "production KFD/selected-device isolation unqualified", "evidence": "docs/evidence/gpu-backends.json"},
+    "vulkan": {"runtime": "unsupported at the pinned OpenLB source", "decision": "docs/gpu-backends.md", "performance_against_hip": "not measured"}
   },
   "paraview": {
     "version": "6.0.1",

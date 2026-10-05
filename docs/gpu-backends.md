@@ -7,6 +7,8 @@ independent **ParaView EGL** and **FFmpeg VAAPI** stages. Vulkan is a useful
 cross-vendor compute API, but is not an implemented OpenLB backend at our pin.
 This decision follows the user's revised priority and upstream source inspection;
 it is not a claim that HIP has beaten Vulkan in an equal-accuracy benchmark.
+Exact source hashes, retained host observations and qualification status are in
+[`evidence/gpu-backends.json`](evidence/gpu-backends.json).
 
 ## Evidence
 
@@ -43,15 +45,43 @@ KFD is a shared device. Device visibility variables alone are not isolation.
 Production admission needs verified PCI/UUID/KFD/render-node correlation and a
 tested selected-device mount policy before HIP worker execution is enabled.
 
+## Native qualification
+
+The isolated `openlb-hip` package now compiles and links for `gfx1100` against
+ROCm 7.2.3. It requires explicit PCI/UUID selection, rejects architecture
+spoofing, and verifies HIP block assignment and kernel completion. The clean
+HIP inventory identifies the card as **AMD Radeon RX 7900 XTX**; its UUID uses
+the documented adapter encoding of the 16 bytes returned by `hipDeviceGetUuid`.
+
+The Float64 periodic forced channel passed the 0.05 analytical-velocity gate at
+resolutions 8/16, with relative L2 errors `0.011124428266122175` and
+`0.0027813873418746048`. At every retained time, CPU/HIP velocity differences
+were below `1.05e-13` relative L2 (acceptance `1e-10`) and material IDs matched
+exactly. Pressure differences are retained diagnostics, not an accuracy claim.
+The trusted numerical probe used a bounded service and the production shared
+physical-card reservation helper. Full details are in
+[`qualification.md`](qualification.md#actual-openlb-hip-reference).
+
+Two regressions were repaired without changing scientific inputs or tolerances:
+ROCm 22's binary offload output during dependency scanning, and per-step host
+uploads that reset the GPU solution. Host-only dependency scanning preserves
+GPU compilation/linking; resident stepping preserves the native solver state
+between output observations.
+
+The native result is a formulation/precision/card-specific qualification.
+Worker KFD isolation, aggregate RAM/disk/VRAM admission, durable GPU CLI/MCP B1,
+GPU filters, convergence and physical validation still need their own gates.
+
 ## Implementation and acceptance
 
-1. Build the existing OpenLB HIP backend against the locked Nixpkgs ROCm stack,
-   targeting `gfx1100` explicitly and retaining Float64/precision patches.
-2. Require an explicit HIP PCI + UUID selection. Reject stale UUIDs, wrong
-   backend, ambiguous devices, unsupported architectures and CPU block fallback.
-   Record runtime/compiler/device identities and kernel completion.
-3. Verify the synthetic periodic forced channel against the independent
-   analytical reference and the CPU fields at the same resolutions/times.
+1. **Passed:** build the existing OpenLB HIP backend against the locked Nixpkgs
+   ROCm stack, targeting `gfx1100` explicitly and retaining Float64/precision patches.
+2. **Implemented/tested on the observed card:** require explicit HIP PCI + UUID,
+   reject stale UUIDs, wrong backend, ambiguous stages and CPU fallback, and
+   record runtime/compiler/device identities and kernel completion. The
+   architecture-match guard is implemented; another architecture/card was not tested.
+3. **Passed for the scoped fixture:** verify the synthetic periodic forced
+   channel against the independent analytical reference and retained CPU fields.
 4. Qualify KFD isolation, resource admission and lifecycle before promoting this
    into durable CLI/MCP B1. Preserve separate build/runtime/numerical/security
    and physical-validation statuses.
