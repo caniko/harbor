@@ -20,6 +20,12 @@
     nativeBuildInputs = [pkgs.cmake pkgs.ninja];
     buildInputs = [pkgs.python313 pkgs.mesa pkgs.libGL pkgs.libglvnd pkgs.zlib];
     cmakeFlags = [
+      # Bundled VTK rejects absolute GNUInstallDirs from the Nix CMake hook.
+      # Match the relative destinations in the pinned Nixpkgs ParaView recipe.
+      "-DCMAKE_INSTALL_BINDIR=bin"
+      "-DCMAKE_INSTALL_LIBDIR=lib"
+      "-DCMAKE_INSTALL_INCLUDEDIR=include"
+      "-DCMAKE_INSTALL_DOCDIR=share/paraview/doc"
       "-DPARAVIEW_USE_QT=OFF"
       "-DPARAVIEW_USE_MPI=OFF"
       "-DPARAVIEW_USE_PYTHON=ON"
