@@ -133,8 +133,8 @@ sandbox qualification still require separate execution.
 - Failed native attempts snapshot regular outputs and opaque partial files
   with failed-attempt provenance. Unsafe and over-budget entries remain raw
   and are explicitly reported. Tests cover verified copies, unsafe omissions,
-  over-budget preservation and terminal-failure export. Forced service death
-  can still require separate raw-output recovery.
+  over-budget preservation and terminal-failure export. Raw outputs after forced
+  service death are recovered after confirmed service termination.
 - Terminal exports include a checksummed `execution.json` with the original
   plan, recorded profile and job state; a failed export is not promoted into
   successful scientific evidence. Quarantined symlinks are counted for disk
@@ -183,6 +183,16 @@ socket path were hidden, host-loopback TCP was unreachable, GPU nodes were
 absent and no mount-point file polluted output. This verifies those tested
 primitives, not the full packaged importer/JIT/GPU policy.
 
+The extended real systemd verifier first failed because a forcibly killed
+service's raw partial bytes were absent from export. After the fix, worker
+restart following owned-service SIGKILL and ordinary cancellation both exported
+the exact seeded bytes under `failed-native/` with `native-failure.json` and the
+correct failed/cancelled status. The raw fixture is explicitly synthetic opaque
+adapter data, not a native solver result. Recovery uses the original
+digest-checked plan's output allowance, retains quarantined omissions, and
+records recovery errors in the terminal diagnostic. The worker does not attach
+to a changed service invocation.
+
 The hosted CPU workflow is generated from `simit.toml` by Simit revision
 `afb7939d925d3e8e9b8507387ada7efad6460df8`. The installed 0.19.0 binary
 rejects `[ci].check_command`; an archived clean revision was compiled without
@@ -228,6 +238,12 @@ but did not write `flake.lock` or realize the CLI. The subsequent correctly
 routed scoped Canix update succeeded and created `flake.lock`; all 11 root
 revision pins were checked against the dependency manifest, and the lock records
 their generated NAR hashes.
+
+The first package-build sequence did not enter the evaluation phase: its
+300-second ordinary-admission window ended behind PID `4022767`, running
+`canix cache binary build .#roborev-aarch64 --no-push --max-jobs 1 --cores 2`.
+No Harbor-CAD package was realized by that attempt. The exact failed receipt
+is retained alongside the scoped source/runtime evidence.
 
 CLI, MCP, CPU OpenLB, CPU runtime and policy/clean/Python check derivations also
 evaluated successfully. Subsequent lock/build attempts encountered the shared

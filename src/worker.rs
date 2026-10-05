@@ -278,11 +278,18 @@ fn reconcile(store: &Store, capacity: &HostExecutionProfile, startup: bool) -> R
                     .get("ExecMainStatus")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(1);
-                store.finish(
+                let execution = if job.state == "cancelling" {
+                    "cancelled"
+                } else {
+                    "failed"
+                };
+                let reason = closed_service_reason(
+                    store,
                     &id,
-                    if code == 0 { 1 } else { code },
-                    Some("job ended without durable successful exit receipt"),
+                    execution,
+                    "job ended without durable successful exit receipt",
                 )?;
+                store.finish(&id, if code == 0 { 1 } else { code }, Some(&reason))?;
             }
         }
     }
@@ -355,7 +362,13 @@ fn dispatch(
                 if !result.status.success() {
                     return Err(Error::Resource("owned unit cancellation failed".into()));
                 }
-                store.finish(&job_id, 143, Some("owned complete service tree cancelled"))?;
+                let reason = closed_service_reason(
+                    store,
+                    &job_id,
+                    "cancelled",
+                    "owned complete service tree cancelled",
+                )?;
+                store.finish(&job_id, 143, Some(&reason))?;
             }
             Ok(serde_json::to_value(store.job(&job_id)?)?)
         }
@@ -851,33 +864,12 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
     )?;
     let result = execute_job(&store, &profile, id);
     if let Err(error) = &result {
-        let saved = (|| {
-            let dir = store.job_dir(id)?;
-            let raw = safe_path(&dir, ".native-incomplete")?;
-            if !raw.exists() {
-                return Ok(());
-            }
-            let snapshot = retain_failed_native_tree(
-                &raw,
-                &dir,
-                store.plan(id)?.observation.max_artifact_bytes,
-            )?;
-            for artifact in &snapshot.artifacts {
-                store.add_artifact(id, artifact)?;
-            }
-            let report = serde_json::json!({"schema_version":1,"execution":"failed","physical_validation":"unqualified",
-                "cause":error.diagnostic(),"snapshot":snapshot,"raw_tree_retained":".native-incomplete",
-                "partial_files":"opaque failed-attempt bytes; not qualified scientific outputs"});
-            let manifest = commit_artifact(
-                &dir,
-                "native-failure.json",
-                &serde_json::to_vec_pretty(&report)?,
-                "json",
-                "failed native output inventory; omissions are explicit",
-            )?;
-            store.add_artifact(id, &manifest)?;
-            Ok::<_, Error>(())
-        })();
+        let saved = retain_native_failure(
+            &store,
+            id,
+            "failed",
+            &serde_json::to_value(error.diagnostic())?,
+        );
         if let Err(retention) = saved {
             store.event(id, "native_failure_retention_error", &retention.to_string())?;
         }
@@ -889,6 +881,62 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
     )?;
     let _ = job;
     result
+}
+
+/// Called after adapter cleanup or confirmed owned-service termination. A
+/// killed job cannot run its own cleanup; the persistent worker recovers the
+/// bounded closed records before publishing its terminal state.
+fn retain_native_failure(
+    store: &Store,
+    id: &str,
+    execution: &str,
+    cause: &serde_json::Value,
+) -> Result<()> {
+    let dir = store.job_dir(id)?;
+    let raw = safe_path(&dir, ".native-incomplete")?;
+    if !raw.exists() {
+        return Ok(());
+    }
+    let registered: bool = store.connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM artifacts WHERE job=?1 AND path='native-failure.json')",
+        [id],
+        |row| row.get(0),
+    )?;
+    if registered {
+        return Ok(());
+    }
+    let snapshot = retain_failed_native_tree(
+        &raw,
+        &dir,
+        store.recorded_plan(id)?.observation.max_artifact_bytes,
+    )?;
+    for artifact in &snapshot.artifacts {
+        store.add_artifact(id, artifact)?;
+    }
+    let report = serde_json::json!({"schema_version":1,"execution":execution,"physical_validation":"unqualified",
+        "cause":cause,"snapshot":snapshot,"raw_tree_retained":".native-incomplete",
+        "partial_files":"opaque failed-attempt bytes; not qualified scientific outputs"});
+    let manifest = commit_artifact(
+        &dir,
+        "native-failure.json",
+        &serde_json::to_vec_pretty(&report)?,
+        "json",
+        "closed failed/cancelled native output inventory; omissions are explicit",
+    )?;
+    store.add_artifact(id, &manifest)?;
+    Ok(())
+}
+
+fn closed_service_reason(store: &Store, id: &str, execution: &str, reason: &str) -> Result<String> {
+    if let Err(error) =
+        retain_native_failure(store, id, execution, &serde_json::json!({"reason":reason}))
+    {
+        store.event(id, "native_failure_retention_error", &error.to_string())?;
+        return Ok(format!(
+            "{reason}; raw output quarantined; recovery error: {error}"
+        ));
+    }
+    Ok(reason.into())
 }
 fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Result<()> {
     let plan = store.plan(id)?;

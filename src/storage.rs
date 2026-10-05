@@ -654,7 +654,7 @@ impl Store {
         plan.validate()?;
         Ok(plan)
     }
-    fn recorded_plan(&self, id: &str) -> Result<ExecutionPlan> {
+    pub(crate) fn recorded_plan(&self, id: &str) -> Result<ExecutionPlan> {
         let job = self.job(id)?;
         let data: String =
             self.connection

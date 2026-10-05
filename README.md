@@ -126,7 +126,9 @@ the current applicability gate would accept their execution.
 Native failures snapshot regular closed outputs under `failed-native/`,
 including opaque partial files, and register `native-failure.json`. Unsafe or
 over-budget entries are identified as omissions and remain in the private raw
-tree. A forcibly killed job may require separate recovery of that raw tree.
+tree. After confirmed owned-service termination, restart reconciliation and
+cancellation register bounded closed raw records before the terminal state.
+Recovery errors are included in the terminal diagnostic and retain the raw tree.
 
 The worker defaults to one admitted plan per state root. It reserves the
 declared peak RAM and full output allowance; native jobs additionally reserve

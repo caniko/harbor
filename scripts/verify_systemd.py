@@ -100,7 +100,7 @@ def main():
         plan_path = root / "plan.json"
         plan_path.write_text(json.dumps(plan))
         receipts = []
-        for key in ("restart", "cancel"):
+        for key in ("restart", "forced-death", "cancel"):
             job = command(
                 binary,
                 "--socket",
@@ -142,12 +142,37 @@ def main():
             assert owner["invocation"] == observed["InvocationID"]
             assert owner["main_pid"] == int(observed["MainPID"])
             assert owner["control_group"] == observed["ControlGroup"]
+            if key != "restart":
+                # Exercise durable recovery independently of CAD/solver builds.
+                # These are explicitly simulated opaque interrupted-adapter bytes.
+                raw = state / "artifacts" / job["id"] / ".native-incomplete"
+                raw.mkdir(mode=0o700)
+                (raw / "solver.partial").write_bytes(
+                    b"synthetic recovery fixture; not solver evidence"
+                )
             if key == "restart":
                 worker.kill()
                 worker.wait(timeout=5)
                 socket.unlink(missing_ok=True)
                 worker = start_worker()
                 outcome = wait_job(binary, socket, job["id"], {"succeeded"})
+            elif key == "forced-death":
+                worker.kill()
+                worker.wait(timeout=5)
+                subprocess.run(
+                    [
+                        "systemctl",
+                        "--user",
+                        "kill",
+                        "--signal=KILL",
+                        "--kill-whom=all",
+                        job["unit"],
+                    ],
+                    check=True,
+                )
+                socket.unlink(missing_ok=True)
+                worker = start_worker()
+                outcome = wait_job(binary, socket, job["id"], {"failed"})
             else:
                 command(binary, "--socket", socket, "job", "cancel", job["id"])
                 outcome = wait_job(binary, socket, job["id"], {"cancelled"})
@@ -163,6 +188,17 @@ def main():
                     text=True,
                 ).strip()
                 assert active in {"inactive", "failed"}
+            if key != "restart":
+                bundle = root / f"bundle-{key}"
+                command(
+                    binary, "artifact", "export", "--state", state, job["id"], bundle
+                )
+                assert (
+                    bundle / "failed-native/solver.partial"
+                ).read_bytes() == b"synthetic recovery fixture; not solver evidence"
+                failure = json.loads((bundle / "native-failure.json").read_text())
+                assert failure["execution"] == outcome["state"]
+                assert failure["physical_validation"] == "unqualified"
             receipts.append(
                 {
                     "test": key,
@@ -170,6 +206,9 @@ def main():
                     "service_owner": owner,
                     "source_binary": str(source_binary),
                     "frozen_binary_sha256": expected_hash,
+                    "raw_fixture_scope": "synthetic interrupted-adapter bytes; not native solver evidence"
+                    if key != "restart"
+                    else None,
                     "outcome": outcome,
                 }
             )
