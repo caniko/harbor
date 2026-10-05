@@ -4,6 +4,7 @@
   inputs = {
     harbor-tex.url = "github:caniko/harbor-tex";
     nixpkgs.follows = "harbor-tex/nixpkgs";
+    nixpkgs-darwin.follows = "harbor-tex/nixpkgs-darwin";
     treefmt-nix.follows = "harbor-tex/treefmt-nix";
     git-hooks.follows = "harbor-tex/git-hooks";
   };
@@ -11,6 +12,7 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-darwin,
     harbor-tex,
     treefmt-nix,
     git-hooks,
@@ -22,9 +24,18 @@
       "aarch64-darwin"
     ];
     forSystem = system: let
-      pkgs = import nixpkgs {inherit system;};
+      platformNixpkgs =
+        if system == "x86_64-darwin"
+        then nixpkgs-darwin
+        else nixpkgs;
+      pkgs = import platformNixpkgs {inherit system;};
       treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {inherit harbor-tex;});
-      pre-commit-check = git-hooks.lib.${system}.run {
+      hooks = import "${git-hooks}/nix" {
+        nixpkgs = platformNixpkgs;
+        inherit system;
+        isFlakes = true;
+      };
+      pre-commit-check = hooks.run {
         src = ./.;
         hooks = import ./nix/pre-commit.nix {
           inherit pkgs;

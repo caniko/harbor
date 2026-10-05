@@ -141,7 +141,7 @@
       ...
     }:
       import ./checks {
-        inherit pkgs lib system self nixpkgs treefmt-nix git-hooks;
+        inherit pkgs lib system self nixpkgs nixpkgs-darwin treefmt-nix git-hooks;
         packages = self.packages.${system};
         meta = harbor-meta.lib;
       });
