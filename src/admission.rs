@@ -177,6 +177,37 @@ impl Admission {
                 ));
             }
         }
+        // A WAL mode transition during first creation can return SQLITE_BUSY
+        // without invoking SQLite's busy handler. Serialize bootstrap across
+        // workers; later resource transactions still use the SQLite writer lease.
+        let anchor = safe_path(root, "initialize.lock")?;
+        let initialization = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(&anchor)?;
+        regular_private(&anchor)?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match fs2::FileExt::try_lock_exclusive(&initialization) {
+                Ok(()) => break,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    return Err(Error::Resource(
+                        "shared admission initialization is busy".into(),
+                    ));
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
         let db = safe_path(root, "admission.sqlite3")?;
         let file = OpenOptions::new()
             .create(true)

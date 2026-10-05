@@ -110,13 +110,29 @@ fn shared_admission_rejects_foreign_database_links_and_unbound_jobs() {
     std::fs::write(&outside, b"untouched").unwrap();
     std::os::unix::fs::symlink(&outside, ledger.join("admission.sqlite3")).unwrap();
     assert!(Admission::open(&ledger, &host).is_err());
-    assert_eq!(std::fs::read(outside).unwrap(), b"untouched");
+    assert_eq!(std::fs::read(&outside).unwrap(), b"untouched");
     std::fs::remove_file(ledger.join("admission.sqlite3")).unwrap();
     let store = Store::open(&temp.path().join("state")).unwrap();
     let plan = ExecutionPlan::reference(CaseSpec::reference()).unwrap();
     let job = store.submit(&plan, "legacy").unwrap();
     let admission = Admission::open(&ledger, &host).unwrap();
     assert!(admission.reserve(&store, &job.id).is_err());
+    drop(admission);
+    std::fs::remove_file(ledger.join("initialize.lock")).unwrap();
+    std::os::unix::fs::symlink(&outside, ledger.join("initialize.lock")).unwrap();
+    assert!(Admission::open(&ledger, &host).is_err());
+    assert_eq!(std::fs::read(outside).unwrap(), b"untouched");
+}
+
+#[test]
+fn bundled_sqlite_includes_the_upstream_wal_reset_corruption_fix() {
+    // Upstream identifies 3.51.3 (3051003) as the first fixed release in
+    // this version line. Admission uses multiple WAL connections/processes.
+    assert!(
+        rusqlite::version_number() >= 3_051_003,
+        "{} lacks the required WAL-reset fix",
+        rusqlite::version()
+    );
 }
 
 #[test]
@@ -136,6 +152,7 @@ fn concurrent_workers_cannot_both_admit_against_one_ram_pool() {
             let ledger = ledger.clone();
             let host = host.clone();
             std::thread::spawn(move || {
+                barrier.wait();
                 let admission = Admission::open(&ledger, &host).unwrap();
                 let store = Store::open(&root).unwrap();
                 barrier.wait();
