@@ -156,7 +156,11 @@ pub fn snapshot_cad_input(
     let _ = fs::remove_file(partial);
     result
 }
-fn copy_verified(source: &Path, destination: &Path, artifact: &ArtifactManifest) -> Result<()> {
+pub(crate) fn copy_verified(
+    source: &Path,
+    destination: &Path,
+    artifact: &ArtifactManifest,
+) -> Result<()> {
     let source = safe_path(source, &artifact.path)?;
     let destination = safe_path(destination, &artifact.path)?;
     let mut input = OpenOptions::new()
@@ -201,7 +205,7 @@ fn copy_verified(source: &Path, destination: &Path, artifact: &ArtifactManifest)
     Ok(())
 }
 
-fn publish_directory(partial: &Path, destination: &Path) -> Result<()> {
+pub(crate) fn publish_directory(partial: &Path, destination: &Path) -> Result<()> {
     use std::{ffi::CString, os::unix::ffi::OsStrExt};
     let partial =
         CString::new(partial.as_os_str().as_bytes()).map_err(|_| invalid("export path"))?;
@@ -223,7 +227,7 @@ fn publish_directory(partial: &Path, destination: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn sync_directories(root: &Path) -> Result<()> {
+pub(crate) fn sync_directories(root: &Path) -> Result<()> {
     for entry in fs::read_dir(root)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
@@ -301,7 +305,7 @@ pub fn ingest_native_tree(
     sync_directories(destination)?;
     Ok(artifacts)
 }
-fn native_manifest(
+pub(crate) fn native_manifest(
     source: &Path,
     path: &str,
     maximum: u64,
@@ -906,6 +910,17 @@ impl Store {
             "INSERT INTO artifacts(job,path,manifest) VALUES(?1,?2,?3)",
             params![id, manifest.path, data],
         )?;
+        Ok(())
+    }
+    pub(crate) fn add_artifacts(&self, id: &str, manifests: &[ArtifactManifest]) -> Result<()> {
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )?;
+        for manifest in manifests {
+            self.add_artifact(id, manifest)?;
+        }
+        tx.commit()?;
         Ok(())
     }
     pub fn artifact_page(&self, id: &str, after: Option<&str>, limit: u32) -> Result<ArtifactPage> {

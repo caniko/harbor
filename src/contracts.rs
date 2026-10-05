@@ -869,5 +869,6 @@ pub fn schemas() -> serde_json::Value {
         "ExecutionBinding": schemars::schema_for!(crate::execution::ExecutionBinding),
         "HostAuthority": schemars::schema_for!(crate::authority::HostAuthority),
         "ExecutionAuthorization": schemars::schema_for!(crate::authority::ExecutionAuthorization),
+        "FieldSnapshot": schemars::schema_for!(crate::fields::FieldSnapshot),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
 }

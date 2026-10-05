@@ -187,3 +187,59 @@ def test_native_frames_are_bound_to_completed_render(monkeypatch, tmp_path, dama
         with pytest.raises((ValueError, OSError)):
             module.main()
         assert not encoded
+
+
+@pytest.mark.parametrize("damage", [None, "sequence", "render", "snapshot"])
+def test_video_requires_exact_scientific_snapshot_before_encoding(
+    monkeypatch, tmp_path, damage
+):
+    sequence(tmp_path)
+    snapshot = {
+        "schema_version": 1,
+        "artifact_id": "exact-array-bytes",
+        "science_id": "original-science",
+        "execution_id": "approved-plan",
+    }
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot))
+    monkeypatch.setenv("HARBOR_CAD_FIELD_SNAPSHOT", str(snapshot_path))
+    binding = {
+        "field_snapshot_sha256": hashlib.sha256(snapshot_path.read_bytes()).hexdigest(),
+        "field_artifact_id": snapshot["artifact_id"],
+        "science_id": snapshot["science_id"],
+        "execution_id": snapshot["execution_id"],
+    }
+    manifest_path = tmp_path / "frame-sequence.json"
+    manifest = {
+        **json.loads(manifest_path.read_text()),
+        **binding,
+        "source": "rendered_fields",
+    }
+    if damage == "sequence":
+        manifest["science_id"] = "changed-science"
+    manifest_path.write_text(json.dumps(manifest))
+    receipt = {
+        "adapter": "ParaView",
+        "executed": True,
+        "software_fallback": False,
+        "frame_sequence_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        "frames": manifest["frames"],
+        "physical_times_s": [0, 10, 20],
+        **binding,
+    }
+    if damage == "render":
+        receipt["field_artifact_id"] = "other-arrays"
+    if damage == "snapshot":
+        snapshot_path.write_text(
+            json.dumps({**snapshot, "science_id": "substituted-science"})
+        )
+    (tmp_path / "render-receipt.json").write_text(json.dumps(receipt))
+    module, encoded = run_video(monkeypatch, tmp_path)
+    if damage is None:
+        module.main()
+        result = json.loads((tmp_path / "video-receipt.json").read_text())
+        assert encoded and all(result[k] == v for k, v in binding.items())
+    else:
+        with pytest.raises(ValueError):
+            module.main()
+        assert not encoded

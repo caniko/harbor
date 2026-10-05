@@ -884,6 +884,38 @@ fn native_stage(
     } else {
         command.args(["--ro-bind", "/nix/store", "/nix/store"]);
     }
+    let retained_fields = if matches!(
+        stage.operation,
+        StageOperation::Render | StageOperation::Video
+    ) {
+        let (root, snapshot, manifest_digest) = crate::fields::registered(store, id)?;
+        if snapshot.science_id != plan.case.science_id()?
+            || snapshot.execution_id != plan.id()?
+            || snapshot.execution_binding_digest != digest(&store.execution_binding(id)?)?
+        {
+            return Err(invalid(
+                "presentation differs from immutable field science/execution identity",
+            ));
+        }
+        command
+            .args(["--ro-bind"])
+            .arg(safe_path(&root, "tmp/vtkData")?)
+            .arg("/work/tmp/vtkData")
+            .args(["--ro-bind"])
+            .arg(safe_path(&root, "openlb-receipt.json")?)
+            .arg("/work/openlb-receipt.json")
+            .args(["--ro-bind"])
+            .arg(safe_path(&root, "snapshot.json")?)
+            .arg("/field-snapshot.json")
+            .args([
+                "--setenv",
+                "HARBOR_CAD_FIELD_SNAPSHOT",
+                "/field-snapshot.json",
+            ]);
+        Some((snapshot, manifest_digest))
+    } else {
+        None
+    };
     let mut hip_identity = None;
     if let Some(selection) = &stage.selection {
         if selection.role != Role::Compute {
@@ -1002,6 +1034,19 @@ fn native_stage(
     }
     let evidence = read_native_receipt(&receipt)?;
     validate_native_receipt(stage, &evidence)?;
+    if let Some((snapshot, manifest_digest)) = retained_fields {
+        let (_, _, observed_digest) = crate::fields::registered(store, id)?;
+        if observed_digest != manifest_digest
+            || evidence["field_snapshot_sha256"] != manifest_digest
+            || evidence["field_artifact_id"] != snapshot.artifact_id
+            || evidence["science_id"] != snapshot.science_id
+            || evidence["execution_id"] != snapshot.execution_id
+        {
+            return Err(invalid(
+                "presentation receipt lacks exact retained-field identity",
+            ));
+        }
+    }
     if let Some(identity) = hip_identity {
         identity.verify_receipt(&evidence)?;
     }
@@ -1393,6 +1438,29 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     native_pending = true;
                 }
                 native_stage(store, profile, &plan, stage, &native_work, id)?;
+                if matches!(stage.operation, StageOperation::Openlb)
+                    && plan
+                        .stages
+                        .iter()
+                        .any(|s| matches!(s.operation, StageOperation::Render))
+                {
+                    let root = safe_path(&dir, "retained-fields")?;
+                    let snapshot = crate::fields::capture(
+                        &native_work,
+                        &root,
+                        &plan,
+                        &digest(&store.execution_binding(id)?)?,
+                    )?;
+                    store.add_artifacts(id, &crate::fields::manifests(&root, &snapshot)?)?;
+                    store.event(id, "fields_retained", &serde_json::json!({"science_id":snapshot.science_id,"artifact_id":snapshot.artifact_id,"times":snapshot.times}).to_string())?;
+                    // Release only the copied authoritative graph. Other native
+                    // collections (including material-only output) remain for export.
+                    for record in &snapshot.files {
+                        if record.path.starts_with("tmp/vtkData/") {
+                            fs::remove_file(safe_path(&native_work, &record.path)?)?;
+                        }
+                    }
+                }
             }
         }
         if disk_bytes(&dir, true)? > plan.observation.max_artifact_bytes {

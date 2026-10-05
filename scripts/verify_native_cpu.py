@@ -38,7 +38,7 @@ def verify_manifest(root):
     return manifests
 
 
-def verify_bundle(root, resolution):
+def verify_bundle(root, resolution, backend="cpu"):
     manifests = verify_manifest(root)
     execution = json.loads((root / "execution.json").read_text())
     assert execution["job"]["state"] == "succeeded"
@@ -61,13 +61,18 @@ def verify_bundle(root, resolution):
     assert {r["name"] for r in regions["regions"]} == {"fluid"}
     assert regions["regions"][0]["triangles"] > 0
     receipt = json.loads((root / "openlb-receipt.json").read_text())
-    assert receipt["backend"] == "cpu" and receipt["executed"] is True
+    assert receipt["backend"] == backend and receipt["executed"] is True
     assert receipt["software_fallback"] is False and receipt["precision"] == "float64"
     assert receipt["physical_validation"] == "unqualified"
     assert receipt["lattice_mach"] <= 0.1
     assert receipt["fluid_cells"] == 2 * resolution**3
     assert [t["requested_s"] for t in receipt["retained_times"]] == [0, 10, 20]
-    collection_path = root / "tmp/vtkData/channel.pvd"
+    field_root = (
+        root / "retained-fields"
+        if (root / "retained-fields/snapshot.json").exists()
+        else root
+    )
+    collection_path = field_root / "tmp/vtkData/channel.pvd"
     collection = ET.parse(collection_path).findall("Collection/DataSet")
     assert [int(item.attrib["timestep"]) for item in collection] == [
         t["step"] for t in receipt["retained_times"]

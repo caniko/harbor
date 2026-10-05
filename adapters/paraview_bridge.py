@@ -89,6 +89,19 @@ def main():
     if sys.argv[1] != "render":
         raise ValueError("render operation required")
     plan = json.loads(Path(sys.argv[2]).read_text())
+    field_binding = {}
+    snapshot_path = os.environ.get("HARBOR_CAD_FIELD_SNAPSHOT")
+    if snapshot_path:
+        snapshot_bytes = Path(snapshot_path).read_bytes()
+        if not 0 < len(snapshot_bytes) <= 2 * 1024 * 1024:
+            raise ValueError("bounded retained-field snapshot required")
+        snapshot = json.loads(snapshot_bytes)
+        field_binding = {
+            "field_snapshot_sha256": hashlib.sha256(snapshot_bytes).hexdigest(),
+            "field_artifact_id": snapshot["artifact_id"],
+            "science_id": snapshot["science_id"],
+            "execution_id": snapshot["execution_id"],
+        }
     if plan["case"]["presentation"]["field"] != "velocity":
         raise ValueError("only explicitly selected velocity rendering implemented")
     stage = next(s for s in plan["stages"] if s["operation"] == "render")
@@ -176,11 +189,18 @@ def main():
             }
         )
     sequence = json.dumps(
-        {"schema_version": 1, "source": "rendered_fields", "frames": frames}, indent=2
+        {
+            "schema_version": 1,
+            "source": "rendered_fields",
+            "frames": frames,
+            **field_binding,
+        },
+        indent=2,
     ).encode()
     Path("/work/frame-sequence.json.partial").write_bytes(sequence)
     Path("/work/frame-sequence.json.partial").replace("/work/frame-sequence.json")
     receipt = {
+        **field_binding,
         "adapter": "ParaView",
         "backend": "egl",
         "pci": pci,

@@ -79,6 +79,11 @@ def frame_sequence(work, plan):
             or receipt["frames"] != records
         ):
             raise ValueError("frame sequence differs from completed render receipt")
+        binding = field_binding()
+        if any(sequence.get(k) != v or receipt.get(k) != v for k, v in binding.items()):
+            raise ValueError(
+                "frame sequence differs from exact retained scientific snapshot"
+            )
     elif (
         sequence["source"] != "synthetic_fixture"
         or plan["case"]["geometry"]["synthetic"] is not True
@@ -89,6 +94,22 @@ def frame_sequence(work, plan):
             "explicit synthetic encoder fixture or completed render required"
         )
     return records, sequence_digest, sequence["source"]
+
+
+def field_binding():
+    path = os.environ.get("HARBOR_CAD_FIELD_SNAPSHOT")
+    if not path:
+        return {}
+    data = closed_record(Path(path), 2 * 1024 * 1024)
+    snapshot = json.loads(data)
+    if snapshot["schema_version"] != 1:
+        raise ValueError("unsupported retained-field snapshot")
+    return {
+        "field_snapshot_sha256": hashlib.sha256(data).hexdigest(),
+        "field_artifact_id": snapshot["artifact_id"],
+        "science_id": snapshot["science_id"],
+        "execution_id": snapshot["execution_id"],
+    }
 
 
 def main():
@@ -175,6 +196,7 @@ def main():
         )
     Path("/work/video.partial").replace("/work/video.mp4")
     receipt = {
+        **field_binding(),
         "adapter": "FFmpeg",
         "backend": "vaapi",
         "encoder": "h264_vaapi",
