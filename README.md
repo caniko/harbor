@@ -73,8 +73,8 @@ qualification; submission rechecks devices and the configured backend.
 
 MCP exposes `case_plan_openlb_reference` and `case_plan_b1` through the same
 worker, using its host policy. Both require a systemd/native-capable profile.
-The declared runtime packages remain unqualified until they can be built and
-exercised in the import/GPU sandbox.
+The packaged synthetic CPU workflow has passed. GPU routes and production
+isolation require their separate execution evidence.
 
 Measured CPU and systemd results, limitations, exact source/patch identities
 and Canix package validation are recorded in
@@ -107,7 +107,8 @@ uv run --locked python scripts/verify_native_cpu.py \
 
 This verifier submits resolutions 8 and 16 through the CLI and the official MCP
 client, checks retained fields and every exported checksum, and keeps physical
-validation explicitly unqualified. Its package execution remains pending.
+validation explicitly unqualified. Its packaged run passed with velocity errors
+of 1.1124% and 0.2781%, respectively; each bundle has 28 verified records.
 
 Artifact listing returns `{items, total, next_after}` with at most 100
 descriptors and 24 KiB of descriptor data per page. Use

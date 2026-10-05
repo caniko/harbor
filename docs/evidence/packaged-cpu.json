@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "source_revision": "bffb87bf2db916fcffc41bc1c838915b5bb2969f",
+  "command": "canix --output json cache binary build .#TARGET --no-push --max-jobs 1 --cores 2; checks use --include-tests",
+  "build_log_root": "/data/scratch/tmp/opencode/harbor-cad-canix-packages-20261005-bffb87b",
+  "published": false,
+  "rust_toolchain": "1.94.0",
+  "openlb_compiler_observed": "GCC 16.2.0",
+  "builds": {
+    "default": {
+      "passed": true,
+      "derivation": "/nix/store/zj59ysv6ifyfjpymphsfvgl7iqps2fw8-harbor-cad-0.1.0.drv",
+      "output": "/nix/store/z6k6dfznz58f0pd6znrfwbw5pxn6bq6l-harbor-cad-0.1.0",
+      "log_sha256": "0c24c5f9a1036c269bf34efc0507d27315d7780f56b8e55a0aacaab092a2632c"
+    },
+    "mcp": {
+      "passed": true,
+      "derivation": "/nix/store/gsm2bdwadf5h2a5liw2mn1qs11x7pbxw-harbor-cad-mcp.drv",
+      "output": "/nix/store/j6xpr2swl93qy3bjhgh3w5sfnznix48g-harbor-cad-mcp",
+      "log_sha256": "ae0216f6b01aa92886f13b193bef61ecf5422a11a7b7ea469f10906c2ea20a0f"
+    },
+    "openlb-cpu": {
+      "passed": true,
+      "derivation": "/nix/store/akpg2d7f7jmf2i6yjn1lmvr6kz64imhk-harbor-cad-openlb-cpu-1.9.0.drv",
+      "output": "/nix/store/50n5wfbaqcb92yjxjc3cjssaiwjwdj7v-harbor-cad-openlb-cpu-1.9.0",
+      "log_sha256": "c914edf543828db1e6836ccd26c867464db7c36dea6867be4368e16a4f08d483"
+    },
+    "runtime-cpu": {
+      "passed": true,
+      "derivation": "/nix/store/nzmzbr65hk9sj7f3vdpi2nbn84afybiv-harbor-cad-native-runtime.json.drv",
+      "output": "/nix/store/wsnpifpgq92fa2ayafdzadp53xza3hwj-harbor-cad-native-runtime.json",
+      "log_sha256": "312615b3f71602b89792ad3abefd6195f4a0ca0cca20a209ab98944d0067474d"
+    },
+    "checks.x86_64-linux.clean-runtime": {
+      "passed": true,
+      "derivation": "/nix/store/lapwgdln54ldj644n0ikfpigvhzl22fd-harbor-cad-clean-runtime.drv",
+      "output": "/nix/store/04zmjqfdw4j6mczx0jg6i9c08va37f55-harbor-cad-clean-runtime",
+      "log_sha256": "0448ab36d636f70323ad2633ea4e7fee18c25d31bf85d77740e0dca2e4c1e3d6"
+    },
+    "checks.x86_64-linux.python": {
+      "passed": true,
+      "derivation": "/nix/store/8aacgva1axvzbc21zs8ynfip1ibcsxf2-harbor-cad-python-tests.drv",
+      "output": "/nix/store/8bafw7nzh3955qlki082pgpnff78fa5p-harbor-cad-python-tests",
+      "log_sha256": "c46cbf5fd86006295e507bff3399aa66f3989b2257883c5cdf5d791151e253ac"
+    },
+    "checks.x86_64-linux.policy": {
+      "passed": true,
+      "derivation": "/nix/store/mq997wiws3alxwl3p77g090hzd3kkdng-harbor-cad-policy.drv",
+      "output": "/nix/store/p02vnimlk0y6jd0rzvzraxlfrhqkbwnp-harbor-cad-policy",
+      "log_sha256": "2ff96b4fba90b41edb87750cf2bf317fa88af0869b9b464d7bf53d5d03d59838"
+    },
+    "checks.x86_64-linux.openlb-cpu-reference": {
+      "passed": true,
+      "derivation": "/nix/store/vbfq7l0j6yfmra9ab92f8y6al71yy14f-harbor-cad-openlb-cpu-reference.drv",
+      "output": "/nix/store/i5r9qq15hlq938a38cc7k7kjrmaw8vmw-harbor-cad-openlb-cpu-reference",
+      "log_sha256": "efeb46512416b674553f9199aee3fc451a239a789f4c123b77b3dc2efb8b2f0b",
+      "verification_sha256": "01cf549a6fb5b68ba92296aced94bb634be31f5c66d85d39d0bece781a64d547"
+    }
+  },
+  "native_run": {
+    "path": "/data/scratch/tmp/opencode/harbor-cad-packaged-native-cpu-bffb87b/verification.json",
+    "sha256": "59bfc701b64e05fdc7daea3fe3bc8295a8b5c1123c4468c8b43a932aeaf50d11",
+    "interfaces": ["CLI", "official MCP stdio client"],
+    "freecad": "1.1.4",
+    "bubblewrap": "0.12.0",
+    "resolutions": [8, 16],
+    "velocity_relative_l2": [0.01112442826614978, 0.0027813873419648702],
+    "records_per_bundle": 28,
+    "bundle_checksums": "verified",
+    "scope": "synthetic periodic channel; actual sandboxed CAD fixture and CPU solver execution",
+    "convergence": "not assessed",
+    "pressure_verification": "unqualified",
+    "physical_validation": "unqualified"
+  },
+  "cli_binary_sha256": "50dde3fcb417579bc8b5f38129f4ac91a705cb31c804ce96bb573681bbe3f8e4",
+  "runtime_manifest_sha256": "ade97be9110f1bd2feb73061856de05ebe100b240b82d25424de31465129016f",
+  "openlb_binary_sha256": "41ef863e57216b1ae03cf7433e86cb59568d3807049a5ee125eef57adf85af93"
+}

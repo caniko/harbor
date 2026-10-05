@@ -8,14 +8,14 @@
     "cargo_nix_source_identity": "aligned",
     "contract_sha256": "829a8ff1e89c7df0f4d0b38dee3850a29efda1e43d457a15d8e534e062dafe54",
     "license": "MIT OR Apache-2.0",
-    "evidence": "Rust contract tests and doctor; Nix parity check declared but not built"
+    "evidence": "Rust contract tests, packaged doctor and built Nix source/digest parity check"
   },
   "harbor": {
     "harbor-rs": "c4ffa5d9b9232eae1f6693dfbcbcdd2548f31592",
     "harbor-py": "dab2acaf106eab7f94084ed8d02747c495f31737",
     "api_evidence": "Pinned lib/default.nix, toolchain helper and lib/python.nix inspected",
     "effective_policy": "Harbor-Py mkPkgs defaults allowUnfree=true; explicitly overridden to false in both package sets",
-    "packaging_qualification": "unqualified; CLI derivation evaluation passed",
+    "packaging_qualification": "CLI, MCP and CPU native packages/checks passed; docs/evidence/packaged-cpu.json",
     "cli_evaluation": {"source_revision":"2e52eb0699f471ec0f00f1f2a7013dc7444ad1a1","derivation":"/nix/store/h1g62w3d4fssnjqnh4jr5x9hzm448gc8-harbor-cad-0.1.0.drv","realized":false}
   },
   "nix_inputs": {
@@ -36,7 +36,7 @@
     "license": "LGPL-2.0-or-later (Nixpkgs metadata)",
     "security_gate": "Version >=1.1.4 required before opening a document; isolated patched importer remains mandatory",
     "python_abi": "FreeCAD's own Nixpkgs interpreter/dependencies; isolated from MCP and ParaView",
-    "build": "unqualified", "runtime": "unqualified", "sandbox": "unqualified"
+    "build": "passed as runtime-cpu dependency", "runtime": "synthetic fixture passed through CLI/MCP", "sandbox": "actual CPU fixture execution passed; full production importer policy unqualified"
   },
   "openlb": {
     "version": "1.9.0",
@@ -54,7 +54,7 @@
     "observed_binary_bytes": 1850256,
     "verifier_sha256": "6a4f4fa1cf10d0c1e66dd805df8fb6912475d5acceefb88b8250860b2f4a76e5",
     "verification_report_sha256": "32c52dd4f75800c8d920ef4e994bb436bb98a0f4b3825c63db6b7da6238b802e",
-    "nix_build": "unqualified",
+    "nix_build": "passed through Canix; packaged GCC 16.2.0 CPU numerical reference and native worker integration passed",
     "cpu_velocity_verification": "passed at resolutions 8 and 16, independently decoded retained VTK",
     "pressure_verification": "unqualified beyond finite Float64 round trip",
     "physical_validation": "unqualified",
@@ -83,7 +83,7 @@
     "python_requirement": ">=3.12,<3.14",
     "dependency_hashes": "uv.lock",
     "runtime_test": "passed with the official SDK stdio Client against the Rust worker",
-    "nix_clean_runtime": "unqualified"
+    "nix_clean_runtime": "passed; packaged official MCP client also exercised native CPU job submission"
   },
   "worker": {
     "resource_binding_revision": "21866878ae0f1c4392182375c0e2adf6c5893a54",
@@ -129,7 +129,7 @@
     "python": "3.13.15",
     "rust": "rust-toolchain.toml",
     "hosted_execution": "not run; no push performed",
-    "nix_native_checks": "own lock created; package/check realization pending ordinary Canix admission"
+    "nix_native_checks": "eight selected package/check gates passed locally; hosted execution not run"
   },
   "non_libre_boundary": "Only the enumerated CUDA dependencies are permitted in the optional package set; no host drivers, uploads or host activation are performed",
   "missing_stacks": ["Gmsh/CalculiX/PaStiX", "libRadtran/Mitsuba/Dr.Jit", "Catalyst/Conduit", "qualified VTKHDF"],

@@ -149,8 +149,8 @@ sandbox qualification still require separate execution.
   alias. These source-level repairs still require an effective sandbox test.
 
 Local Rust checks used `rustc 1.100.0-nightly (574ff7d98 2026-09-14)` from the
-approved Canix environment. The flake's declared Rust 1.94.0 toolchain still
-requires its own package build. Python checks used Python 3.13.15 and uv 0.12.5.
+approved Canix environment. The locked CLI package also built with the declared
+Rust 1.94.0 toolchain. Python checks used Python 3.13.15 and uv 0.12.5.
 
 Latest local checks passed: 36 Rust integration tests plus four worker unit tests, Clippy with
 `-D warnings`, two official-MCP/Python tests, Ruff lint/format checks, and
@@ -162,8 +162,9 @@ snapshot, reject symlinks/budget overflow without publishing input bytes, and
 reject absent or mismatched CPU execution receipts. Receipt descriptors reject
 FIFOs, symlinks and oversized records without blocking. Native jobs archive the exact
 selected runtime manifest. `scripts/verify_native_cpu.py` prepares the packaged
-FreeCAD → CPU OpenLB → portable-bundle qualification through CLI and MCP; it has
-not executed yet. The CPU runtime does not select ParaView/media closures.
+FreeCAD → CPU OpenLB → portable-bundle qualification through CLI and MCP; its
+packaged synthetic-fixture run passed. The CPU runtime does not select
+ParaView/media closures.
 
 An actual regression test proved that an environment-only fake `INVOCATION_ID`
 could previously execute a service job. Job startup now verifies the live unit's
@@ -215,9 +216,9 @@ remain recorded upstream requirements. Generation defaults are preserved.
 
 | Gate | Status |
 |---|---|
-| A0 | Partial: own immutable flake lock created through Canix; package/clean-runtime builds pending; full importer isolation unqualified |
+| A0 | Partial: locked CLI/MCP/native CPU packages and clean/policy/parity checks passed; production importer isolation remains unqualified |
 | A1 | Analytical airflow reference plus real low-Mach OpenLB CPU velocity/refinement check; thermal/wetting/FEM references incomplete |
-| B1 | CLI/MCP plan and adapter integration implemented; FreeCAD→CUDA→EGL→VAAPI execution unqualified |
+| B1 | Packaged FreeCAD→CPU OpenLB→bundle passed through CLI/MCP; CUDA→EGL→VAAPI execution unqualified |
 | B2 | No qualified numerical GPU filter or complete topology/ghost-cell round trip |
 | C–F | Not implemented |
 
@@ -226,7 +227,25 @@ node) and `0000:7d:00.0` (without a render alias); no CUDA device was
 available. Inventory is not EGL/VAAPI execution evidence. CUDA UUID/minor
 correlation and per-device sandbox mounts remain explicit rejection gates.
 
-## Canix package evaluation and pending realization
+## Canix package evaluation and realization
+
+All eight selected package/check targets passed through ordinary Canix admission
+against `bffb87bf2db916fcffc41bc1c838915b5bb2969f`: CLI, MCP, CPU OpenLB, CPU
+runtime, clean-runtime, Python protocol tests, effective unfree/Fleetix policy,
+and the actual procedural-STL OpenLB numerical reference. Builds used one job,
+two cores and `--no-push`; no host activation occurred. The CLI used Rust 1.94.0;
+the packaged solver reported GCC 16.2.0. Exact derivations, retained output
+paths, logs and hashes are in [evidence/packaged-cpu.json](evidence/packaged-cpu.json).
+
+`scripts/verify_native_cpu.py` then exercised packaged FreeCAD 1.1.4 and OpenLB
+inside Bubblewrap 0.12.0 under tracked systemd jobs. Resolution 8 used CLI and
+resolution 16 used the official MCP stdio client, both against the same worker.
+Every exported record, runtime manifest and service owner was verified; retained
+Float64 velocity/pressure/material fields preserved the requested 0/10/20 s
+mapping. Each bundle contains 28 checksummed records. The velocity errors match
+the independent procedural-STL reference above and improve about fourfold.
+This is synthetic fixture/CPU integration evidence; it does not establish
+pressure accuracy, convergence, GPU execution or physical validation.
 
 `canix repo eval --wait-seconds 300 --directory
 /data/nvme0/can/canix/projects/repos/owned/harbor-cad
@@ -275,7 +294,7 @@ canix cache binary build .#checks.x86_64-linux.clean-runtime \
 
 The package sets explicitly override Harbor-Py's permissive unfree default.
 The optional CUDA set uses an enumerated predicate. Effective Nix policy
-checks are declared; they have not yet been built. Native package/runtime
-ABIs, closure retention, aggregate multi-worker admission, GPU VRAM budgets,
+checks passed for both effective package sets and Fleetix source/digest parity.
+Active-job closure retention, aggregate multi-worker admission, GPU VRAM budgets,
 effective importer/JIT sandbox profiles, and engineering physical inputs
 remain qualification work.
