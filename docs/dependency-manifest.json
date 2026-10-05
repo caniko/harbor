@@ -68,17 +68,17 @@
     "vtk_abi": "Bundled VTK from the exact ParaView source archive; external VTK explicitly disabled",
     "python_abi": "Separate Python 3.13 pvpython, Qt/MPI disabled",
     "license": "BSD-3-Clause (Nixpkgs metadata)",
-    "build": "initial bundled-VTK configuration rejected absolute install destinations; relative-destination correction committed, guarded retry pending",
-    "egl_runtime": "production EGL helpers and DRM sandbox passed selected-device offscreen OpenGL calibration; full packaged ParaView field rendering unqualified",
-    "evidence": "docs/evidence/egl-device.json",
+    "build": "passed ordinary Canix gates with relative GNUInstallDirs; bundled ParaView/VTK and separate Python ABI realized without hardware discovery",
+    "egl_runtime": "packaged selected-device EGL surface rendering of retained CPU OpenLB fields passed on Radeon RX 7900 XTX; live display/DRM identity, requested camera, fixed scale and 0/10/20 s labels verified",
+    "evidence": "docs/evidence/egl-device.json; docs/evidence/egl-fields.json",
     "viskores_filter": "unimplemented/unqualified"
   },
   "ffmpeg": {
     "source_definition": "pkgs.ffmpeg from the declared immutable Nixpkgs revision",
     "adapter": "VAAPI H.264, NV12 upload, actual CPU decode and decoded frame/timestamp checks",
     "build_runtime_license_configuration": "Realized FFmpeg 9.0.1, GCC 16.2.0; --enable-gpl --enable-version3 --disable-nonfree; complete configuration retained in qualification process.log",
-    "runtime": "selected AMD Radeon RX 7900 XTX at 0000:03:00.0; three 128x128 frames hardware-encoded and CPU-decoded; B1/EGL/time labels separately unqualified",
-    "evidence": "docs/evidence/inspection-media.json"
+    "runtime": "selected AMD Radeon RX 7900 XTX at 0000:03:00.0; synthetic 128x128 and actual EGL field-rendered 640x480 sequences hardware-encoded and CPU-decoded; labels inspected in decoded pixels; worker CUDA B1 remains unqualified",
+    "evidence": "docs/evidence/inspection-media.json; docs/evidence/egl-fields.json"
   },
   "mcp": {
     "version": "2.3.0",
@@ -102,7 +102,7 @@
     "systemd_owner_frozen_binary_sha256": "832a5713b05bc82e35b7642d5b6e9fe3af2a3eed1ca0c2078431953ab15087a3",
     "systemd_raw_recovery_receipt_sha256": "0eeee18f2fc3452522acb983bf37697d8d6e91f8e9e1ff120e7e562761c0e2b0",
     "systemd_raw_recovery_binary_sha256": "8f5067dbcf5b64c8f6d6719531cbbf5c66591f4d927e222b708cb3d60c0683c7",
-    "systemd_raw_recovery_scope": "owned SIGKILL plus worker restart and ordinary cancellation exported exact synthetic opaque partial bytes; native solver outputs separately pending",
+    "systemd_raw_recovery_scope": "owned SIGKILL plus worker restart and ordinary cancellation exported exact synthetic opaque partial bytes; later native solver recovery is recorded separately below",
     "systemd_native_recovery": "packaged FreeCAD/OpenLB initial VTI retained exactly after owned SIGKILL plus worker restart and ordinary cancellation; 23 checksummed records per failed/cancelled bundle; docs/evidence/native-recovery.json",
     "bwrap_primitive_receipt_sha256": "3876adcb6dda324358c3616038117f4aec7fcc3ec18b95919fc0e364781596ce",
     "bwrap_primitive_scope": "tested read-only /plan.json and store mounts, hidden host inputs/sockets/GPU nodes, isolated host-loopback network, empty output tree; full packaged sandbox separately pending",
@@ -112,7 +112,7 @@
     "kill_mode": "control-group",
     "runtime_guarantees": "Tested analytical job crash/restart and cancellation; actual Bubblewrap detached-session cleanup on exit/timeout/monitor failure passed; selected DRM metadata/node and VAAPI probes passed; full production isolation remains unqualified",
     "admission": "One immutable plan/profile reservation per state root; retained artifacts and native copy staging counted",
-    "physical_card_anchors": "/run/user/UID/harbor-cad/cards shared across state roots; actual GPU execution separately unqualified"
+    "physical_card_anchors": "/run/user/UID/harbor-cad/cards shared across state roots; retained-field EGL/media qualifiers hold the same production reservation anchor; CUDA execution and aggregate VRAM headroom unqualified"
   },
   "ci": {
     "workflow": ".github/workflows/ci.yaml",

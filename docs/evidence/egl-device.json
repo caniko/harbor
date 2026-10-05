@@ -36,10 +36,10 @@
     "correction_revision": "98745d2aaef30824f817ccecb59901f2557a8634",
     "correction": "relative GNUInstallDirs matching the pinned Nixpkgs ParaView recipe",
     "retry_log_root": "/data/scratch/tmp/opencode/harbor-cad-canix-egl-98745d2",
-    "qualification": "pending"
+    "qualification": "subsequent ordinary Canix gates passed against 9511dba and dd3ccbc; final package and surface/video evidence in docs/evidence/egl-fields.json"
   },
-  "paraview_field_rendering": "unqualified",
-  "physical_time_labels": "unqualified",
+  "paraview_field_rendering": "later selected-device synthetic channel surface probe passed; docs/evidence/egl-fields.json",
+  "physical_time_labels": "later confirmed in every actual CPU-decoded video frame; docs/evidence/egl-fields.json",
   "worker_b1": "unqualified",
   "physical_validation": "unqualified"
 }

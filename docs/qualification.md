@@ -246,8 +246,8 @@ remain recorded upstream requirements. Generation defaults are preserved.
 |---|---|
 | A0 | Partial: locked CLI/MCP/native CPU packages and clean/policy/parity checks passed; production importer isolation remains unqualified |
 | A1 | Analytical airflow reference plus real low-Mach OpenLB CPU velocity/refinement check; thermal/wetting/FEM references incomplete |
-| B1 | Packaged FreeCAD→CPU OpenLB→bundle passed through CLI/MCP; CUDA→EGL→VAAPI execution unqualified |
-| B2 | No qualified numerical GPU filter or complete topology/ghost-cell round trip |
+| B1 | Packaged FreeCAD→CPU OpenLB→bundle passed through CLI/MCP; retained CPU fields→EGL surfaces→VAAPI adapter probes passed; required CUDA solver/worker integration unqualified |
+| B2 | Renderer/media RAM/CPU/wall/output measured; no qualified numerical GPU filter, per-process VRAM peak or complete topology/ghost-cell round trip |
 | C–F | Not implemented |
 
 Read-only inventory exposed AMD devices at `0000:03:00.0` (with a render
@@ -314,9 +314,62 @@ are rejected explicitly.
 
 The first headless ParaView package failed CMake's relative-install-destination
 check. The committed fix uses the pinned Nixpkgs recipe's relative GNUInstallDirs;
-its guarded build retry is pending. EGL calibration does not establish packaged
-ParaView field rendering, physical-time labels or B1. The archive hash, runtime
-library and calibration receipt are in [evidence/egl-device.json](evidence/egl-device.json).
+later ordinary Canix gates passed against `9511dba` and `dd3ccbc`. The preceding
+retry realized ParaView but its final Canix receipt rejected source drift; that
+attempt is not counted as a passed guarded gate. The archive hash, runtime
+library and initial calibration receipt are in [evidence/egl-device.json](evidence/egl-device.json).
+
+### Retained-field EGL surfaces and VAAPI video
+
+The packaged renderer and media adapter passed with resolution-16 CPU OpenLB
+fields from the checksummed native bundle. All native files and science
+parameters remained unchanged. The recipe explicitly chooses a presentation
+camera `[0.04, 0.025, 0.03]` and fixed velocity scale 0..0.0015 m/s. Actual EGL
+context identity matched the selected RX 7900 XTX/renderD128; no software
+renderer was accepted. The three 640×480 surface frames correspond to lattice
+steps 0/2560/5120 and observed physical times 0/10/20 s.
+
+Pixel inspection of the first successful renderer probe showed only an outline.
+A native assertion then proved that ParaView's first render also changed the
+requested camera automatically. The adapter now explicitly renders velocity
+magnitude surfaces, disables that reset and automatic color-range growth,
+and verifies camera/range/representation after every screenshot. The receipt
+retains each frame's native step, observed physical time and annotation.
+
+The selected `h264_vaapi` encoder produced three yuv420p frames at 24 fps;
+actual CPU decoding verified dimensions, count and presentation timestamps
+0/0.041667/0.083333 s. A separate device-free sandbox decoded the video into
+PNGs. Every decoded image visibly preserves its 0/10/20 s label, units and
+fixed scale; the zero-time surface and later velocity colors are distinct.
+The final run's video is byte-identical to the independently inspected video.
+The playback clock does not represent the solver's physical-time spacing.
+
+The qualifier uses the production DRM binding, native-process containment and
+shared physical-card reservation. Measured whole-service RAM peaks were
+189,026,304 bytes for rendering and 74,137,600 bytes for media; elapsed times
+were about 1.266 s and 0.414 s, including stage startup and native cleanup.
+These are single measurements, not equal-accuracy performance comparisons.
+Per-process VRAM accounting and headroom remain unqualified. A negative probe
+requesting unretained time 5 s failed before producing any frame or success
+receipt, without altering the fields or relaunching a solver.
+
+```sh
+cargo build --locked --example native_stage_probe
+python3 scripts/verify_egl_fields.py \
+  --probe "$PWD/target/debug/examples/native_stage_probe" \
+  --runtime /nix/store/RUNTIME-harbor-cad-native-runtime.json \
+  --render /nix/store/RENDER/bin/harbor-cad-render \
+  --media /nix/store/MEDIA/bin/harbor-cad-video \
+  --bundle /absolute/native-cpu-bundle-16 \
+  --pci 0000:03:00.0 --output /absolute/new/egl-field-probe
+```
+
+The script records receipts and hashes; independent image inspection is required
+to qualify label pixels for a new run. Exact package/code/video/decode hashes,
+resources and rejection evidence are in [evidence/egl-fields.json](evidence/egl-fields.json).
+This closes the bounded selected-device field-render/media adapter probe,
+while required GPU OpenLB, worker B1, numerical GPU filters and physical
+validation retain their separate gates.
 
 ## Canix package evaluation and realization
 

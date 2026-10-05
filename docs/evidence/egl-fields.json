@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "scope": "retained CPU OpenLB fields to selected-device packaged EGL surface frames and hardware VAAPI video; adapter probes through production DRM/process/reservation helpers",
+  "renderer_source_revision": "dd3ccbca206d5609346652145798d543ffcaa0af",
+  "qualifier_source_revision": "bacfdbf0c4d3483213c7189188e21939a80afbeb",
+  "build_command": "canix --output json cache binary build .#visualization --no-push --max-jobs 1 --cores 2",
+  "build_log": "/data/scratch/tmp/opencode/harbor-cad-canix-egl-dd3ccbc/visualization-attempt-1.log",
+  "build_log_sha256": "024215476319d434c14f5a627f1285c1071db943eb9b0e4e60bbae883453a65c",
+  "build_result": "passed ordinary guarded admission; no publication or activation",
+  "derivation": "/nix/store/8ww89jfgq8bpnnf14qvs68idslgr3z9b-harbor-cad-render.drv",
+  "renderer": {
+    "wrapper": "/nix/store/s62jzcrz1l03ysyym6h76s00sm9gpxvj-harbor-cad-render/bin/harbor-cad-render",
+    "wrapper_sha256": "0139f745eca72f51c377253624c987fe3de2cc124947109638c4bf2ea7ea4f4b",
+    "interpreter": "/nix/store/gb86xznzlzqasv1r2d0w30b4099vfidi-harbor-cad-paraview-egl-6.0.1/bin/pvpython",
+    "bridge": "/nix/store/2ln52zllnsj7hzm20k93w7f9g9mzj6jl-paraview_bridge.py",
+    "bridge_sha256": "875df2083e04bc862e121aebcb5cc2732bee6928a22fda532eaeedcd96958f00",
+    "repository_bridge_sha256": "a8cabf54dc93bdf3cc843fd7b136991e7d4fadc7e87ef2b8b5627c4108d27a2c"
+  },
+  "media": {
+    "wrapper": "/nix/store/dahv2hw4vhirxdnkddf7fxg4w9aa4si8-harbor-cad-video/bin/harbor-cad-video",
+    "wrapper_sha256": "7572d1bdc0cd05b7ea979e375bbc15bc2068e25561c2f525649459a97372457c",
+    "interpreter": "/nix/store/3gzjs8czrk47y7cpmr44jc568vqpb2p5-python3-3.13.15/bin/python3",
+    "bridge": "/nix/store/cy1md8np7fcgy13v7bsqfnab58d5p2c2-video_bridge.py",
+    "bridge_sha256": "801c4f8be5a315f1cdcb08c4d697cb7a4a50787e0b427d0e5e057bc1206b4c00"
+  },
+  "verifier": "scripts/verify_egl_fields.py",
+  "verifier_sha256": "eb5623b7f881497b2dcc9d17de404f1ee3b4e5c28e31d12f11de84e477435aae",
+  "probe_source": "examples/native_stage_probe.rs",
+  "probe_source_sha256": "53434e06664ac97537f083b84e45444589a21d21eaa477041a17bf73c5523c90",
+  "verification": "/data/scratch/tmp/opencode/harbor-cad-egl-surface-vaapi-bacfdbf/verification.json",
+  "verification_sha256": "09782ce9e683378d4bfe8b0c9aa9c93ce24085e13fe08cf09ef86a7d378604f3",
+  "source_bundle": "/data/scratch/tmp/opencode/harbor-cad-packaged-inspection-96d3942/bundle-16",
+  "source_bundle_verification": "every original manifest checksum/size checked; science parameters unchanged; no scientific files added, removed or altered by render/media probes",
+  "device": {"pci": "0000:03:00.0", "render_node": "/dev/dri/renderD128", "gpu": "AMD Radeon RX 7900 XTX", "egl": "1.5", "opengl": "4.6 Compatibility Profile; Mesa 26.2.1/radeonsi", "identity": "EGL_DEVICE_EXT from the initialized current display matches the selected DRM node", "software_fallback": false},
+  "presentation": {
+    "dimensions": [640, 480], "camera": [0.04, 0.025, 0.03],
+    "representation": "Surface", "field": "physVelocity", "association": "POINTS", "component": "Magnitude",
+    "fixed_range_m_per_s": [0.0, 0.0015], "requested_times_s": [0, 10, 20],
+    "native_steps": [0, 2560, 5120], "physical_time_labels": "0/10/20 s visibly present in all actual CPU-decoded video frames",
+    "numerical_filter": false, "scientific_fields": "unchanged native Float64 arrays retained independently of lossy video"
+  },
+  "video": {"encoder": "h264_vaapi", "decode": "actual CPU decode", "frames": 3, "pixel_format": "yuv420p", "presentation_fps": 24, "presentation_timestamps_s": [0.0, 0.041667, 0.083333], "bytes": 17012, "sha256": "37e98b2949287f25948c9440aa3ae855646d3894040b96eb1dadaf9048f58f6e"},
+  "pixel_inspection": {
+    "decode_verification": "/data/scratch/tmp/opencode/harbor-cad-egl-surface-vaapi-dd3ccbc/decode-verification.json",
+    "decode_verification_sha256": "84e9f84ead08f54624db778cc054b3490b1705a92a0d068af79de213550165d6",
+    "final_video_identical_to_inspected_video": true,
+    "decoder_isolation": "separate device-free Bubblewrap and bounded user service; no GPU decode requested",
+    "observed": "0/10/20 s annotations, Velocity (m/s) Magnitude legend, fixed 0..1.5e-3 scale, solid zero-velocity surface at 0 s and resolved color variation at 10/20 s",
+    "decoded_frame_sha256": ["49af947a0f0e033bdd69b29d0d7556ff5656195fc9cff4346fdda2c5e568c003", "ebb03c5dcccb7793ed5486663aaf80c8c255a7c49763740dffe8ba8925676812", "a6ced96c51e83775ee90ecb449bde9651e87ad31ac88839e5ad94e647600621b"]
+  },
+  "measured_resources": {
+    "scope": "entire owned stage service, including probe startup, imports, transfers, output and native cleanup",
+    "render": {"wall_s": 1.2657589000009466, "cpu_usage_usec": 918277, "peak_ram_bytes": 189026304},
+    "video": {"wall_s": 0.41429409000556916, "cpu_usage_usec": 170067, "peak_ram_bytes": 74137600},
+    "work_tree_bytes": 217075,
+    "limits": "2 GiB service RAM, 1 CPU, 128 tasks, 200 s service maximum; 160 s native maximum and 64 MiB per-file limit",
+    "card_reservation": "production per-user shared physical-card anchor held by each probe",
+    "vram_peak": "unqualified; per-process accounting and headroom not established"
+  },
+  "rejection": {
+    "verification": "/data/scratch/tmp/opencode/harbor-cad-egl-unretained-rejection-dd3ccbc/verification.json",
+    "verification_sha256": "30f71c900ffc6474ce5b8322f6776be63c24d21afa043e184e9e88c0eccfa2e9",
+    "requested_times_s": [0, 5, 20], "result": "exit 1 before any frame or success receipt; native fields unchanged; no solver relaunch"
+  },
+  "presentation_regression": {
+    "red_observation": "/data/scratch/tmp/opencode/harbor-cad-render-presentation-red-9511dba-v2/work/presentation-observed.json",
+    "red_observation_sha256": "c5889b905f2afdfd0d8dea56bb863a19f0c6257e999e8db12232a9f13783d461",
+    "bug": "automatic first-render reset changed requested camera [1,1,1] to about [0.0391,0.0341,0.0341]; default representation was Outline",
+    "fix": "explicit Surface/magnitude, disabled first-camera reset, Never autoscale and measured camera/range/representation checks after screenshot",
+    "upstream_evidence": "exact packaged ParaView 6.0.1 paraview/simple/rendering.py Render and simple/session.py _DisableFirstRenderCameraReset"
+  },
+  "worker_b1": "unqualified; no CUDA device/UUID or real GPU OpenLB execution available",
+  "gpu_filter": "unqualified",
+  "physical_validation": "unqualified"
+}

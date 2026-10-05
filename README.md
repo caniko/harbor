@@ -131,6 +131,14 @@ OpenLB partial-field recovery after owned-service SIGKILL plus worker restart
 and cancellation. Both packaged runs preserved the exact initial Float64 VTI
 in 23-record checksummed bundles, with failed/cancelled execution status.
 
+Retained resolution-16 CPU OpenLB fields also passed selected-device EGL surface
+rendering and VAAPI encoding/CPU decode on the RX 7900 XTX. The three 640×480
+decoded frames preserve units, a fixed velocity scale and 0/10/20 s labels.
+Native fields remain unchanged; required CUDA OpenLB/worker B1 is unqualified.
+`scripts/verify_egl_fields.py` and `examples/native_stage_probe.rs` reproduce this
+opt-in adapter probe with production DRM containment and shared card reservations.
+See [the rendering recipe and measured evidence](docs/qualification.md#retained-field-egl-surfaces-and-vaapi-video).
+
 Artifact listing returns `{items, total, next_after}` with at most 100
 descriptors and 24 KiB of descriptor data per page. Use
 `artifact list JOB --after PATH --limit 20` or MCP `artifact_list` with the
