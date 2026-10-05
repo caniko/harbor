@@ -49,6 +49,8 @@ def validate_manifest(value, host):
                 raise ValueError("custody receipt must be directly in its private authority directory")
             for directory in directories:
                 validate_path(directory)
+            if entry.get("login_shell") is not None:
+                validate_path(entry["login_shell"])
             units = entry.get("runtime_units")
             if not isinstance(units, list) or any(
                 not isinstance(unit, str) or not re.fullmatch(r"[A-Za-z0-9_.@:-]+\.service", unit) for unit in units
@@ -126,7 +128,7 @@ def writer_active(unit):
     return result.stdout.strip() not in ("inactive", "failed")
 
 
-def require_database_paths(inventories, requirements):
+def require_database_paths(inventories, requirements, *, roots=(), git_executable=None):
     """A matching restore cannot hide repositories referenced by database rows."""
     for requirement in requirements:
         path = requirement["path"]
@@ -137,8 +139,51 @@ def require_database_paths(inventories, requirements):
                 or type(requirement.get("directory")) is not bool):
             raise ValueError("invalid database-bound relative corpus path")
         entry = inventories[root].get(path)
-        if entry is None or entry["directory"] != requirement["directory"] or (not entry["directory"] and entry["size"] == 0):
+        if entry is None or entry["directory"] != requirement["directory"] or (not entry["directory"] and entry["size"] == 0 and requirement.get("size") != 0):
             raise ValueError(f"database references missing, empty or incompatible corpus entry: {path}")
+        if "size" in requirement:
+            size = requirement["size"]
+            if type(size) is not int or size < 0 or entry["directory"] or entry["size"] != size:
+                raise ValueError(f"database corpus size differs: {path}")
+        if "sha256" in requirement:
+            expected = requirement["sha256"]
+            if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected) or entry.get("sha256") != expected:
+                raise ValueError(f"database corpus content hash differs: {path}")
+        if "git_repository" in requirement:
+            if requirement["git_repository"] is not True or not entry["directory"] or len(roots) != len(inventories):
+                raise ValueError("invalid database Git repository requirement")
+            validate_git_repository(Path(roots[root]) / path, requirement, git_executable)
+
+
+def validate_git_repository(path, requirement, executable):
+    if not isinstance(executable, str) or not Path(executable).is_absolute():
+        raise ValueError("Git integrity requires a declared absolute executable")
+    if type(requirement.get("git_has_commits", False)) is not bool:
+        raise ValueError("invalid database Git commit requirement")
+    for relative in ("objects/info/alternates", "objects/info/http-alternates", "shallow"):
+        marker = path / relative
+        if marker.exists() and marker.stat().st_size:
+            raise ValueError(f"Git integrity cannot depend on external or shallow history: {path}")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null")
+    command = [executable, "--no-replace-objects", f"--git-dir={path}"]
+    bare = subprocess.run([*command, "rev-parse", "--is-bare-repository"], env=environment,
+                          capture_output=True, text=True, check=False)
+    if bare.returncode or bare.stdout.strip() != "true":
+        raise ValueError(f"Git integrity requires a valid bare repository: {path}")
+    partial = subprocess.run([*command, "config", "--local", "--get-regexp",
+                              r"^(extensions\.partialclone|remote\..*\.(promisor|partialclonefilter))$"],
+                             env=environment, capture_output=True, text=True, check=False)
+    if partial.returncode != 1:
+        raise ValueError(f"Git integrity rejects partial-clone history or unreadable configuration: {path}")
+    checks = [["fsck", "--full", "--strict", "--no-dangling"]]
+    if requirement.get("git_has_commits", False):
+        checks.append(["rev-parse", "--verify", "HEAD^{commit}"])
+    for arguments in checks:
+        result = subprocess.run([*command, *arguments], env=environment, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.PIPE, text=True, check=False)
+        if result.returncode:
+            raise ValueError(f"Git history integrity failed: {path}: {result.stderr[-4096:].strip()}")
 
 
 def certify_filesystem(config, restored_roots, identifier, *, now=None, database_snapshot=None, database_requirements=()):
@@ -162,8 +207,9 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
             raise ValueError("source writer is active; establish the declared consistency window")
         identities = root_identities(config)
         source = inventory(config, contents=True)
-        require_database_paths(source, database_requirements)
+        require_database_paths(source, database_requirements, roots=roots, git_executable=config.get("git_executable"))
         restored = inventory({"authority": {**authority, "directories": restored_roots}}, contents=True)
+        require_database_paths(restored, database_requirements, roots=restores, git_executable=config.get("git_executable"))
         if source != restored:
             raise ValueError("source and restored historical corpus differ")
         for original, restored_root, files in zip(roots, restores, source, strict=True):
@@ -206,8 +252,12 @@ def check_resource(config, *, phase, now=None):
             recovery.fresh(receipt.get("completed_at"), now, config["max_age_seconds"])
             if metadata != receipt.get("metadata"):
                 raise ValueError("source corpus changed; repeat custody certification")
-            if phase != "preflight" and inventory(config, contents=True) != receipt.get("inventory"):
-                raise ValueError("source corpus contents differ from the certified restore")
+            if phase != "preflight":
+                source = inventory(config, contents=True)
+                if source != receipt.get("inventory"):
+                    raise ValueError("source corpus contents differ from the certified restore")
+                require_database_paths(source, receipt.get("database_requirements", []),
+                                       roots=authority["directories"], git_executable=config.get("git_executable"))
             return {"database_snapshot_sha256": receipt.get("database_snapshot_sha256"),
                     "database_requirements": receipt.get("database_requirements", [])}
     else:

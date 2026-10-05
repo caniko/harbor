@@ -26,6 +26,23 @@ must be outside the corpus. Set every matching `dataDirectories` entry's
 `create = false`; missing historical storage is an error. Explicit initialization
 of genuinely new state remains a separate policy choice.
 
+Database inventory queries may additionally return `size`, `sha256`,
+`git_repository = true` and `git_has_commits` for each path. Certification checks
+both source and independent restore against those requirements. Git repositories
+must be bare and pass `git fsck --full --strict`; database-nonempty repositories
+must resolve `HEAD` to a commit. Shallow history, partial clones and external
+object alternates cannot claim complete custody. The immutable `git_executable`
+is part of the resource contract. Activation repeats these integrity checks.
+
+All declared systemd writer phases (`ExecStartPre`, `ExecStart`, `ExecStartPost`,
+`ExecStop` and `ExecStopPost`) retain the authority lease. Applications that use
+system OpenSSH must also set their service user's shell to the packaged
+`harbor-db-cutover-shell` and declare the underlying absolute `login_shell`.
+This shell selects the resource by the authenticated effective user, validates
+startup custody, then execs the real shell with the shared lease inherited.
+It covers externally invoked Git commands and hooks when the web service is
+stopped. Operator-launched maintenance must use the same guarded entrypoints.
+
 Application-provided boot tmpfiles directory-creation rules for these exact
 guarded roots are converted to permission-only rules. This also covers applications
 whose upstream module has no require-existing initialization option.

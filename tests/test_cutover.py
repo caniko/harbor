@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -166,6 +167,66 @@ class FilesystemCutoverTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "database references"):
             cutover.certify_filesystem(self.config, [str(self.restored)], "historical",
                                       now=100, database_requirements=[requirement])
+        self.assertFalse((self.state / "identity.json").exists())
+
+    def test_matching_files_must_match_database_size_and_content_hash(self):
+        path = "historical.git/objects/history"
+        requirements = [
+            {"root": 0, "path": path, "directory": False, "size": 999},
+            {"root": 0, "path": path, "directory": False, "sha256": "0" * 64},
+        ]
+        for requirement in requirements:
+            with self.subTest(requirement=requirement), self.assertRaisesRegex(ValueError, "database.*(size|hash)"):
+                cutover.certify_filesystem(self.config, [str(self.restored)], "historical", now=100,
+                                          database_requirements=[requirement])
+        self.assertFalse((self.state / "identity.json").exists())
+
+    def test_matching_corpora_cannot_hide_missing_git_history(self):
+        repository = self.source / "complete.git"
+        subprocess.run(["git", "init", "--bare", str(repository)], check=True, capture_output=True)
+        def git(*args, input=None):
+            return subprocess.check_output(["git", f"--git-dir={repository}", *args], input=input).strip()
+        blob = git("hash-object", "-w", "--stdin", input=b"historical tree content")
+        tree = git("mktree", input=b"100644 blob " + blob + b"\thistory\n")
+        git("update-ref", "refs/tags/historical-tree", tree.decode())
+        shutil.copytree(repository, self.restored / "complete.git")
+        self.config["git_executable"] = shutil.which("git")
+        requirement = {"root": 0, "path": "complete.git", "directory": True,
+                       "git_repository": True, "git_has_commits": False}
+        cutover.certify_filesystem(self.config, [str(self.restored)], "historical", now=100,
+                                  database_requirements=[requirement])
+        previous = (self.state / "custody.json").read_bytes()
+        object_path = "objects/" + blob[:2].decode() + "/" + blob[2:].decode()
+        for root in (repository, self.restored / "complete.git"):
+            (root / object_path).unlink()
+        with self.assertRaisesRegex(ValueError, "Git.*integrity"):
+            cutover.certify_filesystem(self.config, [str(self.restored)], "historical", now=100,
+                                      database_requirements=[requirement])
+        self.assertEqual((self.state / "custody.json").read_bytes(), previous)
+
+    def test_database_nonempty_repository_cannot_be_an_empty_bare_substitute(self):
+        repository = self.source / "empty.git"
+        subprocess.run(["git", "init", "--bare", str(repository)], check=True, capture_output=True)
+        shutil.copytree(repository, self.restored / "empty.git")
+        self.config["git_executable"] = shutil.which("git")
+        requirement = {"root": 0, "path": "empty.git", "directory": True,
+                       "git_repository": True, "git_has_commits": True}
+        with self.assertRaisesRegex(ValueError, "Git.*integrity"):
+            cutover.certify_filesystem(self.config, [str(self.restored)], "historical", now=100,
+                                      database_requirements=[requirement])
+        self.assertFalse((self.state / "identity.json").exists())
+
+    def test_partial_repository_cannot_claim_complete_history(self):
+        repository = self.source / "partial.git"
+        subprocess.run(["git", "init", "--bare", str(repository)], check=True, capture_output=True)
+        subprocess.run(["git", f"--git-dir={repository}", "config", "remote.origin.promisor", "true"],
+                       check=True, capture_output=True)
+        shutil.copytree(repository, self.restored / "partial.git")
+        self.config["git_executable"] = shutil.which("git")
+        requirement = {"root": 0, "path": "partial.git", "directory": True, "git_repository": True}
+        with self.assertRaisesRegex(ValueError, "Git.*partial"):
+            cutover.certify_filesystem(self.config, [str(self.restored)], "historical", now=100,
+                                      database_requirements=[requirement])
         self.assertFalse((self.state / "identity.json").exists())
 
     def test_database_corpus_requirements_reject_traversal_and_wrong_root(self):

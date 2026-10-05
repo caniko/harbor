@@ -34,6 +34,7 @@
         ];
         systemd.tmpfiles.rules = ["d '/srv/history' 0750 archive archive - -" "d \"/srv/history\" 0750 archive archive - -"];
         systemd.services.archive.serviceConfig.ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+        systemd.services.archive.serviceConfig.ExecStartPre = ["${pkgs.coreutils}/bin/true"];
       }
     ];
   };
@@ -42,8 +43,10 @@
     (eval.extendModules {
       modules = [{services.harbor-db.dataDirectories = lib.mkForce [{path = "/srv/history";}];}];
     }).config;
-  harborAssertions = assertions: lib.filter (item: lib.hasPrefix "Harbor-DB" item.message) assertions;
-  succeeds = lib.all (item: item.assertion) (harborAssertions config.assertions);
+  # NixOS diagnostics may reference attributes that exist only on failure.
+  # Keep successful assertions' messages lazy, as NixOS itself does.
+  harborFailures = assertions: lib.filter (item: !item.assertion && lib.hasPrefix "Harbor-DB" item.message) assertions;
+  succeeds = harborFailures config.assertions == [];
 in
   (import ./eval-checks.nix {inherit pkgs;}).mkEvalCheck {
     name = "harbor-db-cutover-eval";
@@ -54,8 +57,20 @@ in
         message = "existing corpus configuration must satisfy NixOS assertions";
       }
       {
+        name = "successful-diagnostics-remain-lazy";
+        assertion =
+          harborFailures [
+            {
+              assertion = true;
+              message = throw "successful diagnostic was forced";
+            }
+          ]
+          == [];
+        message = "successful assertions must not force failure-only diagnostics";
+      }
+      {
         name = "adopted-roots-cannot-be-initialized";
-        assertion = !(lib.all (item: item.assertion) (harborAssertions unsafe.assertions));
+        assertion = lib.any (item: lib.hasInfix "dataDirectories.create = false" item.message) (harborFailures unsafe.assertions);
         message = "automatic directory creation at an adopted corpus root must fail evaluation";
       }
       {
@@ -67,6 +82,11 @@ in
         name = "startup-unit-name-is-service-normalized";
         assertion = lib.any (command: lib.hasInfix "--phase startup" command) config.systemd.services.archive.serviceConfig.ExecStartPre;
         message = "service startup must guard the source before a writer starts";
+      }
+      {
+        name = "startup-administration-retains-resource-lease";
+        assertion = lib.any (command: lib.hasInfix "harbor-db-cutover serve" command) config.systemd.services.archive.serviceConfig.ExecStartPre;
+        message = "pre-start migrations and administration must retain the same shared resource lease";
       }
       {
         name = "writer-retains-resource-lifetime-lease";

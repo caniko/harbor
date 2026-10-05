@@ -37,7 +37,7 @@
   in {
     lib.postgresRecoveryReadiness = 1;
     lib.postgresRecoveryPreparation = 1;
-    lib.cutoverPreflight = 1;
+    lib.cutoverPreflight = 2;
     nixosModules.harbor-db = {
       lib,
       pkgs,
@@ -139,7 +139,7 @@
       postgres-recovery-acceptance = pkgs.callPackage ./nix/test-postgres-recovery.nix {};
       postgres-lifecycle-test =
         pkgs.runCommand "harbor-db-postgres-lifecycle-test" {
-          nativeBuildInputs = [pkgs.python3];
+          nativeBuildInputs = [pkgs.python3 pkgs.gitMinimal];
         } ''
           PYTHONPATH=${./python} python3 -B -m unittest discover -s ${./tests} -p 'test_*.py'
           touch "$out"

@@ -154,6 +154,7 @@ in
               "postgresql": {"kind": "postgres", "user": "postgres", "config": "/srv/config.json", "compatibility_checks": [{"database": "postgres", "sql": "SELECT count(*) = 1 FROM saves"}], "corpus_checks": {"archive": [{"root": 0, "database": "postgres", "sql": "SELECT jsonb_build_array(jsonb_build_object('path', 'history', 'directory', false))"}]}},
               "archive": {
                   "kind": "filesystem", "user": "postgres", "runtime_units": [], "database_resource": "postgresql",
+                  "login_shell": "${pkgs.bash}/bin/bash",
                   "custody_file": "/srv/corpus-authority/custody.json", "max_age_seconds": 3600,
                   "authority": {"resource": "archive", "state_dir": "/srv/corpus-authority", "directories": ["/srv/corpus"], "binding": {"backend": "postgres"}},
               },
@@ -168,6 +169,15 @@ in
       primary.succeed("harbor-db-cutover certify --contract /srv/cutover.json --host primary --resource archive --identity accepted-history --restore-root /srv/corpus-restore")
       primary.succeed(gate)
       primary.succeed(gate + " --phase activate")
+      # External SSH commands must hold custody even with the application unit
+      # stopped. Exercise the actual packaged login shell and inherited lease.
+      primary.succeed("install -D -m 0644 /srv/cutover.json /etc/harbor-db/cutover.json")
+      primary.succeed("runuser -u postgres -- harbor-db-cutover-shell -c 'test -s /srv/corpus/history'")
+      primary.succeed("systemd-run --unit=custody-ssh-writer --property=User=postgres ${tool}/bin/harbor-db-cutover-shell -c '${pkgs.coreutils}/bin/touch /srv/corpus-authority/ssh-ready; exec ${pkgs.coreutils}/bin/sleep infinity'")
+      primary.wait_for_unit("custody-ssh-writer.service")
+      primary.wait_until_succeeds("test -e /srv/corpus-authority/ssh-ready")
+      primary.fail("harbor-db-cutover certify --contract /srv/cutover.json --host primary --resource archive --identity accepted-history --restore-root /srv/corpus-restore")
+      primary.succeed("systemctl stop custody-ssh-writer.service")
       cutover["resources"]["postgresql"]["corpus_checks"]["archive"][0]["sql"] = "SELECT jsonb_build_array(jsonb_build_object('path', 'missing-database-repository', 'directory', false))"
       publish_cutover()
       primary.fail("harbor-db-cutover certify --contract /srv/cutover.json --host primary --resource archive --identity accepted-history --restore-root /srv/corpus-restore")

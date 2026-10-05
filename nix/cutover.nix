@@ -66,9 +66,13 @@
     wrap = command:
       if command == ""
       then command
+      else if command == startupCheck
+      then command
       else if !(lib.hasPrefix "/" command)
       then throw "Harbor-DB guarded ExecStart must use an absolute executable without systemd privilege/argv modifiers: ${name}"
       else "${cfg.package}/bin/harbor-db-cutover serve --contract ${manifest} --host ${config.networking.hostName} --resource ${lib.head names} -- ${command}";
+    startupCheck = "+${cfg.package}/bin/harbor-db-cutover check --contract ${manifest} --host ${config.networking.hostName} --phase startup";
+    commands = lib.filterAttrs (key: _: lib.elem key ["ExecStartPre" "ExecStart" "ExecStartPost" "ExecStop" "ExecStopPost"]) service;
   in
     if !cfg.enable || names == []
     then service
@@ -76,12 +80,11 @@
     then throw "Harbor-DB writer unit must belong to exactly one filesystem authority: ${name}"
     else
       service
-      // lib.optionalAttrs (service ? ExecStart) {
-        ExecStart =
-          if builtins.isList service.ExecStart
-          then map wrap service.ExecStart
-          else wrap service.ExecStart;
-      };
+      // lib.mapAttrs (_: command:
+        if builtins.isList command
+        then map wrap command
+        else wrap command)
+      commands;
 in {
   # Application modules often emit boot-only `d` rules with no initialization
   # option. Enforced historical roots retain permission repair, never creation.
@@ -116,6 +119,16 @@ in {
             default = "filesystem";
           };
           user = mkOption {type = types.str;};
+          login_shell = mkOption {
+            type = types.nullOr (types.strMatching "/.*");
+            default = null;
+            description = "Underlying immutable shell for a consumer using harbor-db-cutover-shell as its login shell; SSH commands retain the same authority lease.";
+          };
+          git_executable = mkOption {
+            type = types.strMatching "/.*";
+            default = "${pkgs.gitMinimal}/bin/git";
+            description = "Immutable Git executable for database-declared bare-repository integrity checks during certification and activation.";
+          };
           runtime_units = mkOption {type = types.listOf types.str;};
           database_resource = mkOption {
             type = types.nullOr types.str;
