@@ -1,0 +1,226 @@
+# Qualification record
+
+Recorded on 2026-10-05. The implementation remains pre-qualification.
+Source availability, package builds, execution, numerical checks, convergence
+and physical validation are independent gates.
+
+## Actual OpenLB CPU reference
+
+The real OpenLB 1.9.0 driver was compiled with GCC 15.3.0 against revision
+`145cd54810b468f4b6fd3ed86b10644264841578`, with the local VTK precision patch.
+The test uses a **procedural STL**, independently of FreeCAD. It is evidence
+for this bounded CPU formulation, not for CAD integration or a GPU backend.
+
+| Parameter | Explicit fixture value |
+|---|---|
+| Geometry | 0.02 × 0.01 × 0.01 m channel; STL vertices in mm |
+| Boundaries | Periodic x/z; stationary bounce-back y walls |
+| Kinematic viscosity | 1e-5 m²/s |
+| Acceleration | 0.001 m/s² |
+| Density | 1 kg/m³, synthetic material |
+| Precision / collision | Float64 D3Q19 forced BGK, relaxation time 0.8 |
+| Duration / retained times | 20 s; 0, 10 and 20 s |
+| Numerical gate | Relative velocity L2 error ≤0.05 and improvement under refinement |
+
+| Resolution | Fluid cells | Lattice steps | Lattice Mach | Relative velocity L2 error |
+|---|---:|---:|---:|---:|
+| 8 | 1024 | 1280 | 0.0270632938683 | 0.0111244282661 |
+| 16 | 8192 | 5120 | 0.0135316469341 | 0.00278138734196 |
+
+The Python verifier independently decodes zlib-compressed VTK payloads,
+checks actual Float64 byte lengths and finite values, follows relative
+PVD→VTM→VTI references, and compares the retained velocity to
+`u(y)=a*y*(h-y)/(2*nu)`. The driver independently computes the same error
+using OpenLB's relative L2 reduction. Material IDs and physical pressure
+are retained; pressure has not received an independent numerical benchmark.
+Time collections use lattice steps, with explicit requested/observed SI
+time mappings in the receipt. Solver convergence remains **not assessed**.
+
+```sh
+python3 scripts/verify_openlb_cpu.py \
+  --executable /absolute/path/to/harbor-cad-openlb \
+  --output /absolute/new/evidence-directory
+```
+
+Local authoritative run artifacts:
+`/data/scratch/tmp/opencode/harbor-cad-openlb-final/`.
+Each resolution directory contains the input plan, procedural STL, process
+log, execution/numerical receipt and native VTK files.
+
+Earlier high-drive runs at 0.1 m/s² exceeded the fixed driver's low-Mach
+limit. Their velocity agreement is **not qualifying evidence**. The planner
+and driver now reject lattice Mach >0.1 before running this formulation;
+they preserve the caller's scientific parameters.
+
+### Writer repairs
+
+OpenLB's original `SuperVTMwriter3D<T,T>` labelled arrays Float64 while its
+buffer and binary payload remained Float32. The regression verifier failed
+on the actual payload length. The recorded patch preserves `OUT_T`, sizes
+the zlib buffer with `compressBound`, checks compression failure, rejects
+UInt32 payload overflow, and retains coordinate precision.
+
+The original driver also surrounded the periodic box with x/z wall layers,
+producing effectively zero through-flow. The driver now uses cell-centred
+periodic extents with walls only in y and checks the STL dimensions and
+expected fluid-cell count. It rejects other voxel geometries rather than
+claiming generic CAD-flow support.
+
+## Real systemd lifecycle
+
+```sh
+python3 scripts/verify_systemd.py \
+  --executable /absolute/path/to/harbor-cad \
+  --output /absolute/new/lifecycle-directory
+```
+
+The executed test used the million-point synthetic analytical reference
+with an explicit 0.01 tolerance, a 512 MiB profile and a 60 s time limit.
+It passed:
+
+- a forced worker SIGKILL followed by worker restart while the independent
+  user-service job completed successfully;
+- cancellation through the matching persisted service InvocationID;
+- effective `MemoryMax=176777216` (the approved plan's peak estimate),
+  `TasksMax=128`, `CPUQuotaPerSecUSec=1s`,
+  `NoNewPrivileges=yes` and `KillMode=control-group`.
+
+Receipts: `/data/scratch/tmp/opencode/harbor-cad-systemd-frozen-profile/verification.json`.
+This establishes the tested single-process reference lifecycle. Native
+descendant-tree cancellation, logout/reboot behavior and GPU/importer/JIT
+sandbox qualification still require separate execution.
+
+## Worker, transport and artifact checks
+
+- Rust tests cover units/applicability, immutable approvals, durable
+  idempotency, restart, traversal/symlink rejection, service-name ownership,
+  explicit CPU/B1 planning and physical-role separation.
+- Official MCP SDK stdio-client tests exercise the same Rust worker;
+  CI rejects native planning and exposes no shell/evaluation tools.
+- Export tests reproduced partial final-directory publication and silent
+  truncation after 256 artifacts. Exports now stream verified copies into
+  private staging, sync them, and publish with no-clobber atomic rename.
+  A 302-artifact export retains every registered shard.
+- Native output ingestion makes verified copies of closed files, preserves
+  nested relative references, and rejects symlinks, special files and
+  incomplete outputs. Native arrays remain outside protocol responses.
+- Byte-bounded artifact pages traverse 302 long descriptors through the real
+  Unix-socket client without response overflow or missing shards. Official
+  MCP tests traverse the same cursor API. Whole-bundle export remains complete.
+- Admission reserves one plan per state root across worker restarts, counts
+  retained artifact bytes, includes native copy staging, and leaves capacity
+  waits queued. The CI profile's disk allowance is 8 MiB for multiple retained
+  runs; its scientific per-plan allowance remains unchanged.
+- Host profiles are atomically bound with submissions and checked by digest.
+  A real worker test modifies the source configuration while a job is waiting
+  for disk space, then verifies that the admitted job uses and exports its
+  original profile. Reusing a key with profile drift is rejected.
+- Physical-card reservations now use private per-user anchors across state
+  roots rather than separate locks per worker. Tests verify case-normalized
+  PCI aliases, shared compute/render/media ownership, contention, release of
+  partially acquired sets, and rejection of traversal/symlink anchors. This
+  establishes lock behavior, not measured GPU execution or VRAM headroom.
+- Approval validation now checks hand-built OpenLB plans against the same
+  low-Mach formulation gate as generated plans, requires integral periodic
+  extents, rejects SI timestamps collapsing onto one lattice step, and
+  requires retention of the final scientific state. Converter arithmetic
+  follows the pinned OpenLB constructor and `getLatticeTime` source.
+- Adapter process-group tests exercise actual descendants under monitoring
+  errors, timeouts, and early leader exits, and verify that unrelated groups
+  remain alive. The leader is observed with `waitid(..., WNOWAIT)` and kept
+  unreaped until cleanup finishes, preventing recycled-PGID cleanup. Actual
+  importer/GPU sandbox and detached-session descendants remain separate gates.
+- Failed native attempts snapshot regular outputs and opaque partial files
+  with failed-attempt provenance. Unsafe and over-budget entries remain raw
+  and are explicitly reported. Tests cover verified copies, unsafe omissions,
+  over-budget preservation and terminal-failure export. Forced service death
+  can still require separate raw-output recovery.
+- Terminal exports include a checksummed `execution.json` with the original
+  plan, recorded profile and job state; a failed export is not promoted into
+  successful scientific evidence. Quarantined symlinks are counted for disk
+  admission without following them or poisoning later jobs.
+- Historical plans are archived with their original checked digest and inputs
+  even when the current applicability gate rejects relaunch. The exported
+  `current_plan_check` reports that rejection; archival does not weaken the
+  active submission/launch gate.
+- Native runtime paths reject lexical traversal out of `/nix/store` and
+  validate their canonical store destination. The SI plan is outside the
+  writable native tree and mounted read-only, removing its writable sandbox
+  alias. These source-level repairs still require an effective sandbox test.
+
+Local Rust checks used `rustc 1.100.0-nightly (574ff7d98 2026-09-14)` from the
+approved Canix environment. The flake's declared Rust 1.94.0 toolchain still
+requires its own package build. Python checks used Python 3.13.15 and uv 0.12.5.
+
+Latest local checks passed: 33 Rust integration tests plus two worker unit tests, Clippy with
+`-D warnings`, two official-MCP/Python tests, Ruff lint/format checks, and
+scoped treefmt. The actual OpenLB CPU and user-manager tests above are
+separate opt-in runtime evidence.
+
+The hosted CPU workflow is generated from `simit.toml` by Simit revision
+`afb7939d925d3e8e9b8507387ada7efad6460df8`. The installed 0.19.0 binary
+rejects `[ci].check_command`; an archived clean revision was compiled without
+changing the Simit checkout. Generated-file `--check --diff` passes. The
+workflow uses commit-pinned actions, a hash-locked uv 0.12.5 bootstrap,
+`rust-toolchain.toml`, locked Cargo/uv dependencies and explicit Python
+3.13.15. It runs formatters, lints, CPU contract/path/admission/export tests,
+and the real official MCP client on public hosted runners with read-only
+repository permission. The workflow has not executed remotely because no
+push has been performed. Systemd and native/GPU execution remain opt-in local
+checks. Native Nix CI must be added after the actual consumer lock/build gates
+are available; a passing CPU workflow cannot establish A0 or B1.
+
+`python3 scripts/check_cpu.py` is the shared 20-minute CPU gate. The current
+generator retains event-scoped concurrency groups, so push/PR runs are not
+coalesced, and it does not expose a total job timeout; these generator gaps
+remain recorded upstream requirements. Generation defaults are preserved.
+
+## Current gate status
+
+| Gate | Status |
+|---|---|
+| A0 | Partial: source-pinned package definitions; own flake lock and clean-runtime builds pending; importer isolation unqualified |
+| A1 | Analytical airflow reference plus real low-Mach OpenLB CPU velocity/refinement check; thermal/wetting/FEM references incomplete |
+| B1 | CLI/MCP plan and adapter integration implemented; FreeCAD→CUDA→EGL→VAAPI execution unqualified |
+| B2 | No qualified numerical GPU filter or complete topology/ghost-cell round trip |
+| C–F | Not implemented |
+
+Read-only inventory exposed AMD devices at `0000:03:00.0` (with a render
+node) and `0000:7d:00.0` (without a render alias); no CUDA device was
+available. Inventory is not EGL/VAAPI execution evidence. CUDA UUID/minor
+correlation and per-device sandbox mounts remain explicit rejection gates.
+
+## Canix package evaluation and pending realization
+
+`canix repo eval --wait-seconds 300 --directory
+/data/nvme0/can/canix/projects/repos/owned/harbor-cad
+'git+file:///data/nvme0/can/canix/projects/repos/owned/harbor-cad#packages.x86_64-linux.default.drvPath'`
+passed against commit `2e52eb0699f471ec0f00f1f2a7013dc7444ad1a1`, resolving
+`/nix/store/h1g62w3d4fssnjqnh4jr5x9hzm448gc8-harbor-cad-0.1.0.drv`.
+This is evaluation evidence only. The read-only evaluation resolved inputs
+but did not write `flake.lock` or realize the CLI.
+
+Subsequent scoped lock-update/build attempts encountered
+`/run/lock/canix/nix-eval.lock`; the latest owner was PID `3350180` in a
+Roborev switch-test evaluation. The installed update/build commands have no
+evaluation-wait option. No raw Nix override, concurrent-lease bypass, upload
+or host activation was used. The Harbor-CAD evaluation lease has been
+released; another waiting lane was notified through the session API.
+
+After admission becomes available, run from the Harbor-CAD checkout:
+
+```sh
+CANIX_FLAKE_ROOT="$PWD" canix repo update flake --input nixpkgs
+canix cache binary build .#default --no-push --max-jobs 1 --cores 2
+canix cache binary build .#mcp --no-push --max-jobs 1 --cores 2
+canix cache binary build .#openlb-cpu --no-push --max-jobs 1 --cores 2
+canix cache binary build .#checks.x86_64-linux.clean-runtime \
+  --include-tests --no-push --max-jobs 1 --cores 2
+```
+
+The package sets explicitly override Harbor-Py's permissive unfree default.
+The optional CUDA set uses an enumerated predicate. Effective Nix policy
+checks are declared; they have not yet been built. Native package/runtime
+ABIs, closure retention, aggregate multi-worker admission, GPU VRAM budgets,
+effective importer/JIT sandbox profiles, and engineering physical inputs
+remain qualification work.

@@ -1,5 +1,11 @@
 # harbor-cad
 
+<!-- simit:badges:start -->
+
+[![CI](https://img.shields.io/badge/CI-managed-2088ff)](.github/workflows/ci.yaml)
+
+<!-- simit:badges:end -->
+
 Local-first Rust CLI/worker and narrow Python MCP for scientific CAD jobs.
 The authoritative scope is [implementation-spec.md](docs/implementation-spec.md).
 The current implementation is **pre-qualification**: the CPU analytical-reference
@@ -83,6 +89,17 @@ page. Wait for a terminal job state for a stable traversal; an active job can
 still register files. Export always includes the complete registry regardless
 of page size.
 
+Terminal failed/cancelled jobs can also be exported. Every export includes
+`execution.json`, containing the terminal state, original approved plan and
+host profile, with its checksum in `manifest.json`. Exporting a failed
+attempt preserves diagnostics without implying scientific qualification.
+Historical inputs stay unchanged, and `current_plan_check` records whether
+the current applicability gate would accept their execution.
+Native failures snapshot regular closed outputs under `failed-native/`,
+including opaque partial files, and register `native-failure.json`. Unsafe or
+over-budget entries are identified as omissions and remain in the private raw
+tree. A forcibly killed job may require separate recovery of that raw tree.
+
 The worker defaults to one admitted plan per state root. It reserves the
 declared peak RAM and full output allowance; native jobs additionally reserve
 space for a verified staging copy. Existing retained artifact bytes count
@@ -104,3 +121,14 @@ selections on one PCI card share one reservation. A job holds its files across
 stages independently of the worker, and waits before executing if another job
 holds a card. Host RAM and artifact budgets are scoped to each state root;
 cross-root aggregate RAM/VRAM admission remains a separate qualification gate.
+
+The Simit-generated hosted CPU workflow runs locked Rust/Python checks and the real MCP client
+on public GitHub-hosted runners, with commit-pinned actions and read-only
+repository permission. Native Nix builds and opt-in systemd/GPU qualification
+are recorded separately in [qualification.md](docs/qualification.md).
+
+`python3 scripts/check_cpu.py` runs the same bounded CPU gate locally.
+`simit.toml` owns the workflow; generation uses Simit revision
+`afb7939d925d3e8e9b8507387ada7efad6460df8` because the installed 0.19.0
+binary predates `[ci].check_command`. Regenerate and check with that source's
+`simit init ci --platform github --runtime cargo [--check --diff]`.
