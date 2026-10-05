@@ -16,13 +16,14 @@
         pkgs.mkShell (spec.env // {inherit (spec) packages shellHook;});
     };
   };
+  checks = builtins.mapAttrs (name: shell:
+    pkgs.runCommand "harbor-meta-dev-shell-bash-${name}" {
+      inherit (shell) nativeBuildInputs;
+    } ''
+      set -euo pipefail
+      ${pkgs.python3}/bin/python3 ${../tests/test_dev_shell_bash.py}
+      touch "$out"
+    '')
+  shells;
 in
-  pkgs.runCommand "harbor-meta-dev-shell-bash" {} ''
-    set -euo pipefail
-    ${pkgs.lib.concatMapStringsSep "\n" (name: ''
-      echo "Checking ${name} shell"
-      ${pkgs.python3}/bin/python3 ${../tests/test_dev_shell_bash.py} \
-        --path ${pkgs.lib.escapeShellArg (pkgs.lib.makeBinPath shells.${name}.nativeBuildInputs)}
-    '') (builtins.attrNames shells)}
-    touch "$out"
-  ''
+  pkgs.linkFarm "harbor-meta-dev-shell-bash" (pkgs.lib.mapAttrsToList (name: path: {inherit name path;}) checks)
