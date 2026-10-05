@@ -66,9 +66,11 @@ execution receipts must be qualified before A0/B1 can be declared complete.
 FreeCAD → CPU OpenLB → bundle path. The case must declare the synthetic
 `periodic_forced_channel` formulation and satisfy its fixed low-Mach limit.
 `case plan-b1 case.json --devices devices.json --policy research` prepares
-FreeCAD → required CUDA OpenLB → independent EGL → VAAPI → bundle.
+FreeCAD → required HIP or CUDA OpenLB → independent EGL → VAAPI → bundle.
 `devices.json` follows the generated `B1Selections` schema; compute requires
-an explicit PCI identity and CUDA UUID. Planning is independent of runtime
+an explicit PCI identity and backend UUID. HIP/ROCm is the primary AMD path;
+CUDA is best-effort. See the [backend research decision](docs/gpu-backends.md).
+Planning is independent of runtime
 qualification; submission rechecks devices and the configured backend.
 
 MCP exposes `case_plan_openlb_reference` and `case_plan_b1` through the same
@@ -76,6 +78,14 @@ worker, using its host policy. Both require a systemd/native-capable profile.
 The packaged synthetic CPU workflow has passed. The production CAD importer
 has also passed the scoped isolation checks described below. GPU and other
 native-stage policies require their own execution evidence.
+
+`openlb-hip` builds the pinned OpenLB HIP implementation for explicit `gfx1100`
+with Float64. `runtime-hip` describes the CAD/solver/render/media packages;
+its presence does not enable unqualified KFD worker isolation. The HIP driver
+exposes `--gpu-inventory` for PCI/UUID correlation, and
+`scripts/verify_openlb_hip.py` checks the procedural channel, retained CPU/HIP
+field agreement and rejected identity/fallback cases. Inventory is not kernel
+evidence. These probes are separate from complete CLI/MCP B1 qualification.
 
 Measured CPU and systemd results, limitations, exact source/patch identities
 and Canix package validation are recorded in

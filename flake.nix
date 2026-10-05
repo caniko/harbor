@@ -158,7 +158,7 @@
       default = cli;
       worker = cli;
       inherit mcp cargoArtifacts;
-      inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda runtime-cuda;
+      inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda openlb-hip runtime-cuda runtime-hip;
       gui = pkgs.freecad;
     };
     apps.${system} = {

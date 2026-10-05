@@ -73,7 +73,7 @@ def read_vti(path):
     return image, extent, shape, fields
 
 
-def run(executable, root, resolution):
+def run(executable, root, resolution, selection=None, env=None):
     directory = root / f"resolution-{resolution}"
     directory.mkdir()
     box_stl(directory / "fluid.stl")
@@ -94,6 +94,10 @@ def run(executable, root, resolution):
         },
         "observation": {"retained_times_s": [0.0, 10.0, 20.0]},
     }
+    if selection is not None:
+        plan["stages"] = [
+            {"operation": "openlb", "gpu": "required", "selection": selection}
+        ]
     (directory / "plan.json").write_text(json.dumps(plan))
     with (directory / "process.log").open("w") as log:
         subprocess.run(
@@ -103,10 +107,24 @@ def run(executable, root, resolution):
             stderr=subprocess.STDOUT,
             check=True,
             timeout=180,
+            env=env,
         )
     receipt = json.loads((directory / "openlb-receipt.json").read_text())
-    if receipt["backend"] != "cpu" or not receipt["executed"]:
-        raise ValueError("CPU reference must exercise actual OpenLB")
+    backend = "cpu" if selection is None else selection["backend"]
+    if receipt["backend"] != backend or not receipt["executed"]:
+        raise ValueError(
+            "reference must exercise the explicitly selected OpenLB backend"
+        )
+    if selection is not None and (
+        receipt["pci"] != selection["pci"]
+        or receipt["backend_uuid"] != selection["backend_uuid"]
+        or receipt.get("software_fallback") is not False
+        or receipt.get("gpu_kernel_completion_verified") is not True
+        or receipt.get("gpu_blocks", 0) <= 0
+    ):
+        raise ValueError(
+            "GPU reference lacks exact device/block/kernel execution evidence"
+        )
     collection_path = directory / "tmp/vtkData/channel.pvd"
     collection = ET.parse(collection_path).findall("Collection/DataSet")
     mappings = receipt["retained_times"]
@@ -159,9 +177,43 @@ def main():
     ]
     if results[1]["relative_l2_error"] >= results[0]["relative_l2_error"]:
         raise ValueError("refinement must reduce analytical error")
+    rejected = args.output / "rejected-gpu-plan"
+    rejected.mkdir()
+    plan = json.loads((args.output / "resolution-8/plan.json").read_text())
+    plan["stages"] = [
+        {
+            "operation": "openlb",
+            "gpu": "required",
+            "selection": {
+                "role": "compute",
+                "backend": "hip",
+                "pci": "0000:03:00.0",
+                "backend_uuid": "GPU-fixture",
+            },
+        }
+    ]
+    (rejected / "plan.json").write_text(json.dumps(plan))
+    output = subprocess.run(
+        [str(Path(args.executable).resolve()), "openlb", "plan.json"],
+        cwd=rejected,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    (rejected / "process.log").write_text(output.stdout + output.stderr)
+    if (
+        output.returncode == 0
+        or "CPU driver cannot execute" not in output.stderr
+        or (rejected / "tmp").exists()
+    ):
+        raise ValueError(
+            "CPU driver did not reject the required GPU plan before solver output"
+        )
     report = {
         "fixture": "synthetic procedural STL; not FreeCAD evidence",
         "results": results,
+        "required_gpu_plan_rejected": True,
     }
     (args.output / "verification.json").write_text(
         json.dumps(report, indent=2, allow_nan=False)

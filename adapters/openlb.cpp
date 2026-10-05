@@ -2,11 +2,89 @@
 // API evidence: release 145cd548, examples/laminar/poiseuille3d and cylinder3d.
 #include <olb.h>
 #include <nlohmann/json.hpp>
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iomanip>
+#include <cstdlib>
+#include <sstream>
 #include <stdexcept>
 #ifdef PLATFORM_GPU_CUDA
 #include <cuda_runtime.h>
+#endif
+#ifdef PLATFORM_GPU_HIP
+#include <hip/hip_runtime.h>
+
+static void hip_check(hipError_t status) {
+  if (status != hipSuccess) throw std::runtime_error(hipGetErrorString(status));
+}
+
+static nlohmann::json hip_inventory() {
+  if (std::getenv("HSA_OVERRIDE_GFX_VERSION")) {
+    throw std::runtime_error("HIP architecture spoofing is not an approved runtime");
+  }
+  int count = 0;
+  hip_check(hipGetDeviceCount(&count));
+  if (count <= 0) throw std::runtime_error("HIP compute device unavailable");
+  auto devices = nlohmann::json::array();
+  for (int i = 0; i < count; ++i) {
+    char pci[64]{};
+    hipDeviceProp_t props{};
+    hipUUID uuid{};
+    hip_check(hipDeviceGetPCIBusId(pci, sizeof(pci), i));
+    hip_check(hipGetDeviceProperties(&props, i));
+    hip_check(hipDeviceGetUuid(&uuid, i));
+    std::ostringstream encoded;
+    encoded << "GPU-" << std::hex << std::setfill('0');
+    bool nonzero = false;
+    for (unsigned char byte : uuid.bytes) {
+      nonzero |= byte != 0;
+      encoded << std::setw(2) << static_cast<unsigned int>(byte);
+    }
+    if (!nonzero) throw std::runtime_error("HIP device UUID unavailable");
+    std::string id(pci);
+    std::transform(id.begin(), id.end(), id.begin(), [](unsigned char c) { return std::tolower(c); });
+    devices.push_back({{"ordinal_diagnostic_only", i}, {"pci", id},
+      {"backend_uuid", encoded.str()}, {"device_name", props.name},
+      {"architecture", props.gcnArchName}, {"total_vram_bytes", props.totalGlobalMem}});
+  }
+  return devices;
+}
+
+static nlohmann::json hip_select(const nlohmann::json& plan) {
+  nlohmann::json selection;
+  bool found = false;
+  for (const auto& stage : plan.at("stages")) {
+    if (stage.at("operation") == "openlb") {
+      if (found) throw std::runtime_error("ambiguous OpenLB stage");
+      found = true;
+      selection = stage.at("selection");
+    }
+  }
+  if (selection.is_null() || selection.at("backend") != "hip" || selection.at("role") != "compute") {
+    throw std::runtime_error("explicit HIP compute PCI/UUID selection required");
+  }
+  nlohmann::json chosen;
+  for (const auto& device : hip_inventory()) {
+    if (device.at("pci") == selection.at("pci")) {
+      if (!chosen.is_null()) throw std::runtime_error("ambiguous HIP partition/card");
+      chosen = device;
+    }
+  }
+  if (chosen.is_null()) throw std::runtime_error("selected HIP PCI card missing");
+  if (chosen.at("backend_uuid") != selection.at("backend_uuid")) {
+    throw std::runtime_error("selected HIP UUID/PCI mismatch");
+  }
+  const auto architecture = chosen.at("architecture").get<std::string>();
+  if (architecture.substr(0, architecture.find(':')) != "@hip_architecture@") {
+    throw std::runtime_error("HIP architecture differs from compiled target");
+  }
+  hip_check(hipSetDevice(chosen.at("ordinal_diagnostic_only").get<int>()));
+  int current = -1;
+  hip_check(hipGetDevice(&current));
+  if (current != chosen.at("ordinal_diagnostic_only")) throw std::runtime_error("HIP selection did not take effect");
+  return chosen;
+}
 #endif
 
 using namespace olb;
@@ -29,6 +107,13 @@ public:
 
 int main(int argc, char** argv) {
   try {
+#ifdef PLATFORM_GPU_HIP
+    if (argc == 2 && std::string(argv[1]) == "--gpu-inventory") {
+      std::cout << nlohmann::json({{"backend", "hip"}, {"executed", false},
+        {"compiled_architecture", "@hip_architecture@"}, {"devices", hip_inventory()}}).dump(2) << std::endl;
+      return 0;
+    }
+#endif
     if (argc != 3 || std::string(argv[1]) != "openlb") {
       throw std::runtime_error("usage: harbor-cad-openlb openlb plan.json");
     }
@@ -72,7 +157,25 @@ int main(int argc, char** argv) {
     cudaDeviceProp props;
     if (cudaGetDeviceProperties(&props,chosen) != cudaSuccess) throw std::runtime_error("CUDA property query failed");
     receipt["backend"]="cuda"; receipt["pci"]=selection.at("pci"); receipt["device_name"]=props.name;
+#elif defined(PLATFORM_GPU_HIP)
+    receipt.update(hip_select(plan));
+    receipt["backend"]="hip";
+    receipt["compiled_architecture"]="@hip_architecture@";
+    receipt["uuid_source"]="hipDeviceGetUuid; GPU- followed by 16 bytes in lowercase hex";
+    int runtimeVersion = 0, driverVersion = 0;
+    hip_check(hipRuntimeGetVersion(&runtimeVersion));
+    hip_check(hipDriverGetVersion(&driverVersion));
+    receipt["hip_runtime_version"]=runtimeVersion;
+    receipt["hip_driver_version"]=driverVersion;
 #else
+    if (plan.contains("stages")) {
+      for (const auto& stage : plan.at("stages")) {
+        if (stage.at("operation") == "openlb" &&
+            (!stage.at("selection").is_null() || stage.at("gpu") != "cpu_only")) {
+          throw std::runtime_error("CPU driver cannot execute a GPU-required stage");
+        }
+      }
+    }
     receipt["backend"]="cpu";
 #endif
     initialize(&argc,&argv);
@@ -103,6 +206,14 @@ int main(int argc, char** argv) {
       throw std::runtime_error("STL voxelization does not match the supported full periodic channel");
     }
     auto& lattice=flow.getLattice(NavierStokes{});
+#ifdef PLATFORM_GPU_HIP
+    const auto& load = lattice.getLoadBalancer();
+    if (load.size() <= 0) throw std::runtime_error("no local HIP lattice blocks");
+    for (int i=0; i<load.size(); ++i) {
+      if (load.platform(i)!=Platform::GPU_HIP) throw std::runtime_error("silent CPU block assignment rejected");
+    }
+    receipt["gpu_blocks"]=load.size();
+#endif
     const T characteristicVelocity=std::abs(acceleration)*height*height/(8*viscosity);
     if (characteristicVelocity <= 0) throw std::runtime_error("nonzero drive required");
     lattice.setUnitConverter<UnitConverterFromResolutionAndRelaxationTime<T,D>>(
@@ -136,11 +247,15 @@ int main(int argc, char** argv) {
       outputs.push_back(step);
       receipt["retained_times"].push_back({{"requested_s",time},{"step",step},{"observed_s",converter.getPhysTime(step)}});
     }
+    lattice.setProcessingContext(ProcessingContext::Simulation);
     for (std::size_t i=0; i<=steps; ++i) {
       if (std::find(outputs.begin(),outputs.end(),i)!=outputs.end()) {
         lattice.setProcessingContext(ProcessingContext::Evaluation); writer.write(i);
+        // GPU Simulation uploads host mirrors. Re-enter only after observation,
+        // never each step: repeated uploads erase the evolving device state.
+        if (i<steps) lattice.setProcessingContext(ProcessingContext::Simulation);
       }
-      if (i<steps) {lattice.setProcessingContext(ProcessingContext::Simulation); lattice.collideAndStream();}
+      if (i<steps) lattice.collideAndStream();
     }
     lattice.setProcessingContext(ProcessingContext::Evaluation);
     SteadyChannel analytical(height,acceleration,viscosity);
@@ -161,11 +276,20 @@ int main(int argc, char** argv) {
       if (lattice.getLoadBalancer().platform(i)!=Platform::GPU_CUDA) throw std::runtime_error("silent CPU block assignment rejected");
     }
 #endif
+#ifdef PLATFORM_GPU_HIP
+    hip_check(hipDeviceSynchronize());
+    hip_check(hipGetLastError());
+    int current = -1;
+    hip_check(hipGetDevice(&current));
+    if (current != receipt.at("ordinal_diagnostic_only")) throw std::runtime_error("HIP execution device changed");
+    receipt["gpu_kernel_completion_verified"]=true;
+#endif
     receipt["executed"]=true; receipt["lattice_steps"]=steps; receipt["cells"]=geometry.getStatistics().getNvoxel();
     receipt["fluid_cells"]=expectedFluidCells; receipt["spacing_m"]=dx; receipt["physical_step_s"]=converter.getPhysDeltaT();
     receipt["walls_m"]={0,height}; receipt["periodic_axes"]={"x","z"};
     receipt["field_units"]={{"physVelocity","m/s"},{"physPressure","Pa"},{"geometry","material ID"}};
     receipt["convergence"]="not assessed"; receipt["physical_times_are_lattice_quantized"]=true;
+    receipt["processing_context_policy"]="device-resident stepping; host synchronization at retained observations";
     receipt["compiler"]=__VERSION__; receipt["mpi"]="none";
     std::ofstream("openlb-receipt.json.partial") << receipt.dump(2);
     std::rename("openlb-receipt.json.partial","openlb-receipt.json");

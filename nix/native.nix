@@ -62,9 +62,10 @@
     ffmpeg = "${pkgs.ffmpeg}/bin/ffmpeg";
     ffprobe = "${pkgs.ffmpeg}/bin/ffprobe";
   });
-  mkOpenlb = cuda: import ./openlb.nix {inherit pkgs cudaPkgs inputs cuda;};
-  openlb-cpu = mkOpenlb false;
-  openlb-cuda = mkOpenlb true;
+  mkOpenlb = backend: import ./openlb.nix {inherit pkgs cudaPkgs inputs backend;};
+  openlb-cpu = mkOpenlb "cpu";
+  openlb-cuda = mkOpenlb "cuda";
+  openlb-hip = mkOpenlb "hip";
   runtime = backend: openlb:
     pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
       bwrap = "${pkgs.bubblewrap}/bin/bwrap";
@@ -84,7 +85,8 @@
       openlb_backend = backend;
     });
 in {
-  inherit cad visualization media openlb-cpu openlb-cuda;
+  inherit cad visualization media openlb-cpu openlb-cuda openlb-hip;
   runtime-cpu = runtime "cpu" "${openlb-cpu}/bin/harbor-cad-openlb";
   runtime-cuda = runtime "cuda" "${openlb-cuda}/bin/harbor-cad-openlb";
+  runtime-hip = runtime "hip" "${openlb-hip}/bin/harbor-cad-openlb";
 }
