@@ -17,5 +17,6 @@ Use these primary sources to verify APIs, security, licensing and build compatib
 | R11 | Nixpkgs CUDA configuration, package policy and driver boundary | https://nixos.org/manual/nixpkgs/stable/ |
 | R12 | Job-service lifecycle, effective resource limits, JIT/devices and sandbox policy | https://github.com/systemd/systemd/tree/main/man · https://github.com/containers/bubblewrap |
 | R13 | Official MCP Python SDK, current imports and implemented protocol features | https://github.com/modelcontextprotocol/python-sdk · https://github.com/modelcontextprotocol/python-sdk/releases |
+| R14 | Nix indirect GC roots, closure retention and already-realized store objects | https://nix.dev/manual/nix/2.28/command-ref/nix-store/realise · https://nix.dev/manual/nix/2.28/package-management/garbage-collection |
 
 The dependency manifest must record source revision/hash, patches, license, compiler/runtime ABI, applicable security fixes, and separate build, runtime and numerical qualification evidence.

@@ -138,6 +138,17 @@
     "nix_native_checks": "eight selected package/check gates passed locally; hosted execution not run"
   },
   "non_libre_boundary": "Only the enumerated CUDA dependencies are permitted in the optional package set; no host drivers, uploads or host activation are performed",
+  "execution_and_import_policy": {
+    "binding_schema": 1,
+    "native_sandbox_policy": "harbor-cad-native-v2",
+    "importer_policy": "harbor-cad-importer-v1",
+    "source_code_revision": "41b8dd8",
+    "qualified_runner": "/nix/store/lsg1gb9jnlcg3sfbh0y06w7mzkm74n27-harbor-cad-0.1.0/bin/harbor-cad",
+    "qualified_runtime": "/nix/store/hq5ipf2r22xwq1b69h62qc0jbvr4mw8n-harbor-cad-native-runtime.json",
+    "security_review": "docs/evidence/freecad-security.json",
+    "execution_evidence": "docs/evidence/job-lifecycle.json",
+    "admission_estimates": "docs/resource-estimates.md"
+  },
   "missing_stacks": ["Gmsh/CalculiX/PaStiX", "libRadtran/Mitsuba/Dr.Jit", "Catalyst/Conduit", "qualified VTKHDF"],
   "evidence": "docs/qualification.md"
 }

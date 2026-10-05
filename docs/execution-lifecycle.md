@@ -56,8 +56,41 @@ with matching invocation, and any live or recorded cgroup must be absent or have
 unlinks only that job's verified root links and metadata, syncing deletion and
 keeping the intent until the links are gone. It never deletes store objects or
 touches another job's links. The durable database binding remains exportable.
+The local full-plan admission reservation remains held while a terminal job's
+runtime retention exists, closing the exit-record/service-teardown handoff gap.
+The next job stays queued until verified retention cleanup completes.
 
 Unit tests substitute only the GC-registration boundary to exercise partial
 registration, lost registration acknowledgement, orphan recovery, committed
 submission, duplicate reuse, restart, queued cancellation and delayed tree
 termination. Packaged qualifiers separately verify the actual Nix/systemd path.
+
+## Operation-specific importer policy
+
+New bindings use native policy revision `harbor-cad-native-v2`. The importer
+policy is `harbor-cad-importer-v1`: Nix `closureInfo` declares the exact FreeCAD
+adapter closure, and the worker mounts those individual store objects read-only.
+The importer has no broad `/nix/store` bind. Its immutable closure descriptor is
+also execution-bound and GC-rooted. Older native runtime manifests lacking that
+descriptor receive a compatibility rejection for CAD operations. Historical
+bindings remain decodable/exportable; the current worker explicitly rejects
+superseded native-policy revisions for relaunch.
+
+Before opening a document, the fixed adapter verifies its actual mounts,
+read-only plan/input descriptors, zero effective capabilities, no-new-privileges,
+separate network namespace, isolated loopback, absent GPU nodes/session runtime,
+and bounded file-size limit. The worker also requires the matching policy in the
+fresh FreeCAD success receipt. The checksummed `import-isolation.json` retains
+the observed enforcement. The source snapshot stays outside writable outputs.
+
+`scripts/verify_importer_policy.py` launches this path under a **production**
+profile with live synthetic credential, Unix-session and host-loopback canaries.
+Its two inspection jobs verify valid import and missing-region rejection,
+effective service resource properties, immutable input bytes, closure retention,
+and complete detached-descendant termination. The fixed diagnostic probes are
+enabled by operator environment only; neither documents nor MCP can select
+Python code, commands or probe operations. They read no real credentials.
+
+Solver, GPU/JIT and visualization qualification remains independently scoped.
+The source advisory review is recorded in `evidence/freecad-security.json`;
+runtime isolation does not substitute for patched importer sources.

@@ -73,8 +73,9 @@ qualification; submission rechecks devices and the configured backend.
 
 MCP exposes `case_plan_openlb_reference` and `case_plan_b1` through the same
 worker, using its host policy. Both require a systemd/native-capable profile.
-The packaged synthetic CPU workflow has passed. GPU routes and production
-isolation require their separate execution evidence.
+The packaged synthetic CPU workflow has passed. The production CAD importer
+has also passed the scoped isolation checks described below. GPU and other
+native-stage policies require their own execution evidence.
 
 Measured CPU and systemd results, limitations, exact source/patch identities
 and Canix package validation are recorded in
@@ -91,6 +92,31 @@ receipt with actual execution and no software fallback.
 Systemd jobs also require the live unit's invocation, main PID and exact cgroup
 membership; an inherited environment value alone cannot authorize execution.
 The verified identity is archived as `service-owner.json`.
+
+Jobs bind the exact packaged runner and native runtime identities before
+acknowledgement. Queued execution preserves that runner across worker upgrades;
+idempotent retries reuse the binding. Active systemd jobs retain their closures
+with durable, job-scoped Nix GC roots. Cleanup waits for verified complete-tree
+termination. See [execution lifecycle and compatibility](docs/execution-lifecycle.md).
+
+The patched importer now mounts only its declared package closure read-only and
+checks the effective isolation before opening a document. The production
+worker qualifier verifies immutable inputs, live synthetic credential/session
+and host-loopback canaries, absent GPU nodes, resource controls and detached
+descendant cleanup on success and region rejection:
+
+```sh
+python scripts/verify_importer_policy.py \
+  --executable /nix/store/CLI/bin/harbor-cad \
+  --runtime /nix/store/RUNTIME-harbor-cad-native-runtime.json \
+  --source /absolute/controlled-fixture/source.FCStd \
+  --output /absolute/new/importer-qualification-directory
+```
+
+The fixture must contain the named `fluid` solid. Exact-pin advisory review is
+recorded in [FreeCAD security evidence](docs/evidence/freecad-security.json).
+Encoded videos now bind a checksummed frame sequence to the approved physical
+times and completed render receipt; see [the frame contract](docs/frame-sequence.md).
 
 `case plan-cad-inspection case.json --max-artifact-bytes 67108864` prepares a
 CAD-only `cad_inspect → bundle` plan. Set `geometry.source` to a path relative to

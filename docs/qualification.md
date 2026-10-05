@@ -152,8 +152,8 @@ Local Rust checks used `rustc 1.100.0-nightly (574ff7d98 2026-09-14)` from the
 approved Canix environment. The locked CLI package also built with the declared
 Rust 1.94.0 toolchain. Python checks used Python 3.13.15 and uv 0.12.5.
 
-Latest local checks passed: 37 Rust integration tests plus five Rust unit tests, Clippy with
-`-D warnings`, two official-MCP/Python tests and five render-contract cases, Ruff lint/format checks, and
+Latest local checks passed: 46 Rust integration tests plus six Rust unit tests, Clippy with
+`-D warnings`, 31 official-MCP/adapter Python cases, Ruff lint/format checks, and
 scoped treefmt. The actual OpenLB CPU and user-manager tests above are
 separate opt-in runtime evidence.
 
@@ -244,11 +244,80 @@ remain recorded upstream requirements. Generation defaults are preserved.
 
 | Gate | Status |
 |---|---|
-| A0 | Partial: locked CLI/MCP/native CPU packages and clean/policy/parity checks passed; production importer isolation remains unqualified |
+| A0 | Partial: locked CPU packages/parity/contracts passed; production importer closure-only isolation, resource controls and descendant cleanup passed for controlled fixtures; other native policies remain separately unqualified |
 | A1 | Analytical airflow reference plus real low-Mach OpenLB CPU velocity/refinement check; thermal/wetting/FEM references incomplete |
 | B1 | Packaged FreeCAD→CPU OpenLB→bundle passed through CLI/MCP; retained CPU fields→EGL surfaces→VAAPI adapter probes passed; required CUDA solver/worker integration unqualified |
 | B2 | Renderer/media RAM/CPU/wall/output measured; no qualified numerical GPU filter, per-process VRAM peak or complete topology/ghost-cell round trip |
 | C–F | Not implemented |
+
+### Execution binding, retention and importer qualification
+
+The latest lifecycle/importer slice is documented in
+[execution-lifecycle.md](execution-lifecycle.md). New submissions bind the exact
+runner, runtime, selected native files and sandbox-policy revision atomically
+with the original plan/profile. A real-worker test queues a job under runner A,
+restarts with worker B, and verifies execution still uses A; duplicate submission
+reuses the original binding. Historical records keep their approval identity and
+export a null binding where it was never recorded.
+
+Active systemd jobs now hold indirect GC roots before acknowledgement. Crash
+tests cover partial registration, lost acknowledgement, pre-commit orphans,
+duplicate reuse, queued cancellation, restart and interruption during cleanup.
+Terminal status alone cannot release a systemd runtime while its recorded or
+live execution cgroup remains populated. Packaged native recovery passed with
+actual roots present across worker death and released after complete-tree closure.
+The two resolution-64 recovery bundles now retain 25 verified records, including
+the unchanged 61,287-byte initial Float64 VTI with shape 130×68×66. Recovery
+remains interrupted solving, not convergence or successful solver resume.
+
+The production importer qualifier also passed through the packaged worker:
+
+- Individual read-only mounts for its 672-object declared runtime closure;
+  no broad store mount, GPU nodes or host session runtime.
+- Read-only approved source and plan; source bytes remain identical.
+- Live synthetic host credential/environment, Unix-session and loopback-TCP
+  canaries hidden or unreachable; separate network namespace with only loopback.
+- Actual 1 GiB service RAM limit, one-CPU quota, 128-task limit, 60-second
+  runtime limit, no-new-privileges and bounded output-file size.
+- Detached descendants terminated on both success and missing-`wall` rejection;
+  15- and 13-record checksummed bundles respectively.
+- Five actual Nix runtime roots per job, released only after tree closure.
+
+The exact source review of nine published FreeCAD advisories and the selected
+1.1.4 extraction guards is retained in
+[evidence/freecad-security.json](evidence/freecad-security.json). These are
+controlled-fixture and tested-abuse-case results; broader solver/GPU/JIT,
+logout/reboot and arbitrary-assembly qualification remain independent gates.
+
+The complete retained-field EGL→VAAPI sequence was rerun with the new
+[frame binding](frame-sequence.md). It passed at 640×480, matching the exact
+rendered manifest to the completed receipt and encoded video. Physical requested
+times 0/10/20 s, observed times 0/10.000000000000002/20.000000000000004 s and
+24-fps playback timestamps 0/0.041667/0.083333 s are exported independently.
+Source fields remained bit-for-bit unchanged. Single-run render/media RAM peaks
+were 638,685,184/194,781,184 bytes and elapsed times 1.867/0.565 seconds; these do
+not establish peak VRAM or an equal-accuracy performance comparison.
+
+Full evidence is under
+`/data/scratch/tmp/opencode/harbor-cad-job-lifecycle-20261005/`.
+Compact record/hashes are in [evidence/job-lifecycle.json](evidence/job-lifecycle.json).
+The final packaged CLI includes interrupted-cleanup recovery, resource-estimator
+validation and the terminal-service admission handoff fix. Its complete
+FreeCAD→CPU OpenLB workflow passed again through CLI and official MCP, with 30
+verified records at each resolution (8 and 16). CAD inspection retained 14
+records through each interface; missing-region and changed-source cases rejected.
+The production importer and native forced-death/cancellation qualifiers then
+passed against that same final CLI. Exact package and evidence identities are
+recorded in the compact evidence file.
+The final guarded `checks.x86_64-linux.python` build also passed with explicit
+`--include-tests`, one build job and two cores. Its derivation/output and the
+CLI/runtime/MCP/render/media package identities are retained in the evidence.
+
+Hand-built resource declarations are now checked against operation-specific
+[allocation/output minima](resource-estimates.md), including padded lattice
+cells, distributions, native output at every retained time, reader/frame copies
+and encoding staging. Authoritative aggregate same-user capacity, effective VRAM
+headroom and card-wait scheduling before service launch remain pending.
 
 Read-only inventory exposed AMD devices at `0000:03:00.0` (with a render
 node) and `0000:7d:00.0` (without a render alias); no CUDA device was

@@ -173,6 +173,26 @@ def main():
         assert frame["requested_s"] == i * 10
         assert frame["label"] == f"Synthetic channel | physical time {i * 10} s"
     assert len(egl["frames"]) == video["frames"] == 3
+    sequence_path = work / "frame-sequence.json"
+    sequence = json.loads(sequence_path.read_text())
+    sequence_digest = hashlib.sha256(sequence_path.read_bytes()).hexdigest()
+    assert sequence["source"] == video["frame_source"] == "rendered_fields"
+    assert sequence["schema_version"] == 1 and sequence["frames"] == egl["frames"]
+    assert (
+        sequence_digest
+        == egl["frame_sequence_sha256"]
+        == video["frame_sequence_sha256"]
+    )
+    assert video["physical_times_s"] == [0, 10, 20]
+    assert video["observed_physical_times_s"] == [
+        r["observed_s"] for r in egl["frames"]
+    ]
+    for frame in sequence["frames"]:
+        data = (work / frame["path"]).read_bytes()
+        assert (
+            len(data) == frame["bytes"]
+            and hashlib.sha256(data).hexdigest() == frame["sha256"]
+        )
     assert video["metadata"]["width"] == 640 and video["metadata"]["height"] == 480
     assert (
         video["metadata"]["codec_name"] == "h264"
