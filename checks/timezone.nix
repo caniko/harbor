@@ -40,8 +40,12 @@ in
       test "$(date -d @946684800 +%H:%M:%z)" = "19:00:-0500"
       test "$(date -d @1593561600 +%H:%M:%z)" = "20:00:-0400"
       ${pkgs.lib.concatMapStringsSep "\n" (shell: ''
-        export TZ=${pkgs.lib.escapeShellArg shell.env.TZ}
+        # nix develop omits TZ when restoring the derivation environment.
+        # Entry must establish the selected zone before validation and user hooks.
+        unset TZ
         export TZDIR=${pkgs.lib.escapeShellArg shell.env.TZDIR}
+        ${shell.shellHook}
+        export TZ=America/New_York
         ${shell.shellHook}
       '') (builtins.attrValues nativeShells)}
       export TZ=Missing/Zone

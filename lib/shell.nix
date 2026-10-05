@@ -51,7 +51,7 @@ _: rec {
         # Keep an interactive Bash first for nested shells entered via direnv.
         packages = [pkgs.bashInteractive] ++ merged.packages ++ timezone.packages;
         env = timezone.env // merged.env;
-        shellHook = timezone.validationScript + merged.shellHook;
+        shellHook = timezone.shellHook + merged.shellHook;
       };
     drv =
       if builder != null
@@ -66,7 +66,12 @@ _: rec {
   in
     drv
     // {
-      passthru = (drv.passthru or {}) // {devShellSpec = spec;};
+      passthru =
+        (drv.passthru or {})
+        // {
+          devShellSpec = spec;
+          harborTimezoneHook = timezone.shellHook;
+        };
     };
 
   mkPkgConfigEnv = {

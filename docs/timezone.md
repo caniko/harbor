@@ -22,6 +22,10 @@ wrappers and builders. `tzdata` can be overridden with a compatible pinned
 package containing `share/zoneinfo`. Use `validationScript` when accepting a
 configured zone: invalid zone names fail at evaluation, and absent or non-TZif
 zone files fail at shell entry or build time without import-from-derivation.
+The shell hook exports the configured `TZ` before validation, since `nix develop`
+omits that variable when restoring the build environment. A caller's inherited
+`TZ` does not override the shell's configured zone. `validationScript` itself
+only validates the current environment, so builders can check runtime overrides.
 
 `withShell { inherit pkgs; shell = existingShell; timeZone = "Europe/Istanbul"; }`
 adapts an existing derivation, including one from an older pinned Harbor. It
@@ -30,6 +34,8 @@ updates the exported environment and validates the zone at shell entry. When
 An explicit `TZDIR` in either the top-level attributes or `env` is preserved,
 including in `devShellSpec`; the entry hook validates the selected zone against
 that database.
+Repeated adaptation replaces Harbor's entry prefix while retaining the user
+hook, so changing a composed shell's zone does not run an older zone export.
 
 All shells composed with `lib.devShell.mkShell` include this wiring. Pass
 `timeZone = "America/New_York"`; an existing `env.TZ` override remains
