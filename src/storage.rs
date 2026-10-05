@@ -720,8 +720,9 @@ impl Store {
             &self.connection,
             rusqlite::TransactionBehavior::Immediate,
         )?;
-        // Conservative default: one full-plan reservation per state root. The
-        // starting/running/cancelling state owns it across worker restarts.
+        // Conservative default: one full-plan reservation per state root. A
+        // terminal result may precede service-tree teardown, so its durable
+        // runtime retention also owns capacity until verified cleanup.
         let active: i64 = tx.query_row(
             "SELECT count(*) FROM jobs WHERE state IN ('starting','running','cancelling')",
             [],
@@ -733,6 +734,27 @@ impl Store {
                 .is_none_or(|n| n > capacity.max_disk_bytes)
         {
             return Ok(false);
+        }
+        let retentions = safe_path(&self.root, "retentions")?;
+        if retentions.exists() {
+            for entry in fs::read_dir(retentions)? {
+                let entry = entry?;
+                let retained_id = entry
+                    .file_name()
+                    .into_string()
+                    .map_err(|_| invalid("retention job name"))?;
+                if uuid::Uuid::parse_str(&retained_id).is_err() || !entry.file_type()?.is_dir() {
+                    return Err(invalid("unexpected retention directory"));
+                }
+                let state: Option<String> = tx
+                    .query_row("SELECT state FROM jobs WHERE id=?1", [&retained_id], |r| {
+                        r.get(0)
+                    })
+                    .optional()?;
+                if state.is_some_and(|s| s != "queued") {
+                    return Ok(false);
+                }
+            }
         }
         let started = tx.execute(
             "UPDATE jobs SET state='starting',error=NULL WHERE id=?1 AND state='queued'",

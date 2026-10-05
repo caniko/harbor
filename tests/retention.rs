@@ -112,6 +112,13 @@ fn committed_jobs_keep_retention_until_terminal_and_verified_tree_termination() 
         .unwrap();
     store.try_start(&job.id, &profile, 0).unwrap();
     store.finish(&job.id, 0, None).unwrap();
+    let waiting = store
+        .submit_for_execution(&plan, "waiting", &profile, &binding)
+        .unwrap();
+    assert!(
+        !store.try_start(&waiting.id, &profile, 0).unwrap(),
+        "terminal database state cannot hand off capacity while the old runtime is retained"
+    );
     store.cleanup_retention(|_| Ok(false)).unwrap();
     assert!(
         dir.exists(),
@@ -121,6 +128,7 @@ fn committed_jobs_keep_retention_until_terminal_and_verified_tree_termination() 
     let store = Store::open(&temp.path().join("state")).unwrap();
     store.cleanup_retention(|_| Ok(true)).unwrap();
     assert!(!dir.exists());
+    assert!(store.try_start(&waiting.id, &profile, 0).unwrap());
     assert_eq!(
         digest(&store.execution_binding(&job.id).unwrap()).unwrap(),
         digest(&binding).unwrap()
