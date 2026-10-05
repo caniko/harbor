@@ -142,6 +142,15 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
             })?;
             let native = NativeRuntime::load(Path::new(runtime))?;
             native.executable(&stage.operation)?;
+            if matches!(
+                stage.operation,
+                StageOperation::CadInspect | StageOperation::CadFixture
+            ) {
+                crate::sandbox::importer_mounts(
+                    native.importer_closure()?,
+                    Path::new(&native.cad),
+                )?;
+            }
             if matches!(stage.operation, StageOperation::Openlb) {
                 let backend = stage
                     .selection
@@ -211,7 +220,9 @@ fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()
         });
     } else {
         let job = store.job(id)?;
-        let output = Command::new(option_env!("HARBOR_CAD_SYSTEMD_RUN").unwrap_or("systemd-run"))
+        let mut launcher =
+            Command::new(option_env!("HARBOR_CAD_SYSTEMD_RUN").unwrap_or("systemd-run"));
+        launcher
             .args(["--user", "--quiet", "--service-type=exec", "--unit"])
             .arg(&job.unit)
             .arg("--property=KillMode=control-group")
@@ -226,7 +237,21 @@ fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()
             ))
             .arg("--property=NoNewPrivileges=yes")
             .arg("--property=UMask=0077")
-            .arg(format!("--property=CPUQuota={}00%", profile.threads))
+            .arg(format!("--property=CPUQuota={}00%", profile.threads));
+        if std::env::var_os("HARBOR_CAD_IMPORT_PROBE_ROOT").is_some() {
+            for name in [
+                "HARBOR_CAD_IMPORT_PROBE_ROOT",
+                "HARBOR_CAD_IMPORT_PROBE_PORT",
+                "HARBOR_CAD_CREDENTIAL_SENTINEL",
+            ] {
+                if let Some(value) = std::env::var_os(name) {
+                    let mut argument = std::ffi::OsString::from(format!("--setenv={name}="));
+                    argument.push(value);
+                    launcher.arg(argument);
+                }
+            }
+        }
+        let output = launcher
             .arg(exe)
             .arg("run-job")
             .arg("--state")
@@ -416,6 +441,19 @@ fn dispatch(
                             serde_json::to_string(&stage.operation)?,
                             runtime.executable(&stage.operation)?.into(),
                         );
+                        if matches!(
+                            stage.operation,
+                            StageOperation::CadInspect | StageOperation::CadFixture
+                        ) {
+                            files.insert(
+                                "cad_closure".into(),
+                                runtime
+                                    .importer_closure()?
+                                    .to_str()
+                                    .ok_or_else(|| invalid("importer closure path"))?
+                                    .into(),
+                            );
+                        }
                     }
                 }
             }
@@ -625,12 +663,19 @@ pub fn doctor() -> Result<serde_json::Value> {
 struct NativeRuntime {
     bwrap: String,
     cad: String,
+    #[serde(default)]
+    cad_closure: Option<String>,
     openlb: Option<String>,
     openlb_backend: String,
     render: Option<String>,
     video: Option<String>,
 }
 impl NativeRuntime {
+    fn importer_closure(&self) -> Result<&Path> {
+        self.cad_closure.as_deref().map(Path::new).ok_or_else(|| {
+            Error::Unqualified("runtime lacks operation-specific importer closure policy".into())
+        })
+    }
     fn load(path: &Path) -> Result<Self> {
         let path = packaged_file(path)?;
         let runtime: Self = serde_json::from_slice(&read_bounded(&path, MAX_MESSAGE)?)?;
@@ -714,9 +759,6 @@ fn native_stage(
             "--new-session",
             "--cap-drop",
             "ALL",
-            "--ro-bind",
-            "/nix/store",
-            "/nix/store",
             "--proc",
             "/proc",
             "--dev",
@@ -744,6 +786,14 @@ fn native_stage(
         .arg(dir)
         .arg("/work")
         .args(["--chdir", "/work"]);
+    if matches!(
+        stage.operation,
+        StageOperation::CadInspect | StageOperation::CadFixture
+    ) {
+        crate::sandbox::mount_importer(&mut command, runtime.importer_closure()?, Path::new(exe))?;
+    } else {
+        command.args(["--ro-bind", "/nix/store", "/nix/store"]);
+    }
     if let Some(selection) = &stage.selection {
         if selection.role != Role::Compute {
             let binding = devices::DrmSandbox::resolve(&selection.pci)?;
@@ -880,6 +930,10 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         || evidence["backend"] != backend
         || evidence["executed"] != true
         || evidence["software_fallback"] != false
+        || (matches!(
+            stage.operation,
+            StageOperation::CadFixture | StageOperation::CadInspect
+        ) && evidence["import_policy"] != crate::sandbox::IMPORT_POLICY)
         || (stage.gpu == GpuRequirement::Required
             && evidence["pci"].as_str() != stage.selection.as_ref().map(|s| s.pci.as_str()))
     {

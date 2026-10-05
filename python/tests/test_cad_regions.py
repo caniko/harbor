@@ -32,6 +32,13 @@ def inspect(monkeypatch, tmp_path, regions, objects):
     mesh = SimpleNamespace(CountFacets=12, write=lambda _: None)
     monkeypatch.setitem(sys.modules, "FreeCAD", app)
     monkeypatch.setitem(
+        sys.modules,
+        "harbor_cad_import_policy",
+        SimpleNamespace(
+            verify_import_environment=lambda _: {"policy": "harbor-cad-importer-v1"}
+        ),
+    )
+    monkeypatch.setitem(
         sys.modules, "MeshPart", SimpleNamespace(meshFromShape=lambda **_: mesh)
     )
     monkeypatch.setenv("HARBOR_CAD_OPERATION", "cad_inspect")

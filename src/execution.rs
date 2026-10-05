@@ -11,7 +11,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-pub const SANDBOX_POLICY: &str = "harbor-cad-native-v1";
+pub const SANDBOX_POLICY: &str = "harbor-cad-native-v2";
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

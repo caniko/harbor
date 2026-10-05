@@ -9,10 +9,16 @@
     pkgs.writeShellScriptBin name ''
       exec ${executable} ${script} "$@"
     '';
+  importPolicy = pkgs.runCommand "harbor-cad-import-policy" {} ''
+    mkdir -p $out
+    cp ${../adapters/import_policy.py} $out/harbor_cad_import_policy.py
+  '';
+  cadBridge = pkgs.replaceVars ../adapters/freecad_bridge.py {policy_dir = "${importPolicy}";};
   cad = pkgs.writeShellScriptBin "harbor-cad-import" ''
     export HARBOR_CAD_OPERATION="$1" HARBOR_CAD_PLAN="$2"
-    exec ${freecad}/bin/FreeCADCmd --safe-mode ${../adapters/freecad_bridge.py}
+    exec ${freecad}/bin/FreeCADCmd --safe-mode ${cadBridge}
   '';
+  cadClosure = pkgs.closureInfo {rootPaths = [cad];};
   # Internal VTK comes from the exact ParaView source archive, avoiding an ABI mix.
   paraview = pkgs.stdenv.mkDerivation {
     pname = "harbor-cad-paraview-egl";
@@ -63,6 +69,7 @@
     pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
       bwrap = "${pkgs.bubblewrap}/bin/bwrap";
       cad = "${cad}/bin/harbor-cad-import";
+      cad_closure = "${cadClosure}/store-paths";
       # CPU references need only CAD and flow; rendering/media remain separately
       # selected closures, avoiding a mandatory ParaView build for this slice.
       render =

@@ -196,6 +196,7 @@
         cp ${./adapters/paraview_bridge.py} adapters/paraview_bridge.py
         cp ${./adapters/freecad_bridge.py} adapters/freecad_bridge.py
         cp ${./adapters/video_bridge.py} adapters/video_bridge.py
+        cp ${./adapters/import_policy.py} adapters/import_policy.py
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
       '';

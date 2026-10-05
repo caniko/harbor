@@ -4,12 +4,19 @@ Native FreeCAD Python ABI, never imported by MCP. The patched 1.1.4 importer
 is mandatory even with safe-mode and macro preferences disabled.
 """
 
+import importlib
 import json
 import os
+import sys
 from pathlib import Path
 
 import FreeCAD as App
 import MeshPart
+
+sys.path.insert(0, "@policy_dir@")
+verify_import_environment = importlib.import_module(
+    "harbor_cad_import_policy"
+).verify_import_environment
 
 
 def atomic_json(path, value):
@@ -25,6 +32,8 @@ def main():
     version = tuple(int(v) for v in App.Version()[:3])
     if version < (1, 1, 4):
         raise RuntimeError("FreeCAD >= 1.1.4 security fixes required")
+    isolation = verify_import_environment(op)
+    atomic_json("/work/import-isolation.json", isolation)
     App.ParamGet("User parameter:BaseApp/Preferences/Macro").SetBool("AutoRun", False)
     if op == "cad_fixture":
         if not case["geometry"]["synthetic"]:
@@ -110,6 +119,7 @@ def main():
             "software_fallback": False,
             "security_minimum": "1.1.4",
             "sandbox_required": True,
+            "import_policy": isolation["policy"],
         },
     )
     App.closeDocument(doc.Name)

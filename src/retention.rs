@@ -82,7 +82,7 @@ struct Intent {
     roots: Vec<PathBuf>,
 }
 
-fn store_object(path: &str) -> Result<PathBuf> {
+pub(crate) fn store_object(path: &str) -> Result<PathBuf> {
     let path = Path::new(path);
     if !path.starts_with("/nix/store")
         || path.components().any(|p| {
