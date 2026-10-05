@@ -1,7 +1,9 @@
 """Opt-in real user-manager lifecycle test; operates only on its own job units."""
 
 import argparse
+import hashlib
 import json
+import shutil
 import socket as unix_socket
 import subprocess
 import time
@@ -31,9 +33,18 @@ def main():
     parser.add_argument("--executable", required=True)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    binary = str(Path(args.executable).resolve())
+    source_binary = Path(args.executable).resolve()
     root = args.output.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=False)
+    # Cargo may atomically replace a development executable while a worker is
+    # alive. Freeze one verified inode so current_exe() never names a deleted
+    # image during this opt-in qualification.
+    binary_path = root / "harbor-cad-tested"
+    expected_hash = hashlib.sha256(source_binary.read_bytes()).hexdigest()
+    shutil.copyfile(source_binary, binary_path)
+    binary_path.chmod(0o500)
+    assert hashlib.sha256(binary_path.read_bytes()).hexdigest() == expected_hash
+    binary = str(binary_path)
     state = root / "state"
     socket = state / "worker.sock"
     profile = root / "profile.json"
@@ -110,7 +121,7 @@ def main():
                     "--user",
                     "show",
                     job["unit"],
-                    "--property=InvocationID,MemoryMax,TasksMax,KillMode,CPUQuotaPerSecUSec,NoNewPrivileges",
+                    "--property=InvocationID,MainPID,ControlGroup,MemoryMax,TasksMax,KillMode,CPUQuotaPerSecUSec,NoNewPrivileges",
                 ],
                 text=True,
             )
@@ -124,6 +135,13 @@ def main():
             assert observed["KillMode"] == "control-group"
             assert observed["TasksMax"] == "128"
             assert observed["NoNewPrivileges"] == "yes"
+            owner = json.loads(
+                (state / "artifacts" / job["id"] / "service-owner.json").read_text()
+            )
+            assert owner["unit"] == job["unit"]
+            assert owner["invocation"] == observed["InvocationID"]
+            assert owner["main_pid"] == int(observed["MainPID"])
+            assert owner["control_group"] == observed["ControlGroup"]
             if key == "restart":
                 worker.kill()
                 worker.wait(timeout=5)
@@ -146,7 +164,14 @@ def main():
                 ).strip()
                 assert active in {"inactive", "failed"}
             receipts.append(
-                {"test": key, "effective_properties": observed, "outcome": outcome}
+                {
+                    "test": key,
+                    "effective_properties": observed,
+                    "service_owner": owner,
+                    "source_binary": str(source_binary),
+                    "frozen_binary_sha256": expected_hash,
+                    "outcome": outcome,
+                }
             )
         (root / "verification.json").write_text(json.dumps(receipts, indent=2))
         print(json.dumps(receipts, indent=2))

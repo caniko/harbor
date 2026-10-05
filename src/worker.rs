@@ -89,7 +89,7 @@ fn unit_info(unit: &str) -> Result<BTreeMap<String, String>> {
     let output = systemctl(&[
         "show",
         unit,
-        "--property=LoadState,ActiveState,InvocationID,ExecMainStatus,Result",
+        "--property=LoadState,ActiveState,InvocationID,ExecMainStatus,Result,MainPID,ControlGroup",
     ])?;
     if !output.status.success() {
         return Err(Error::Resource("systemd user manager unavailable".into()));
@@ -696,8 +696,8 @@ fn native_stage(
     command
         .args(["--ro-bind"])
         .arg(safe_path(&store.job_dir(id)?, "native-plan.json")?)
-        .arg("/work/plan.json");
-    command.arg("--").arg(exe).arg(&op).arg("/work/plan.json");
+        .arg("/plan.json");
+    command.arg("--").arg(exe).arg(&op).arg("/plan.json");
     let log = OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -800,13 +800,50 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
         ));
     }
     let job = store.job(id)?;
+    let invocation = if profile.service_mode == "systemd" {
+        let invocation = std::env::var("INVOCATION_ID")
+            .map_err(|_| invalid("missing systemd invocation identity"))?;
+        if invocation.len() != 32 || !invocation.bytes().all(|v| v.is_ascii_hexdigit()) {
+            return Err(invalid("invalid systemd invocation identity"));
+        }
+        let info = unit_info(&job.unit)?;
+        let group = info
+            .get("ControlGroup")
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| invalid("missing owned service cgroup"))?;
+        let membership = fs::read_to_string("/proc/self/cgroup")?;
+        if info.get("InvocationID") != Some(&invocation)
+            || info.get("MainPID").and_then(|v| v.parse::<u32>().ok()) != Some(std::process::id())
+            || !membership
+                .lines()
+                .any(|line| line.strip_prefix("0::") == Some(group.as_str()))
+            || info.get("LoadState").map(String::as_str) != Some("loaded")
+            || !info
+                .get("ActiveState")
+                .is_some_and(|v| v == "active" || v == "activating")
+        {
+            return Err(invalid(
+                "job execution requires its live systemd invocation, main PID and exact cgroup",
+            ));
+        }
+        let owner = serde_json::json!({"unit":job.unit,"invocation":invocation,"main_pid":std::process::id(),"control_group":group});
+        store.add_artifact(
+            id,
+            &commit_artifact(
+                &store.job_dir(id)?,
+                "service-owner.json",
+                &serde_json::to_vec_pretty(&owner)?,
+                "json",
+                "live systemd unit, main PID and exact cgroup verified before job execution",
+            )?,
+        )?;
+        store.event(id, "service_owner_verified", &owner.to_string())?;
+        Some(invocation)
+    } else {
+        None
+    };
     if !store.transition(id, "starting", "running", None)? {
         return Err(invalid("job must be starting exactly once"));
-    }
-    let invocation = std::env::var("INVOCATION_ID").ok();
-    if profile.service_mode == "systemd" && invocation.as_ref().is_none_or(|v| v.len() != 32) {
-        store.finish(id, 1, Some("missing systemd invocation identity"))?;
-        return Err(invalid("systemd identity"));
     }
     store.connection.execute(
         "UPDATE jobs SET invocation=?1 WHERE id=?2",
