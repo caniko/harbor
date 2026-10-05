@@ -46,7 +46,10 @@ def main():
     else:
         raise ValueError("allowlisted CAD operation required")
     regions = []
-    required = set(case["regions"]) - {"wall"}
+    required = set(case["regions"])
+    if op == "cad_fixture":
+        # This procedural channel's walls are implicit fluid-boundary surfaces.
+        required.discard("wall")
     for obj in doc.Objects:
         if obj.Name not in required:
             continue

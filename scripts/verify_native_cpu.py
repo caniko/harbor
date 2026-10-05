@@ -259,13 +259,16 @@ def main():
                 "sha256": source_digest,
                 "synthetic": True,
             }
+            # The saved fixture contains a fluid solid; its solver walls are
+            # boundary surfaces, not named solids in the imported document.
+            case["regions"] = ["fluid"]
             inspection_case = root / "inspection-case.json"
             inspection_case.write_text(json.dumps(case))
             inspection = command("case", "plan-cad-inspection", inspection_case)
             inspection_path = root / "inspection-plan.json"
             inspection_path.write_text(json.dumps(inspection["plan"]))
             imports = []
-            for interface in ("CLI", "MCP", "changed-source"):
+            for interface in ("CLI", "MCP", "missing-region", "changed-source"):
                 if interface == "changed-source":
                     source.chmod(0o600)
                     source.write_bytes(b"changed after immutable approval")
@@ -275,6 +278,24 @@ def main():
                             case, inspection, "cad_plan_inspection", "inspect-mcp"
                         )
                     )
+                elif interface == "missing-region":
+                    missing = {**case, "regions": ["fluid", "wall"]}
+                    missing_case = root / "missing-region-case.json"
+                    missing_case.write_text(json.dumps(missing))
+                    missing_plan = command("case", "plan-cad-inspection", missing_case)
+                    missing_path = root / "missing-region-plan.json"
+                    missing_path.write_text(json.dumps(missing_plan["plan"]))
+                    job = command(
+                        "--socket",
+                        socket,
+                        "job",
+                        "submit",
+                        missing_path,
+                        "--approve",
+                        missing_plan["approval_digest"],
+                        "--idempotency-key",
+                        "inspect-missing-region",
+                    )["data"]
                 else:
                     job = command(
                         "--socket",
@@ -288,7 +309,11 @@ def main():
                         f"inspect-{interface}",
                     )["data"]
                 owned.append(job["unit"])
-                terminal = "failed" if interface == "changed-source" else "succeeded"
+                terminal = (
+                    "failed"
+                    if interface in {"changed-source", "missing-region"}
+                    else "succeeded"
+                )
                 outcome = wait_job(binary, socket, job["id"], {terminal}, timeout=190)
                 bundle = root / f"inspection-{interface}"
                 command(
@@ -301,6 +326,13 @@ def main():
                     assert not (bundle / "cad_inspect-receipt.json").exists()
                     source.write_bytes(source_bytes)
                     source.chmod(0o400)
+                elif interface == "missing-region":
+                    assert (bundle / "input.FCStd").read_bytes() == source_bytes
+                    assert not (bundle / "cad_inspect-receipt.json").exists()
+                    error = json.loads(
+                        (bundle / "failed-native/import-error.json").read_text()
+                    )
+                    assert "missing or ambiguous named regions" in error["error"]
                 else:
                     assert (
                         source.read_bytes()
