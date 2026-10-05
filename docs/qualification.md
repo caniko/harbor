@@ -366,7 +366,7 @@ This is CPU lifecycle/admission evidence; GPU VRAM and B1 remain independent.
 |---|---|
 | A0 | Partial: locked CPU packages/parity/contracts passed; production importer closure-only isolation, resource controls and descendant cleanup passed for controlled fixtures; other native policies remain separately unqualified |
 | A1 | Analytical airflow reference plus real low-Mach OpenLB CPU velocity/refinement check; thermal/wetting/FEM references incomplete |
-| B1 | Packaged FreeCAD→CPU OpenLB→bundle passed through CLI/MCP; scoped HIP numerical reference and retained CPU fields→EGL surfaces→VAAPI adapter probes passed; durable HIP solver/worker integration unqualified; CUDA best-effort |
+| B1 | Passed for the synthetic single-card AMD fixture: packaged FreeCAD→HIP OpenLB→immutable fields→EGL→VAAPI→checksummed bundle through CLI and official MCP; worker restart, idempotency and GPU partial-field recovery passed; CUDA best-effort |
 | B2 | Renderer/media RAM/CPU/wall/output measured; no qualified numerical GPU filter, per-process VRAM peak or complete topology/ghost-cell round trip |
 | C–F | Not implemented |
 
@@ -437,7 +437,53 @@ Hand-built resource declarations are now checked against operation-specific
 [allocation/output minima](resource-estimates.md), including padded lattice
 cells, distributions, native output at every retained time, reader/frame copies
 and encoding staging. Authoritative aggregate same-user capacity, effective VRAM
-headroom and card-wait scheduling before service launch remain pending.
+headroom and card-wait scheduling before service launch are implemented. Packaged
+cross-root RAM/disk admission and lifecycle are qualified by the CPU fixture
+above; the scoped GPU admission/runtime evidence follows below.
+
+The retained-field snapshot now captures the closed scientific collection before
+presentation. It verifies the registered snapshot digest as well as each copied
+file, protects the field/receipt mounts read-only, and binds render/frame/video
+receipts to its science/artifact/time identities. Actual retained HIP outputs at
+resolutions 8/16 passed graph capture and byte-preserving replay, as recorded in
+[evidence/field-snapshot.json](evidence/field-snapshot.json). Local full CPU checks
+also passed. The matching packaged B1 path subsequently passed the scoped native
+qualification below.
+
+### Durable HIP B1 qualification
+
+The packaged CLI, HIP runtime and official MCP distribution built through guarded
+Canix evaluation and realization with one build job, two cores and no publication.
+Both resolution-8 CLI and resolution-16 MCP submissions then completed the full
+synthetic FreeCAD → HIP OpenLB → retained fields → EGL → VAAPI → offline bundle
+chain. Each bundle contains 42 checksum-verified records. Velocity relative L2
+errors were `0.011124428266122175` and `0.0027813873418746048`, against the unchanged
+`0.05` tolerance. Compiled/runtime/driver HIP versions all matched `70253211`,
+with `gfx1100`, the exact UUID/PCI card, one GPU block and kernel completion.
+
+EGL queried the selected initialized display and observed the RX 7900 XTX through
+radeonsi/Mesa 26.2.1. Each run retained three 640×480 frames at requested physical
+times 0/10/20 s, with approved camera and velocity range. Hardware H.264 VAAPI
+encoding and actual CPU decoding verified three yuv420p frames and the independent
+24-fps playback timestamps. Field, frame and video receipts bind the same
+immutable snapshot digest/science/artifact identities; native field hashes were
+verified before and after both presentation stages.
+
+Killing and restarting the scheduling worker preserved each service invocation
+and idempotent job ID after client disconnect. Separate resolution-64 HIP
+forced-death and cancellation cases retained the identical 61,287-byte initial
+Float64 VTI (130×68×66) in 26-record bundles, with failed/cancelled states rather
+than numerical success. All four jobs released admission reservations and runtime
+GC roots after complete-tree closure; the final journal check found no remaining
+owned reservation.
+
+Exact package, authority, command and report identities are retained in
+[evidence/native-hip-b1.json](evidence/native-hip-b1.json). Compute was an explicit
+recorded qualification override because Atlas has no default compute route;
+render/media follow its declared roles, intentionally using the same physical
+card. This passes the B1 integration fixture. Standalone retained-field
+presentation jobs, multi-GPU isolation, GPU numerical filters, measured VRAM
+peaks, pressure accuracy, convergence and physical validation remain independent.
 
 Read-only inventory exposed AMD devices at `0000:03:00.0` (with a render
 node) and `0000:7d:00.0` (without a render alias); no CUDA device was

@@ -170,7 +170,12 @@ in 23-record checksummed bundles, with failed/cancelled execution status.
 Retained resolution-16 CPU OpenLB fields also passed selected-device EGL surface
 rendering and VAAPI encoding/CPU decode on the RX 7900 XTX. The three 640×480
 decoded frames preserve units, a fixed velocity scale and 0/10/20 s labels.
-Native fields remain unchanged; durable HIP OpenLB/worker B1 is unqualified.
+Native fields remain unchanged. The packaged durable HIP B1 chain subsequently
+passed through CLI and official MCP at resolutions 8/16, producing 42-record
+checksummed bundles with immutable field/frame/video bindings. Resolution-64
+HIP forced-death and cancellation also preserved partial fields and released
+the owned reservation/runtime roots. See
+[the exact B1 evidence](docs/evidence/native-hip-b1.json).
 `scripts/verify_egl_fields.py` and `examples/native_stage_probe.rs` reproduce this
 opt-in adapter probe with production DRM containment and shared card reservations.
 See [the rendering recipe and measured evidence](docs/qualification.md#retained-field-egl-surfaces-and-vaapi-video).

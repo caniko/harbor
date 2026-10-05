@@ -73,9 +73,13 @@ Selected-node sandbox compatibility and raw KFD VM acquisition on the running
 kernel have since passed the scoped probes in
 [`evidence/hip-sandbox.json`](evidence/hip-sandbox.json). Authority-bound worker
 support uses `harbor-cad-native-hip-single-kfd-v1`, requires exact device and
-compiled/runtime receipts, and rejects another exposed KFD GPU. Multi-GPU
-exclusion, aggregate RAM/disk/VRAM admission, durable GPU CLI/MCP B1,
-GPU filters, convergence and physical validation still need their own gates.
+compiled/runtime receipts, and rejects another exposed KFD GPU. The packaged
+durable CLI/MCP B1 chain and HIP forced-death/cancellation recovery have now
+passed on this card, including shared admission, unchanged retained fields,
+independent EGL/VAAPI receipts and verified reservation/runtime-root release.
+Exact evidence is in [`evidence/native-hip-b1.json`](evidence/native-hip-b1.json).
+Multi-GPU exclusion, measured VRAM peaks, GPU filters, convergence and physical
+validation still need their own gates.
 
 ## Implementation and acceptance
 
@@ -87,9 +91,10 @@ GPU filters, convergence and physical validation still need their own gates.
    architecture-match guard is implemented; another architecture/card was not tested.
 3. **Passed for the scoped fixture:** verify the synthetic periodic forced
    channel against the independent analytical reference and retained CPU fields.
-4. Qualify KFD isolation, resource admission and lifecycle before promoting this
-   into durable CLI/MCP B1. Preserve separate build/runtime/numerical/security
-   and physical-validation statuses.
+4. **Passed for the observed single-KFD fixture:** authoritative admission,
+   selected-node containment and durable CLI/MCP B1, with retained-field hashes,
+   worker restart, cancellation and runtime/reservation release. Multi-GPU KFD
+   isolation and physical-validation statuses remain separate.
 5. Advance HIP/Kokkos numerical filters only against an exact compatible
    ParaView/VTK/Viskores set. EGL rendering and VAAPI media retain their own
    selected devices and receipts.
