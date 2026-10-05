@@ -37,11 +37,11 @@ def png(path, frame):
         )
 
     pixels = b"".join(
-        b"\0" + bytes((frame * 80, row * 4, 128)) * 64 for row in range(64)
+        b"\0" + bytes((frame * 80, row * 2, 128)) * 128 for row in range(128)
     )
     path.write_bytes(
         b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", struct.pack(">IIBBBBB", 64, 64, 8, 2, 0, 0, 0))
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", 128, 128, 8, 2, 0, 0, 0))
         + chunk(b"IDAT", zlib.compress(pixels))
         + chunk(b"IEND", b"")
     )
@@ -64,11 +64,34 @@ def main():
     device = node.stat()
     if not stat.S_ISCHR(device.st_mode):
         raise ValueError("DRM character device required")
-    physical = Path(
-        f"/sys/dev/char/{os.major(device.st_rdev)}:{os.minor(device.st_rdev)}/device"
-    ).resolve(strict=True)
+    syschar = Path(
+        f"/sys/dev/char/{os.major(device.st_rdev)}:{os.minor(device.st_rdev)}"
+    )
+    physical = (syschar / "device").resolve(strict=True)
+    render = syschar.resolve(strict=True)
     if physical.name != args.pci:
         raise ValueError("DRM node / PCI identity mismatch")
+    if render != physical / "drm" / node.name:
+        raise ValueError("DRM minor / sysfs render identity mismatch")
+    if (
+        render / "dev"
+    ).read_text().strip() != f"{os.major(device.st_rdev)}:{os.minor(device.st_rdev)}":
+        raise ValueError("DRM character-device major/minor changed")
+    if Path(os.readlink(physical / "subsystem")).name != "pci":
+        raise ValueError("PCI DRM metadata required")
+    attributes = [
+        physical / name
+        for name in (
+            "vendor",
+            "device",
+            "subsystem_vendor",
+            "subsystem_device",
+            "revision",
+            "uevent",
+        )
+    ]
+    if any(p.is_symlink() or not p.is_file() for p in attributes):
+        raise ValueError("regular non-symlink DRM metadata required")
     root = args.output.resolve()
     root.mkdir(parents=True, mode=0o700, exist_ok=False)
     work = root / "work"
@@ -79,7 +102,7 @@ def main():
     plan.write_text(
         json.dumps(
             {
-                "case": {"presentation": {"width": 64, "height": 64}},
+                "case": {"presentation": {"width": 128, "height": 128}},
                 "stages": [
                     {
                         "operation": "video",
@@ -150,6 +173,18 @@ def main():
         "--ro-bind",
         "/run/opengl-driver",
         "/run/opengl-driver",
+        *[arg for path in attributes for arg in ("--ro-bind", str(path), str(path))],
+        "--ro-bind",
+        str(render),
+        str(render),
+        "--symlink",
+        "/sys/bus/pci",
+        str(physical / "subsystem"),
+        "--dir",
+        "/sys/dev/char",
+        "--symlink",
+        str(render),
+        str(syschar),
         "--ro-bind",
         str(plan),
         "/plan.json",
@@ -189,6 +224,13 @@ def main():
             "media": str(media),
             "runtime": str(runtime),
             "media_sha256": hashlib.sha256(media.read_bytes()).hexdigest(),
+            "fixture_dimensions": [128, 128],
+            "selected_sysfs_metadata": {
+                "pci": str(physical),
+                "render": str(render),
+                "alias": str(syschar),
+                "read_only_attributes": [str(p) for p in attributes],
+            },
             "exit_code": process.returncode,
             "qualified_adapter_probe": process.returncode == 0,
             "receipt": receipt,

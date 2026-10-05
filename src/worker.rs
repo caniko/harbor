@@ -666,15 +666,14 @@ fn native_stage(
         .arg("/work")
         .args(["--chdir", "/work"]);
     if let Some(selection) = &stage.selection {
-        let node = format!("/dev/dri/by-path/pci-{}-render", selection.pci);
-        let live = fs::canonicalize(&node)?;
         if selection.role != Role::Compute {
-            command.args(["--dev-bind"]).arg(&live).arg(&live);
-            command
-                .args(["--dir", "/dev/dri/by-path", "--symlink"])
-                .arg(&live)
-                .arg(&node);
-            command.args(["--ro-bind", "/run/opengl-driver", "/run/opengl-driver"]);
+            let binding = devices::DrmSandbox::resolve(&selection.pci)?;
+            binding.apply(&mut command);
+            store.event(
+                id,
+                "dri_binding_verified",
+                &serde_json::to_string(&binding)?,
+            )?;
         } else {
             // NVIDIA nodes require UUID→minor correlation and a tested per-device mount policy.
             return Err(Error::Unqualified(
