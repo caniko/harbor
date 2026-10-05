@@ -2,7 +2,7 @@
   description = "Canix-specific LLM harness orchestration and trusted dev-shell switching";
 
   inputs = {
-    harbor-meta.url = "git+https://github.com/caniko/harbor-meta.git?ref=feat/shared-timezone-env&rev=44a7c7cbb0cac897bcda2f5ef010dc73362bab9e";
+    harbor-meta.url = "git+https://github.com/caniko/harbor-meta.git?ref=feat/shared-timezone-env&rev=4b94a2a9b9d9640bc08171c9a40edad964595c86";
     nixpkgs.follows = "harbor-meta/nixpkgs";
   };
 
