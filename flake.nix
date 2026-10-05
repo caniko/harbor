@@ -142,6 +142,12 @@
       programs.ruff-format.enable = true;
     };
   in {
+    # Canix's scoped updater reads this ownership contract before any lock
+    # mutation. All inputs here are explicit immutable pins, not cache-managed.
+    cachePinMeta = {
+      schemaVersion = 4;
+      pins = {};
+    };
     lib = {
       inherit gpuLib;
       fleetixRevision = fleetix.rev;
@@ -187,6 +193,11 @@
         cp -r ${self}/profiles ./profiles
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
+      '';
+      openlb-cpu-reference = pkgs.runCommand "harbor-cad-openlb-cpu-reference" {} ''
+        export HOME=$TMPDIR
+        ${pkgs.python313}/bin/python ${./scripts/verify_openlb_cpu.py} \
+          --executable ${native.openlb-cpu}/bin/harbor-cad-openlb --output "$out"
       '';
     };
     formatter.${system} = format.config.build.wrapper;

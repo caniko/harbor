@@ -77,9 +77,37 @@ The declared runtime packages remain unqualified until they can be built and
 exercised in the import/GPU sandbox.
 
 Measured CPU and systemd results, limitations, exact source/patch identities
-and the Canix validation blocker are recorded in
+and Canix package validation are recorded in
 [qualification.md](docs/qualification.md) and
 [dependency-manifest.json](docs/dependency-manifest.json).
+
+The CPU native runtime excludes renderer/media closures. It records the exact
+runtime manifest and SI-normalized native plan as exportable artifacts. Imported
+CAD is copied from one bounded descriptor, verified against its approved digest,
+and exposed read-only; subsequent changes to the original file cannot alter the
+importer's input. Every native stage requires a fresh matching adapter/backend
+receipt with actual execution and no software fallback.
+
+Systemd jobs also require the live unit's invocation, main PID and exact cgroup
+membership; an inherited environment value alone cannot authorize execution.
+The verified identity is archived as `service-owner.json`.
+
+`checks.x86_64-linux.openlb-cpu-reference` runs the procedural-STL numerical
+reference using the packaged solver. For opt-in FreeCAD integration, an existing
+systemd user manager and the separately built CLI, MCP and `runtime-cpu` are
+required:
+
+```sh
+uv run --locked python scripts/verify_native_cpu.py \
+  --executable /nix/store/CLI/bin/harbor-cad \
+  --mcp /nix/store/MCP/bin/harbor-cad-mcp \
+  --runtime /nix/store/RUNTIME-harbor-cad-native-runtime.json \
+  --output /absolute/new/qualification-directory
+```
+
+This verifier submits resolutions 8 and 16 through the CLI and the official MCP
+client, checks retained fields and every exported checksum, and keeps physical
+validation explicitly unqualified. Its package execution remains pending.
 
 Artifact listing returns `{items, total, next_after}` with at most 100
 descriptors and 24 KiB of descriptor data per page. Use

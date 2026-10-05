@@ -152,10 +152,36 @@ Local Rust checks used `rustc 1.100.0-nightly (574ff7d98 2026-09-14)` from the
 approved Canix environment. The flake's declared Rust 1.94.0 toolchain still
 requires its own package build. Python checks used Python 3.13.15 and uv 0.12.5.
 
-Latest local checks passed: 33 Rust integration tests plus two worker unit tests, Clippy with
+Latest local checks passed: 36 Rust integration tests plus four worker unit tests, Clippy with
 `-D warnings`, two official-MCP/Python tests, Ruff lint/format checks, and
 scoped treefmt. The actual OpenLB CPU and user-manager tests above are
 separate opt-in runtime evidence.
+
+Additional native-boundary checks bind imported CAD to a distinct digest-checked
+snapshot, reject symlinks/budget overflow without publishing input bytes, and
+reject absent or mismatched CPU execution receipts. Receipt descriptors reject
+FIFOs, symlinks and oversized records without blocking. Native jobs archive the exact
+selected runtime manifest. `scripts/verify_native_cpu.py` prepares the packaged
+FreeCAD → CPU OpenLB → portable-bundle qualification through CLI and MCP; it has
+not executed yet. The CPU runtime does not select ParaView/media closures.
+
+An actual regression test proved that an environment-only fake `INVOCATION_ID`
+could previously execute a service job. Job startup now verifies the live unit's
+invocation, main PID and exact cgroup membership before its state transition,
+and archives `service-owner.json`. The subsequent real systemd restart and
+cancellation test passed against one frozen binary, with the archived owner
+matching the user manager. One earlier rerun failed because a concurrent Cargo
+build replaced the running development binary; the verifier now copies and
+checksums its executable before launching. That failure remains retained and
+does not count as passing evidence.
+
+An actual Bubblewrap 0.11.2 probe showed that `/work/plan.json` leaves an empty
+mount-point file in the writable output tree. The worker now mounts its trusted
+plan at `/plan.json`, outside that tree. A second primitive-level probe passed:
+the plan and store were read-only, the host-private marker and user-manager
+socket path were hidden, host-loopback TCP was unreachable, GPU nodes were
+absent and no mount-point file polluted output. This verifies those tested
+primitives, not the full packaged importer/JIT/GPU policy.
 
 The hosted CPU workflow is generated from `simit.toml` by Simit revision
 `afb7939d925d3e8e9b8507387ada7efad6460df8`. The installed 0.19.0 binary
@@ -179,7 +205,7 @@ remain recorded upstream requirements. Generation defaults are preserved.
 
 | Gate | Status |
 |---|---|
-| A0 | Partial: source-pinned package definitions; own flake lock and clean-runtime builds pending; importer isolation unqualified |
+| A0 | Partial: own immutable flake lock created through Canix; package/clean-runtime builds pending; full importer isolation unqualified |
 | A1 | Analytical airflow reference plus real low-Mach OpenLB CPU velocity/refinement check; thermal/wetting/FEM references incomplete |
 | B1 | CLI/MCP plan and adapter integration implemented; FreeCAD→CUDA→EGL→VAAPI execution unqualified |
 | B2 | No qualified numerical GPU filter or complete topology/ghost-cell round trip |
@@ -198,19 +224,32 @@ correlation and per-device sandbox mounts remain explicit rejection gates.
 passed against commit `2e52eb0699f471ec0f00f1f2a7013dc7444ad1a1`, resolving
 `/nix/store/h1g62w3d4fssnjqnh4jr5x9hzm448gc8-harbor-cad-0.1.0.drv`.
 This is evaluation evidence only. The read-only evaluation resolved inputs
-but did not write `flake.lock` or realize the CLI.
+but did not write `flake.lock` or realize the CLI. The subsequent correctly
+routed scoped Canix update succeeded and created `flake.lock`; all 11 root
+revision pins were checked against the dependency manifest, and the lock records
+their generated NAR hashes.
 
-Subsequent scoped lock-update/build attempts encountered
-`/run/lock/canix/nix-eval.lock`; the latest owner was PID `3350180` in a
-Roborev switch-test evaluation. The installed update/build commands have no
-evaluation-wait option. No raw Nix override, concurrent-lease bypass, upload
-or host activation was used. The Harbor-CAD evaluation lease has been
-released; another waiting lane was notified through the session API.
+CLI, MCP, CPU OpenLB, CPU runtime and policy/clean/Python check derivations also
+evaluated successfully. Subsequent lock/build attempts encountered the shared
+evaluation lease. The installed update/build commands have no evaluation-wait
+option, so scoped updates use bounded ordinary-admission retries.
 
-After admission becomes available, run from the Harbor-CAD checkout:
+The Home Manager launcher overwrites `CANIX_FLAKE_ROOT` with the parent Canix
+checkout; a preceding managed-input rejection came from that routing. Using the
+same installed package's `bin/canix` preserves the explicitly selected root and
+normal Canix guards. It then reported Harbor-CAD's missing `cachePinMeta`.
+The consumer now declares supported schema 4 with no cache-managed inputs; all
+its dependencies remain immutable pins. No upstream/host change, raw Nix
+override, inherited evaluation lease, concurrent bypass or upload was used.
+Lease-release notices allowed another lane's normal workspace admission to
+complete before the next Harbor-CAD evaluation.
+
+Commands use the installed package CLI for updates and target-checkout cwd for
+builds. From an approved environment in the Harbor-CAD checkout:
 
 ```sh
-CANIX_FLAKE_ROOT="$PWD" canix repo update flake --input nixpkgs
+CANIX_PROJECT_CLI=/nix/store/77dc01dssq4ss86xw8d2z5fxa39l3q3r-canix-admin-0.1.0/bin/canix
+CANIX_FLAKE_ROOT="$PWD" "$CANIX_PROJECT_CLI" repo update flake --input nixpkgs
 canix cache binary build .#default --no-push --max-jobs 1 --cores 2
 canix cache binary build .#mcp --no-push --max-jobs 1 --cores 2
 canix cache binary build .#openlb-cpu --no-push --max-jobs 1 --cores 2
