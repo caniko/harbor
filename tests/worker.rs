@@ -18,7 +18,18 @@ fn start(root: &std::path::Path) -> Worker {
     )
 }
 fn start_with_profile(root: &std::path::Path, profile: &std::path::Path) -> Worker {
-    let child = Command::new(env!("CARGO_BIN_EXE_harbor-cad"))
+    start_with_binary(
+        root,
+        profile,
+        std::path::Path::new(env!("CARGO_BIN_EXE_harbor-cad")),
+    )
+}
+fn start_with_binary(
+    root: &std::path::Path,
+    profile: &std::path::Path,
+    binary: &std::path::Path,
+) -> Worker {
+    let child = Command::new(binary)
         .args(["worker", "--state"])
         .arg(root)
         .arg("--profile")
@@ -33,6 +44,54 @@ fn start_with_profile(root: &std::path::Path, profile: &std::path::Path) -> Work
         std::thread::sleep(Duration::from_millis(10));
     }
     Worker(child)
+}
+
+#[test]
+fn queued_job_and_duplicate_submission_keep_runner_a_after_worker_b_restart() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("state");
+    let store = Store::open(&root).unwrap();
+    let profile_path =
+        std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/profiles/ci.json"));
+    let profile = load_profile(profile_path).unwrap();
+    let runner_a = temp.path().join("runner-a");
+    std::fs::copy(env!("CARGO_BIN_EXE_harbor-cad"), &runner_a).unwrap();
+    std::fs::create_dir(root.join("artifacts")).unwrap();
+    let occupied = root.join("artifacts/occupied");
+    std::fs::write(&occupied, vec![0; profile.max_disk_bytes as usize]).unwrap();
+    let worker_a = start_with_binary(&root, profile_path, &runner_a);
+    let plan = ExecutionPlan::reference(CaseSpec::reference()).unwrap();
+    let submit = Operation::Submit {
+        approved_digest: plan.id().unwrap(),
+        plan: Box::new(plan),
+        idempotency_key: "runner-upgrade".into(),
+    };
+    let socket = root.join("worker.sock");
+    let response = request(&socket, submit.clone()).unwrap();
+    assert!(response.ok, "{response:?}");
+    let id = response.data.unwrap()["id"].as_str().unwrap().to_owned();
+    assert_eq!(store.job(&id).unwrap().state, "queued");
+    drop(worker_a);
+    std::fs::remove_file(&socket).unwrap();
+    let worker_b = start(&root);
+    assert_eq!(request(&socket, submit).unwrap().data.unwrap()["id"], id);
+    std::fs::remove_file(occupied).unwrap();
+    let deadline = Instant::now();
+    loop {
+        let job = store.job(&id).unwrap();
+        if job.state == "succeeded" {
+            break;
+        }
+        assert_ne!(job.state, "failed", "{job:?}");
+        assert!(deadline.elapsed() < Duration::from_secs(10), "{job:?}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let binding: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(store.job_dir(&id).unwrap().join("execution-binding.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(binding["runner"]["path"], runner_a.to_str().unwrap());
+    drop(worker_b);
 }
 #[test]
 fn real_worker_disconnect_idempotency_restart_and_export() {
@@ -84,7 +143,14 @@ fn real_worker_disconnect_idempotency_restart_and_export() {
     .unwrap()
     .data
     .unwrap();
-    assert_eq!(artifacts["items"].as_array().unwrap().len(), 5);
+    assert_eq!(artifacts["items"].as_array().unwrap().len(), 6);
+    assert!(
+        artifacts["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["path"] == "execution-binding.json")
+    );
     assert!(artifacts["next_after"].is_null());
     let destination = temp.path().join("portable");
     let export = Command::new(env!("CARGO_BIN_EXE_harbor-cad"))

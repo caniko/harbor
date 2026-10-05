@@ -1,4 +1,4 @@
-use crate::{Error, Result, contracts::*};
+use crate::{Error, Result, contracts::*, execution::ExecutionBinding};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -490,14 +490,15 @@ impl Store {
             time INTEGER NOT NULL, kind TEXT NOT NULL, message TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS artifacts(job TEXT NOT NULL, path TEXT NOT NULL, manifest TEXT NOT NULL,
             PRIMARY KEY(job,path));
-          CREATE TABLE IF NOT EXISTS job_profiles(job TEXT PRIMARY KEY, digest TEXT NOT NULL, profile TEXT NOT NULL);")?;
+          CREATE TABLE IF NOT EXISTS job_profiles(job TEXT PRIMARY KEY, digest TEXT NOT NULL, profile TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS job_executions(job TEXT PRIMARY KEY, digest TEXT NOT NULL, binding TEXT NOT NULL);")?;
         Ok(Self {
             connection,
             root: root.into(),
         })
     }
     pub fn submit(&self, plan: &ExecutionPlan, key: &str) -> Result<Job> {
-        self.submit_inner(plan, key, None)
+        self.submit_inner(plan, key, None, None)
     }
     pub fn submit_with_profile(
         &self,
@@ -505,13 +506,43 @@ impl Store {
         key: &str,
         profile: &HostExecutionProfile,
     ) -> Result<Job> {
-        self.submit_inner(plan, key, Some(profile))
+        self.submit_inner(plan, key, Some(profile), None)
+    }
+    pub fn submit_for_execution(
+        &self,
+        plan: &ExecutionPlan,
+        key: &str,
+        profile: &HostExecutionProfile,
+        binding: &ExecutionBinding,
+    ) -> Result<Job> {
+        self.submit_inner(plan, key, Some(profile), Some(binding))
+    }
+    pub fn existing_submission(
+        &self,
+        plan: &ExecutionPlan,
+        key: &str,
+        profile: &HostExecutionProfile,
+    ) -> Result<Option<Job>> {
+        let row: Option<(String, String)> = self
+            .connection
+            .query_row("SELECT id,digest FROM jobs WHERE idem=?1", [key], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .optional()?;
+        if let Some((id, prior)) = row {
+            if prior != plan.id()? || digest(&self.job_profile(&id)?)? != digest(profile)? {
+                return Err(Error::IdempotencyConflict);
+            }
+            return Ok(Some(self.job(&id)?));
+        }
+        Ok(None)
     }
     fn submit_inner(
         &self,
         plan: &ExecutionPlan,
         key: &str,
         profile: Option<&HostExecutionProfile>,
+        binding: Option<&ExecutionBinding>,
     ) -> Result<Job> {
         plan.validate()?;
         if !token(key) {
@@ -558,6 +589,20 @@ impl Store {
                 ],
             )?;
         }
+        if let Some(binding) = binding {
+            binding.verify(
+                plan,
+                profile.ok_or_else(|| invalid("execution profile required"))?,
+            )?;
+            tx.execute(
+                "INSERT INTO job_executions(job,digest,binding) VALUES(?1,?2,?3)",
+                params![
+                    id,
+                    crate::contracts::digest(binding)?,
+                    serde_json::to_string(binding)?
+                ],
+            )?;
+        }
         tx.execute(
             "INSERT INTO events(job,time,kind,message) VALUES(?1,?2,'submitted',?3)",
             params![id, now(), digest],
@@ -585,6 +630,25 @@ impl Store {
             return Err(invalid("persisted host profile digest mismatch"));
         }
         Ok(profile)
+    }
+    pub fn execution_binding(&self, id: &str) -> Result<ExecutionBinding> {
+        self.job(id)?;
+        let row: Option<(String, String)> = self
+            .connection
+            .query_row(
+                "SELECT digest,binding FROM job_executions WHERE job=?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let (expected, data) = row.ok_or_else(|| {
+            Error::Unqualified("legacy job has no execution binding; no automatic relaunch".into())
+        })?;
+        let binding: ExecutionBinding = serde_json::from_str(&data)?;
+        if digest(&binding)? != expected {
+            return Err(invalid("persisted execution binding digest mismatch"));
+        }
+        Ok(binding)
     }
     pub fn try_start(
         &self,
@@ -810,9 +874,14 @@ impl Store {
                 Err(error) => return Err(error),
             };
             let plan = self.recorded_plan(id)?;
+            let binding = match self.execution_binding(id) {
+                Ok(binding) => Some(binding),
+                Err(Error::Unqualified(_)) => None,
+                Err(error) => return Err(error),
+            };
             let current = plan.validate();
             artifacts.push(commit_artifact(&partial, "execution.json", &serde_json::to_vec_pretty(&serde_json::json!({
-                "schema_version":1,"job":job,"plan":plan,"host_profile":profile,
+                "schema_version":1,"job":job,"plan":plan,"host_profile":profile,"execution_binding":binding,
                 "current_plan_check":{"accepted":current.is_ok(),"diagnostic":current.err().map(|e| e.diagnostic())},
                 "physical_validation":"unqualified","registered_artifacts":registered_count,
                 "completeness":"registered records only; native failure report identifies quarantined omissions"

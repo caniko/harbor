@@ -1,5 +1,6 @@
 pub mod contracts;
 pub mod devices;
+pub mod execution;
 pub mod lifecycle;
 pub mod resources;
 pub mod science;

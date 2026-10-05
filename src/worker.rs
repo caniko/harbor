@@ -1,5 +1,11 @@
 use crate::{
-    Error, Result, contracts::*, devices, lifecycle::NativeProcess, resources, science, storage::*,
+    Error, Result,
+    contracts::*,
+    devices,
+    execution::{ExecutionBinding, packaged_file},
+    lifecycle::NativeProcess,
+    resources, science,
+    storage::*,
 };
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
@@ -154,6 +160,8 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
 fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()> {
     let plan = store.plan(id)?;
     let profile = store.job_profile(id)?;
+    let binding = store.execution_binding(id)?;
+    binding.verify(&plan, &profile)?;
     check_plan(&plan, &profile)?;
     let artifacts = safe_path(&store.root, "artifacts")?;
     let retained_disk = if artifacts.exists() {
@@ -164,7 +172,7 @@ fn launch(store: &Store, capacity: &HostExecutionProfile, id: &str) -> Result<()
     if !store.try_start(id, capacity, retained_disk)? {
         return Ok(());
     }
-    let exe = std::env::current_exe()?;
+    let exe = &binding.runner.path;
     let root = fs::canonicalize(&store.root)?;
     let profiles = safe_path(&root, "profiles")?;
     private_dir(&profiles)?;
@@ -334,11 +342,33 @@ fn dispatch(
             if plan.id()? != approved_digest {
                 return Err(invalid("immutable plan approval digest mismatch"));
             }
+            if let Some(job) = store.existing_submission(&plan, &idempotency_key, profile)? {
+                return Ok(serde_json::to_value(job)?);
+            }
             check_plan(&plan, profile)?;
-            Ok(serde_json::to_value(store.submit_with_profile(
+            let mut files = BTreeMap::new();
+            if let Some(path) = &profile.native_runtime {
+                let runtime = NativeRuntime::load(Path::new(path))?;
+                files.insert("bwrap".into(), runtime.bwrap.clone());
+                for stage in &plan.stages {
+                    if !matches!(
+                        stage.operation,
+                        StageOperation::Bundle | StageOperation::ChannelReference
+                    ) {
+                        files.insert(
+                            serde_json::to_string(&stage.operation)?,
+                            runtime.executable(&stage.operation)?.into(),
+                        );
+                    }
+                }
+            }
+            let binding =
+                ExecutionBinding::capture(&plan, profile, &std::env::current_exe()?, files)?;
+            Ok(serde_json::to_value(store.submit_for_execution(
                 &plan,
                 &idempotency_key,
                 profile,
+                &binding,
             )?)?)
         }
         Operation::Status { job_id } => Ok(serde_json::to_value(store.job(&job_id)?)?),
@@ -391,9 +421,15 @@ fn dispatch(
         )?)?),
         Operation::Describe { job_id } => {
             let plan = store.plan(&job_id)?;
+            let binding = match store.execution_binding(&job_id) {
+                Ok(binding) => Some(binding),
+                Err(Error::Unqualified(_)) => None,
+                Err(error) => return Err(error),
+            };
             Ok(
                 serde_json::json!({"job":store.job(&job_id)?,"science_id":plan.case.science_id()?,
                 "execution_id":plan.id()?,"presentation_id":digest(&plan.case.presentation)?,
+                "execution_binding":binding,
                 "artifacts":store.artifact_page(&job_id, None, default_artifact_limit())?,"arrays":"retained in artifacts; not embedded in responses"}),
             )
         }
@@ -531,25 +567,6 @@ struct NativeRuntime {
     openlb_backend: String,
     render: Option<String>,
     video: Option<String>,
-}
-fn packaged_file(path: &Path) -> Result<std::path::PathBuf> {
-    if !path.starts_with("/nix/store")
-        || path.components().count() < 4
-        || path
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
-        return Err(invalid(
-            "packaged path must remain inside one immutable Nix store object",
-        ));
-    }
-    let canonical = fs::canonicalize(path)?;
-    if !canonical.starts_with("/nix/store") || !canonical.is_file() {
-        return Err(invalid(
-            "packaged path resolves outside the immutable store or is not a regular file",
-        ));
-    }
-    Ok(canonical)
 }
 impl NativeRuntime {
     fn load(path: &Path) -> Result<Self> {
@@ -862,6 +879,9 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
     } else {
         None
     };
+    let binding = store.execution_binding(id)?;
+    binding.verify(&store.plan(id)?, &profile)?;
+    binding.verify_running_runner(&profile)?;
     if !store.transition(id, "starting", "running", None)? {
         return Err(invalid("job must be starting exactly once"));
     }
@@ -949,6 +969,16 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
     let plan = store.plan(id)?;
     check_plan(&plan, profile)?;
     let dir = store.job_dir(id)?;
+    store.add_artifact(
+        id,
+        &commit_artifact(
+            &dir,
+            "execution-binding.json",
+            &serde_json::to_vec_pretty(&store.execution_binding(id)?)?,
+            "json",
+            "exact runner, runtime, host profile and sandbox policy binding",
+        )?,
+    )?;
     // Hold one physical-card reservation across roles and stages, independent of worker lifetime.
     let keys: Vec<_> = plan
         .stages

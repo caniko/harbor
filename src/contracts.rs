@@ -873,5 +873,6 @@ pub fn schemas() -> serde_json::Value {
         "ObservationPlan": schemars::schema_for!(ObservationPlan), "ArtifactManifest": schemars::schema_for!(ArtifactManifest),
         "B1Selections": schemars::schema_for!(B1Selections),
         "ArtifactPage": schemars::schema_for!(ArtifactPage),
+        "ExecutionBinding": schemars::schema_for!(crate::execution::ExecutionBinding),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
 }
