@@ -1469,7 +1469,10 @@ in
       assert !builtins.hasAttr "cargo-fmt" bevyHooks;
       assert pkgs.lib.hasInfix "cargo clippy --all-targets" hooks.cargo-clippy.entry;
       assert pkgs.lib.hasInfix "cargo audit" hooks.cargo-audit.entry;
-      assert pkgs.lib.hasInfix "treefmt --fail-on-change" hooks.treefmt.entry;
+      assert hooks.treefmt.package == pkgs.treefmt;
+      assert hooks.treefmt.entry == "${pkgs.treefmt}/bin/treefmt --ci";
+      assert bevyHooks.treefmt.package == pkgs.treefmt;
+      assert bevyHooks.treefmt.entry == "${pkgs.treefmt}/bin/treefmt --ci";
       assert pkgs.lib.hasInfix "cargo clippy --all-targets" bevyHooks.cargo-clippy.entry;
       assert hooks.nix-flake-check.stages == ["manual"];
         pkgs.runCommand "check-template-hooks-shape" {} "touch $out";
