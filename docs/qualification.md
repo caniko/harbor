@@ -153,7 +153,7 @@ approved Canix environment. The locked CLI package also built with the declared
 Rust 1.94.0 toolchain. Python checks used Python 3.13.15 and uv 0.12.5.
 
 Latest local checks passed: 37 Rust integration tests plus five Rust unit tests, Clippy with
-`-D warnings`, two official-MCP/Python tests, Ruff lint/format checks, and
+`-D warnings`, two official-MCP/Python tests and five render-contract cases, Ruff lint/format checks, and
 scoped treefmt. The actual OpenLB CPU and user-manager tests above are
 separate opt-in runtime evidence.
 
@@ -291,6 +291,32 @@ an explicit 128×128 fixture and does not resize user frames.
 
 Exact build outputs, qualification hashes and scoped source evidence are in
 [evidence/inspection-media.json](evidence/inspection-media.json).
+
+### EGL display identity and calibration
+
+The production EGL helpers passed an offscreen OpenGL calibration under the
+production DRM sandbox and owned native-process library. The current initialized
+EGL display's `EGL_DEVICE_EXT` resolved to `/dev/dri/renderD128`, matching selected
+PCI `0000:03:00.0`. Observed EGL 1.5/OpenGL 4.6 used the Radeon RX 7900 XTX and
+Mesa 26.2.1/radeonsi. Every 64×64 framebuffer readback pixel matched the expected
+RGBA calibration value, with zero GL error and no software renderer.
+
+The pinned VTK source shows that `DeviceIndex` represents requested selection
+and that default-display fallback exists. The adapter now checks the live
+display's actual device before issuing a success receipt. The Khronos extension
+defines `EGLAttrib` as `intptr_t`; the bridge uses the matching ctypes width.
+Bounded enumeration rejects missing, changed and ambiguous inventory. Five CPU
+regression cases cover actual-device rejection and authoritative channel time
+collection selection, including rejection of a symlink/material-only collection.
+The driver emits both `channel.pvd` and `geometry.pvd`; only the channel collection
+uses the velocity/pressure observation clock. Unsupported presentation fields
+are rejected explicitly.
+
+The first headless ParaView package failed CMake's relative-install-destination
+check. The committed fix uses the pinned Nixpkgs recipe's relative GNUInstallDirs;
+its guarded build retry is pending. EGL calibration does not establish packaged
+ParaView field rendering, physical-time labels or B1. The archive hash, runtime
+library and calibration receipt are in [evidence/egl-device.json](evidence/egl-device.json).
 
 ## Canix package evaluation and realization
 

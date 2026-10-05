@@ -68,7 +68,10 @@
     "vtk_abi": "Bundled VTK from the exact ParaView source archive; external VTK explicitly disabled",
     "python_abi": "Separate Python 3.13 pvpython, Qt/MPI disabled",
     "license": "BSD-3-Clause (Nixpkgs metadata)",
-    "build": "unqualified", "egl_runtime": "unqualified", "viskores_filter": "unimplemented/unqualified"
+    "build": "initial bundled-VTK configuration rejected absolute install destinations; relative-destination correction committed, guarded retry pending",
+    "egl_runtime": "production EGL helpers and DRM sandbox passed selected-device offscreen OpenGL calibration; full packaged ParaView field rendering unqualified",
+    "evidence": "docs/evidence/egl-device.json",
+    "viskores_filter": "unimplemented/unqualified"
   },
   "ffmpeg": {
     "source_definition": "pkgs.ffmpeg from the declared immutable Nixpkgs revision",
@@ -93,7 +96,7 @@
     "native_input_receipt_revision": "0facca23e010f4941fd0fd8f5af26c6e3257756f",
     "service_owner_plan_mount_revision": "3bd597f6d2beaac0f64a38698174edabd6102b55",
     "native_dri_binding_revision": "2863fa5b18d661dd00b33f7b69acc2e2846dc305",
-    "cpu_checks": {"rust_unit_tests": 5, "rust_integration_tests": 37, "official_mcp_python_tests": 2, "clippy": "passed with -D warnings"},
+    "cpu_checks": {"rust_unit_tests": 5, "rust_integration_tests": 37, "official_mcp_python_tests": 2, "render_contract_cases": 5, "clippy": "passed with -D warnings"},
     "systemd_receipt_sha256": "03758eb00d174725aa31346c62f6fb3d198e224f6fe0cf896bdaa8042052394e",
     "systemd_owner_receipt_sha256": "6383e16e32d94da3674c7a08eef23718806bf2e46ad0392eacdb0f68e23227c1",
     "systemd_owner_frozen_binary_sha256": "832a5713b05bc82e35b7642d5b6e9fe3af2a3eed1ca0c2078431953ab15087a3",

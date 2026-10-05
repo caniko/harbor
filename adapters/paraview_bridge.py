@@ -7,20 +7,38 @@ import sys
 from pathlib import Path
 
 
-def egl_device(render_node):
+def egl_library():
     egl = c.CDLL("@libegl@")
     egl.eglGetProcAddress.argtypes = [c.c_char_p]
     egl.eglGetProcAddress.restype = c.c_void_p
-    query = c.CFUNCTYPE(c.c_uint, c.c_int, c.POINTER(c.c_void_p), c.POINTER(c.c_int))(
-        egl.eglGetProcAddress(b"eglQueryDevicesEXT")
+    return egl
+
+
+def egl_proc(egl, name, result, *arguments):
+    address = egl.eglGetProcAddress(name)
+    if not address:
+        raise RuntimeError(f"required EGL entry point unavailable: {name.decode()}")
+    return c.CFUNCTYPE(result, *arguments)(address)
+
+
+def egl_device(render_node):
+    egl = egl_library()
+    query = egl_proc(
+        egl,
+        b"eglQueryDevicesEXT",
+        c.c_uint,
+        c.c_int,
+        c.POINTER(c.c_void_p),
+        c.POINTER(c.c_int),
     )
-    name = c.CFUNCTYPE(c.c_char_p, c.c_void_p, c.c_int)(
-        egl.eglGetProcAddress(b"eglQueryDeviceStringEXT")
-    )
-    devices = (c.c_void_p * 32)()
+    name = egl_proc(egl, b"eglQueryDeviceStringEXT", c.c_char_p, c.c_void_p, c.c_int)
     count = c.c_int()
-    if not query(32, devices, c.byref(count)):
-        raise RuntimeError("EGL device enumeration failed")
+    if not query(0, None, c.byref(count)) or not 0 < count.value <= 32:
+        raise RuntimeError("bounded EGL device enumeration failed")
+    capacity = count.value
+    devices = (c.c_void_p * capacity)()
+    if not query(capacity, devices, c.byref(count)) or count.value != capacity:
+        raise RuntimeError("EGL device inventory changed during enumeration")
     matches = []
     for i in range(count.value):
         node = name(devices[i], 0x3377)  # EGL_DRM_RENDER_NODE_FILE_EXT
@@ -31,10 +49,47 @@ def egl_device(render_node):
     return matches[0]
 
 
+def egl_context_device(render_node):
+    """Verify the initialized display, rather than VTK's requested device index."""
+    egl = egl_library()
+    egl.eglGetCurrentDisplay.argtypes = []
+    egl.eglGetCurrentDisplay.restype = c.c_void_p
+    display = egl.eglGetCurrentDisplay()
+    if not display:
+        raise RuntimeError("no current EGL display after rendering")
+    query = egl_proc(
+        egl,
+        b"eglQueryDisplayAttribEXT",
+        c.c_uint,
+        c.c_void_p,
+        c.c_int,
+        c.POINTER(c.c_ssize_t),
+    )
+    device = c.c_ssize_t()
+    # EGL_EXT_device_query defines EGLAttrib as intptr_t, not EGLint.
+    if not query(display, 0x322C, c.byref(device)) or not device.value:
+        raise RuntimeError("initialized EGL display device could not be queried")
+    name = egl_proc(egl, b"eglQueryDeviceStringEXT", c.c_char_p, c.c_void_p, c.c_int)
+    node = name(device.value, 0x3377)
+    if not node or os.path.realpath(node.decode()) != os.path.realpath(render_node):
+        raise RuntimeError("actual EGL display device differs from selected DRM node")
+    return os.path.realpath(node.decode())
+
+
+def velocity_collection(work):
+    # The pinned OpenLB driver also emits geometry.pvd on a separate index clock.
+    fields = work / "tmp/vtkData/channel.pvd"
+    if fields.is_symlink() or not fields.is_file():
+        raise ValueError("authoritative OpenLB channel time collection required")
+    return fields
+
+
 def main():
     if sys.argv[1] != "render":
         raise ValueError("render operation required")
     plan = json.loads(Path(sys.argv[2]).read_text())
+    if plan["case"]["presentation"]["field"] != "velocity":
+        raise ValueError("only explicitly selected velocity rendering implemented")
     stage = next(s for s in plan["stages"] if s["operation"] == "render")
     pci = stage["selection"]["pci"]
     node = f"/dev/dri/by-path/pci-{pci}-render"
@@ -43,10 +98,9 @@ def main():
     os.environ["VTK_DEFAULT_OPENGL_WINDOW"] = "vtkEGLRenderWindow"
     from paraview import simple as pv
 
-    fields = sorted(Path("/work/tmp/vtkData").glob("*.pvd"))
-    if len(fields) != 1:
-        raise ValueError("one authoritative OpenLB time collection required")
-    source = pv.OpenDataFile(str(fields[0]))
+    fields = velocity_collection(Path("/work"))
+    source = pv.OpenDataFile(str(fields))
+    source.UpdatePipelineInformation()
     view = pv.CreateView("RenderView")
     view.ViewSize = [
         plan["case"]["presentation"]["width"],
@@ -93,12 +147,16 @@ def main():
             for x in ["llvmpipe", "softpipe", "swrast", "software rasterizer"]
         ):
             raise RuntimeError("software graphics fallback rejected")
+        window.MakeCurrent()
+        observed_node = egl_context_device(node)
         pv.SaveScreenshot(f"/work/frame{i:04d}.png", view)
     receipt = {
         "adapter": "ParaView",
         "backend": "egl",
         "pci": pci,
         "egl_device_index": index,
+        "observed_render_node": observed_node,
+        "device_evidence": "EGL_DEVICE_EXT queried from current initialized EGL display",
         "context": capabilities,
         "executed": True,
         "software_fallback": False,

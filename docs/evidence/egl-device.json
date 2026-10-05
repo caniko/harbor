@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "verification_path": "/data/scratch/tmp/opencode/harbor-cad-egl-display-primitive-20261005/verification.json",
+  "verification_sha256": "9f86bb4bbae951b53c81e0eb258c2545326987005bd6a5d207a08ee90d79d643",
+  "adapter_source_sha256": "f7cadc4bea84ac6fd66b044b743cd69405a006b62929436448adf0b4024c6d78",
+  "probe_code_sha256": "48d6208b9823d4010b58cbf912b92f4553cff04586eead790dc2016a7b3e9a53",
+  "scope": "production EGL enumeration and current-display device helpers under production DrmSandbox/NativeProcess; offscreen calibration only",
+  "execution": {
+    "pci": "0000:03:00.0",
+    "observed_render_node": "/dev/dri/renderD128",
+    "egl_version": "1.5",
+    "opengl_version": "4.6 Compatibility Profile; Mesa 26.2.1",
+    "renderer": "AMD Radeon RX 7900 XTX; radeonsi/navi31/ACO",
+    "libegl": "/nix/store/mj9klbkhzal0vc1aazsajrydkimhc0h2-libglvnd-1.7.0/lib/libEGL.so.1",
+    "device_evidence": "EGL_DEVICE_EXT from the current initialized EGL display resolves to the selected DRM render node",
+    "software_fallback": false,
+    "calibration": "64x64 offscreen RGBA framebuffer; every readback pixel exactly (255,0,0,255); GL error zero",
+    "calibration_sha256": "8d4f60f3a909a12a555c095c8d7baa30f465c4b07fbf79ba82f686fbb96f3f20",
+    "service": "bounded owned user service; 512 MiB RAM, 1 CPU, 128 tasks, 45 s maximum"
+  },
+  "source_evidence": {
+    "paraview_archive": "/nix/store/r91d8kvrya7nrhiqi4gxzjx6dbr1vz06-ParaView-v6.0.1.tar.xz",
+    "paraview_archive_sha256": "sha256-XlasevXpJbPP0/q4JHCTPLq8fo/ah+FK9k+ZXWBk6wY=",
+    "archive_hash_verified": true,
+    "vtk_device_selection": "VTK/Rendering/OpenGL2/vtkEGLRenderWindow.cxx; DeviceIndex is a request, and default-display fallback exists",
+    "egl_specification": "https://registry.khronos.org/EGL/extensions/EXT/EGL_EXT_device_query.txt",
+    "egl_attribute_type": "EGLAttrib is intptr_t; use ctypes.c_ssize_t",
+    "openlb_collection": "adapters/openlb.cpp creates channel.pvd for velocity/pressure and a separate geometry.pvd index clock"
+  },
+  "cpu_regressions": "five rejection/selection cases; missing current display, missing/wrong DRM node, material-only collection and symlink collection; no native GPU import required",
+  "paraview_build": {
+    "initial_result": "failed during configuration: absolute ARCHIVE_DESTINATION rejected by bundled VTK",
+    "initial_log": "/data/scratch/tmp/opencode/harbor-cad-canix-drm-egl-bba6ab1/visualization-attempt-1.log",
+    "initial_log_sha256": "053bf24841a8518e6de4c8ecefc79650b6505e62e506c6217e27e27dfb29f811",
+    "correction_revision": "98745d2aaef30824f817ccecb59901f2557a8634",
+    "correction": "relative GNUInstallDirs matching the pinned Nixpkgs ParaView recipe",
+    "retry_log_root": "/data/scratch/tmp/opencode/harbor-cad-canix-egl-98745d2",
+    "qualification": "pending"
+  },
+  "paraview_field_rendering": "unqualified",
+  "physical_time_labels": "unqualified",
+  "worker_b1": "unqualified",
+  "physical_validation": "unqualified"
+}

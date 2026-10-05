@@ -191,6 +191,8 @@
         export HARBOR_CAD_TEST_BINARY=${cli}/bin/harbor-cad
         cp -r ${self}/python ./python
         cp -r ${self}/profiles ./profiles
+        mkdir adapters
+        cp ${./adapters/paraview_bridge.py} adapters/paraview_bridge.py
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
       '';
