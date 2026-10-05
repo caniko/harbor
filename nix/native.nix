@@ -57,8 +57,16 @@
     pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
       bwrap = "${pkgs.bubblewrap}/bin/bwrap";
       cad = "${cad}/bin/harbor-cad-import";
-      render = "${visualization}/bin/harbor-cad-render";
-      video = "${media}/bin/harbor-cad-video";
+      # CPU references need only CAD and flow; rendering/media remain separately
+      # selected closures, avoiding a mandatory ParaView build for this slice.
+      render =
+        if backend == "cpu"
+        then null
+        else "${visualization}/bin/harbor-cad-render";
+      video =
+        if backend == "cpu"
+        then null
+        else "${media}/bin/harbor-cad-video";
       inherit openlb;
       openlb_backend = backend;
     });

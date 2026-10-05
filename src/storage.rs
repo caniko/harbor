@@ -92,6 +92,68 @@ pub fn commit_artifact(
     let _ = fs::remove_file(&partial);
     result
 }
+
+/// Snapshot a scoped CAD source through one descriptor, with bounded streaming.
+/// The importer receives only the private verified copy as a read-only mount.
+pub fn snapshot_cad_input(
+    source: &Path,
+    root: &Path,
+    expected_sha256: &str,
+    maximum: u64,
+) -> Result<ArtifactManifest> {
+    let destination = safe_path(root, "input.FCStd")?;
+    let mut input = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(source)?;
+    let metadata = input.metadata()?;
+    if !metadata.is_file() {
+        return Err(invalid("CAD source must be a regular file"));
+    }
+    if metadata.len() > maximum {
+        return Err(Error::Resource(
+            "CAD input exceeds approved scientific output allowance".into(),
+        ));
+    }
+    let partial = root.join(format!(".partial-{}", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let mut output = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&partial)?;
+        let mut hash = Sha256::new();
+        let mut count = 0u64;
+        let mut buffer = [0u8; 65536];
+        loop {
+            let n = input.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
+            count = count
+                .checked_add(n as u64)
+                .ok_or_else(|| invalid("CAD size overflow"))?;
+            if count > maximum || count > metadata.len() {
+                return Err(invalid("CAD source grew during snapshot"));
+            }
+            hash.update(&buffer[..n]);
+            output.write_all(&buffer[..n])?;
+        }
+        let sha256 = format!("{:x}", hash.finalize());
+        if count != metadata.len() || sha256 != expected_sha256 {
+            return Err(invalid("source CAD checksum/size mismatch"));
+        }
+        output.sync_all()?;
+        drop(output);
+        fs::hard_link(&partial, &destination)?;
+        fs::File::open(root)?.sync_all()?;
+        Ok(ArtifactManifest {schema_version:1,path:"input.FCStd".into(),sha256,bytes:count,format:"FCStd".into(),
+            provenance:"approved original CAD snapshot; distinct closed inode exposed read-only to the import sandbox".into(),
+            units:None,time_s:None,association:None})
+    })();
+    let _ = fs::remove_file(partial);
+    result
+}
 fn copy_verified(source: &Path, destination: &Path, artifact: &ArtifactManifest) -> Result<()> {
     let source = safe_path(source, &artifact.path)?;
     let destination = safe_path(destination, &artifact.path)?;

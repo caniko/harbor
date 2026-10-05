@@ -508,8 +508,8 @@ struct NativeRuntime {
     cad: String,
     openlb: Option<String>,
     openlb_backend: String,
-    render: String,
-    video: String,
+    render: Option<String>,
+    video: Option<String>,
 }
 fn packaged_file(path: &Path) -> Result<std::path::PathBuf> {
     if !path.starts_with("/nix/store")
@@ -544,8 +544,12 @@ impl NativeRuntime {
                 .openlb
                 .as_deref()
                 .ok_or_else(|| Error::Unqualified("OpenLB package absent".into()))?,
-            StageOperation::Render => &self.render,
-            StageOperation::Video => &self.video,
+            StageOperation::Render => self.render.as_deref().ok_or_else(|| {
+                Error::Unqualified("EGL renderer absent from selected runtime".into())
+            })?,
+            StageOperation::Video => self.video.as_deref().ok_or_else(|| {
+                Error::Unqualified("hardware media adapter absent from selected runtime".into())
+            })?,
             _ => return Err(invalid("not a native adapter operation")),
         };
         packaged_file(Path::new(path))?;
@@ -662,18 +666,33 @@ fn native_stage(
             Path::new(&profile.allowed_input_root),
             &plan.case.geometry.source,
         )?;
-        let original = read_bounded(&source, profile.max_disk_bytes)?;
-        use sha2::Digest;
-        let sha = format!("{:x}", sha2::Sha256::digest(&original));
-        if plan.case.geometry.sha256.as_deref() != Some(&sha) {
-            return Err(invalid("source CAD checksum mismatch"));
-        }
-        command.args(["--ro-bind"]).arg(source).arg("/input.FCStd");
+        let job_dir = store.job_dir(id)?;
+        let artifact = snapshot_cad_input(
+            &source,
+            &job_dir,
+            plan.case
+                .geometry
+                .sha256
+                .as_deref()
+                .ok_or_else(|| invalid("source CAD digest required"))?,
+            plan.observation.max_artifact_bytes,
+        )?;
+        store.add_artifact(id, &artifact)?;
+        command
+            .args(["--ro-bind"])
+            .arg(safe_path(&job_dir, &artifact.path)?)
+            .arg("/input.FCStd");
     }
     let op = serde_json::to_value(&stage.operation)?
         .as_str()
         .ok_or_else(|| invalid("operation"))?
         .to_owned();
+    let receipt = safe_path(dir, &format!("{op}-receipt.json"))?;
+    if fs::symlink_metadata(&receipt).is_ok() {
+        return Err(invalid(
+            "native receipt already exists before its stage; stale or forged output rejected",
+        ));
+    }
     command
         .args(["--ro-bind"])
         .arg(safe_path(&store.job_dir(id)?, "native-plan.json")?)
@@ -714,19 +733,9 @@ fn native_stage(
     if !status.success() {
         return Err(Error::Unqualified(format!("native {op} failed: {status}")));
     }
-    let evidence: serde_json::Value = serde_json::from_slice(&read_bounded(
-        &dir.join(format!("{op}-receipt.json")),
-        MAX_MESSAGE,
-    )?)?;
-    if stage.gpu == GpuRequirement::Required
-        && (evidence["executed"] != true
-            || evidence["software_fallback"] != false
-            || evidence["pci"].as_str() != stage.selection.as_ref().map(|s| s.pci.as_str()))
-    {
-        return Err(Error::Unqualified(
-            "missing actual device execution receipt / software fallback rejected".into(),
-        ));
-    }
+    let evidence: serde_json::Value =
+        serde_json::from_slice(&read_bounded(&receipt, MAX_MESSAGE)?)?;
+    validate_native_receipt(stage, &evidence)?;
     store.event(
         id,
         "native_receipt",
@@ -737,6 +746,32 @@ fn native_stage(
         })
         .to_string(),
     )?;
+    Ok(())
+}
+
+fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Result<()> {
+    let adapter = match stage.operation {
+        StageOperation::CadFixture | StageOperation::CadInspect => "FreeCAD",
+        StageOperation::Openlb => "OpenLB",
+        StageOperation::Render => "ParaView",
+        StageOperation::Video => "FFmpeg",
+        _ => return Err(invalid("not a native adapter operation")),
+    };
+    let backend = stage
+        .selection
+        .as_ref()
+        .map_or("cpu", |s| s.backend.as_str());
+    if evidence["adapter"] != adapter
+        || evidence["backend"] != backend
+        || evidence["executed"] != true
+        || evidence["software_fallback"] != false
+        || (stage.gpu == GpuRequirement::Required
+            && evidence["pci"].as_str() != stage.selection.as_ref().map(|s| s.pci.as_str()))
+    {
+        return Err(Error::Unqualified(
+            "adapter/backend/execution receipt mismatch; fallback rejected".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -923,6 +958,14 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
             _ => {
                 if !native_pending {
                     private_dir(&native_work)?;
+                    let runtime = packaged_file(Path::new(
+                        profile
+                            .native_runtime
+                            .as_deref()
+                            .ok_or_else(|| invalid("native runtime"))?,
+                    ))?;
+                    store.add_artifact(id, &commit_artifact(&dir, "native-runtime.json", &read_bounded(&runtime, MAX_MESSAGE)?, "json",
+                        &format!("exact immutable runtime manifest from {}; store paths bind packaged executable closures", runtime.display()))?)?;
                     let mut normalized = plan.clone();
                     let c = &mut normalized.case;
                     for (quantity, dimension, unit) in [
@@ -967,7 +1010,8 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{disk_bytes, packaged_file};
+    use super::{disk_bytes, packaged_file, validate_native_receipt};
+    use crate::contracts::{CaseSpec, ExecutionPlan};
     use std::{fs, path::Path};
 
     #[test]
@@ -1001,5 +1045,27 @@ mod tests {
             disk_bytes(&raw, false).unwrap(),
             4 + fs::symlink_metadata(raw.join("escape")).unwrap().len()
         );
+    }
+
+    #[test]
+    fn cpu_native_success_requires_matching_executed_adapter_receipts() {
+        let mut case = CaseSpec::reference();
+        case.applicability.formulation = "periodic_forced_channel".into();
+        case.acceleration.value = 0.001;
+        let plan = ExecutionPlan::openlb_reference(case, "research".into()).unwrap();
+        let flow = &plan.stages[1];
+        let valid = serde_json::json!({"adapter":"OpenLB","backend":"cpu","executed":true,"software_fallback":false});
+        validate_native_receipt(flow, &valid).unwrap();
+        assert!(validate_native_receipt(flow, &serde_json::json!({})).is_err());
+        for (field, value) in [
+            ("adapter", serde_json::json!("FreeCAD")),
+            ("backend", serde_json::json!("cuda")),
+            ("executed", serde_json::json!(false)),
+            ("software_fallback", serde_json::json!(true)),
+        ] {
+            let mut corrupted = valid.clone();
+            corrupted[field] = value;
+            assert!(validate_native_receipt(flow, &corrupted).is_err());
+        }
     }
 }
