@@ -229,6 +229,25 @@ class FilesystemCutoverTests(unittest.TestCase):
                                       database_requirements=[requirement])
         self.assertFalse((self.state / "identity.json").exists())
 
+    def test_restore_root_permissions_are_part_of_custody(self):
+        self.source.chmod(0o750)
+        self.restored.chmod(0o700)
+        with self.assertRaisesRegex(ValueError, "root.*mode"):
+            self.certify()
+        self.assertFalse((self.state / "identity.json").exists())
+
+    def test_promisor_marker_cannot_claim_complete_history(self):
+        repository = self.source / "promisor.git"
+        subprocess.run(["git", "init", "--bare", str(repository)], check=True, capture_output=True)
+        (repository / "objects/pack/incomplete.promisor").touch()
+        shutil.copytree(repository, self.restored / "promisor.git")
+        self.config["git_executable"] = shutil.which("git")
+        requirement = {"root": 0, "path": "promisor.git", "directory": True, "git_repository": True}
+        with self.assertRaisesRegex(ValueError, "Git.*partial"):
+            cutover.certify_filesystem(self.config, [str(self.restored)], "historical", now=100,
+                                      database_requirements=[requirement])
+        self.assertFalse((self.state / "identity.json").exists())
+
     def test_database_corpus_requirements_reject_traversal_and_wrong_root(self):
         inventories = cutover.inventory(self.config, contents=False)
         for path, root in (("../history", 0), ("/absolute", 0), ("historical.git", 5)):

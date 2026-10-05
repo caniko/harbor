@@ -76,7 +76,8 @@ def failed_walk(error):
 
 
 def root_identities(config):
-    return [{"device": Path(path).stat().st_dev, "inode": Path(path).stat().st_ino}
+    return [{"device": Path(path).stat().st_dev, "inode": Path(path).stat().st_ino,
+             "mode": stat.S_IMODE(Path(path).stat().st_mode)}
             for path in config["authority"]["directories"]]
 
 
@@ -160,6 +161,8 @@ def validate_git_repository(path, requirement, executable):
         raise ValueError("Git integrity requires a declared absolute executable")
     if type(requirement.get("git_has_commits", False)) is not bool:
         raise ValueError("invalid database Git commit requirement")
+    if any((path / "objects/pack").glob("*.promisor")):
+        raise ValueError(f"Git integrity rejects partial-clone promisor packs: {path}")
     for relative in ("objects/info/alternates", "objects/info/http-alternates", "shallow"):
         marker = path / relative
         if marker.exists() and marker.stat().st_size:
@@ -209,6 +212,9 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
         source = inventory(config, contents=True)
         require_database_paths(source, database_requirements, roots=roots, git_executable=config.get("git_executable"))
         restored = inventory({"authority": {**authority, "directories": restored_roots}}, contents=True)
+        if any(stat.S_IMODE(source.stat().st_mode) != stat.S_IMODE(restore.stat().st_mode)
+               for source, restore in zip(roots, restores, strict=True)):
+            raise ValueError("source and restored corpus root modes differ")
         require_database_paths(restored, database_requirements, roots=restores, git_executable=config.get("git_executable"))
         if source != restored:
             raise ValueError("source and restored historical corpus differ")
