@@ -112,15 +112,15 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
-| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v9 plans and original approval compatibility tested; broader recipe-specific contracts pending |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v10 plans and original approval compatibility tested; broader recipe-specific contracts pending |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
 | §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; native contact/optical execution pending |
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
 | §4 allocated solver resources, unresolved paths | `src/estimates.rs`, `adapters/openlb_channel.cpp` | channel allocation/Mach/model gates; other formulations and local-gap resolution gates pending |
-| §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy and static free expansion pass native and CLI/MCP gates; contact data and conservative temperature transfer pending |
+| §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy and static free expansion pass native and CLI/MCP gates; synthetic planar contact-native-2 passes 15 solves/8 rejections/five mesh checks; packaged contact worker and source-bound conservative projection qualification pending |
 | §5 airflow/wetting/snow/freezing | OpenLB recipe drivers | synthetic single-phase flow and planar wetting native campaign qualified at recorded identities; wetting worker launch repair in requalification; prescribed coverage and freezing conservation/refinement pending |
 | §5 solar/UV, angular inputs and dose | atmospheric/spectral adapters | orientation/occlusion/reflection/unit/temporal tests and GPU transport pending |
-| §5 typed one-way transfers and convection | `TransferSpec` | typed conservative transfers pending; velocity-to-convection inference rejected by scope |
+| §5 typed one-way transfers and convection | `src/transfers.rs`, `src/thermal_transfer.rs` | typed conservative maps and complete native C3D8 capacitance projection implemented; two closed thermal-source diagnostics pass, packaged qualification and coupled contact assembly pending; velocity-to-convection inference rejected by scope |
 | §5 moisture-risk entry | `src/moisture_results.rs`, thermal source fields | all six native planar thermal surfaces and explicit screening/missing/inapplicable branches pass packaged CLI/MCP moisture-results-1; combined recipe assembly pending |
 | §6 durable lifecycle/idempotency/services | `src/lifecycle.rs`, `src/worker.rs`, `src/storage.rs` | restart/disconnect/owned tree/cancel/partial output qualified; logout/reboot/resume pending |
 | §6 patched importer and operation policies | `src/sandbox.rs`, `adapters/import_policy.py`, device sandbox | importer and selected single-KFD HIP scope qualified; broader solver/JIT/filter policies pending |
@@ -144,7 +144,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation and independent v5 static FEM implemented; exact CLI/MCP native mesh/fields and operation-specific isolation qualified; closed BREP/imported-box correspondence and origin-aware FEM native gates pass; v7 mesh worker passes at build 22; v8 imported static FEM CLI/MCP/exports/lifecycle passes with matching native prerequisite at build 23; broader geometries/recipes remain pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | scoped v4 native/CLI/MCP analytical, CPU-HIP, byte/topology, source/lifecycle and aggregate RAM/CPU gates pass at the recorded revision; instruction trace, whole-card VRAM and broader filters pending |
 | P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | synthetic steady conduction/free expansion at 2/4/8 and CLI/MCP lifecycle pass; imported origin/translated BREP correspondence and static FEM pass native/worker gates; airflow separately scoped; synthetic planar wetting-native-7 passes six solves, twelve rejections and two decreasing-error sequences; worker launch repair requalification pending |
-| P5 / C | native thermal/contact/moisture/coupling slice | independent synthetic transient numerical/spatial/time and CLI/MCP worker/export/lifecycle gates passed; exact thermal queries and native surface moisture CLI/MCP gates passed; planar contact feasibility diagnostic runs native CPU solver; packaged contact/coupling pending |
+| P5 / C | native thermal/contact/moisture/coupling slice | independent synthetic transient numerical/spatial/time and CLI/MCP worker/export/lifecycle gates passed; exact thermal queries and native surface moisture CLI/MCP gates passed; planar contact-native-2 passes 15 solves/8 rejections/five spatial checks; v10 contact worker and complete native conservative temperature projection implemented, exact packaged worker/projection and coupling pending |
 | P6 / D | native local water, prescribed snow and retained-water freezing | pending |
 | P7 / E | native atmosphere/spectral irradiance/dose slice | pending |
 | P8 / F | bounded studies, retention/recovery/resume, measurements and product closure | pending |
@@ -178,8 +178,22 @@ Exact identity/report hashes are in [result evidence](evidence/thermal-results-c
 Native `wetting-native-7` passes at build 31 with unchanged scientific gates and
 explicit equal-duration refinements. `wetting-worker-1` fails before solve due
 to its preopened stage log. Repair `8ee49c2` passes the full CPU gate (86 Python
-cases); build 35 and fresh native/worker qualification are pending. Prior failed
-native campaigns and the failed worker attempt remain retained independently.
+cases). Build 35 passes `wetting-native-8` with all six solves, twelve rejections
+and both refinement sequences. `wetting-worker-2` exposes the same preopened log
+at the C++ directory guard and fails before solving. Repair `7fb436c` tests the
+actual native guard without OpenLB/hardware, including valid worker/standalone
+layouts and seven stale/alias/type rejections. Build 40 will repeat the complete
+native gate across both initial directory layouts, then its matching worker gate.
+All failed native campaigns and both worker attempts remain retained independently.
+
+The latest full CPU gate passes with 95 Python cases, Clippy warnings denied,
+locked Rust build/tests, formatter and linter checks. `contact-native-2` passes
+at build 37; v10 contact CLI/MCP/worker packaging is in progress at build 38.
+Complete native C3D8 temperature projection conserves the source material's
+thermal capacitance, retains independent pointwise approximation loss and binds
+the exact registered mesh/field/DAT/time identities. Both original closed thermal
+sources pass the development diagnostic; its new exact packaged CLI/MCP,
+mutation, source-immutability and conservation gate is pending at build 39.
 
 ## External qualification prerequisites
 

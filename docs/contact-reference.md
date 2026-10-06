@@ -88,8 +88,11 @@ is small strain while native face contact uses `NLGEOM`. These explicit bounds
 precede native qualification. `scripts/verify_contact_cpu.py` runs closed,
 cooled, opened, nonzero-initial-gap and dissimilar-material cases at n2/4/8 and
 eight pre-output rejections. Spatial pressure spread and field checks retain the
-same `0.002` gate. Exact native attempt `contact-native-2` is pending against
-build 37; analytical verifier tests do not qualify a solve.
+same `0.002` gate. Exact native `contact-native-2` passes against build 37:
+fifteen native solves, eight pre-output rejections and five independent spatial
+checks. Maximum normalized field/force/gap error is `0.0005404000000002998`;
+maximum pressure spread across n2/4/8 is `1.5085714270493817e-7`.
+See [exact native evidence](evidence/contact-native-cpu.json).
 
 Version-10 `case plan-contact-reference` and simulation-profile MCP
 `case_plan_contact_reference` bind the independent SI recipe to a contact→bundle

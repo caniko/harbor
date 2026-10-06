@@ -48,8 +48,20 @@ original report hashes are retained in [native evidence](evidence/wetting-native
 The first packaged worker attempt fails before solving: its preopened
 `wetting.log` conflicts with the adapter's empty-directory guard. Revision
 `8ee49c2` admits only this empty, regular, single-link worker log and retains
-rejection of stale scientific output and aliased logs. The changed runtime and
-worker lifecycle remain subject to fresh packaged qualification.
+rejection of stale scientific output and aliased logs. Build 35 repeats the full
+native gate as `wetting-native-8`, with the same six solves/twelve rejections and
+both decreasing-error sequences. `wetting-worker-2` then exposes the C++ driver's
+independent directory guard, which also rejects the preopened worker log before
+solving. The original `process.log` records this earliest causal error.
+
+Repair `7fb436c` uses the actual native filesystem guard in a hardware-independent
+C++ test: standalone and worker layouts pass, while stale scientific output,
+nonempty worker logs, aliased logs, directories and symlinks reject. The native
+driver accepts only distinct regular `process.log` plus an empty regular
+single-link `wetting.log`. Native subprocess failure now retains and reports its
+process log before attempting to read a nonexistent receipt. Build 40 repeats
+the exact native six-solve gate, exercising standalone directories for 90° and
+the worker directory layout for 100°, before the matching packaged worker gate.
 
 `runtime-wetting-reference-cpu` supplies the exact adapter and operation closure.
 The bridge requires `harbor-cad-wetting-cpu-v1`: closure-only read-only store,
