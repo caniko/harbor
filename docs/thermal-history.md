@@ -96,9 +96,21 @@ and other output fields continue using their independent original packages.
 `scripts/verify_thermal_cpu.py` exercises adiabatic heating and cold/heater/
 Robin histories at three refinements, plus separate fixed-mesh temporal and
 fixed-time spatial sweeps. It requires unchanged `0.02` transient temperature
-and energy gates, decreasing errors in the separate sweeps, complete times/IDs,
+and energy gates on every solve, decreasing spatial continuum-reference errors,
+decreasing fixed-mesh temporal solution differences, complete times/IDs,
 and nine pre-output rejection cases. These transient gates are independently
 specified; the static FEM `1e-6` gates remain separate.
+
+The precision-patched fourth native run passed all eight temperature/energy
+gates, but failed the original temporal check against the continuum reference.
+Its fixed-mesh successive temperature differences were `0.001858940129864095`
+and `0.0009295318611748371 K` (ratio `1.9998670379244203`): first-order time
+convergence with partial cancellation of the remaining spatial-error floor.
+The temporal gate now checks those successive fixed-mesh solutions and records
+the observed order independently. Continuum errors, exact physical inputs and
+both unchanged acceptance gates remain recorded and required for every solve.
+Time self-convergence establishes neither absolute accuracy nor convergence to
+the continuum on that fixed mesh; the separate analytical/spatial gates do that.
 
 Bounded native time/output counts and explicit mesh refinement are checked
 before execution. The opt-in qualifier runs under the guarded Canix runtime

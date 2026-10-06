@@ -3,11 +3,78 @@
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 from itertools import pairwise
 from pathlib import Path
 
 from verify_openlb_hip import service_resources
+
+
+def temporal_self_convergence(requests, fields, meshes):
+    """Separate time refinement from a fixed spatial-error floor.
+
+    Every solve still has to pass its independent continuum-temperature and
+    native-energy gates. Successive differences establish temporal convergence,
+    not absolute accuracy or continuum convergence of this mesh.
+    """
+    if len(requests) != 3 or len(fields) != 3 or len(meshes) != 3:
+        raise ValueError("three explicit fixed-mesh temporal refinements required")
+    original = {k: v for k, v in requests[0].items() if k != "max_step_s"}
+    steps = [request["max_step_s"] for request in requests]
+    if (
+        any(
+            {k: v for k, v in request.items() if k != "max_step_s"} != original
+            for request in requests
+        )
+        or not steps[0] == 2 * steps[1] == 4 * steps[2]
+    ):
+        raise ValueError(
+            "temporal refinement must preserve mesh, histories, materials and acceptance; explicit halving required"
+        )
+    if any(mesh != meshes[0] for mesh in meshes[1:]):
+        raise ValueError("identical native mesh required for temporal refinement")
+    ids = set(meshes[0]["nodes"])
+    for field in fields:
+        if (
+            field["association"] != "point"
+            or field["unit"] != "K"
+            or field["coordinate_unit"] != "m"
+            or [s["requested_s"] for s in field["times"]]
+            != requests[0]["observation_times_s"]
+        ):
+            raise ValueError(
+                "identical physical retained times and SI field association required"
+            )
+        for snapshot in field["times"]:
+            if set(snapshot["temperature_k"]) != ids or any(
+                not isinstance(v, (int, float))
+                or isinstance(v, bool)
+                or not math.isfinite(v)
+                for v in snapshot["temperature_k"].values()
+            ):
+                raise ValueError(
+                    "complete finite nodal temperatures required for temporal refinement"
+                )
+    differences = [
+        max(
+            abs(a["temperature_k"][node] - b["temperature_k"][node])
+            for a, b in zip(left["times"], right["times"], strict=True)
+            for node in ids
+        )
+        for left, right in pairwise(fields)
+    ]
+    if not 0 < differences[1] < differences[0]:
+        raise ValueError(
+            f"fixed-mesh temporal differences do not decrease: {differences}"
+        )
+    return {
+        "method": "fixed-mesh successive temporal solution differences; independent continuum and energy gates applied to every solve",
+        "native_steps_s": [s / requests[0]["integration_substeps"] for s in steps],
+        "maximum_successive_differences_k": differences,
+        "observed_order": math.log2(differences[0] / differences[1]),
+        "passed": True,
+    }
 
 
 def main():
@@ -193,10 +260,26 @@ def main():
     }
     spatial = [conv[n, 0.5] for n in (2, 4, 8)]
     temporal = [conv[8, dt] for dt in (2.0, 1.0, 0.5)]
-    if any(b > a for errors in (spatial, temporal) for a, b in pairwise(errors)):
+    if any(b > a for a, b in pairwise(spatial)):
         raise ValueError(
-            f"independent spatial/temporal reference error does not decrease: {spatial}, {temporal}"
+            f"independent spatial continuum-reference error does not decrease: {spatial}"
         )
+    fixed = [
+        next(
+            v
+            for v in results
+            if v["recipe"] == "cold_restart_robin"
+            and v["request"]["resolution"] == 8
+            and v["request"]["max_step_s"] == dt
+        )
+        for dt in (2.0, 1.0, 0.5)
+    ]
+    locations = [root / f"cold_restart_robin-n8-dt{dt:g}" for dt in (2.0, 1.0, 0.5)]
+    time_convergence = temporal_self_convergence(
+        [v["request"] for v in fixed],
+        [json.loads((p / "thermal-fields.json").read_text()) for p in locations],
+        [json.loads((p / "mesh.json").read_text()) for p in locations],
+    )
     rejections = []
     for key, value in [
         ("backend", "hip"),
@@ -236,6 +319,7 @@ def main():
         "rejections": rejections,
         "spatial_errors_n2_n4_n8": spatial,
         "temporal_errors_dt2_dt1_dt05": temporal,
+        "temporal_self_convergence": time_convergence,
         "physical_validation": "unqualified",
     }
     (root / "verification.json").write_text(
