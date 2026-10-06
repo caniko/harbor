@@ -455,6 +455,12 @@ def execute_probe(args, selection, runtime_path, executable, bwrap, resources):
                 or receipt["output_bytes"] != len(serialized)
                 or receipt["precision"] != "float64"
                 or receipt["association"] != "point"
+                or receipt["gradient_ordering"]
+                != (
+                    "du/dx,du/dy,du/dz,dv/dx,dv/dy,dv/dz,dw/dx,dw/dy,dw/dz"
+                    if field == "physVelocity"
+                    else "dp/dx,dp/dy,dp/dz"
+                )
                 or any(
                     receipt[key] != descriptor[key]
                     for key in (
