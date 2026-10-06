@@ -123,7 +123,7 @@ test("native Nix lock drift can be repaired through bootstrap before project exe
   const { projects: [cwd], baseline } = await fixture(t);
   const native = async (args, env = baseline) => {
     t.diagnostic(`native lock fixture: ${args.join(" ")}`);
-    return exec(nix, args, { cwd, env, timeout: 8_000 });
+    return exec(nix, ["--debug", ...args], { cwd, env, timeout: 8_000 });
   };
   // File inputs genuinely need a lock without exercising tarball unpacking.
   // Local path inputs can already be treated as resolved. Stay offline here.
