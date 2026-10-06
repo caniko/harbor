@@ -1809,9 +1809,13 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
             }
             StageOperation::Bundle => {
                 if native_pending {
-                    for artifact in
-                        ingest_native_tree(&native_work, &dir, plan.observation.max_artifact_bytes)?
-                    {
+                    let mut artifacts = ingest_native_tree(
+                        &native_work,
+                        &dir,
+                        plan.observation.max_artifact_bytes,
+                    )?;
+                    crate::wetting::annotate_fields(&plan, &mut artifacts)?;
+                    for artifact in artifacts {
                         store.add_artifact(id, &artifact)?;
                     }
                     fs::remove_dir_all(&native_work)?;
@@ -1958,8 +1962,10 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         store.event(id, "stage_finished", &stage.id)?;
     }
     if native_pending {
-        for artifact in ingest_native_tree(&native_work, &dir, plan.observation.max_artifact_bytes)?
-        {
+        let mut artifacts =
+            ingest_native_tree(&native_work, &dir, plan.observation.max_artifact_bytes)?;
+        crate::wetting::annotate_fields(&plan, &mut artifacts)?;
+        for artifact in artifacts {
             store.add_artifact(id, &artifact)?;
         }
         fs::remove_dir_all(&native_work)?;

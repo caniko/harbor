@@ -326,6 +326,42 @@ pub fn verify_receipt(
     Ok(crate::qualification::NumericalEvidence{reference:format!("independent original Float64 phase area and whole-contour circle fit at {} native observations",native.len()),scope:"synthetic equal-property planar wetting; one declared mesh; refinement, settling and physical validation assessed separately".into(),error_kind:"maximum_approved_gate_fraction".into(),error:(mass_error/spec.mass_tolerance).max(angle_error/spec.angle_tolerance_deg),tolerance:1.})
 }
 
+/// Preserve native lattice velocity explicitly; conversion is defined by the
+/// immutable SI descriptor, and is never confused with a physical velocity CSV.
+pub(crate) fn annotate_fields(
+    plan: &ExecutionPlan,
+    artifacts: &mut [ArtifactManifest],
+) -> Result<()> {
+    let Some(spec) = &plan.wetting else {
+        return Ok(());
+    };
+    spec.validate()?;
+    for step in &spec.observation_steps {
+        let path = format!("stages/wetting/wetting-{step}.csv");
+        let matches = artifacts
+            .iter_mut()
+            .filter(|a| a.path == path)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(invalid(
+                "each approved wetting observation must be registered exactly once",
+            ));
+        }
+        for record in matches {
+            if record.format != "csv" || record.bytes == 0 || record.bytes > 16 * 1024 * 1024 {
+                return Err(invalid("bounded native wetting CSV manifest required"));
+            }
+            record.time_s = Some(*step as f64 * spec.physical_step_s());
+            record.association = Some("native_lattice_point".into());
+            record.units = Some("x_m:m,y_m:m,material:1,phi:1,u_lattice:1,v_lattice:1".into());
+            record.provenance = format!(
+                "original complete OpenLB Float64 lattice phase/velocity/material; approved native step {step}; physical velocity_m_s = lattice_velocity * spacing_m / physical_step_s from native-wetting-request.json; phase area_m2 = sum(1-phi)*spacing_m^2 over material 1; synthetic planar reference"
+            );
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,5 +470,48 @@ mod tests {
             Sha256::digest(std::fs::read(&path).unwrap())
         ));
         assert!(verify_receipt(&plan, root.path(), &changed).is_err());
+    }
+
+    #[test]
+    fn wetting_export_metadata_retains_native_time_units_and_point_association() {
+        let (root, plan, _, _) = fixture();
+        let mut artifacts = plan
+            .wetting
+            .as_ref()
+            .unwrap()
+            .observation_steps
+            .iter()
+            .map(|step| {
+                let name = format!("wetting-{step}.csv");
+                let mut record = crate::storage::native_manifest(
+                    root.path(),
+                    &name,
+                    16 * 1024 * 1024,
+                    "fixture",
+                )
+                .unwrap();
+                record.path = format!("stages/wetting/{name}");
+                record
+            })
+            .collect::<Vec<_>>();
+        annotate_fields(&plan, &mut artifacts).unwrap();
+        for (record, time) in artifacts
+            .iter()
+            .zip(plan.wetting.as_ref().unwrap().times_s())
+        {
+            assert_eq!(record.time_s, Some(time));
+            assert_eq!(record.association.as_deref(), Some("native_lattice_point"));
+            assert!(record.units.as_ref().unwrap().contains("phi:1"));
+            assert!(
+                record
+                    .provenance
+                    .contains("lattice_velocity * spacing_m / physical_step_s")
+            );
+        }
+        let mut duplicate = artifacts.clone();
+        duplicate.push(artifacts[0].clone());
+        assert!(annotate_fields(&plan, &mut duplicate).is_err());
+        artifacts.pop();
+        assert!(annotate_fields(&plan, &mut artifacts).is_err());
     }
 }

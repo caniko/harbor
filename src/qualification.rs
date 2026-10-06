@@ -426,7 +426,11 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                         .as_array()
                         .ok_or_else(|| invalid("registered native wetting fields required"))?;
                     let prefix = "stages/wetting";
-                    for field in fields {
+                    let spec = plan
+                        .wetting
+                        .as_ref()
+                        .ok_or_else(|| invalid("wetting recipe required"))?;
+                    for (field, step) in fields.iter().zip(&spec.observation_steps) {
                         let name = field["path"]
                             .as_str()
                             .ok_or_else(|| invalid("native wetting path required"))?;
@@ -438,6 +442,10 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                             || record.bytes == 0
                             || record.bytes > 16 * 1024 * 1024
                             || record.format != "csv"
+                            || record.time_s != Some(*step as f64 * spec.physical_step_s())
+                            || record.association.as_deref() != Some("native_lattice_point")
+                            || record.units.as_deref()
+                                != Some("x_m:m,y_m:m,material:1,phi:1,u_lattice:1,v_lattice:1")
                         {
                             return Err(invalid("registered bounded wetting CSV required"));
                         }

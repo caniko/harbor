@@ -20,7 +20,10 @@ def checksum(path):
 def request(angle, n):
     # Hold physical duration fixed as dt scales with dx². The initial cap
     # requires this settling budget before comparing equilibrium angles.
-    steps = 40000 * n * n // (24 * 24)
+    # Campaign 5's n24 neutral-wall cap still drifted by 0.17 degrees in
+    # its final quarter. Use the already-supported n48 integration ceiling
+    # at equal physical duration; keep all mass/angle/settling/refinement gates.
+    steps = 50000 * n * n // (24 * 24)
     return {
         "schema_version": 1,
         "synthetic": True,

@@ -57,6 +57,10 @@ reconstructs complete Cartesian/material coverage, phase area and the whole
 contour, and rechecks the unchanged mass/contact-angle gates. Historical
 `qualify --job JOB_ID` binds registered original CSV bytes. One job's numerical
 checks do not establish settling, refinement or physical validation.
+Each CSV manifest carries its approved physical time, native-lattice-point
+association and explicit per-column units. Lattice velocities remain
+dimensionless original values; their SI conversion uses the retained spacing and
+physical step. Material IDs and phase fractions remain dimensionless.
 
 Independent checks require complete unique Cartesian coordinates, the two
 semantic wall planes, a finite bounded phase field and a single isolated
@@ -69,12 +73,17 @@ angle error must be at most `5°`. Inputs can tighten these gates.
 
 `scripts/verify_wetting_cpu.py` exercises n24/36/48 at equal physical duration
 for 90° and 100° references. Each solve retains its original field bytes and
-uses 40000/90000/160000 steps, respectively (0.026667 s at the declared SI inputs).
+uses 50000/112500/200000 steps, respectively (0.033333 s at the declared SI inputs).
 The shorter 0.005333 s and 0.016 s campaigns retained an unsettled 100° droplet;
 that failed settling gate does not establish convergence. Each reference
 must pass mass and angle gates; late angle change must be at most 0.2°, and
 angle error must decrease across mesh refinements. Unsupported inputs must
 reject with empty scientific output directories.
+Campaign 5 at 0.026667 s, with the corrected fixed initial geometry, passed its
+mass/angle/late-change checks and 100° refinement; its 90° coarse error was
+non-monotonic while the last-quarter angle drift remained 0.16975°. Those
+failed original bytes remain retained. The current campaign uses the existing
+finest-grid step ceiling at equal physical duration without changing any gate.
 
 Exact worker lifecycle and native refinement qualification are pending. This static reference supplies part of
 the A1 feasibility foundation. Inlet spray momentum/drop sizes, 3D wetting,

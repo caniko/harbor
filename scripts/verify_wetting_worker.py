@@ -307,6 +307,23 @@ def main():
                     field = data / item["path"]
                     check = bridge.assess_field(spec, field.read_bytes())
                     assert check == item["check"] and checksum(field) == item["sha256"]
+                    manifest = next(
+                        v
+                        for v in records
+                        if v["path"] == f"stages/wetting/{item['path']}"
+                    )
+                    assert math.isclose(
+                        manifest["time_s"], item["time_s"], rel_tol=1e-12, abs_tol=1e-18
+                    )
+                    assert (
+                        manifest["units"]
+                        == "x_m:m,y_m:m,material:1,phi:1,u_lattice:1,v_lattice:1"
+                    )
+                    assert manifest["association"] == "native_lattice_point"
+                    assert (
+                        "lattice_velocity * spacing_m / physical_step_s"
+                        in manifest["provenance"]
+                    )
                     rechecked.append({**item, "check": check})
                 checks = bridge.verify(spec, rechecked)
                 assert (
