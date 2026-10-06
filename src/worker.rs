@@ -537,11 +537,15 @@ fn dispatch(
                     "standalone presentation requires authoritative admission".into(),
                 ));
             }
-            if (plan.fem.is_some() || plan.thermal.is_some() || plan.cad_source.is_some())
+            if (plan.fem.is_some()
+                || plan.thermal.is_some()
+                || plan.cad_source.is_some()
+                || plan.wetting.is_some())
                 && authority.is_none()
             {
                 return Err(Error::Unqualified(
-                    "CPU FEM submission requires authoritative same-user admission".into(),
+                    "CPU native recipe submission requires authoritative same-user admission"
+                        .into(),
                 ));
             }
             if authority.is_none()
@@ -2032,6 +2036,37 @@ mod tests {
             corrupted[field] = value;
             assert!(validate_native_receipt(flow, &corrupted).is_err());
         }
+    }
+
+    #[test]
+    fn wetting_submission_requires_shared_authority_before_runtime_resolution() {
+        let spec=serde_json::from_value(serde_json::json!({"schema_version":1,"synthetic":true,"backend":"cpu","formulation":"well_balanced_contact_angle_2d","diameter_m":48e-6,"initial_center_above_wall_m":0.,"resolution":24,"interface_width_m":6e-6,"density_liquid_kg_m3":1000.,"density_vapor_kg_m3":1000.,"viscosity_liquid_m2_s":1e-6,"viscosity_vapor_m2_s":1e-6,"surface_tension_n_m":1e-4,"contact_angle_deg":90.,"phase_relaxation_time":1.,"steps":100,"observation_steps":[0,100],"mass_tolerance":1e-3,"angle_tolerance_deg":5.,"material_provenance":"synthetic","boundary_provenance":"planar"})).unwrap();
+        let plan = ExecutionPlan::wetting_reference(spec, "research".into()).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let store = crate::storage::Store::open(&root.path().join("state")).unwrap();
+        let profile = crate::contracts::HostExecutionProfile {
+            schema_version: 1,
+            policy: "research".into(),
+            allowed_input_root: root.path().to_str().unwrap().into(),
+            max_ram_bytes: 2 * 1024 * 1024 * 1024,
+            max_disk_bytes: 2 * 1024 * 1024 * 1024,
+            threads: 1,
+            timeout_seconds: 30,
+            native_runtime: None,
+            service_mode: "systemd".into(),
+        };
+        let request = crate::contracts::Operation::Submit {
+            approved_digest: plan.id().unwrap(),
+            plan: Box::new(plan),
+            idempotency_key: "no-authority".into(),
+        };
+        let error = super::dispatch(&store, &profile, None, request).unwrap_err();
+        assert!(
+            matches!(error, crate::Error::Unqualified(_))
+                && error.to_string().contains("authoritative"),
+            "{error}"
+        );
+        assert!(store.active().unwrap().is_empty());
     }
 
     #[test]
