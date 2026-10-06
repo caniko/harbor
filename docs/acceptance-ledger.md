@@ -46,7 +46,7 @@ lease bypass or resource override was used.
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
 | §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1/v2 plans and original approval compatibility tested; recipe-specific contracts pending |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
-| §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs` | channel SI/identity/rejection tests; thermal/contact/optical units/materials pending |
+| §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; native contact/optical execution pending |
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
 | §4 allocated solver resources, unresolved paths | `src/estimates.rs`, `adapters/openlb_channel.cpp` | channel allocation/Mach/model gates; other formulations and local-gap resolution gates pending |
 | §5 cold start and expansion/contact | recipe contracts and native FEM adapters | transient history, heater energy, contact data, conservative temperature transfer pending |
@@ -73,7 +73,7 @@ lease bypass or resource override was used.
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |
 | P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | implemented, CPU verified; packaged qualification next |
 | P1b | independent registered-frame video plans, lifecycle and source mutation rejection | implemented; CPU tests pass; packaged lifecycle qualification pending |
-| P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | scalar transfer/unit foundation implemented and locally tested; native recipe/mesh execution and stage isolation pending |
+| P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation implemented; CLI/MCP/schema CPU gates pass; native recipe/mesh execution and stage isolation pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | pending |
 | P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | pending |
 | P5 / C | native thermal/contact/moisture/coupling slice | pending |

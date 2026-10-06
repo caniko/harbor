@@ -14,10 +14,45 @@ def binary() -> str:
     return os.environ["HARBOR_CAD_TEST_BINARY"]
 
 
+def cold_inputs():
+    missing = {
+        "availability": "missing",
+        "reason": "physical input unavailable in this synthetic contract fixture",
+    }
+    return {
+        "schema_version": 1,
+        "synthetic": True,
+        "geometry_sha256": "a" * 64,
+        "thermal_region": "enclosure",
+        "material": {
+            key: dict(missing) for key in ("density", "conductivity", "specific_heat")
+        },
+        "minimum_valid_temperature": {"value": 200, "unit": "K"},
+        "maximum_valid_temperature": {"value": 400, "unit": "K"},
+        "initial_temperature": {"value": -40, "unit": "degC"},
+        "duration": {"value": 1, "unit": "h"},
+        "history_interpolation": "piecewise_linear",
+        "ambient_history": dict(missing),
+        "heater_history": dict(missing),
+        "convection_coefficient": dict(missing),
+        "observation_times": [{"value": 0, "unit": "s"}, {"value": 1, "unit": "h"}],
+        "numerical_tolerance": 0.01,
+        "moisture": {
+            "assessment": "missing",
+            "reason": "humidity and surface history missing",
+        },
+    }
+
+
 def test_schema_parity_and_unknown_input_rejection():
     schemas = json.loads(subprocess.check_output([binary(), "schema"]))
     case = json.loads(subprocess.check_output([binary(), "case", "init"]))
     Draft202012Validator(schemas["CaseSpec"]).validate(case)
+    cold = cold_inputs()
+    Draft202012Validator(schemas["ColdRestartSpec"]).validate(cold)
+    cold["heater_history"]["value"] = []
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schemas["ColdRestartSpec"]).validate(cold)
     planned = json.loads(
         subprocess.check_output(
             [binary(), "case", "plan", "/dev/stdin"], input=json.dumps(case).encode()
@@ -60,6 +95,13 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
             )
         )
 
+        expected_cold = json.loads(
+            subprocess.check_output(
+                [binary(), "case", "validate-cold-restart", "/dev/stdin"],
+                input=json.dumps(cold_inputs()).encode(),
+            )
+        )
+
         async def check():
             params = StdioServerParameters(
                 command=str(Path(os.sys.executable)),
@@ -71,6 +113,18 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "job_submit" in names and "results_describe" in names
                 assert "case_plan_openlb_reference" in names
                 assert "cad_plan_inspection" in names
+                assert "cold_restart_validate" in names
+                cold = cold_inputs()
+                checked = await client.call_tool(
+                    "cold_restart_validate", {"case": cold}
+                )
+                assert not checked.is_error, checked
+                report = checked.structured_content
+                assert report["inputs_complete"] is False
+                assert report["prescribed_heater_energy_j"] is None
+                assert report["execution"] == "not_requested"
+                assert report["physical_validation"] == "unqualified"
+                assert report == expected_cold
                 assert not any(x in names for x in ("shell", "python", "install"))
                 # CI cannot implicitly turn a reference into an unsandboxed
                 # native job. Planning rejection is returned by the same worker.
@@ -148,6 +202,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" not in names and "results_describe" in names
                 assert "cad_plan_inspection" not in names
+                assert "cold_restart_validate" not in names
                 assert {"render_plan", "video_plan", "presentation_submit"}.issubset(
                     names
                 )

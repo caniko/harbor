@@ -1185,6 +1185,9 @@ pub enum Operation {
     PlanPresentation {
         request: Box<PresentationRequest>,
     },
+    ValidateColdRestart {
+        case: Box<crate::recipes::ColdRestartSpec>,
+    },
     PlanVideo {
         request: Box<VideoRequest>,
     },
@@ -1239,5 +1242,7 @@ pub fn schemas() -> serde_json::Value {
         "VideoRequest": schemars::schema_for!(VideoRequest),
         "ConservativeTransfer": schemars::schema_for!(crate::transfers::ConservativeTransfer),
         "TransferReceipt": schemars::schema_for!(crate::transfers::TransferReceipt),
+        "ThermalMaterial": schemars::schema_for!(crate::materials::ThermalMaterial),
+        "ColdRestartSpec": schemars::schema_for!(crate::recipes::ColdRestartSpec),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
 }

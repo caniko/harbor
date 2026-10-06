@@ -71,6 +71,15 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"simulation", "all"}:
 
         @server.tool()
+        async def cold_restart_validate(case: dict[str, Any]) -> dict[str, Any]:
+            """Validate cold-restart histories and material ranges, preserving missing inputs.
+
+            Returns prescribed heater energy and bounded moisture screening only;
+            does not launch a transient solver or infer boot reliability.
+            """
+            return await request("validate_cold_restart", case=case)
+
+        @server.tool()
         async def job_submit(
             plan: dict[str, Any], approved_digest: str, idempotency_key: str
         ) -> dict[str, Any]:

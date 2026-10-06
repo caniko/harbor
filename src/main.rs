@@ -89,6 +89,10 @@ enum Case {
     ValidateTransfer {
         file: PathBuf,
     },
+    /// Inspect cold-restart units, property ranges, histories and missing inputs.
+    ValidateColdRestart {
+        file: PathBuf,
+    },
     Plan {
         file: PathBuf,
     },
@@ -243,6 +247,10 @@ fn run(cli: Cli) -> Result<()> {
             Case::Plan { file } => {
                 let plan = ExecutionPlan::reference(read(&file)?)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Case::ValidateColdRestart { file } => {
+                let case: harbor_cad::recipes::ColdRestartSpec = read(&file)?;
+                return print(&case.inspect()?);
             }
             Case::PlanOpenlbReference { file, policy } => {
                 let plan = ExecutionPlan::openlb_reference(read(&file)?, policy)?;

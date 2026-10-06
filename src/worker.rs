@@ -464,6 +464,7 @@ fn dispatch(
             let plan = crate::presentation::plan(store, *request, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::ValidateColdRestart { case } => case.inspect(),
         Operation::PlanVideo { request } => {
             if authority.is_none() {
                 return Err(Error::Unqualified(
