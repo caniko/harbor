@@ -266,7 +266,7 @@ def mesh(spec):
         gmsh.finalize()
 
 
-def deck(spec, nodes, cells, sets):
+def mesh_deck(nodes, cells, sets):
     lines = ["*HEADING", "Harbor synthetic CPU reference; SI units", "*NODE,NSET=NALL"]
     lines += [
         str(tag) + "," + ",".join(f"{x:.17g}" for x in xyz)
@@ -281,6 +281,11 @@ def deck(spec, nodes, cells, sets):
         lines += [
             ",".join(map(str, values[i : i + 16])) for i in range(0, len(values), 16)
         ]
+    return lines
+
+
+def deck(spec, nodes, cells, sets):
+    lines = mesh_deck(nodes, cells, sets)
     lines += ["*MATERIAL,NAME=SOLID"]
     t0, t1 = spec["temperatures_k"]
     if spec["mode"] == "thermal_boundary":

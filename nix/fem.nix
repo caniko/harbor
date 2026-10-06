@@ -20,7 +20,7 @@
   closure = pkgs.closureInfo {rootPaths = [adapter];};
 in {
   fem-cpu = adapter;
-  inherit gmsh calculix;
+  inherit gmsh calculix bridge;
   runtime-fem-cpu = pkgs.writeText "harbor-cad-fem-reference-runtime.json" (builtins.toJSON {
     schema_version = 1;
     bwrap = "${pkgs.bubblewrap}/bin/bwrap";

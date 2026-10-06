@@ -134,6 +134,7 @@
     native = import ./nix/native.nix {inherit pkgs cudaPkgs inputs;};
     filters = import ./nix/filters.nix {inherit pkgs;};
     fem = import ./nix/fem.nix {inherit pkgs;};
+    thermal = import ./nix/thermal.nix {inherit pkgs fem;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
       projectRootFile = "flake.nix";
       programs.rustfmt = {
@@ -163,6 +164,7 @@
       inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda openlb-hip runtime-cuda runtime-hip;
       inherit (filters) kokkos-hip vtk-hip filter-hip;
       inherit (fem) fem-cpu runtime-fem-cpu runtime-fem-worker;
+      inherit (thermal) thermal-cpu runtime-thermal-cpu;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
         cad = null;
