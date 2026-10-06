@@ -42,6 +42,11 @@ released. See [scoped P1 evidence](evidence/standalone-presentation.json).
 Version-4 source-bound HIP gradient contracts/CLI/MCP pass the CPU gate; their
 separate native build and hardware qualification remain in progress.
 
+Job-scoped `qualify --job` and results-profile MCP `qualification_report` now
+inspect checksummed historical receipts and immutable execution/device/source
+identities. They distinguish recorded execution from reported numerical checks
+and leave current-runtime qualification/physical validation unpromoted.
+
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
 | §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |

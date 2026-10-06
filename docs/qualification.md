@@ -4,6 +4,32 @@ Recorded on 2026-10-05. The implementation remains pre-qualification.
 Source availability, package builds, execution, numerical checks, convergence
 and physical validation are independent gates.
 
+## Inspect one historical job
+
+`harbor-cad --socket <worker.sock> qualify --job <job-id>` and the
+`qualification_report` MCP tool in `results`/`all` return a versioned
+`JobEvidenceReport`. The worker uses the recorded immutable plan, runner/runtime
+file hashes, authorization digest, requested and observed device identities,
+receipt-declared source revisions, and checksummed registered receipts.
+Inspection performs no solve or database updates. It can inspect an old runner's
+evidence even if that runtime closure has since been collected.
+
+Execution is `recorded` only for a succeeded, exit-zero job with an execution
+binding and a matching stage receipt. Native stages additionally require their
+bound executable and runtime manifest. A foreign stage receipt cannot add a
+capability to the original plan. Numerical `reported_pass`/`reported_fail` states
+retain the exact error, approved tolerance, reference and field scope; changed
+receipt bytes or a claimed pass above that tolerance fail inspection. Filters
+without their own numerical-reference record remain `not_assessed` here, even
+if a separate exact-package qualifier has passed.
+
+This is historical job evidence. It does not transfer qualification to the
+current CLI/native package, another formulation, precision, refinement, device
+or host, and cannot establish physical validation. Unscoped `qualify` and
+`backend list` retain their conservative default status until an explicit
+applicable evidence scope is selected. The report schema is available through
+`harbor-cad schema`; scientific arrays remain artifact-only.
+
 ## Actual OpenLB CPU reference
 
 The real OpenLB 1.9.0 driver was compiled with GCC 15.3.0 against revision

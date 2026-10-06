@@ -10,6 +10,7 @@ pub mod frames;
 pub mod lifecycle;
 pub mod materials;
 pub mod presentation;
+pub mod qualification;
 pub mod recipes;
 pub mod resources;
 pub mod retention;

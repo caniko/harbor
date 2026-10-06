@@ -152,6 +152,11 @@ def build_server(profile: str) -> MCPServer:
             return await request("describe", job_id=job_id)
 
         @server.tool()
+        async def qualification_report(job_id: str) -> dict[str, Any]:
+            """Inspect historical job evidence bound to its exact source/runtime/device; never promote qualification."""
+            return await request("qualification_report", job_id=job_id)
+
+        @server.tool()
         async def artifact_list(
             job_id: str, after: str | None = None, limit: int = 20
         ) -> dict[str, Any]:

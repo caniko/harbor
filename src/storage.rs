@@ -894,6 +894,25 @@ impl Store {
             .query_map([], |r| r.get(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?)
     }
+    pub(crate) fn artifact_record(&self, id: &str, path: &str) -> Result<Option<ArtifactManifest>> {
+        self.job(id)?;
+        safe_path(&self.job_dir(id)?, path)?;
+        let data: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT manifest FROM artifacts WHERE job=?1 AND path=?2",
+                params![id, path],
+                |r| r.get(0),
+            )
+            .optional()?;
+        data.map(|data| {
+            if data.len() > 16384 {
+                return Err(invalid("artifact descriptor exceeds 16 KiB"));
+            }
+            Ok(serde_json::from_str(&data)?)
+        })
+        .transpose()
+    }
     pub fn artifacts(&self, id: &str) -> Result<Vec<ArtifactManifest>> {
         self.job(id)?;
         let mut stmt = self

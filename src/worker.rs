@@ -630,6 +630,9 @@ fn dispatch(
             after.as_deref(),
             limit,
         )?)?),
+        Operation::QualificationReport { job_id } => Ok(serde_json::to_value(
+            crate::qualification::inspect(store, &job_id)?,
+        )?),
         Operation::Describe { job_id } => {
             let plan = store.plan(&job_id)?;
             let binding = match store.execution_binding(&job_id) {
@@ -784,6 +787,7 @@ pub fn backends() -> serde_json::Value {
         {"adapter":"openlb","backend":"hip","runtime":"unqualified","priority":"primary","precision":"float64","formulation":"periodic_forced_channel","reason":"compiler/model/hardware and KFD sandbox qualification required","decision_evidence":"docs/gpu-backends.md"},
         {"adapter":"openlb","backend":"cuda","runtime":"unqualified","priority":"best_effort","precision":"float64","formulation":"periodic_forced_channel"},
         {"adapter":"openlb","backend":"vulkan","runtime":"unsupported","reason":"no Vulkan backend in pinned OpenLB; Float64 and workload performance require separate evidence","decision_evidence":"docs/gpu-backends.md"},
+        {"adapter":"viskores","backend":"hip","runtime":"unqualified","precision":"float64","operation":"image_data_point_gradient","scope":"physVelocity/physPressure; one retained time/shard","reference_evidence":"docs/numerical-filters.md"},
         {"adapter":"paraview","backend":"egl","runtime":"unqualified"},
         {"adapter":"ffmpeg","backend":"vaapi","runtime":"unqualified"}
     ])
@@ -793,6 +797,7 @@ pub fn doctor() -> Result<serde_json::Value> {
         serde_json::json!({"schema_version":1,"devices":devices::inventory()?,"fleetix_revision":FLEETIX_REV,
         "fleetix_contract_digest":fleetix_digest(),"backends":backends(),
         "hardware_qualification":"unqualified: inventory is not execution evidence",
+        "historical_evidence_query":"qualify --job JOB_ID through the owning worker; source/runtime/device scope remains immutable",
         "driver_boundary":"read-only; no driver installation or host activation",
         "service_guarantees":{"systemd":"tracked cgroup and invocation; no automatic logout/boot resume", "foreground":"CI-only; worker restart interrupts jobs"}}),
     )

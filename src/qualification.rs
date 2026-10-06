@@ -1,0 +1,369 @@
+//! Read-only, source/execution/device-scoped historical evidence, never promotion.
+use crate::{
+    Error, Result,
+    contracts::*,
+    execution::ExecutionBinding,
+    storage::{Store, safe_path},
+};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceState {
+    NotObserved,
+    NotAssessed,
+    Recorded,
+    ReportedPass,
+    ReportedFail,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceRecord {
+    pub path: String,
+    pub sha256: String,
+    pub bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NumericalEvidence {
+    pub reference: String,
+    pub scope: String,
+    pub error_kind: String,
+    pub error: f64,
+    pub tolerance: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityEvidence {
+    pub stage_id: String,
+    pub operation: StageOperation,
+    pub formulation: String,
+    pub dimensions: u8,
+    pub precision: Option<String>,
+    pub refinement: u32,
+    pub backend: String,
+    pub requested_device: Option<GpuSelection>,
+    pub observed_device: BTreeMap<String, String>,
+    pub declared_source_revisions: BTreeMap<String, String>,
+    pub evidence: Option<EvidenceRecord>,
+    pub runtime_execution: EvidenceState,
+    pub numerical_verification: EvidenceState,
+    pub numerical_evidence: Option<NumericalEvidence>,
+    pub convergence: String,
+    pub physical_validation: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JobEvidenceReport {
+    pub schema_version: u32,
+    pub scope: String,
+    pub job_id: String,
+    pub job_state: String,
+    pub science_id: String,
+    pub execution_id: String,
+    pub execution_binding: Option<ExecutionBinding>,
+    pub authorization_digest: Option<String>,
+    pub capabilities: Vec<CapabilityEvidence>,
+    pub current_runtime_qualification: EvidenceState,
+    pub physical_validation: String,
+}
+
+fn optional_text(value: &Value, key: &str) -> Result<Option<String>> {
+    if value.get(key).is_none_or(Value::is_null) {
+        return Ok(None);
+    }
+    let text = value[key]
+        .as_str()
+        .filter(|s| !s.is_empty() && s.len() <= 1024)
+        .ok_or_else(|| invalid("bounded evidence text required"))?;
+    Ok(Some(text.into()))
+}
+
+fn receipt(store: &Store, id: &str, path: &str) -> Result<Option<(EvidenceRecord, Value)>> {
+    let Some(record) = store.artifact_record(id, path)? else {
+        return Ok(None);
+    };
+    if record.format != "json"
+        || record.path != path
+        || record.bytes == 0
+        || record.bytes > 256 * 1024
+    {
+        return Err(invalid("bounded registered JSON evidence required"));
+    }
+    let data = crate::worker::read_bounded(&safe_path(&store.job_dir(id)?, path)?, 256 * 1024)?;
+    if data.len() as u64 != record.bytes || format!("{:x}", Sha256::digest(&data)) != record.sha256
+    {
+        return Err(invalid("historical evidence differs from registered bytes"));
+    }
+    let value: Value = serde_json::from_slice(&data)?;
+    if !value.is_object() {
+        return Err(invalid("evidence object required"));
+    }
+    Ok(Some((
+        EvidenceRecord {
+            path: path.into(),
+            sha256: record.sha256,
+            bytes: record.bytes,
+        },
+        value,
+    )))
+}
+
+fn numerical(
+    value: &Value,
+    plan: &ExecutionPlan,
+    operation: &StageOperation,
+) -> Result<(EvidenceState, Option<NumericalEvidence>)> {
+    let (body, error_key, tolerance, reference, scope, error_kind, passed) = match operation {
+        StageOperation::ChannelReference => (
+            value,
+            "numerical_error",
+            plan.case.applicability.numerical_tolerance,
+            "analytical channel residual".into(),
+            "synthetic reference only".into(),
+            "relative_residual",
+            None,
+        ),
+        StageOperation::Openlb if value["numerical_verification"].is_object() => {
+            let body = &value["numerical_verification"];
+            let tolerance = body["tolerance"]
+                .as_f64()
+                .ok_or_else(|| invalid("numerical tolerance missing"))?;
+            if tolerance != plan.case.applicability.numerical_tolerance {
+                return Err(invalid(
+                    "receipt weakened or changed the approved numerical tolerance",
+                ));
+            }
+            (
+                body,
+                "relative_l2_error",
+                tolerance,
+                optional_text(body, "reference")?
+                    .ok_or_else(|| invalid("numerical reference missing"))?,
+                optional_text(body, "scope")?.ok_or_else(|| invalid("numerical scope missing"))?,
+                "relative_l2",
+                Some(
+                    body["passed"]
+                        .as_bool()
+                        .ok_or_else(|| invalid("numerical status missing"))?,
+                ),
+            )
+        }
+        _ => return Ok((EvidenceState::NotAssessed, None)),
+    };
+    let error = body[error_key]
+        .as_f64()
+        .filter(|x| x.is_finite() && *x >= 0.)
+        .ok_or_else(|| invalid("finite nonnegative numerical error required"))?;
+    if !tolerance.is_finite() || tolerance <= 0. {
+        return Err(invalid("positive finite numerical tolerance required"));
+    }
+    let pass = passed.unwrap_or(error <= tolerance);
+    if pass && error > tolerance {
+        return Err(invalid("numerical pass exceeds approved tolerance"));
+    }
+    Ok((
+        if pass {
+            EvidenceState::ReportedPass
+        } else {
+            EvidenceState::ReportedFail
+        },
+        Some(NumericalEvidence {
+            reference,
+            scope,
+            error_kind: error_kind.into(),
+            error,
+            tolerance,
+        }),
+    ))
+}
+
+pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
+    let job = store.job(id)?;
+    // Current validation rules may reject an old formulation; inspecting its
+    // immutable recorded evidence must neither rewrite nor relaunch that job.
+    let plan = store.recorded_plan(id)?;
+    let binding = match store.execution_binding(id) {
+        Ok(binding) => {
+            if binding.plan_digest != job.plan_digest {
+                return Err(invalid("historical binding/plan mismatch"));
+            }
+            Some(binding)
+        }
+        Err(Error::Unqualified(_)) => None,
+        Err(error) => return Err(error),
+    };
+    let authorization_digest = store
+        .execution_authorization(id)?
+        .as_ref()
+        .map(digest)
+        .transpose()?;
+    let mut capabilities = Vec::new();
+    for stage in &plan.stages {
+        let (path, adapter) = match stage.operation {
+            StageOperation::ChannelReference => ("validation.json", None),
+            StageOperation::CadFixture => ("cad_fixture-receipt.json", Some("FreeCAD")),
+            StageOperation::CadInspect => ("cad_inspect-receipt.json", Some("FreeCAD")),
+            StageOperation::Openlb => ("openlb-receipt.json", Some("OpenLB")),
+            StageOperation::NumericalFilter => (
+                "stages/filter/numerical_filter-receipt.json",
+                Some("Viskores"),
+            ),
+            StageOperation::Render => ("render-receipt.json", Some("ParaView")),
+            StageOperation::Video => ("video-receipt.json", Some("FFmpeg")),
+            StageOperation::Bundle => continue,
+        };
+        let loaded = receipt(store, id, path)?;
+        let operation_key = serde_json::to_string(&stage.operation)?;
+        let native_bound = binding.as_ref().is_some_and(|b| {
+            adapter.is_none()
+                || (b.native_runtime.is_some() && b.native_files.contains_key(&operation_key))
+        });
+        let mut capability = CapabilityEvidence {
+            stage_id: stage.id.clone(),
+            operation: stage.operation.clone(),
+            formulation: plan.case.applicability.formulation.clone(),
+            dimensions: plan.case.applicability.dimensionality,
+            precision: None,
+            refinement: plan.case.resolution,
+            backend: stage
+                .selection
+                .as_ref()
+                .map_or("cpu".into(), |s| s.backend.clone()),
+            requested_device: stage.selection.clone(),
+            observed_device: BTreeMap::new(),
+            declared_source_revisions: BTreeMap::new(),
+            evidence: None,
+            runtime_execution: EvidenceState::NotObserved,
+            numerical_verification: EvidenceState::NotAssessed,
+            numerical_evidence: None,
+            convergence: "not_assessed".into(),
+            physical_validation: "unqualified".into(),
+        };
+        if let Some((record, value)) = loaded {
+            capability.evidence = Some(record);
+            capability.precision = if adapter.is_none() {
+                Some("float64".into())
+            } else {
+                optional_text(&value, "precision")?
+            };
+            capability.convergence =
+                optional_text(&value, "convergence")?.unwrap_or_else(|| "not_assessed".into());
+            for key in ["source_revision", "viskores_revision", "kokkos_revision"] {
+                if let Some(text) = optional_text(&value, key)? {
+                    capability
+                        .declared_source_revisions
+                        .insert(key.into(), text);
+                }
+            }
+            for key in [
+                "pci",
+                "backend_uuid",
+                "architecture",
+                "compiled_architecture",
+            ] {
+                if let Some(text) = optional_text(&value, key)? {
+                    capability.observed_device.insert(key.into(), text);
+                }
+            }
+            let executed = if let Some(adapter) = adapter {
+                value["adapter"] == adapter
+                    && value["backend"] == capability.backend
+                    && value["executed"] == true
+                    && value["software_fallback"] == false
+            } else {
+                value["process"] == "succeeded"
+            };
+            if executed && native_bound && job.state == "succeeded" && job.exit_code == Some(0) {
+                if let Some(selection) = &stage.selection
+                    && (value["pci"] != selection.pci
+                        || selection
+                            .backend_uuid
+                            .as_ref()
+                            .is_some_and(|uuid| value["backend_uuid"] != *uuid))
+                {
+                    return Err(invalid(
+                        "historical receipt differs from the approved device",
+                    ));
+                }
+                capability.runtime_execution = EvidenceState::Recorded;
+                (
+                    capability.numerical_verification,
+                    capability.numerical_evidence,
+                ) = numerical(&value, &plan, &stage.operation)?;
+            }
+        }
+        capabilities.push(capability);
+    }
+    Ok(JobEvidenceReport {
+        schema_version: 1,
+        scope: "historical_job_evidence".into(),
+        job_id: job.id,
+        job_state: job.state,
+        science_id: plan.case.science_id()?,
+        execution_id: job.plan_digest,
+        execution_binding: binding,
+        authorization_digest,
+        capabilities,
+        current_runtime_qualification: EvidenceState::NotAssessed,
+        physical_validation: "unqualified".into(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scientific_pass_cannot_hide_exceeded_changed_missing_or_nonfinite_gates() {
+        let mut case = CaseSpec::reference();
+        case.length.value = 0.02;
+        case.resolution = 8;
+        case.acceleration.value = 0.001;
+        case.max_time_s = 20.;
+        case.applicability.formulation = "periodic_forced_channel".into();
+        let plan = ExecutionPlan::openlb_reference(case, "research".into()).unwrap();
+        let tolerance = plan.case.applicability.numerical_tolerance;
+        let good = serde_json::json!({"numerical_verification":{
+            "passed":true,"relative_l2_error":tolerance/2.,"tolerance":tolerance,
+            "reference":"analytical parallel plate velocity","scope":"velocity only; pressure unqualified"}});
+        let (state, evidence) = numerical(&good, &plan, &StageOperation::Openlb).unwrap();
+        assert!(matches!(state, EvidenceState::ReportedPass));
+        assert!(evidence.unwrap().scope.contains("pressure unqualified"));
+        for (key, value) in [
+            ("relative_l2_error", serde_json::json!(tolerance * 2.)),
+            ("relative_l2_error", serde_json::json!(-1.)),
+            ("relative_l2_error", Value::Null),
+            ("tolerance", serde_json::json!(tolerance * 2.)),
+            ("reference", Value::Null),
+            ("scope", Value::Null),
+        ] {
+            let mut changed = good.clone();
+            changed["numerical_verification"][key] = value;
+            assert!(numerical(&changed, &plan, &StageOperation::Openlb).is_err());
+        }
+        let mut failed = good;
+        failed["numerical_verification"]["relative_l2_error"] = serde_json::json!(tolerance * 2.);
+        failed["numerical_verification"]["passed"] = serde_json::json!(false);
+        assert!(matches!(
+            numerical(&failed, &plan, &StageOperation::Openlb)
+                .unwrap()
+                .0,
+            EvidenceState::ReportedFail
+        ));
+        assert!(matches!(
+            numerical(&failed, &plan, &StageOperation::NumericalFilter)
+                .unwrap()
+                .0,
+            EvidenceState::NotAssessed
+        ));
+    }
+}

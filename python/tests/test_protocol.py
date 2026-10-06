@@ -195,6 +195,21 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                     description["execution_binding"]
                 )
                 assert description["artifacts"]["next_after"] is None
+                evidence = (
+                    await client.call_tool(
+                        "qualification_report", {"job_id": job["id"]}
+                    )
+                ).structured_content
+                Draft202012Validator(schemas["JobEvidenceReport"]).validate(evidence)
+                assert evidence["execution_id"] == result["approval_digest"]
+                assert evidence["scope"] == "historical_job_evidence"
+                assert evidence["current_runtime_qualification"] == "not_assessed"
+                assert evidence["physical_validation"] == "unqualified"
+                assert evidence["capabilities"][0]["runtime_execution"] == "recorded"
+                assert (
+                    evidence["capabilities"][0]["numerical_verification"]
+                    == "reported_pass"
+                )
                 artifacts = await client.call_tool(
                     "artifact_list", {"job_id": job["id"], "limit": 1}
                 )
@@ -208,6 +223,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
             async with Client(build_server("results")) as client:
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" not in names and "results_describe" in names
+                assert "qualification_report" in names
                 assert "cad_plan_inspection" not in names
                 assert "cold_restart_validate" not in names
                 assert "filter_plan" not in names

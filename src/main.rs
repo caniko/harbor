@@ -72,7 +72,11 @@ enum Commands {
         #[command(subcommand)]
         command: Artifact,
     },
-    Qualify,
+    Qualify {
+        /// Inspect immutable historical evidence from a specific job.
+        #[arg(long)]
+        job: Option<String>,
+    },
 }
 #[derive(Subcommand)]
 enum Authority {
@@ -205,9 +209,10 @@ fn run(cli: Cli) -> Result<()> {
         } => {
             return print(&harbor_cad::devices::HipIdentity::resolve(&pci)?);
         }
-        Commands::Qualify => {
+        Commands::Qualify { job: Some(job_id) } => Operation::QualificationReport { job_id },
+        Commands::Qualify { job: None } => {
             return print(
-                &serde_json::json!({"qualified":false,"gates":{"A0":"partial","A1":"analytical-reference-only","B1":"unqualified","B2":"unqualified"},"doctor":worker::doctor()?}),
+                &serde_json::json!({"qualified":false,"scope":"no specific immutable job/runtime selected","gates":{"A0":"partial","A1":"analytical-reference-only","B1":"unqualified","B2":"unqualified"},"doctor":worker::doctor()?}),
             );
         }
         Commands::Schema { output } => {
