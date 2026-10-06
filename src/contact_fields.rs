@@ -92,7 +92,7 @@ pub(crate) fn parse_dat(text: &str) -> Result<Value> {
             "complete two-state native contact schedules required",
         ));
     }
-    let serialized = fields.into_iter().map(|(name,snapshots)| (name, snapshots.into_iter().map(|(time,values)| json!({"solver_step_parameter":time,"physical_time_s":null,"values":values.into_iter().map(|(id,value)| json!({"id":id,"value":value})).collect::<Vec<_>>()})).collect::<Vec<_>>())).collect::<BTreeMap<_,_>>();
+    let serialized = fields.into_iter().map(|(name,snapshots)| (name, snapshots.into_iter().map(|(time,values)| json!({"solver_step_parameter":f64::from(time),"physical_time_s":null,"values":values.into_iter().map(|(id,value)| json!({"id":id,"value":value})).collect::<Vec<_>>()})).collect::<Vec<_>>())).collect::<BTreeMap<_,_>>();
     Ok(
         json!({"schema_version":1,"static":true,"coordinate_unit":"m","fields":serialized,"units":{"displacement":"m","reaction_force":"N","stress":"Pa"}}),
     )
@@ -340,7 +340,8 @@ pub(crate) fn assess(spec: &ContactReferenceSpec, mesh: &Value, fields: &Value) 
                 .filter(|v| v.len() == 2)
                 .ok_or_else(|| invalid("two static contact states required"))?;
             if snapshots.iter().enumerate().any(|(i, s)| {
-                s["solver_step_parameter"] != (i + 1) || !s["physical_time_s"].is_null()
+                s["solver_step_parameter"].as_f64() != Some((i + 1) as f64)
+                    || !s["physical_time_s"].is_null()
             }) {
                 return Err(invalid("contact static states cannot infer physical time"));
             }
@@ -575,6 +576,14 @@ mod tests {
             );
         }
         let fields = parse_dat(&text).unwrap();
+        assert_eq!(
+            fields["fields"]["displacement"][0]["solver_step_parameter"],
+            json!(1.0)
+        );
+        assert_eq!(
+            fields["fields"]["displacement"][1]["solver_step_parameter"],
+            json!(2.0)
+        );
         assert_eq!(
             fields["fields"]["reaction_force"][1]["values"][0]["value"],
             json!([0., 0., -0.01])

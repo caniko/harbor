@@ -94,6 +94,16 @@ checks. Maximum normalized field/force/gap error is `0.0005404000000002998`;
 maximum pressure spread across n2/4/8 is `1.5085714270493817e-7`.
 See [exact native evidence](evidence/contact-native-cpu.json).
 
+The first exact packaged worker attempt, `contact-worker-1`, solves n8 native
+contact successfully but rejects the fields at the Rust DAT/JSON comparison:
+the native bridge retains solver parameters as Float64 (`1.0`, `2.0`), whereas
+the Rust parser emitted JSON integers. The corrected parser preserves native
+Float64 parameters and validates their numeric values without inventing physical
+time. Rechecking the original failed job's complete retained mesh/DAT/JSON/receipt
+passes the independent `0.002` field/force/gap gate with maximum normalized error
+`0.00017108571428569122`. This diagnostic does not supersede the preserved failed
+worker attempt; exact rebuilt worker/lifecycle qualification remains required.
+
 Version-10 `case plan-contact-reference` and simulation-profile MCP
 `case_plan_contact_reference` bind the independent SI recipe to a contact→bundle
 DAG. Approved submission uses the same durable worker, authority-backed shared
