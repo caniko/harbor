@@ -125,13 +125,15 @@ test("native Nix lock drift can be repaired through bootstrap before project exe
     t.diagnostic(`native lock fixture: ${args.join(" ")}`);
     return exec(nix, ["--debug", ...args], { cwd, env, timeout: 8_000 });
   };
-  // File inputs genuinely need a lock without exercising tarball unpacking.
-  // Local path inputs can already be treated as resolved. Stay offline here.
-  const beforeInput = path.join(cwd, "input-before.txt");
-  const afterInput = path.join(cwd, "input-after.txt");
-  await writeFile(beforeInput, "before\n");
-  await writeFile(afterInput, "after\n");
-  const definition = input => `{ inputs.fixture = { type = "file"; url = ${JSON.stringify(`file://${input}`)}; flake = false; }; outputs = _: {}; }`;
+  // Change an already-locked absolute path input. This exercises real lock
+  // drift without invoking a network fetcher inside the Nix sandbox.
+  const beforeInput = path.join(cwd, "input-before");
+  const afterInput = path.join(cwd, "input-after");
+  await mkdir(beforeInput);
+  await mkdir(afterInput);
+  await writeFile(path.join(beforeInput, "value"), "before\n");
+  await writeFile(path.join(afterInput, "value"), "after\n");
+  const definition = input => `{ inputs.fixture = { type = "path"; path = ${JSON.stringify(input)}; flake = false; }; outputs = _: {}; }`;
   await writeFile(path.join(cwd, "flake.nix"), definition(beforeInput));
   await native(["flake", "lock"]);
   await writeFile(path.join(cwd, "flake.nix"), definition(afterInput));
