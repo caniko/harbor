@@ -148,3 +148,18 @@ implementation: it needs the guarded native build, analytical/CPU comparison,
 sandbox and worker integration gates before being reported as qualified.
 The image preallocation check permits bounded signed extents: the retained
 OpenLB B1 image uses `-1 16 -1 10 -1 8`, which is a valid image index range.
+
+## Scoped native and worker qualification
+
+The process-lifetime/callback-name correction passes the exact native and
+packaged worker gates at `358fd57f7c0a9933aafe64db63af69de7b7c91ce`. Linear
+scalar/vector and quadratic interior analytical checks pass; boundary-inclusive
+CPU/HIP disagreement is zero on synthetic fixtures. Retained OpenLB gradients
+disagree by at most `3.885780586188048e-16` for velocity and
+`1.4199496293978212e-29` for pressure, below the unchanged `1e-10` gate.
+All 13 rejection cases emit no final output. CLI/MCP worker runs verify the
+selected single-KFD policy, source/time/units, independent CPU outputs, effective
+service limits/aggregate counters, worker restart/retry, forced death and
+cancellation. Original source hashes remain unchanged and all owned roots and
+reservations release. The [evidence manifest](evidence/numerical-filter-hip.json)
+binds the exact packages, device, raw-report paths/hashes and qualification limits.

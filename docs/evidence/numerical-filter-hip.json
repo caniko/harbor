@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "qualified_revision": "358fd57f7c0a9933aafe64db63af69de7b7c91ce",
+  "scope": "Float64 single-block identity-direction image point gradients on the observed single AMD KFD device; exact CLI/MCP/runtime only",
+  "runtime": "/nix/store/aaan4swd5dy5nwyapx10kflvqvxp6x75-harbor-cad-native-runtime.json",
+  "runtime_sha256": "78320e65e81a87c57e9cc7d657a5e1a3813ed4f329d4d561b4a6178e5aa0d9c6",
+  "cli": "/nix/store/9nh557zv2hbym7g7aj8pydak8xmgngx2-harbor-cad-0.1.0/bin/harbor-cad",
+  "mcp": "/nix/store/b9mvcladpzmkhh2wq5k3ap2jd87skwrj-harbor-cad-mcp/bin/harbor-cad-mcp",
+  "filter": "/nix/store/6q4ijcrnzvsp5q4csd3vvv90djz9acqa-harbor-cad-filter-hip-0.1.0/bin/harbor-cad-filter",
+  "device": {
+    "pci": "0000:03:00.0",
+    "backend_uuid": "GPU-37636635323964656134623333626164",
+    "architecture": "gfx1100",
+    "compiled_driver_runtime_hip_version": 70253211
+  },
+  "numerical_gate": 1e-10,
+  "analytical_scope": "linear scalar/vector gradient on all points; quadratic scalar/vector gradient on interior points; boundary-inclusive independent CPU/HIP parity",
+  "synthetic_cpu_hip_max_abs_disagreement": 0.0,
+  "retained_velocity_cpu_hip_max_abs_disagreement": 3.885780586188048e-16,
+  "retained_pressure_cpu_hip_max_abs_disagreement": 1.4199496293978212e-29,
+  "native_rejection_cases": 13,
+  "jobs": {
+    "cli_velocity": "1cd062dc-6c7f-43a5-80c5-a421f569e446",
+    "mcp_pressure": "511379c5-3724-41d3-908b-6ea4669fe76d",
+    "forced_death": "324dd7cb-cd12-4518-a89c-d008f1871987"
+  },
+  "hip_space_tracked_peaks_bytes": {"velocity": 1176064, "pressure": 392704},
+  "lifecycle": "CLI/MCP source-bound approvals, source mutation before/after acknowledgment, restart/retry with same invocation, complete-tree forced death/cancellation, source preservation and admission/runtime-root release passed",
+  "resource_scope": "effective owned-service kernel limits and aggregate process-tree RAM/CPU counters; native process RSS and post-initialization Kokkos HIPSpace allocations",
+  "source_state": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/native-hip-1/state",
+  "source_job": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+  "original_artifacts": "registered hashes unchanged",
+  "final_active_reservations": 0,
+  "final_active_runtime_retentions": 0,
+  "native_report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/filter-native-2/verification.json",
+  "native_report_sha256": "239e88cb2c0c154c29f18748383f09df7e47a1d9773890ba6dd2800ac92466b8",
+  "worker_report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/filter-worker-1/verification.json",
+  "worker_report_sha256": "c75227d57c333341baa98ca702977fa6f13a5662b1f860b69d2f1548040bcdb0",
+  "unqualified": ["instruction trace", "whole-card VRAM peak/headroom", "multi-GPU KFD exclusion", "ghost arrays", "nonidentity image directions", "broader topology/filter operations", "physical validation"]
+}

@@ -74,6 +74,15 @@ The CAD profile can submit its own inspection DAG and read durable status/logs;
 foreign plans and receipts reject. Ordinal face identities, controlled variants
 and imported-CAD/Gmsh correspondence remain pending.
 
+Exact revision `358fd57f7c0a9933aafe64db63af69de7b7c91ce` passes the guarded
+native B2 analytical/CPU-HIP gate and the separate packaged CLI/MCP worker gate.
+Both scalar/vector linear gradients, quadratic interior gradients, boundary
+CPU parity, retained velocity/pressure and 13 negative cases pass `1e-10`.
+Worker source mutations, restart/retry with unchanged invocation, selected
+single-KFD binding, effective controls/aggregate peaks, forced death and
+cancellation pass. Original source hashes are unchanged; reservations and
+runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter-hip.json).
+
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
 | §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |
@@ -116,7 +125,7 @@ and imported-CAD/Gmsh correspondence remain pending.
 | P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | complete at the recorded package/hardware scope; packaged mutation/lifecycle/exports pass |
 | P1b | independent registered-frame video plans, lifecycle and source mutation rejection | complete at the recorded package/hardware scope; CLI/MCP frame mutation, restart/retry and release pass |
 | P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation implemented; CLI/MCP/schema CPU gates pass; native recipe/mesh execution and stage isolation pending |
-| P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | source-bound v4 gradient/CLI/MCP and separate native candidate implemented; CPU gates pass; native build/reference/lifecycle/trace qualification pending |
+| P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | scoped v4 native/CLI/MCP analytical, CPU-HIP, byte/topology, source/lifecycle and aggregate RAM/CPU gates pass at the recorded revision; instruction trace, whole-card VRAM and broader filters pending |
 | P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | pending |
 | P5 / C | native thermal/contact/moisture/coupling slice | pending |
 | P6 / D | native local water, prescribed snow and retained-water freezing | pending |
@@ -129,8 +138,9 @@ and imported-CAD/Gmsh correspondence remain pending.
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.
   CUDA remains best-effort; available AMD work continues independently.
-- The separate compatible VTK/Viskores/Kokkos HIP filter candidate is implemented;
-  guarded build, actual kernel/reference and resource qualification are pending.
+- The compatible VTK/Viskores/Kokkos HIP filter passes scoped build, dispatch,
+  numerical/roundtrip, worker and resource gates; instruction traces, whole-card
+  VRAM and broader operations remain separate qualification work.
 - Real environmental claims need geometry, material/contact/wetting/optical data,
   operating histories, acceptance limits and prototype evidence. Synthetic native
   reference implementation can progress; missing physical inputs stay explicit.
