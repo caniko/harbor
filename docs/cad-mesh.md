@@ -112,4 +112,10 @@ isolation checks. Rust independently checks complete Cartesian nodes, cell
 coverage, all eight C3D8 Gauss Jacobians per cell, conserved volume and all six
 boundary node sets before publishing the stage. Geometric correspondence stays
 distinct from a field solve, convergence study or physical validation. The
-version-7 native worker/export/lifecycle gate is pending its committed package.
+version-7 native worker/export/lifecycle gate passed as `cad-mesh-worker-2`.
+[Exact worker evidence](evidence/cad-mesh-worker-cpu.json) binds build 22 packages
+and the independently captured qualifier. CLI and pinned MCP n8 jobs retained
+20 artifacts each and measured service-tree RAM peaks of `35950592` and
+`36261888` bytes. The failed launcher-only first attempt remains recorded;
+the fresh campaign passed all source mutations, restart/idempotency, export,
+forced-tree death, cancellation and final reservation/root release checks.
