@@ -23,7 +23,7 @@ For `dx = diameter / resolution`, the pinned converter gives
 thickness is held fixed across refinements. Native sampling is in SI world
 coordinates; raw lattice velocity remains labelled as lattice velocity.
 
-The supported bounds are n24–96, 100–100000 steps, at most 32 observations,
+The supported bounds are n24–96, 100–200000 steps, at most 32 observations,
 60–120° contact angle, at least three cells across the interface and lattice
 surface tension no greater than 0.02. Descriptors require distinct initial and
 final observations. Water–air property ratios and additional capability fields
@@ -48,8 +48,8 @@ angle error must be at most `5°`. Inputs can tighten these gates.
 
 `scripts/verify_wetting_cpu.py` exercises n24/36/48 at equal physical duration
 for 90° and 100° references. Each solve retains its original field bytes and
-uses 24000/54000/96000 steps, respectively (0.016 s at the declared SI inputs).
-The shorter initial 0.005333 s campaign retained an unsettled 100° droplet;
+uses 40000/90000/160000 steps, respectively (0.026667 s at the declared SI inputs).
+The shorter 0.005333 s and 0.016 s campaigns retained an unsettled 100° droplet;
 that failed settling gate does not establish convergence. Each reference
 must pass mass and angle gates; late angle change must be at most 0.2°, and
 angle error must decrease across mesh refinements. Unsupported inputs must

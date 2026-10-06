@@ -66,7 +66,7 @@ def validate(spec):
     rho, nu = spec["density_liquid_kg_m3"], spec["viscosity_liquid_m2_s"]
     if (
         not 24 <= n <= 96
-        or not 100 <= spec["steps"] <= 100000
+        or not 100 <= spec["steps"] <= 200000
         or not 0 < diameter <= 0.001
         or not 0 < rho <= 1e5
         or not 0 < nu <= 1
