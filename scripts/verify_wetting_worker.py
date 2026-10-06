@@ -54,7 +54,7 @@ def main():
         checksum(standalone) != reference["runtime_sha256"]
         or native["wetting"] != json.loads(standalone.read_text())["wetting"]
         or len(reference["results"]) != 6
-        or len(reference["rejections"]) != 10
+        or len(reference["rejections"]) != 12
         or len(reference["refinements"]) != 2
         or not all(v["passed"] for v in reference["refinements"])
     ):
@@ -97,7 +97,7 @@ def main():
                 "max_ram_bytes": 2 * 1024**3,
                 "max_disk_bytes": 2 * 1024**3,
                 "threads": 2,
-                "timeout_seconds": 500,
+                "timeout_seconds": 1300,
                 "native_runtime": str(runtime),
                 "service_mode": "systemd",
             }
@@ -277,7 +277,7 @@ def main():
                 worker = start(log)
                 assert submit(plan, key)["id"] == job["id"]
                 outcome = wait_job(
-                    str(binary), endpoint, job["id"], {"succeeded"}, timeout=510
+                    str(binary), endpoint, job["id"], {"succeeded"}, timeout=1310
                 )
                 assert outcome["invocation_id"] == running["invocation_id"]
                 wait_admission_release(state, job)

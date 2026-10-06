@@ -67,7 +67,7 @@ def validate(spec):
     rho, nu = spec["density_liquid_kg_m3"], spec["viscosity_liquid_m2_s"]
     if (
         not 24 <= n <= 96
-        or not 100 <= spec["steps"] <= 200000
+        or not 100 <= spec["steps"] <= 800000
         or spec["initial_center_above_wall_m"] != 0
         or not 0 < diameter <= 0.001
         or not 0 < rho <= 1e5
@@ -295,7 +295,7 @@ def main():
             ["@native@", "reference", sys.argv[2]],
             stdout=log,
             stderr=subprocess.STDOUT,
-            timeout=480,
+            timeout=1200,
             env={"HOME": "/home/worker", "LC_ALL": "C"},
             check=False,
         )

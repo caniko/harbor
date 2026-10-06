@@ -31,7 +31,7 @@ fn wetting_rejects_water_air_ratio_unresolved_interfaces_and_weakened_scientific
         ("surface_tension_n_m", serde_json::json!(0.072)),
         ("material_provenance", serde_json::json!(" ")),
         ("observation_steps", serde_json::json!([0, 160000, 160000])),
-        ("steps", serde_json::json!(200001)),
+        ("steps", serde_json::json!(800001)),
         ("resolution", serde_json::json!(true)),
     ] {
         let mut raw = reference();
@@ -45,6 +45,27 @@ fn wetting_rejects_water_air_ratio_unresolved_interfaces_and_weakened_scientific
     let mut raw = reference();
     raw["contact_line_model"] = serde_json::json!("injected");
     assert!(serde_json::from_value::<WettingReferenceSpec>(raw).is_err());
+}
+
+#[test]
+fn explicit_long_settling_budget_preserves_fields_materials_and_memory_admission() {
+    let spec: WettingReferenceSpec = serde_json::from_value(reference()).unwrap();
+    let short = ExecutionPlan::wetting_reference(spec.clone(), "research".into()).unwrap();
+    let mut long_spec = spec;
+    long_spec.steps = 800000;
+    long_spec.observation_steps = vec![0, 400000, 600000, 800000];
+    let long = ExecutionPlan::wetting_reference(long_spec.clone(), "research".into()).unwrap();
+    assert_ne!(short.id().unwrap(), long.id().unwrap());
+    assert_eq!(short.stages[0].ram_bytes, long.stages[0].ram_bytes);
+    assert_eq!(
+        short.observation.max_artifact_bytes,
+        long.observation.max_artifact_bytes
+    );
+    assert_eq!(long.observation.retained_times_s, long_spec.times_s());
+    assert!((long_spec.times_s()[3] - 2. / 15.).abs() < 1e-12);
+    long_spec.steps = 800001;
+    long_spec.observation_steps[3] = 800001;
+    assert!(long_spec.validate().is_err());
 }
 
 #[test]

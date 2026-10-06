@@ -30,7 +30,7 @@ For `dx = diameter / resolution`, the pinned converter gives
 thickness is held fixed across refinements. Native sampling is in SI world
 coordinates; raw lattice velocity remains labelled as lattice velocity.
 
-The supported bounds are n24–96, 100–200000 steps, at most 32 observations,
+The supported bounds are n24–96, 100–800000 steps, at most 32 observations,
 60–120° contact angle, at least three cells across the interface and lattice
 surface tension no greater than 0.02. Descriptors require distinct initial and
 final observations. Water–air property ratios and additional capability fields
@@ -73,7 +73,7 @@ angle error must be at most `5°`. Inputs can tighten these gates.
 
 `scripts/verify_wetting_cpu.py` exercises n24/36/48 at equal physical duration
 for 90° and 100° references. Each solve retains its original field bytes and
-uses 50000/112500/200000 steps, respectively (0.033333 s at the declared SI inputs).
+uses 200000/450000/800000 steps, respectively (0.133333 s at the declared SI inputs).
 The shorter 0.005333 s and 0.016 s campaigns retained an unsettled 100° droplet;
 that failed settling gate does not establish convergence. Each reference
 must pass mass and angle gates; late angle change must be at most 0.2°, and
@@ -82,8 +82,15 @@ reject with empty scientific output directories.
 Campaign 5 at 0.026667 s, with the corrected fixed initial geometry, passed its
 mass/angle/late-change checks and 100° refinement; its 90° coarse error was
 non-monotonic while the last-quarter angle drift remained 0.16975°. Those
-failed original bytes remain retained. The current campaign uses the existing
-finest-grid step ceiling at equal physical duration without changing any gate.
+failed original bytes remain retained. Campaign 6 at 0.033333 s failed its late
+angle-change gate. A bounded n24 diagnostic at 200000 steps approaches 89.4073°
+with a last-interval change of 0.002318°; horizontal and two-direction contour
+fits both confirm the drift, while independent analytical controls bound the
+coarse estimator error to about 0.1°. The current campaign explicitly extends
+the step ceiling to 800000 and the adapter deadline to 1200 s, with 1300 s
+worker jobs, while preserving cell/snapshot/memory and every scientific gate.
+Phase relaxation time is an explicit lattice numerical parameter; the reference
+qualifies static angle/mass, not physical phase mobility or wetting kinetics.
 
 Exact worker lifecycle and native refinement qualification are pending. This static reference supplies part of
 the A1 feasibility foundation. Inlet spray momentum/drop sizes, 3D wetting,

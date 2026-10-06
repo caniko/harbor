@@ -143,7 +143,12 @@ def test_long_equilibrium_integration_requires_a_bounded_explicit_step_budget():
     assert bridge.validate(spec)["physical_step_s"] * spec["steps"] == pytest.approx(
         0.02666666666666667
     )
-    spec["steps"] = 200001
+    spec["steps"] = 800000
+    spec["observation_steps"] = [0, 400000, 600000, 800000]
+    assert bridge.validate(spec)["physical_step_s"] * spec["steps"] == pytest.approx(
+        2 / 15
+    )
+    spec["steps"] = 800001
     spec["observation_steps"][-1] = spec["steps"]
     with pytest.raises(ValueError):
         bridge.validate(spec)

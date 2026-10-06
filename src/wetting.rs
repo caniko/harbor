@@ -109,7 +109,7 @@ impl WettingReferenceSpec {
             || self.backend != "cpu"
             || self.formulation != "well_balanced_contact_angle_2d"
             || !(24..=96).contains(&self.resolution)
-            || !(100..=200000).contains(&self.steps)
+            || !(100..=800000).contains(&self.steps)
             || !positive(self.diameter_m)
             || self.diameter_m > 0.001
             || self.initial_center_above_wall_m != 0.

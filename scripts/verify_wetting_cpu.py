@@ -20,10 +20,10 @@ def checksum(path):
 def request(angle, n):
     # Hold physical duration fixed as dt scales with dx². The initial cap
     # requires this settling budget before comparing equilibrium angles.
-    # Campaign 5's n24 neutral-wall cap still drifted by 0.17 degrees in
-    # its final quarter. Use the already-supported n48 integration ceiling
-    # at equal physical duration; keep all mass/angle/settling/refinement gates.
-    steps = 50000 * n * n // (24 * 24)
+    # Original n24 diagnostic fields approach 89.407 degrees at 200000
+    # steps; earlier near-90 results were transient. Keep material/geometry
+    # inputs and every scientific gate fixed, with explicit equal-time runs.
+    steps = 200000 * n * n // (24 * 24)
     return {
         "schema_version": 1,
         "synthetic": True,
@@ -134,7 +134,7 @@ def main():
             "reference",
             "/inputs/request.json",
         ]
-        process = subprocess.run(argv, capture_output=True, timeout=500, check=False)
+        process = subprocess.run(argv, capture_output=True, timeout=1250, check=False)
         log = root / f"launch-{key}.log"
         log.write_bytes(process.stdout + process.stderr)
         return process, output, argv, log, request_path
@@ -235,6 +235,8 @@ def main():
         ("boundary_provenance", ""),
         ("observation_steps", [0, 0, base["steps"]]),
         ("resolution", True),
+        ("initial_center_above_wall_m", 1e-6),
+        ("steps", 800001),
     ):
         process, output, argv, log, _ = run(f"reject-{key}", {**base, key: value})
         if not process.returncode or list(output.iterdir()):
