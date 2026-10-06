@@ -229,6 +229,10 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::CadFixture => ("cad_fixture-receipt.json", Some("FreeCAD")),
             StageOperation::CadInspect => ("cad_inspect-receipt.json", Some("FreeCAD")),
             StageOperation::CadMesh => ("stages/mesh/cad-mesh-receipt.json", Some("Gmsh")),
+            StageOperation::FemImported => (
+                "stages/fem-imported/fem-imported-receipt.json",
+                Some("CalculiX"),
+            ),
             StageOperation::Openlb => ("openlb-receipt.json", Some("OpenLB")),
             StageOperation::NumericalFilter => (
                 "stages/filter/numerical_filter-receipt.json",
@@ -253,7 +257,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if let Some(source) = &plan.cad_source {
+            formulation: if let Some(spec) = &plan.imported_fem {
+                spec.formulation()
+            } else if let Some(source) = &plan.cad_source {
                 source.geometry.formulation.clone()
             } else {
                 plan.thermal.as_ref().map_or_else(
@@ -354,7 +360,31 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     ));
                 }
                 capability.runtime_execution = EvidenceState::Recorded;
-                if matches!(stage.operation, StageOperation::CadMesh) {
+                if matches!(stage.operation, StageOperation::FemImported) {
+                    for path in [
+                        "stages/fem-imported/mesh.json",
+                        "stages/fem-imported/reference.dat",
+                    ] {
+                        let record = store
+                            .artifact_record(id, path)?
+                            .ok_or_else(|| invalid("registered imported FEM output missing"))?;
+                        let observed = crate::storage::native_manifest(
+                            &store.job_dir(id)?,
+                            path,
+                            32 * 1024 * 1024,
+                            "verify historical imported FEM output",
+                        )?;
+                        if record.sha256 != observed.sha256 || record.bytes != observed.bytes {
+                            return Err(invalid("historical imported FEM output bytes changed"));
+                        }
+                    }
+                    capability.numerical_evidence = Some(crate::fem_imported::verify_receipt(
+                        &plan,
+                        &store.job_dir(id)?.join("stages/fem-imported"),
+                        &value,
+                    )?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                } else if matches!(stage.operation, StageOperation::CadMesh) {
                     let record = store
                         .artifact_record(id, "stages/mesh/mesh.json")?
                         .ok_or_else(|| invalid("registered imported mesh evidence missing"))?;

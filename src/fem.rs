@@ -120,6 +120,24 @@ pub fn verify_receipt(
         .fem
         .as_ref()
         .ok_or_else(|| invalid("approved FEM recipe required"))?;
+    verify_recipe_receipt(
+        spec,
+        value,
+        &digest(spec)?,
+        spec.formulation(),
+        crate::execution::FEM_SANDBOX_POLICY,
+        &[],
+    )
+}
+
+pub(crate) fn verify_recipe_receipt(
+    spec: &FemReferenceSpec,
+    value: &serde_json::Value,
+    request_digest: &str,
+    formulation: &str,
+    policy: &str,
+    extra_checks: &[&str],
+) -> Result<crate::qualification::NumericalEvidence> {
     spec.validate()?;
     let n = u64::from(spec.resolution);
     if value["schema_version"] != 1
@@ -130,8 +148,8 @@ pub fn verify_receipt(
         || value["software_fallback"] != false
         || value["synthetic"] != true
         || value["precision"] != "float64"
-        || value["request_sha256"] != digest(spec)?
-        || value["formulation"] != spec.formulation()
+        || value["request_sha256"] != request_digest
+        || value["formulation"] != formulation
         || value["calculix_version"] != "2.23"
         || value["gmsh_version"] != "4.15.2"
         || value["gmsh_source_sha256"]
@@ -157,11 +175,14 @@ pub fn verify_receipt(
         "network_namespace_isolated",
         "descriptor_readonly",
     ];
-    if sandbox["policy"] != crate::execution::FEM_SANDBOX_POLICY
+    if sandbox["policy"] != policy
         || sandbox["checks"]
             .as_object()
-            .is_none_or(|checks| checks.len() != names.len())
-        || names.iter().any(|name| sandbox["checks"][name] != true)
+            .is_none_or(|checks| checks.len() != names.len() + extra_checks.len())
+        || names
+            .iter()
+            .chain(extra_checks)
+            .any(|name| sandbox["checks"][name] != true)
     {
         return Err(invalid(
             "complete operation-specific CPU FEM sandbox evidence required",
@@ -227,6 +248,7 @@ impl ExecutionPlan {
             fem: Some(spec),
             thermal: None,
             cad_source: None,
+            imported_fem: None,
             source: None,
             frames: None,
             filter: None,

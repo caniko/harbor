@@ -170,7 +170,7 @@
       inherit (fem) fem-cpu runtime-fem-cpu runtime-fem-worker;
       inherit (thermal) thermal-cpu runtime-thermal-cpu runtime-thermal-worker;
       inherit (cadMesh) cad-mesh-cpu runtime-cad-mesh-cpu runtime-cad-mesh-worker;
-      inherit (femImported) fem-imported-cpu runtime-fem-imported-cpu;
+      inherit (femImported) fem-imported-cpu runtime-fem-imported-cpu runtime-fem-imported-worker;
       inherit (native) cad-mesh-fixtures runtime-cad-fixtures runtime-cad-only;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";

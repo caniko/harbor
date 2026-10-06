@@ -276,6 +276,117 @@ fn imported_mesh_plan_is_versioned_independent_and_cannot_be_injected_into_older
     assert!(store.submit(&plan, "unauthorized-mesh").is_err());
 }
 
+#[test]
+fn imported_static_fem_plan_binds_registered_geometry_and_explicit_material_boundary_provenance() {
+    use harbor_cad::fem_imported::ImportedFemSpec;
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    let id = archived_source(&store);
+    let (_, source) = harbor_cad::cad_source::source(&store, &id, "solid", 4, 1e-6).unwrap();
+    let spec:ImportedFemSpec=serde_json::from_value(serde_json::json!({"schema_version":1,"reference":{
+        "schema_version":1,"synthetic":true,"backend":"cpu","mode":"thermal_boundary","size_m":[0.02,0.01,0.01],"resolution":4,"geometry_tolerance_m":1e-6,
+        "temperatures_k":[293.15,303.15],"numerical_tolerance":1e-6,"conductivity_w_m_k":20.},"material_provenance":"controlled synthetic constant conductivity", "boundary_provenance":"prescribed world XMIN/XMAX temperatures; transverse adiabatic"})).unwrap();
+    let plan =
+        ExecutionPlan::fem_imported(source.clone(), spec.clone(), "research".into()).unwrap();
+    let raw = serde_json::to_value(&plan).unwrap();
+    assert_eq!(raw["schema_version"], 8);
+    assert_eq!(raw["stages"][0]["operation"], "fem_imported");
+    assert!(raw.get("case").is_none() && raw.get("fem").is_none() && raw.get("thermal").is_none());
+    assert!(plan.observation.retained_times_s.is_empty());
+    assert_eq!(
+        plan.id().unwrap(),
+        serde_json::from_value::<ExecutionPlan>(raw.clone())
+            .unwrap()
+            .id()
+            .unwrap()
+    );
+    for version in 1..=7 {
+        let mut old = raw.clone();
+        old["schema_version"] = serde_json::json!(version);
+        assert!(serde_json::from_value::<ExecutionPlan>(old).is_err());
+    }
+    let mut wrong = spec.clone();
+    wrong.reference.size_m[0] = 0.021;
+    assert!(ExecutionPlan::fem_imported(source.clone(), wrong, "research".into()).is_err());
+    let mut missing = spec.clone();
+    missing.material_provenance.clear();
+    assert!(ExecutionPlan::fem_imported(source.clone(), missing, "research".into()).is_err());
+    let mut wrong = source.clone();
+    wrong.geometry.synthetic = false;
+    assert!(ExecutionPlan::fem_imported(wrong, spec.clone(), "research".into()).is_err());
+    let mut changed = spec;
+    changed.reference.conductivity_w_m_k = Some(21.);
+    let changed = ExecutionPlan::fem_imported(source, changed, "research".into()).unwrap();
+    assert_ne!(plan.science_id().unwrap(), changed.science_id().unwrap());
+}
+
+#[test]
+fn imported_fem_receipt_checks_native_world_origin_schema_mesh_and_raw_field_binding() {
+    use harbor_cad::fem_imported::{ImportedFemSpec, descriptor, verify_receipt};
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    let id = archived_source(&store);
+    let (_, source) = harbor_cad::cad_source::source(&store, &id, "solid", 4, 1e-6).unwrap();
+    let spec:ImportedFemSpec=serde_json::from_value(serde_json::json!({"schema_version":1,"reference":{
+        "schema_version":1,"synthetic":true,"backend":"cpu","mode":"thermal_boundary","size_m":[0.02,0.01,0.01],"resolution":4,"geometry_tolerance_m":1e-6,
+        "temperatures_k":[293.15,303.15],"numerical_tolerance":1e-6,"conductivity_w_m_k":20.},"material_provenance":"controlled synthetic constant conductivity", "boundary_provenance":"prescribed world planes"})).unwrap();
+    let plan = ExecutionPlan::fem_imported(source, spec, "research".into()).unwrap();
+    let geometry = &plan.cad_source.as_ref().unwrap().geometry;
+    let root = temp.path().join("native");
+    std::fs::create_dir(&root).unwrap();
+    let mesh = commit_artifact(
+        &root,
+        "mesh.json",
+        &serde_json::to_vec(&cartesian_mesh(geometry)).unwrap(),
+        "json",
+        "binding fixture",
+    )
+    .unwrap();
+    let raw = commit_artifact(
+        &root,
+        "reference.dat",
+        b"retained raw static reference output",
+        "dat",
+        "binding fixture, not numerical qualification",
+    )
+    .unwrap();
+    // Keys and formulation are those emitted by the imported adapter, which
+    // differ from the historical synthetic/static receipt envelope.
+    let mut receipt = serde_json::json!({"schema_version":1,"adapter":"CalculiX","backend":"cpu","factorization":"SPOOLES","executed":true,
+        "software_fallback":false,"synthetic":true,"precision":"float64","request_sha256":digest(&descriptor(&plan).unwrap()).unwrap(),"formulation":"thermal_boundary",
+        "calculix_version":"2.23","gmsh_version":"4.15.2","calculix_source_sha256":"9c88385c10fb04f5dc6c4e98027a51bebdd8aee3920e05190d6c1dd08357d6e7",
+        "gmsh_source_sha256":"be3f66f225d27ba9fa014f07e83169285da8a051b0e8ab7103d88066b39bdd3e","brep_sha256":geometry.brep_sha256,
+        "region_name":geometry.region_name,"geometry_provenance":geometry.geometry_provenance,"source_unit":"mm","coordinate_unit":"m","scale_to_m":0.001,
+        "placement_translation_unit":"mm","source_transform":geometry.source_transform,"world_bounds_m":geometry.bounds_m,
+        "world_origin_m":[geometry.bounds_m[0],geometry.bounds_m[2],geometry.bounds_m[4]],"gap_healing":false,
+        "material_provenance":"controlled synthetic constant conductivity","boundary_provenance":"prescribed world planes","mesh_sha256":mesh.sha256,"native_field_sha256":raw.sha256,
+        "nodes":125,"elements":64,"physical_validation":"unqualified"});
+    receipt["sandbox"] = serde_json::json!({"policy":"harbor-cad-fem-imported-cpu-v1","checks":{"operation_closure_only":true,"no_gpu_nodes":true,"no_sysfs":true,"no_host_home":true,"no_session_bus":true,"no_worker_socket":true,"network_namespace_isolated":true,"descriptor_readonly":true,"source_brep_readonly":true,"named_source_only":true}});
+    receipt["numerical_verification"] = serde_json::json!({"temperature":{"passed":true,"normalized_max_abs_error":0.,"tolerance":1e-6,"reference":"linear temperature about explicit CAD XMIN","unit":"K","samples":125},
+            "heat_flux":{"passed":true,"normalized_max_abs_error":1e-12,"tolerance":1e-6,"reference":"Fourier flux","unit":"W/m2","samples":512}});
+    assert_eq!(verify_receipt(&plan, &root, &receipt).unwrap().error, 1e-12);
+    for (key, value) in [
+        ("world_origin_m", serde_json::json!([0., 0., 0.])),
+        (
+            "formulation",
+            serde_json::json!("imported_thermal_boundary"),
+        ),
+        ("mesh_sha256", serde_json::json!("b".repeat(64))),
+        ("material_provenance", serde_json::json!("")),
+        ("request_sha256", serde_json::json!("b".repeat(64))),
+    ] {
+        let mut changed = receipt.clone();
+        changed[key] = value;
+        assert!(verify_receipt(&plan, &root, &changed).is_err(), "{key}");
+    }
+    std::fs::write(
+        root.join("reference.dat"),
+        b"raw bytes corrupted after receipt",
+    )
+    .unwrap();
+    assert!(verify_receipt(&plan, &root, &receipt).is_err());
+}
+
 fn submit_mesh(
     store: &Store,
     source: harbor_cad::cad_source::CadSource,

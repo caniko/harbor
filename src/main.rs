@@ -72,6 +72,10 @@ enum Commands {
     Filter {
         request: PathBuf,
     },
+    /// Plan static synthetic FEM from an approved registered CAD solid.
+    FemImported {
+        request: PathBuf,
+    },
     Artifact {
         #[command(subcommand)]
         command: Artifact,
@@ -327,6 +331,9 @@ fn run(cli: Cli) -> Result<()> {
                 let plan = ExecutionPlan::b1(read(&file)?, read(&devices)?, policy)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
             }
+        },
+        Commands::FemImported { request } => Operation::PlanFemImported {
+            request: Box::new(read(&request)?),
         },
         Commands::Cad { command } => match command {
             Cad::Mesh { request } => Operation::PlanCadMesh {

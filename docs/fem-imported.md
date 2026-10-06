@@ -40,3 +40,26 @@ binds the package, CAD prerequisite, raw report and separate failure provenance.
 This initial allowlist supports controlled synthetic axis-aligned boxes; it
 does not qualify contact, preload, seals, production materials or imported
 whole-device environmental conclusions.
+
+## Durable imported references
+
+`harbor-cad --socket SOCKET fem-imported REQUEST.json` and simulation-profile
+MCP `fem_plan_imported` return a version-8 plan and approval digest. Requests
+contain `source_job`, `region_name` and `spec`; `spec` contains the independent
+FEM `reference`, `material_provenance`, `boundary_provenance` and version 1.
+Native geometry comes from the registered source, preserving original world
+bounds, BREP bytes and millimetre placement. Reference dimensions, resolution
+and geometric tolerance must agree exactly with source policy. Unknown
+provenance, non-synthetic source and contact injection reject.
+
+Use the same `job submit`/MCP `job_submit` for execution. Version 8 binds CAD,
+material, boundary and numerical identities without the prior fluid/static or
+thermal envelopes. Older plans reject injected imported recipes. Durable source
+staging, orphan recovery, immutable approval/idempotency, cgroup controls and
+closed exports reuse the source-bound worker path. Its dedicated
+`runtime-fem-imported-worker` exposes only the Gmsh/CalculiX operation closure
+and one retained read-only BREP; ten checks bind isolation. Native receipts bind
+mesh/raw field bytes and approved original world origin. Rust checks the native
+mesh independently, including every C3D8 Gauss-point orientation and volume,
+then enforces the unchanged static numerical gates. The exact packaged worker
+CLI/MCP/export/lifecycle gate remains pending.

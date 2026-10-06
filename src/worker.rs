@@ -174,6 +174,7 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
                 StageOperation::FemReference
                     | StageOperation::ThermalReference
                     | StageOperation::CadMesh
+                    | StageOperation::FemImported
             ) {
                 crate::sandbox::importer_mounts(
                     native.solver_closure(&stage.operation)?,
@@ -483,6 +484,15 @@ fn dispatch(
             let plan = crate::cad_source::plan(store, *request, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::PlanFemImported { request } => {
+            if authority.is_none() {
+                return Err(Error::Unqualified(
+                    "imported FEM requires authoritative admission".into(),
+                ));
+            }
+            let plan = crate::fem_imported::plan(store, *request, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanPresentation { request } => {
             if authority.is_none() {
                 return Err(Error::Unqualified(
@@ -575,9 +585,12 @@ fn dispatch(
                             StageOperation::FemReference
                                 | StageOperation::ThermalReference
                                 | StageOperation::CadMesh
+                                | StageOperation::FemImported
                         ) {
                             files.insert(
-                                if plan.cad_source.is_some() {
+                                if plan.imported_fem.is_some() {
+                                    "fem_imported_closure"
+                                } else if plan.cad_source.is_some() {
                                     "cad_mesh_closure"
                                 } else if plan.thermal.is_some() {
                                     "thermal_closure"
@@ -869,8 +882,8 @@ pub fn backends() -> serde_json::Value {
         {"adapter":"viskores","backend":"hip","runtime":"unqualified","precision":"float64","operation":"image_data_point_gradient","scope":"physVelocity/physPressure; one retained time/shard","reference_evidence":"docs/numerical-filters.md"},
         {"adapter":"calculix","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["thermal_boundary","free_expansion"],"factorization":"SPOOLES","scope":"synthetic static C3D8 Gmsh box; imported CAD/contact/transients separate","reference_evidence":"docs/fem-references.md"},
         {"adapter":"calculix_thermal","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["plane_wall_robin"],"factorization":"SPOOLES","plan_schema_version":6,"scope":"synthetic prescribed physical histories; constant properties; independent temperature/energy gates; exact job qualification required","reference_evidence":"docs/thermal-history.md"},
-        {"adapter":"gmsh_cad_mesh","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["imported_axis_aligned_box"],"scope":"named BREP/source-unit/world-placement correspondence; standalone qualifier; no solver or contact conclusion","reference_evidence":"docs/cad-mesh.md"},
-        {"adapter":"calculix_imported","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["thermal_boundary","free_expansion"],"factorization":"SPOOLES","scope":"controlled synthetic imported box with explicit world-origin analytical reference; standalone qualifier; imported worker integration pending","reference_evidence":"docs/fem-imported.md"},
+        {"adapter":"gmsh_cad_mesh","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["imported_axis_aligned_box"],"plan_schema_version":7,"scope":"named BREP/source-unit/world-placement correspondence; approved retained-source worker; no solver or contact conclusion; exact job qualification required","reference_evidence":"docs/cad-mesh.md"},
+        {"adapter":"calculix_imported","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["thermal_boundary","free_expansion"],"factorization":"SPOOLES","plan_schema_version":8,"scope":"controlled synthetic imported box with explicit world-origin analytical reference; approved retained-source worker; exact job qualification required","reference_evidence":"docs/fem-imported.md"},
         {"adapter":"paraview","backend":"egl","runtime":"unqualified"},
         {"adapter":"ffmpeg","backend":"vaapi","runtime":"unqualified"}
     ])
@@ -911,6 +924,10 @@ struct NativeRuntime {
     cad_mesh: Option<String>,
     #[serde(default)]
     cad_mesh_closure: Option<String>,
+    #[serde(default)]
+    fem_imported: Option<String>,
+    #[serde(default)]
+    fem_imported_closure: Option<String>,
 }
 impl NativeRuntime {
     fn solver_closure(&self, operation: &StageOperation) -> Result<&Path> {
@@ -918,6 +935,7 @@ impl NativeRuntime {
             StageOperation::FemReference => &self.fem_closure,
             StageOperation::ThermalReference => &self.thermal_closure,
             StageOperation::CadMesh => &self.cad_mesh_closure,
+            StageOperation::FemImported => &self.fem_imported_closure,
             _ => return Err(invalid("fixed CPU solver operation required for closure")),
         };
         selected
@@ -966,6 +984,9 @@ impl NativeRuntime {
             })?,
             StageOperation::CadMesh => self.cad_mesh.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU CAD mesh adapter absent from selected runtime".into())
+            })?,
+            StageOperation::FemImported => self.fem_imported.as_deref().ok_or_else(|| {
+                Error::Unqualified("CPU imported FEM adapter absent from selected runtime".into())
             })?,
             _ => return Err(invalid("not a native adapter operation")),
         };
@@ -1065,7 +1086,10 @@ fn native_stage(
         crate::sandbox::mount_importer(&mut command, runtime.importer_closure()?, Path::new(exe))?;
     } else if matches!(
         stage.operation,
-        StageOperation::FemReference | StageOperation::ThermalReference | StageOperation::CadMesh
+        StageOperation::FemReference
+            | StageOperation::ThermalReference
+            | StageOperation::CadMesh
+            | StageOperation::FemImported
     ) {
         let (closure_path, policy_variable, policy) = match stage.operation {
             StageOperation::FemReference => (
@@ -1082,6 +1106,11 @@ fn native_stage(
                 "/cad-mesh-runtime-closure.txt",
                 "HARBOR_CAD_CAD_MESH_POLICY",
                 crate::execution::CAD_MESH_SANDBOX_POLICY,
+            ),
+            StageOperation::FemImported => (
+                "/fem-imported-runtime-closure.txt",
+                "HARBOR_CAD_FEM_IMPORTED_POLICY",
+                crate::execution::FEM_IMPORTED_SANDBOX_POLICY,
             ),
             _ => return Err(invalid("fixed CPU descriptor operation required")),
         };
@@ -1105,7 +1134,10 @@ fn native_stage(
         let (root, _, _) = crate::fields::registered(store, id)?;
         command.args(["--ro-bind"]).arg(root).arg("/inputs/fields");
     }
-    if matches!(stage.operation, StageOperation::CadMesh) {
+    if matches!(
+        stage.operation,
+        StageOperation::CadMesh | StageOperation::FemImported
+    ) {
         let root = crate::cad_source::registered(store, id, plan)?;
         command
             .args(["--dir", "/inputs", "--ro-bind"])
@@ -1235,6 +1267,8 @@ fn native_stage(
             "thermal-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::CadMesh) {
             "cad-mesh-receipt.json".into()
+        } else if matches!(stage.operation, StageOperation::FemImported) {
+            "fem-imported-receipt.json".into()
         } else {
             format!("{op}-receipt.json")
         },
@@ -1256,6 +1290,8 @@ fn native_stage(
                 "native-thermal-request.json"
             } else if matches!(stage.operation, StageOperation::CadMesh) {
                 "native-cad-mesh-request.json"
+            } else if matches!(stage.operation, StageOperation::FemImported) {
+                "native-fem-imported-request.json"
             } else {
                 "native-plan.json"
             },
@@ -1264,15 +1300,20 @@ fn native_stage(
     command
         .arg("--")
         .arg(exe)
-        .arg(if matches!(stage.operation, StageOperation::FemReference) {
-            "reference"
-        } else if matches!(stage.operation, StageOperation::ThermalReference) {
-            "run"
-        } else if matches!(stage.operation, StageOperation::CadMesh) {
-            "mesh"
-        } else {
-            &op
-        })
+        .arg(
+            if matches!(
+                stage.operation,
+                StageOperation::FemReference | StageOperation::FemImported
+            ) {
+                "reference"
+            } else if matches!(stage.operation, StageOperation::ThermalReference) {
+                "run"
+            } else if matches!(stage.operation, StageOperation::CadMesh) {
+                "mesh"
+            } else {
+                &op
+            },
+        )
         .arg("/plan.json");
     let log = OpenOptions::new()
         .create_new(true)
@@ -1330,6 +1371,10 @@ fn native_stage(
     if matches!(stage.operation, StageOperation::CadMesh) {
         crate::cad_source::registered(store, id, plan)?;
         crate::cad_mesh::verify_receipt(plan, dir, &evidence)?;
+    }
+    if matches!(stage.operation, StageOperation::FemImported) {
+        crate::cad_source::registered(store, id, plan)?;
+        crate::fem_imported::verify_receipt(plan, dir, &evidence)?;
     }
     if let Some(frames) = &plan.frames {
         crate::frames::registered(store, id, plan)?;
@@ -1402,6 +1447,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::FemReference => "CalculiX",
         StageOperation::ThermalReference => "CalculiX",
         StageOperation::CadMesh => "Gmsh",
+        StageOperation::FemImported => "CalculiX",
         _ => return Err(invalid("not a native adapter operation")),
     };
     let backend = stage
@@ -1813,6 +1859,11 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         .as_ref()
                         .ok_or_else(|| invalid("thermal recipe required"))?;
                     store.add_artifact(id,&commit_artifact(&dir,"native-thermal-request.json",&serde_json::to_vec(spec)?,"json","exact SI prescribed thermal history; explicit native substeps and independent energy/retained output schedules")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if matches!(stage.operation, StageOperation::FemImported) {
+                    let working = native_work.join("stages/fem-imported");
+                    private_dir(&working)?;
+                    store.add_artifact(id,&commit_artifact(&dir,"native-fem-imported-request.json",&serde_json::to_vec(&crate::fem_imported::descriptor(&plan)?)?,"json","exact original CAD geometry, explicit reference/material/boundary provenance; no invented physical time")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if matches!(stage.operation, StageOperation::CadMesh) {
                     let working = native_work.join("stages/mesh");

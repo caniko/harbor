@@ -127,6 +127,20 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 )?;
                 2048 * MIB
             }
+            StageOperation::FemImported => {
+                let spec = plan
+                    .imported_fem
+                    .as_ref()
+                    .ok_or_else(|| invalid("imported FEM resource recipe required"))?;
+                output = add(
+                    output,
+                    add(
+                        64 * MIB,
+                        multiply(u64::from(spec.reference.resolution).pow(3), 4096)?,
+                    )?,
+                )?;
+                2048 * MIB
+            }
             StageOperation::CadMesh => {
                 let source = plan
                     .cad_source

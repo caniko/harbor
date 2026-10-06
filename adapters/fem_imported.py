@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -69,6 +70,21 @@ def main():
     raw = fem.read_regular(sys.argv[2], 1024**2)
     spec = fem.strict_json(raw)
     validate(spec, fem, cad)
+    sandbox = fem.cpu_sandbox(
+        "HARBOR_CAD_FEM_IMPORTED_POLICY",
+        "harbor-cad-fem-imported-cpu-v1",
+        "/fem-imported-runtime-closure.txt",
+        sys.argv[2],
+    )
+    if sandbox is not None:
+        sandbox["checks"]["source_brep_readonly"] = (
+            os.statvfs("/inputs/solid.brep").f_flag & os.ST_RDONLY != 0
+        )
+        sandbox["checks"]["named_source_only"] = set(Path("/inputs").iterdir()) == {
+            Path("/inputs/solid.brep")
+        }
+        if not all(sandbox["checks"].values()):
+            raise ValueError("imported FEM source sandbox boundary failed")
     geometry, reference = spec["geometry"], spec["reference"]
     brep = fem.read_regular("/inputs/solid.brep", 64 * 1024**2)
     if (
@@ -76,7 +92,7 @@ def main():
         or hashlib.sha256(brep).hexdigest() != geometry["brep_sha256"]
     ):
         raise ValueError("approved imported BREP bytes changed")
-    if list(Path.cwd().iterdir()):
+    if any(p.name != "fem-imported.log" for p in Path.cwd().iterdir()):
         raise ValueError("new empty stage-local imported FEM output required")
     nodes, cells, sets = fem.mesh(reference, geometry=geometry)
     Path("reference.inp").write_text(fem.deck(reference, nodes, cells, sets))
@@ -173,6 +189,7 @@ def main():
             "numerical_verification": checks,
             "gap_healing": False,
             "physical_validation": "unqualified",
+            **({"sandbox": sandbox} if sandbox is not None else {}),
             "scope": "synthetic imported axis-aligned box static conduction/free expansion; no contact, physical-time or material-validation claim",
         },
     )

@@ -122,6 +122,11 @@ def build_server(profile: str) -> MCPServer:
             return await request("plan_fem_reference", spec=spec)
 
         @server.tool()
+        async def fem_plan_imported(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan a synthetic CPU static FEM reference from registered authorized world-space CAD."""
+            return await request("plan_fem_imported", request=request_spec)
+
+        @server.tool()
         async def case_plan_thermal_reference(spec: dict[str, Any]) -> dict[str, Any]:
             """Plan explicit synthetic transient CPU heat transfer; prescribed convection and physical histories."""
             return await request("plan_thermal_reference", spec=spec)

@@ -249,6 +249,7 @@ impl ExecutionPlan {
             fem: None,
             thermal: Some(spec),
             cad_source: None,
+            imported_fem: None,
             source: None,
             frames: None,
             filter: None,

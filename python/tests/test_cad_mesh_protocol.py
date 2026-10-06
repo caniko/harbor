@@ -87,3 +87,31 @@ def test_imported_cad_schema_preserves_world_bounds_without_legacy_or_field_reci
     ]:
         with pytest.raises(ValidationError):
             validator.validate(changed)
+    imported = {
+        "schema_version": 1,
+        "reference": {
+            "schema_version": 1,
+            "synthetic": True,
+            "backend": "cpu",
+            "mode": "thermal_boundary",
+            "size_m": [0.02, 0.01, 0.01],
+            "resolution": 4,
+            "geometry_tolerance_m": 1e-6,
+            "temperatures_k": [293.15, 303.15],
+            "numerical_tolerance": 1e-6,
+            "conductivity_w_m_k": 20.0,
+        },
+        "material_provenance": "controlled synthetic constant conductivity",
+        "boundary_provenance": "prescribed world-plane temperatures",
+    }
+    fem = {**plan, "schema_version": 8, "imported_fem": imported}
+    validator.validate(fem)
+    for changed in [
+        {**plan, "imported_fem": imported},
+        {**plan, "imported_fem": None},
+        {**fem, "schema_version": 7},
+        {**fem, "fem": imported["reference"]},
+        {**fem, "imported_fem": None},
+    ]:
+        with pytest.raises(ValidationError):
+            validator.validate(changed)

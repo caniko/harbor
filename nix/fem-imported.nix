@@ -13,6 +13,7 @@
   adapter = pkgs.writeShellScriptBin "harbor-cad-fem-imported" ''
     exec ${pkgs.python313}/bin/python3 ${bridge} "$@"
   '';
+  closure = pkgs.closureInfo {rootPaths = [adapter];};
 in {
   fem-imported-cpu = adapter;
   runtime-fem-imported-cpu = pkgs.writeText "harbor-cad-fem-imported-runtime.json" (builtins.toJSON {
@@ -21,5 +22,15 @@ in {
     fem_imported = "${adapter}/bin/harbor-cad-fem-imported";
     backend = "cpu";
     qualification = "unqualified";
+  });
+  runtime-fem-imported-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    fem_imported = "${adapter}/bin/harbor-cad-fem-imported";
+    fem_imported_closure = "${closure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
   });
 }
