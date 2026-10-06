@@ -34,7 +34,10 @@ def main():
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument("--source", type=Path, action="append", required=True)
     parser.add_argument("--thermal", action="store_true")
+    parser.add_argument("--moisture", action="store_true")
     args = parser.parse_args()
+    if args.moisture and not args.thermal:
+        parser.error("native moisture screening requires thermal sources")
     binary, mcp = args.binary.resolve(strict=True), args.mcp.resolve(strict=True)
     if not all(p.is_relative_to("/nix/store") for p in (binary, mcp)):
         raise ValueError("exact immutable packaged CLI/MCP required")
@@ -414,6 +417,143 @@ def main():
                                         "cli_mcp_parity": True,
                                     }
                                 )
+                            if args.moisture:
+                                mesh = json.loads((directory / "mesh.json").read_text())
+                                for surface, nodes in mesh[
+                                    "boundary_node_sets"
+                                ].items():
+                                    minimum = min(
+                                        points[-1][1]["values"][(node,)][0]
+                                        for node in nodes
+                                    )
+                                    for risk in (
+                                        {
+                                            "assessment": "missing",
+                                            "reason": "humidity unavailable in this controlled native reference",
+                                        },
+                                        {
+                                            "assessment": "inapplicable",
+                                            "justification": "explicit dry synthetic enclosure reference; no water exposure",
+                                        },
+                                        {
+                                            "assessment": "dew_point_screening",
+                                            "air_temperature": {
+                                                "value": 20.0,
+                                                "unit": "degC",
+                                            },
+                                            "relative_humidity": 0.5,
+                                            "provenance": "controlled synthetic air reference; not measured prototype input",
+                                        },
+                                    ):
+                                        moisture_request = {
+                                            "schema_version": 1,
+                                            "job_id": job["id"],
+                                            "physical_time_s": points[-1][2],
+                                            "surface_region": surface,
+                                            "moisture_risk": risk,
+                                        }
+                                        observed = cli("moisture", moisture_request)
+                                        Draft202012Validator(
+                                            schemas["NativeMoistureReport"]
+                                        ).validate(observed)
+                                        reply = await client.call_tool(
+                                            "results_moisture",
+                                            {"request_spec": moisture_request},
+                                        )
+                                        assert (
+                                            not reply.is_error
+                                            and reply.structured_content == observed
+                                        )
+                                        assert observed["source"]["samples"][0][
+                                            "value"
+                                        ] == [minimum]
+                                        node = observed["source"]["samples"][0][
+                                            "location"
+                                        ]["node_id"]
+                                        assert node in nodes and points[-1][1][
+                                            "values"
+                                        ][(node,)] == [minimum]
+                                        assert observed["surface_nodes"] == len(nodes)
+                                        status = {
+                                            "missing": "missing_inputs",
+                                            "inapplicable": "inapplicable",
+                                            "dew_point_screening": "unsupported_screening"
+                                            if minimum < 273.15
+                                            else "screening",
+                                        }[risk["assessment"]]
+                                        assert (
+                                            observed["moisture_risk"]["status"]
+                                            == status
+                                        )
+                                        assert (
+                                            observed["physical_validation"]
+                                            == "unqualified"
+                                        )
+                                        results.append(
+                                            {
+                                                "moisture": observed,
+                                                "independent_surface_minimum_k": minimum,
+                                                "cli_mcp_parity": True,
+                                            }
+                                        )
+                                for label, changed in (
+                                    (
+                                        "caller-surface-temperature",
+                                        {
+                                            **moisture_request,
+                                            "minimum_surface_temperature_k": 293.15,
+                                        },
+                                    ),
+                                    (
+                                        "ordinal-face",
+                                        {**moisture_request, "surface_region": "face1"},
+                                    ),
+                                    (
+                                        "missing-air",
+                                        {
+                                            **moisture_request,
+                                            "moisture_risk": {
+                                                **risk,
+                                                "relative_humidity": None,
+                                            },
+                                        },
+                                    ),
+                                    (
+                                        "zero-humidity",
+                                        {
+                                            **moisture_request,
+                                            "moisture_risk": {
+                                                **risk,
+                                                "relative_humidity": 0,
+                                            },
+                                        },
+                                    ),
+                                    (
+                                        "unsupported-air-domain",
+                                        {
+                                            **moisture_request,
+                                            "moisture_risk": {
+                                                **risk,
+                                                "air_temperature": {
+                                                    "value": -10.0,
+                                                    "unit": "degC",
+                                                },
+                                            },
+                                        },
+                                    ),
+                                ):
+                                    error = cli("moisture", changed, False)
+                                    reply = await client.call_tool(
+                                        "results_moisture", {"request_spec": changed}
+                                    )
+                                    assert reply.is_error
+                                    rejections.append(
+                                        {
+                                            "case": label,
+                                            "error": error,
+                                            "mcp_rejected": True,
+                                        }
+                                    )
                             # Mutation targets are distinct copied bytes/SQLite; original evidence is untouched.
                             target = directory / artifact
                             original = target.read_bytes()
@@ -510,7 +650,8 @@ def main():
         "service_resources_after": service_resources(),
         "original_sources_unchanged": True,
         "physical_validation": "unqualified",
-        "scope": "exact registered v6 thermal samples and explicit retained-time signed comparisons"
+        "native_moisture_screening": args.moisture,
+        "scope": "exact registered v6 thermal samples and explicit retained-time signed comparisons; native planar surface moisture branches enabled when requested"
         if args.thermal
         else "exact registered static v5/v8 native samples and same-mesh comparisons through CLI/results MCP; no interpolated or transient sampling",
     }
