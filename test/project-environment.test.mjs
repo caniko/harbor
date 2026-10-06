@@ -125,18 +125,16 @@ test("native Nix lock drift can be repaired through bootstrap before project exe
     t.diagnostic(`native lock fixture: ${args.join(" ")}`);
     return exec(nix, args, { cwd, env, timeout: 8_000 });
   };
-  const input = path.join(cwd, "input");
-  await mkdir(input);
-  await writeFile(path.join(input, "flake.nix"), "{ outputs = _: {}; }");
-  // A tarball input genuinely needs a lock; local path inputs can already
-  // be treated as resolved by Nix. Everything stays offline in the fixture.
-  const archive = path.join(cwd, "input.tar");
-  await exec("tar", ["-cf", archive, "--directory", input, "."]);
-  const beforeArchive = path.join(cwd, "input-before.tar");
-  await writeFile(beforeArchive, await readFile(archive));
-  await writeFile(path.join(cwd, "flake.nix"), `{ inputs.fixture.url = ${JSON.stringify(`tarball+file://${beforeArchive}`)}; outputs = _: {}; }`);
+  // File inputs genuinely need a lock without exercising tarball unpacking.
+  // Local path inputs can already be treated as resolved. Stay offline here.
+  const beforeInput = path.join(cwd, "input-before.txt");
+  const afterInput = path.join(cwd, "input-after.txt");
+  await writeFile(beforeInput, "before\n");
+  await writeFile(afterInput, "after\n");
+  const definition = input => `{ inputs.fixture = { type = "file"; url = ${JSON.stringify(`file://${input}`)}; flake = false; }; outputs = _: {}; }`;
+  await writeFile(path.join(cwd, "flake.nix"), definition(beforeInput));
   await native(["flake", "lock"]);
-  await writeFile(path.join(cwd, "flake.nix"), `{ inputs.fixture.url = ${JSON.stringify(`tarball+file://${archive}`)}; outputs = _: {}; }`);
+  await writeFile(path.join(cwd, "flake.nix"), definition(afterInput));
   await assert.rejects(native(["flake", "metadata", "--no-update-lock-file"]), error => {
     assert.match(error.stderr, /requires lock file changes but they're not allowed/);
     return true;
