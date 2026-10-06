@@ -159,6 +159,19 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 output = add(output, 256 * MIB)?;
                 2048 * MIB
             }
+            StageOperation::WettingReference => {
+                let spec = plan
+                    .wetting
+                    .as_ref()
+                    .ok_or_else(|| invalid("wetting resource recipe required"))?;
+                spec.validate()?;
+                let n = u64::from(spec.resolution);
+                let cells = multiply(add(5 * n / 2, 5)?, add(3 * n / 2, 5)?)?;
+                // Two Float64 D2Q9 lattices, halos and phase/coupling fields;
+                // Python contour verification retains its own closed CSV copy.
+                output = add(output, multiply(multiply(cells, 256)?, snapshots)?)?;
+                add(512 * MIB, multiply(cells, 4096)?)?
+            }
             StageOperation::Bundle => 16 * MIB,
         };
         stages.push(StageMinimum {

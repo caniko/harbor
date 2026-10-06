@@ -1,5 +1,5 @@
 //! Explicit synthetic planar diffuse-interface wetting, independent of airflow.
-use crate::{Result, contracts::invalid};
+use crate::{Result, contracts::*};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +26,62 @@ pub struct WettingReferenceSpec {
     pub angle_tolerance_deg: f64,
     pub material_provenance: String,
     pub boundary_provenance: String,
+}
+
+impl ExecutionPlan {
+    pub fn wetting_reference(spec: WettingReferenceSpec, policy: String) -> Result<Self> {
+        spec.validate()?;
+        let retained_times_s = spec.times_s();
+        let mut plan = Self {
+            schema_version: 9,
+            case: None,
+            fem: None,
+            thermal: None,
+            cad_source: None,
+            imported_fem: None,
+            wetting: Some(spec),
+            source: None,
+            frames: None,
+            filter: None,
+            stages: vec![
+                Stage {
+                    id: "wetting".into(),
+                    dependencies: vec![],
+                    operation: StageOperation::WettingReference,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 0,
+                    vram_bytes: 0,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec!["wetting".into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 0,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec![],
+                probes: vec![],
+                retained_times_s,
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 0,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
 }
 
 impl WettingReferenceSpec {

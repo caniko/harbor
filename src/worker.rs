@@ -1452,6 +1452,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::NumericalFilter => "Viskores",
         StageOperation::FemReference => "CalculiX",
         StageOperation::ThermalReference => "CalculiX",
+        StageOperation::WettingReference => "OpenLB",
         StageOperation::CadMesh => "Gmsh",
         StageOperation::FemImported => "CalculiX",
         _ => return Err(invalid("not a native adapter operation")),

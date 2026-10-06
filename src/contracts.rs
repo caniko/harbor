@@ -284,6 +284,7 @@ pub enum StageOperation {
     NumericalFilter,
     FemReference,
     ThermalReference,
+    WettingReference,
     Render,
     Video,
     Bundle,
@@ -412,6 +413,8 @@ pub struct ExecutionPlan {
     pub cad_source: Option<crate::cad_source::CadSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub imported_fem: Option<crate::fem_imported::ImportedFemSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wetting: Option<crate::wetting::WettingReferenceSpec>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -442,6 +445,14 @@ struct ExecutionPlanRecord {
     cad_source: Option<crate::cad_source::CadSource>,
     #[serde(default, deserialize_with = "imported_fem")]
     imported_fem: Option<crate::fem_imported::ImportedFemSpec>,
+    #[serde(default, deserialize_with = "wetting_spec")]
+    wetting: Option<crate::wetting::WettingReferenceSpec>,
+}
+
+fn wetting_spec<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<crate::wetting::WettingReferenceSpec>, D::Error> {
+    crate::wetting::WettingReferenceSpec::deserialize(decoder).map(Some)
 }
 
 fn imported_fem<'de, D: serde::Deserializer<'de>>(
@@ -494,6 +505,14 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> std::result::Result<Self, D::Error> {
         use serde::de::Error;
         let plan = ExecutionPlanRecord::deserialize(decoder)?;
+        if plan.wetting.is_some() {
+            if !plan.wetting_envelope() {
+                return Err(D::Error::custom(
+                    "strict independent version-9 wetting recipe required",
+                ));
+            }
+            return Ok(plan);
+        }
         match (
             plan.schema_version,
             &plan.source,
@@ -530,7 +549,7 @@ impl JsonSchema for ExecutionPlan {
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
-            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8]);
+            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8, 9]);
         }
         schema.insert("allOf".into(), serde_json::json!([
             {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}}},
@@ -541,18 +560,37 @@ impl JsonSchema for ExecutionPlan {
             {"if":{"properties":{"schema_version":{"const":6}}},"then":{"required":["thermal"],"properties":{"thermal":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]}]}},"else":{"not":{"required":["thermal"]}}},
             {"if":{"properties":{"schema_version":{"enum":[1,2,3,4]}}},"then":{"required":["case"],"properties":{"case":{"type":"object"}},"not":{"required":["fem"]}}},
             {"if":{"properties":{"schema_version":{"enum":[7,8]}}},"then":{"required":["cad_source"],"properties":{"cad_source":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]}]}},"else":{"not":{"required":["cad_source"]}}},
-            {"if":{"properties":{"schema_version":{"const":8}}},"then":{"required":["imported_fem"],"properties":{"imported_fem":{"type":"object"}}},"else":{"not":{"required":["imported_fem"]}}}
+            {"if":{"properties":{"schema_version":{"const":8}}},"then":{"required":["imported_fem"],"properties":{"imported_fem":{"type":"object"}}},"else":{"not":{"required":["imported_fem"]}}},
+            {"if":{"properties":{"schema_version":{"const":9}}},"then":{"required":["wetting"],"properties":{"wetting":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]},{"required":["cad_source"]},{"required":["imported_fem"]}]}},"else":{"not":{"required":["wetting"]}}}
         ]));
         schema
     }
 }
 impl ExecutionPlan {
+    fn wetting_envelope(&self) -> bool {
+        self.schema_version == 9
+            && self.wetting.is_some()
+            && self.case.is_none()
+            && self.fem.is_none()
+            && self.thermal.is_none()
+            && self.source.is_none()
+            && self.frames.is_none()
+            && self.filter.is_none()
+            && self.cad_source.is_none()
+            && self.imported_fem.is_none()
+    }
     pub fn channel_case(&self) -> Result<&CaseSpec> {
         self.case
             .as_ref()
             .ok_or_else(|| invalid("fluid/CAD case required for this operation"))
     }
     pub fn science_id(&self) -> Result<String> {
+        if let Some(wetting) = &self.wetting {
+            if !self.wetting_envelope() {
+                return Err(invalid("one independent scientific recipe required"));
+            }
+            return digest(wetting);
+        }
         match (
             &self.case,
             &self.fem,
@@ -599,6 +637,7 @@ impl ExecutionPlan {
             thermal: None,
             cad_source: None,
             imported_fem: None,
+            wetting: None,
             stages: vec![
                 Stage {
                     id: "filter".into(),
@@ -668,6 +707,7 @@ impl ExecutionPlan {
             thermal: None,
             cad_source: None,
             imported_fem: None,
+            wetting: None,
             stages: vec![
                 Stage {
                     id: "video".into(),
@@ -786,6 +826,7 @@ impl ExecutionPlan {
             thermal: None,
             cad_source: None,
             imported_fem: None,
+            wetting: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -827,6 +868,7 @@ impl ExecutionPlan {
             thermal: None,
             cad_source: None,
             imported_fem: None,
+            wetting: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -880,6 +922,7 @@ impl ExecutionPlan {
             thermal: None,
             cad_source: None,
             imported_fem: None,
+            wetting: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -949,6 +992,7 @@ impl ExecutionPlan {
             thermal: None,
             cad_source: None,
             imported_fem: None,
+            wetting: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1041,27 +1085,30 @@ impl ExecutionPlan {
         if let Some(fem) = &self.fem {
             fem.validate()?;
         }
-        if !matches!(
-            (
-                self.schema_version,
-                &self.source,
-                &self.frames,
-                &self.filter,
-                &self.case,
-                &self.fem,
-                &self.thermal,
-                &self.cad_source,
-                &self.imported_fem,
-            ),
-            (1, None, None, None, Some(_), None, None, None, None)
-                | (2, Some(_), None, None, Some(_), None, None, None, None)
-                | (3, Some(_), Some(_), None, Some(_), None, None, None, None)
-                | (4, Some(_), None, Some(_), Some(_), None, None, None, None)
-                | (5, None, None, None, None, Some(_), None, None, None)
-                | (6, None, None, None, None, None, Some(_), None, None)
-                | (7, None, None, None, None, None, None, Some(_), None)
-                | (8, None, None, None, None, None, None, Some(_), Some(_))
-        ) || self.fleetix_revision != FLEETIX_REV
+        if !(self.wetting_envelope()
+            || (self.wetting.is_none()
+                && matches!(
+                    (
+                        self.schema_version,
+                        &self.source,
+                        &self.frames,
+                        &self.filter,
+                        &self.case,
+                        &self.fem,
+                        &self.thermal,
+                        &self.cad_source,
+                        &self.imported_fem,
+                    ),
+                    (1, None, None, None, Some(_), None, None, None, None)
+                        | (2, Some(_), None, None, Some(_), None, None, None, None)
+                        | (3, Some(_), Some(_), None, Some(_), None, None, None, None)
+                        | (4, Some(_), None, Some(_), Some(_), None, None, None, None)
+                        | (5, None, None, None, None, Some(_), None, None, None)
+                        | (6, None, None, None, None, None, Some(_), None, None)
+                        | (7, None, None, None, None, None, None, Some(_), None)
+                        | (8, None, None, None, None, None, None, Some(_), Some(_))
+                )))
+            || self.fleetix_revision != FLEETIX_REV
             || self.fleetix_contract_digest != fleetix_digest()
         {
             return Err(invalid("schema/Fleetix source or contract drift"));
@@ -1142,6 +1189,30 @@ impl ExecutionPlan {
             {
                 return Err(invalid(
                     "exact independent transient CPU thermal DAG and physical observations required",
+                ));
+            }
+        }
+        if let Some(wetting) = &self.wetting {
+            wetting.validate()?;
+            let operations: Vec<_> = self.stages.iter().map(|s| &s.operation).collect();
+            if self.policy == "ci"
+                || !matches!(
+                    operations.as_slice(),
+                    [StageOperation::WettingReference, StageOperation::Bundle]
+                )
+                || self.stages[0].id != "wetting"
+                || !self.stages[0].dependencies.is_empty()
+                || self.stages[1].id != "bundle"
+                || self.stages[1].dependencies != ["wetting"]
+                || !self.observation.metrics.is_empty()
+                || !self.observation.probes.is_empty()
+                || self.observation.retained_times_s != wetting.times_s()
+                || !self.observation.checkpoint_times_s.is_empty()
+                || !self.observation.preview_times_s.is_empty()
+                || self.observation.preview_may_drop
+            {
+                return Err(invalid(
+                    "exact independent CPU planar wetting DAG and retained native observations required",
                 ));
             }
         }
@@ -1285,6 +1356,12 @@ impl ExecutionPlan {
                     "thermal operation requires an independent version-6 recipe",
                 ));
             }
+            if matches!(stage.operation, StageOperation::WettingReference) && self.wetting.is_none()
+            {
+                return Err(invalid(
+                    "wetting operation requires an independent version-9 recipe",
+                ));
+            }
             if matches!(stage.operation, StageOperation::FemReference) && self.fem.is_none() {
                 return Err(invalid("FEM operation requires a version-5 recipe"));
             }
@@ -1414,6 +1491,11 @@ impl ExecutionPlan {
                             .thermal
                             .as_ref()
                             .map(|s| s.duration_s)
+                            .or_else(|| {
+                                self.wetting
+                                    .as_ref()
+                                    .map(|s| s.steps as f64 * s.physical_step_s())
+                            })
                             .or_else(|| self.case.as_ref().map(|c| c.max_time_s))
                             .is_none_or(|end| *t > end)
                 })

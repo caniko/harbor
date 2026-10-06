@@ -246,6 +246,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::ThermalReference => {
                 ("stages/thermal/thermal-receipt.json", Some("CalculiX"))
             }
+            StageOperation::WettingReference => {
+                ("stages/wetting/wetting-receipt.json", Some("OpenLB"))
+            }
             StageOperation::Bundle => continue,
         };
         let loaded = registered_json(store, id, path)?;
@@ -257,7 +260,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if let Some(spec) = &plan.imported_fem {
+            formulation: if let Some(spec) = &plan.wetting {
+                spec.formulation.clone()
+            } else if let Some(spec) = &plan.imported_fem {
                 spec.formulation()
             } else if let Some(source) = &plan.cad_source {
                 source.geometry.formulation.clone()
@@ -275,12 +280,17 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     |t| Ok(t.formulation.clone()),
                 )?
             },
-            dimensions: plan
-                .case
-                .as_ref()
-                .map_or(3, |c| c.applicability.dimensionality),
+            dimensions: if plan.wetting.is_some() {
+                2
+            } else {
+                plan.case
+                    .as_ref()
+                    .map_or(3, |c| c.applicability.dimensionality)
+            },
             precision: None,
-            refinement: if let Some(source) = &plan.cad_source {
+            refinement: if let Some(spec) = &plan.wetting {
+                spec.resolution
+            } else if let Some(source) = &plan.cad_source {
                 source.geometry.resolution
             } else {
                 plan.thermal.as_ref().map_or_else(

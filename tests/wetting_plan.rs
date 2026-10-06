@@ -1,4 +1,4 @@
-use harbor_cad::{contracts::digest, wetting::WettingReferenceSpec};
+use harbor_cad::{contracts::*, wetting::WettingReferenceSpec};
 
 fn reference() -> serde_json::Value {
     serde_json::json!({"schema_version":1,"synthetic":true,"backend":"cpu","formulation":"well_balanced_contact_angle_2d","diameter_m":48e-6,"resolution":48,"interface_width_m":6e-6,
@@ -45,4 +45,39 @@ fn wetting_rejects_water_air_ratio_unresolved_interfaces_and_weakened_scientific
     let mut raw = reference();
     raw["contact_line_model"] = serde_json::json!("injected");
     assert!(serde_json::from_value::<WettingReferenceSpec>(raw).is_err());
+}
+
+#[test]
+fn version_nine_wetting_plan_retains_independent_native_times_and_closed_cpu_dag() {
+    let spec: WettingReferenceSpec = serde_json::from_value(reference()).unwrap();
+    let plan = ExecutionPlan::wetting_reference(spec.clone(), "research".into()).unwrap();
+    let raw = serde_json::to_value(&plan).unwrap();
+    assert_eq!(raw["schema_version"], 9);
+    assert_eq!(raw["stages"][0]["operation"], "wetting_reference");
+    assert_eq!(plan.observation.retained_times_s, spec.times_s());
+    assert_eq!(plan.science_id().unwrap(), digest(&spec).unwrap());
+    assert!(raw.get("case").is_none() && raw.get("source").is_none());
+    assert_eq!(
+        serde_json::from_value::<ExecutionPlan>(raw)
+            .unwrap()
+            .id()
+            .unwrap(),
+        plan.id().unwrap()
+    );
+    for key in ["checkpoint", "physics", "resource", "gpu"] {
+        let mut changed = plan.clone();
+        match key {
+            "checkpoint" => changed.observation.checkpoint_times_s = vec![0.],
+            "physics" => changed.case = Some(CaseSpec::reference()),
+            "resource" => changed.stages[0].ram_bytes = 1024,
+            _ => changed.stages[0].gpu = GpuRequirement::Required,
+        }
+        assert!(changed.validate().is_err(), "{key}");
+    }
+    for injected in [reference(), serde_json::Value::Null] {
+        let mut old =
+            serde_json::to_value(ExecutionPlan::reference(CaseSpec::reference()).unwrap()).unwrap();
+        old["wetting"] = injected;
+        assert!(serde_json::from_value::<ExecutionPlan>(old).is_err());
+    }
 }
