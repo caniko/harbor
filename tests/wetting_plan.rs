@@ -1,7 +1,7 @@
 use harbor_cad::{contracts::*, wetting::WettingReferenceSpec};
 
 fn reference() -> serde_json::Value {
-    serde_json::json!({"schema_version":1,"synthetic":true,"backend":"cpu","formulation":"well_balanced_contact_angle_2d","diameter_m":48e-6,"resolution":48,"interface_width_m":6e-6,
+    serde_json::json!({"schema_version":1,"synthetic":true,"backend":"cpu","formulation":"well_balanced_contact_angle_2d","diameter_m":48e-6,"initial_center_above_wall_m":0.,"resolution":48,"interface_width_m":6e-6,
         "density_liquid_kg_m3":1000.,"density_vapor_kg_m3":1000.,"viscosity_liquid_m2_s":1e-6,"viscosity_vapor_m2_s":1e-6,"surface_tension_n_m":1e-4,"contact_angle_deg":100.,"phase_relaxation_time":1.,"steps":160000,"observation_steps":[0,80000,120000,160000],"mass_tolerance":1e-3,"angle_tolerance_deg":5.,"material_provenance":"synthetic equal-property fluid","boundary_provenance":"uniform planar wall angle; no inlet or gravity"})
 }
 

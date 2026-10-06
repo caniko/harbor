@@ -17,6 +17,7 @@ FIELDS = {
     "backend",
     "formulation",
     "diameter_m",
+    "initial_center_above_wall_m",
     "resolution",
     "interface_width_m",
     "density_liquid_kg_m3",
@@ -67,6 +68,7 @@ def validate(spec):
     if (
         not 24 <= n <= 96
         or not 100 <= spec["steps"] <= 200000
+        or spec["initial_center_above_wall_m"] != 0
         or not 0 < diameter <= 0.001
         or not 0 < rho <= 1e5
         or not 0 < nu <= 1

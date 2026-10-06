@@ -11,6 +11,7 @@ pub struct WettingReferenceSpec {
     pub backend: String,
     pub formulation: String,
     pub diameter_m: f64,
+    pub initial_center_above_wall_m: f64,
     pub resolution: u32,
     pub interface_width_m: f64,
     pub density_liquid_kg_m3: f64,
@@ -111,6 +112,7 @@ impl WettingReferenceSpec {
             || !(100..=200000).contains(&self.steps)
             || !positive(self.diameter_m)
             || self.diameter_m > 0.001
+            || self.initial_center_above_wall_m != 0.
             || !positive(self.density_liquid_kg_m3)
             || self.density_liquid_kg_m3 > 1e5
             || self.density_liquid_kg_m3 != self.density_vapor_kg_m3

@@ -27,6 +27,7 @@ def request(angle, n):
         "backend": "cpu",
         "formulation": "well_balanced_contact_angle_2d",
         "diameter_m": 48e-6,
+        "initial_center_above_wall_m": 0.0,
         "resolution": n,
         "interface_width_m": 6e-6,
         "density_liquid_kg_m3": 1000.0,

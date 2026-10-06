@@ -16,6 +16,11 @@ impermeable planar y walls, a prescribed uniform contact angle and no gravity.
 SI diameter, diffuse-interface thickness, density, kinematic viscosity and
 surface tension are explicit with material and boundary provenance. The fixed
 Navier–Stokes relaxation time is 1; the phase relaxation time is explicit.
+`initial_center_above_wall_m=0` explicitly initializes a wall-centered half-circle.
+The native source patch changes only the upstream initializer's center from
+`y=1` to the Bouzidi wall at `y=0.5`. The original initializer placed the center
+`dx/2` above the wall, changing the initial physical geometry and phase area
+across refinements; the failed native-4 campaign retains those original bytes.
 Rust owns the strict `WettingReferenceSpec` schema and matching SI/bounds checks;
 Python parity tests cover the same native descriptor. Durable worker planning
 and lifecycle remain a separate integration gate.

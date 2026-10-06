@@ -9,6 +9,7 @@
   };
   native = base.overrideAttrs (old: {
     pname = "harbor-cad-openlb-wetting-cpu";
+    patches = old.patches ++ [./patches/openlb-wetting-initial-center.patch];
     preBuild =
       old.preBuild
       + ''
