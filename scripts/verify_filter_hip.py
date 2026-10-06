@@ -404,6 +404,7 @@ def execute_probe(args, selection, runtime_path, executable, bwrap, resources):
                 receipt["pci"] != selection["pci"]
                 or receipt["backend_uuid"] != selection["backend_uuid"]
                 or receipt["hip_dispatches"] <= 0
+                or receipt["kokkos_hip_space_peak_tracked_bytes"] <= 0
                 or not receipt["gpu_kernel_completion_verified"]
                 or receipt["software_fallback"]
                 or receipt["adapter"] != "Viskores"

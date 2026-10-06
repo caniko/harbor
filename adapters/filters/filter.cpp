@@ -25,6 +25,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -137,14 +138,14 @@ static void begin_dispatch(const char* name, const uint32_t id, uint64_t* kernel
   if (dispatch_labels.size() < 64) dispatch_labels.push_back({{"label", std::string(name).substr(0, 256)}, {"device_id", id}});
 }
 static void allocated(Kokkos::Tools::SpaceHandle space, const char*, const void* pointer, const uint64_t size) {
-  if (std::string(space.name) != "HIPSpace") return;
+  if (std::string(space.name) != Kokkos::HIPSpace::name()) return;
   std::lock_guard<std::mutex> guard(telemetry_mutex);
   allocations[pointer] = size;
   live_hip_bytes += size;
   peak_hip_bytes = std::max(peak_hip_bytes, live_hip_bytes);
 }
 static void deallocated(Kokkos::Tools::SpaceHandle space, const char*, const void* pointer, const uint64_t) {
-  if (std::string(space.name) != "HIPSpace") return;
+  if (std::string(space.name) != Kokkos::HIPSpace::name()) return;
   std::lock_guard<std::mutex> guard(telemetry_mutex);
   const auto entry = allocations.find(pointer);
   if (entry != allocations.end()) {live_hip_bytes -= entry->second; allocations.erase(entry);}
@@ -205,6 +206,11 @@ static json execute(const json& request, bool reference) {
     selected_ordinal = device.at("ordinal_diagnostic_only");
     require(!std::getenv("KOKKOS_TOOLS_LIBS") && !std::getenv("KOKKOS_PROFILE_LIBRARY"), "external Kokkos tooling is not an approved runtime input");
     Kokkos::initialize(Kokkos::InitializationSettings().set_device_id(selected_ordinal));
+    // Match pinned Viskores's subsystem lifetime: its ErrorMessageViewInstance
+    // and execution space are thread_local and must be destroyed before global
+    // Kokkos finalization. Finalizing inside main caused a post-receipt SIGABRT.
+    require(std::atexit([] { if (Kokkos::is_initialized()) Kokkos::finalize(); }) == 0,
+      "Kokkos process-lifetime finalization registration failed");
     Kokkos::Tools::Experimental::set_begin_parallel_for_callback(begin_dispatch);
     Kokkos::Tools::Experimental::set_begin_parallel_reduce_callback(begin_dispatch);
     Kokkos::Tools::Experimental::set_begin_parallel_scan_callback(begin_dispatch);
@@ -293,11 +299,9 @@ int main(int argc, char** argv) {
     require(bool(file), "filter receipt write failed");
     fs::rename("numerical_filter-receipt.json.partial", "numerical_filter-receipt.json");
     std::cout << receipt.dump(2) << std::endl;
-    if (Kokkos::is_initialized()) Kokkos::finalize();
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << std::endl;
-    if (Kokkos::is_initialized()) Kokkos::finalize();
     return 1;
   }
 }

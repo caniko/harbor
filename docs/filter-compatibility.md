@@ -129,6 +129,17 @@ The guarded one-job/two-core build from
 Native scalar-label and direction-guard updates require a fresh exact adapter
 build; no numerical or hardware qualification is inherited from this build.
 
+The first exact native gate with scalar/direction fixes dispatched the HIP
+gradient, then exited with SIGABRT: main finalized Kokkos while Viskores's
+thread-local `ErrorMessageViewInstance` still owned a device allocation. The
+pinned `RuntimeDeviceConfigurationKokkos.h` registers process-exit finalization;
+the adapter now uses that lifetime ordering, so thread-local objects close first.
+Inspected `Kokkos_HIP_Space.hpp` also defines `HIPSpace::name()` as `"HIP"`, not
+`"HIPSpace"`. Allocation callbacks now match the actual API name, and the gate
+requires a positive tracked peak. The failed run remains retained at
+`/data/scratch/tmp/opencode/harbor-cad-authority-20261005/filter-native-1/`;
+it establishes no numerical qualification.
+
 Before publishing, the adapter checks its Float64 result, unchanged source array
 bytes and image topology/coordinates, then writes and reads back the VTI to check
 the same invariants. Original physical units and derivative units are explicit.
