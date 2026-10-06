@@ -54,6 +54,13 @@ native field parsing. Its source/manual APIs are inspected and parser/selector
 rejection tests pass. Native build/execution and worker integration are pending;
 see [FEM reference scope](fem-references.md).
 
+The updated complete CPU gate passes 101 Rust tests and 41 Python cases,
+Clippy with warnings denied, locked build, Treefmt and Ruff. New systemd jobs
+verify effective kernel controls before native launch and retain aggregate
+process-tree RAM peaks/CPU usage through orderly completion; abrupt kills have
+explicitly absent final peak records. Packaged effective-control and B2 native
+qualification are still pending.
+
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
 | §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |

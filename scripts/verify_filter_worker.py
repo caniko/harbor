@@ -338,6 +338,35 @@ def main():
                 destination = root / f"bundle-{interface}"
                 command("artifact", "export", "--state", state, job["id"], destination)
                 records = verify_manifest(destination)
+                resources = json.loads(
+                    (destination / "service-resources.json").read_text()
+                )
+                assert (
+                    resources["job_id"] == job["id"]
+                    and resources["execution_id"] == job["plan_digest"]
+                )
+                assert resources["invocation"] == running["invocation_id"]
+                assert resources["control_group"] == controls["ControlGroup"]
+                assert (
+                    resources["kernel_resources"]["phase"] == "after_native_execution"
+                )
+                assert resources["kernel_resources"]["aggregate_memory_peak_bytes"] > 0
+                assert (
+                    resources["kernel_resources"]["cpu_stat_microseconds_and_counts"][
+                        "usage_usec"
+                    ]
+                    > 0
+                )
+                historical = command(
+                    "--socket", endpoint, "qualify", "--job", job["id"]
+                )["data"]
+                assert historical["execution_id"] == job["plan_digest"]
+                assert historical["current_runtime_qualification"] == "not_assessed"
+                assert historical["capabilities"][0]["runtime_execution"] == "recorded"
+                assert (
+                    historical["capabilities"][0]["numerical_verification"]
+                    == "not_assessed"
+                )
                 assert (
                     not list(destination.glob("*openlb*"))
                     and not (destination / "frame-sequence.json").exists()
@@ -397,6 +426,8 @@ def main():
                         "cpu_max_abs_disagreement": error,
                         "active_runtime_retention": retained,
                         "effective_controls": controls,
+                        "aggregate_service_resources": resources,
+                        "historical_job_evidence": historical,
                         "admission_record": reservation,
                         "restart": "same invocation",
                         "reservation_and_roots_released": True,

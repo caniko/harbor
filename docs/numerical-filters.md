@@ -82,6 +82,14 @@ association, ghost arrays, unsupported topology, device/source mismatch,
 architecture spoofing and CPU-as-HIP rejection have explicit negative cases.
 The unchanged maximum absolute comparison/analytical gate is `1e-10`.
 
+New owned-service jobs verify the effective cgroup RAM/swap/CPU/task controls
+before native launch and retain aggregate process-tree RAM peaks and CPU usage
+as `service-resources.json` on orderly completion, including failed native
+execution. The record binds job/execution/unit/invocation/control-group identity.
+An abrupt process-tree kill may retain only the pre-launch controls in
+`service-owner.json`; no post-execution peak is invented. Cgroup counters do
+not measure VRAM.
+
 `scripts/verify_filter_worker.py` consumes that exact native-reference runtime
 and a fork of a closed authorized solver fixture. It exercises packaged CLI/MCP
 filter approvals, distinct copied inodes, original science/units/time, native

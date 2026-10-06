@@ -1235,6 +1235,8 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
         ));
     }
     let job = store.job(id)?;
+    let plan = store.plan(id)?;
+    let mut service_group = None;
     let invocation = if profile.service_mode == "systemd" {
         let invocation = std::env::var("INVOCATION_ID")
             .map_err(|_| invalid("missing systemd invocation identity"))?;
@@ -1261,7 +1263,20 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
                 "job execution requires its live systemd invocation, main PID and exact cgroup",
             ));
         }
-        let owner = serde_json::json!({"unit":job.unit,"invocation":invocation,"main_pid":std::process::id(),"control_group":group});
+        let group_root = safe_path(
+            Path::new("/sys/fs/cgroup"),
+            group
+                .strip_prefix('/')
+                .ok_or_else(|| invalid("absolute owned service group required"))?,
+        )?;
+        let kernel_resources = crate::measurements::capture(
+            &group_root,
+            plan.peak_ram(),
+            profile.threads,
+            "before_native_launch",
+        )?;
+        service_group = Some((group.clone(), group_root));
+        let owner = serde_json::json!({"unit":job.unit,"invocation":invocation,"main_pid":std::process::id(),"control_group":group,"kernel_resources":kernel_resources});
         store.add_artifact(
             id,
             &commit_artifact(
@@ -1293,7 +1308,18 @@ pub fn run_job(state: &Path, profile_path: &Path, id: &str) -> Result<()> {
         "UPDATE jobs SET invocation=?1 WHERE id=?2",
         rusqlite::params![invocation, id],
     )?;
-    let result = execute_job(&store, &profile, id);
+    let execution_result = execute_job(&store, &profile, id);
+    let measurement_result = service_group.map_or(Ok(()), |(control_group, group)| -> Result<()> {
+        let metrics = crate::measurements::capture(&group, plan.peak_ram(), profile.threads, "after_native_execution")?;
+        let report = serde_json::json!({"schema_version":1,"job_id":id,"unit":job.unit,"invocation":invocation,
+            "execution_id":plan.id()?,"control_group":control_group,"kernel_resources":metrics});
+        store.add_artifact(id, &commit_artifact(&store.job_dir(id)?, "service-resources.json",
+            &serde_json::to_vec_pretty(&report)?, "json", "verified owned-service kernel controls and aggregate process-tree peaks")?)
+    });
+    if let Err(error) = &measurement_result {
+        store.event(id, "service_measurement_failed", &error.to_string())?;
+    }
+    let result = execution_result.and(measurement_result);
     if let Err(error) = &result {
         let saved = retain_native_failure(
             &store,

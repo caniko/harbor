@@ -9,6 +9,7 @@ pub mod filters;
 pub mod frames;
 pub mod lifecycle;
 pub mod materials;
+mod measurements;
 pub mod presentation;
 pub mod qualification;
 pub mod recipes;
