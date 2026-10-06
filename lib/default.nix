@@ -2,6 +2,7 @@
   harbor-meta,
   harbor-rs,
   solana-source,
+  solana-source-darwin,
 }: rec {
   timezone = harbor-meta.lib.timezone;
   rustOverlay = import harbor-rs.inputs.rust-overlay;
@@ -9,12 +10,22 @@
   mkCargoBuildSbf = {
     pkgs,
     solana ? pkgs.solana-cli,
-    solanaSource ? solana-source,
+    solanaSource ?
+      if pkgs.stdenv.hostPlatform.system == "x86_64-darwin"
+      then solana-source-darwin
+      else solana-source,
   }: let
     toolchain = harbor-rs.lib.mkToolchain {inherit pkgs;};
     # A locked non-flake input makes manifests available without realizing a
     # fetcher derivation during evaluation.
-    src = solanaSource + "/platform-tools-sdk";
+    # Agave 4 has a standalone SDK workspace; Agave 3 keeps these crates in
+    # the repository workspace. Both manifests come from locked source data.
+    sdk = solanaSource + "/platform-tools-sdk";
+    standaloneSdk = builtins.pathExists (sdk + "/Cargo.toml");
+    src =
+      if standaloneSdk
+      then sdk
+      else solanaSource;
     cargoTomlContents = builtins.readFile (src + "/Cargo.toml");
     sourceVersion = (builtins.fromTOML cargoTomlContents).workspace.package.version;
     commonArgs = {
@@ -29,7 +40,12 @@
       nativeBuildInputs = [pkgs.pkg-config];
       buildInputs = [pkgs.bzip2 pkgs.openssl];
     };
-    cargoArtifacts = toolchain.craneLib.buildDepsOnly commonArgs;
+    # Agave 3 patches registry dependencies with real workspace crates, which
+    # Crane must not replace with dummy sources in a dependency-only build.
+    cargoArtifacts =
+      if standaloneSdk
+      then toolchain.craneLib.buildDepsOnly commonArgs
+      else null;
   in
     assert pkgs.lib.assertMsg (sourceVersion == solana.version)
     "harbor-sol: solanaSource must match the selected solana-cli version";
