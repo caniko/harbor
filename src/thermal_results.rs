@@ -70,8 +70,14 @@ pub struct ThermalCompareReport {
     pub physical_validation: String,
 }
 
-fn time_tolerance(time: f64) -> f64 {
-    1e-7 * time.abs().max(1.)
+fn time_tolerance(duration: f64) -> f64 {
+    1e-7 * duration
+}
+
+struct ThermalSchedule<'a> {
+    native: &'a [f64],
+    retained: &'a [f64],
+    duration: f64,
 }
 
 fn verified_snapshot(
@@ -80,29 +86,35 @@ fn verified_snapshot(
     fields: &serde_json::Value,
     text: &str,
     resolution: u32,
-    times: &[f64],
+    schedule: ThermalSchedule<'_>,
 ) -> Result<(usize, Vec<SampleValue>, f64)> {
     request.validate()?;
-    let selected = times
+    let selected = schedule
+        .retained
         .iter()
         .position(|t| *t == request.physical_time_s)
         .ok_or_else(|| {
             invalid("exact approved retained physical time required; no interpolation")
         })?;
-    if times.is_empty()
-        || times.len() > 1200
+    if schedule.native.is_empty()
+        || schedule.native.len() > 1200
+        || schedule.retained.is_empty()
+        || schedule.retained.len() > 32
+        || !schedule.duration.is_finite()
+        || schedule.duration <= 0.
         || fields["schema_version"] != 1
-        || fields["transient"] != true
+        || fields["field"] != "temperature"
+        || fields["unit"] != "K"
+        || fields["association"] != "point"
         || fields["coordinate_unit"] != "m"
-        || fields["fields"].as_object().is_none_or(|v| v.len() != 1)
     {
         return Err(invalid(
             "complete registered SI transient temperature history required",
         ));
     }
-    let snapshots = fields["fields"]["temperature"]
+    let snapshots = fields["times"]
         .as_array()
-        .filter(|v| v.len() == times.len())
+        .filter(|v| v.len() == schedule.retained.len())
         .ok_or_else(|| invalid("complete approved thermal snapshot schedule required"))?;
     if text
         .lines()
@@ -113,28 +125,56 @@ fn verified_snapshot(
         ));
     }
     let native = results::native_snapshots(&StaticField::Temperature, text)?;
-    if native.len() != times.len() {
+    if native.len() != schedule.native.len() {
         return Err(invalid("complete native thermal schedule required"));
     }
     let source = request.static_request();
+    let mut retained_index = 0;
     let mut chosen = None;
-    for (index, ((snapshot, expected), (actual, values))) in
-        snapshots.iter().zip(times).zip(native).enumerate()
-    {
-        if snapshot["physical_time_s"].as_f64() != Some(*expected)
-            || !expected.is_finite()
+    for (expected, (actual, values)) in schedule.native.iter().zip(native) {
+        if !expected.is_finite()
             || *expected <= 0.
-            || (actual - expected).abs() > time_tolerance(*expected)
-            || snapshot["values"] != values
+            || (actual - expected).abs() > time_tolerance(schedule.duration)
         {
             return Err(invalid(
                 "registered thermal times/values differ from approved schedule or authoritative native output",
             ));
         }
         let (count, samples) = results::extract_values(&source, mesh, &values, resolution)?;
-        if index == selected {
-            chosen = Some((count, samples, actual));
+        if schedule.retained.get(retained_index) == Some(expected) {
+            let snapshot = &snapshots[retained_index];
+            let temperatures: serde_json::Map<String, serde_json::Value> = values
+                .as_array()
+                .ok_or_else(|| invalid("native thermal records required"))?
+                .iter()
+                .map(|record| {
+                    Ok((
+                        record["id"][0]
+                            .as_u64()
+                            .ok_or_else(|| invalid("native thermal node required"))?
+                            .to_string(),
+                        record["value"][0].clone(),
+                    ))
+                })
+                .collect::<Result<_>>()?;
+            if snapshot["requested_s"].as_f64() != Some(*expected)
+                || snapshot["observed_s"].as_f64() != Some(actual)
+                || snapshot["temperature_k"] != serde_json::Value::Object(temperatures)
+            {
+                return Err(invalid(
+                    "registered thermal times/values differ from authoritative native output",
+                ));
+            }
+            if retained_index == selected {
+                chosen = Some((count, samples, actual));
+            }
+            retained_index += 1;
         }
+    }
+    if retained_index != snapshots.len() {
+        return Err(invalid(
+            "retained thermal times absent from native schedule",
+        ));
     }
     chosen.ok_or_else(|| invalid("requested thermal snapshot absent"))
 }
@@ -161,6 +201,13 @@ pub fn sample(store: &Store, request: &ThermalSampleRequest) -> Result<ThermalSa
     }
     let (field_artifact, fields) =
         results::registered(store, &request.job_id, "stages/thermal/thermal-fields.json")?;
+    if fields["initial_condition"]["time_s"].as_f64() != Some(0.)
+        || fields["initial_condition"]["temperature_k"].as_f64() != Some(spec.initial_temperature_k)
+    {
+        return Err(invalid(
+            "registered initial condition differs from approved thermal recipe",
+        ));
+    }
     let (mesh_artifact, mesh) =
         results::registered(store, &request.job_id, "stages/thermal/mesh.json")?;
     let (native_artifact, data) = results::registered_bytes(
@@ -177,7 +224,11 @@ pub fn sample(store: &Store, request: &ThermalSampleRequest) -> Result<ThermalSa
         &fields,
         text,
         spec.resolution,
-        &spec.output_times(),
+        ThermalSchedule {
+            native: &spec.output_times(),
+            retained: &spec.observation_times_s,
+            duration: spec.duration_s,
+        },
     )?;
     Ok(ThermalSampleReport {
         sample: SampleReport {
@@ -202,7 +253,7 @@ pub fn sample(store: &Store, request: &ThermalSampleRequest) -> Result<ThermalSa
             physical_validation: "unqualified".into(),
         },
         native_time_s,
-        time_serialization_tolerance_s: time_tolerance(request.physical_time_s),
+        time_serialization_tolerance_s: time_tolerance(spec.duration_s),
     })
 }
 
@@ -232,6 +283,14 @@ mod tests {
     use crate::results::{SampleLocation, StaticField};
     use serde_json::json;
 
+    fn schedule(times: &[f64]) -> ThermalSchedule<'_> {
+        ThermalSchedule {
+            native: times,
+            retained: times,
+            duration: *times.last().unwrap(),
+        }
+    }
+
     fn fixture() -> (
         ThermalSampleRequest,
         serde_json::Value,
@@ -249,7 +308,7 @@ mod tests {
             ],
         };
         let mesh = json!({"nodes":(1..=8).map(|id|(id.to_string(),json!([id,0,0]))).collect::<std::collections::BTreeMap<_,_>>()});
-        let fields = json!({"schema_version":1,"transient":true,"coordinate_unit":"m","fields":{"temperature":(1..=2).map(|t|json!({"physical_time_s":t,"values":(1..=8).map(|id|json!({"id":[id],"value":[293.+id as f64-t as f64]})).collect::<Vec<_>>()})).collect::<Vec<_>>()}});
+        let fields = json!({"schema_version":1,"field":"temperature","unit":"K","association":"point","coordinate_unit":"m","times":(1..=2).map(|t|json!({"requested_s":t,"observed_s":t,"temperature_k":(1..=8).map(|id|(id.to_string(),json!(293.+id as f64-t as f64))).collect::<std::collections::BTreeMap<_,_>>()})).collect::<Vec<_>>()});
         let mut native = String::new();
         for t in 1..=2 {
             native.push_str(&format!(
@@ -266,7 +325,7 @@ mod tests {
     fn thermal_samples_select_exact_retained_time_and_preserve_native_ids() {
         let (request, mesh, fields, native) = fixture();
         let (count, samples, native_time) =
-            verified_snapshot(&request, &mesh, &fields, &native, 1, &[1., 2.]).unwrap();
+            verified_snapshot(&request, &mesh, &fields, &native, 1, schedule(&[1., 2.])).unwrap();
         assert_eq!(count, 8);
         assert_eq!(native_time, 2.);
         assert_eq!(samples[0].value, vec![299.]);
@@ -274,15 +333,19 @@ mod tests {
         assert_eq!(request.static_request().field, StaticField::Temperature);
         let mut changed = request.clone();
         changed.physical_time_s = 1.5;
-        assert!(verified_snapshot(&changed, &mesh, &fields, &native, 1, &[1., 2.]).is_err());
+        assert!(
+            verified_snapshot(&changed, &mesh, &fields, &native, 1, schedule(&[1., 2.])).is_err()
+        );
     }
 
     #[test]
     fn thermal_checks_all_native_snapshots_not_only_requested_nodes_and_time() {
         let (request, mesh, fields, native) = fixture();
         let mut changed = fields.clone();
-        changed["fields"]["temperature"][0]["values"][3]["value"][0] = json!(999.);
-        assert!(verified_snapshot(&request, &mesh, &changed, &native, 1, &[1., 2.]).is_err());
+        changed["times"][0]["temperature_k"]["4"] = json!(999.);
+        assert!(
+            verified_snapshot(&request, &mesh, &changed, &native, 1, schedule(&[1., 2.])).is_err()
+        );
         for changed in [
             native.replace("NALL", "FOREIGN"),
             format!("{native}{native}"),
@@ -290,21 +353,26 @@ mod tests {
             native.replace("4 296D", "1 296D"),
             native.replace("8 299D", "8 nanD"),
         ] {
-            assert!(verified_snapshot(&request, &mesh, &fields, &changed, 1, &[1., 2.]).is_err());
+            assert!(
+                verified_snapshot(&request, &mesh, &fields, &changed, 1, schedule(&[1., 2.]))
+                    .is_err()
+            );
         }
         let mut changed = fields.clone();
-        changed["fields"]["temperature"][0]["values"]
-            .as_array_mut()
+        changed["times"][0]["temperature_k"]
+            .as_object_mut()
             .unwrap()
-            .pop();
-        assert!(verified_snapshot(&request, &mesh, &changed, &native, 1, &[1., 2.]).is_err());
+            .remove("8");
+        assert!(
+            verified_snapshot(&request, &mesh, &changed, &native, 1, schedule(&[1., 2.])).is_err()
+        );
     }
 
     #[test]
     fn thermal_time_serialization_is_explicit_and_never_implicit_interpolation() {
         let (mut request, mesh, mut fields, native) = fixture();
         request.physical_time_s = 2.00000004;
-        fields["fields"]["temperature"][1]["physical_time_s"] = json!(request.physical_time_s);
+        fields["times"][1]["requested_s"] = json!(request.physical_time_s);
         assert_eq!(
             verified_snapshot(
                 &request,
@@ -312,7 +380,7 @@ mod tests {
                 &fields,
                 &native,
                 1,
-                &[1., request.physical_time_s]
+                schedule(&[1., request.physical_time_s])
             )
             .unwrap()
             .2,
@@ -320,11 +388,55 @@ mod tests {
         );
         request.physical_time_s += 1e-12;
         assert!(
-            verified_snapshot(&request, &mesh, &fields, &native, 1, &[1., 2.00000004]).is_err()
+            verified_snapshot(
+                &request,
+                &mesh,
+                &fields,
+                &native,
+                1,
+                schedule(&[1., 2.00000004])
+            )
+            .is_err()
         );
         for time in [0., -1., f64::NAN, f64::INFINITY] {
             request.physical_time_s = time;
             assert!(request.validate().is_err());
         }
+    }
+
+    #[test]
+    fn energy_balance_schedule_does_not_authorize_extra_field_observations() {
+        let (mut request, mesh, mut fields, native) = fixture();
+        fields["times"].as_array_mut().unwrap().remove(0);
+        let sample = verified_snapshot(
+            &request,
+            &mesh,
+            &fields,
+            &native,
+            1,
+            ThermalSchedule {
+                native: &[1., 2.],
+                retained: &[2.],
+                duration: 2.,
+            },
+        )
+        .unwrap();
+        assert_eq!(sample.1[0].value, vec![299.]);
+        request.physical_time_s = 1.;
+        assert!(
+            verified_snapshot(
+                &request,
+                &mesh,
+                &fields,
+                &native,
+                1,
+                ThermalSchedule {
+                    native: &[1., 2.],
+                    retained: &[2.],
+                    duration: 2.
+                }
+            )
+            .is_err()
+        );
     }
 }

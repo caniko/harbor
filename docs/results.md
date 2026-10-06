@@ -59,11 +59,13 @@ evidence are supported. The time must match an approved retained output exactly;
 requests for unretained time, spatial/temporal interpolation, integration-point
 temperature or other fields reject. The response retains K, m, science/execution
 bindings and all three registered artifact hashes. Every native snapshot and
-node is checked against the JSON history and approved schedule before returning
-the selected 1–64 distinct nodes. Float64 temperatures match DAT exactly.
+node is checked against its approved native output schedule, and every retained
+JSON observation is matched to DAT before returning the selected 1–64 distinct
+nodes. Float64 temperatures match DAT exactly. DAT's denser energy-balance
+schedule does not authorize extra field-observation requests.
 
 CalculiX serializes DAT times with seven significant digits. The existing thermal
-verification permits only `1e-7 * max(1, abs(time_s))` seconds of serialization
+verification permits only `1e-7 * duration_s` seconds of serialization
 error. Reports expose both the approved `physical_time_s` and original
 `native_time_s`, plus `time_serialization_tolerance_s`; this does not authorize
 interpolation or an approximate request time.

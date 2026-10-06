@@ -167,14 +167,18 @@ def main():
                             if thermal:
                                 history = json.loads(
                                     (directory / artifact).read_text()
-                                )["fields"]["temperature"]
-                                assert len(history) == len(native["temperature"])
-                                for retained_field, snapshot in zip(
-                                    history, native["temperature"], strict=True
-                                ):
-                                    stamp = retained_field["physical_time_s"]
-                                    if stamp in plan["thermal"]["observation_times_s"]:
-                                        points.append(("temperature", snapshot, stamp))
+                                )["times"]
+                                for retained_field in history:
+                                    stamp = retained_field["requested_s"]
+                                    snapshot = next(
+                                        s
+                                        for s in native["temperature"]
+                                        if s["time"] == retained_field["observed_s"]
+                                    )
+                                    assert (
+                                        stamp in plan["thermal"]["observation_times_s"]
+                                    )
+                                    points.append(("temperature", snapshot, stamp))
                                 assert len(points) == len(
                                     plan["thermal"]["observation_times_s"]
                                 )
@@ -350,6 +354,15 @@ def main():
                                             },
                                         ),
                                         (
+                                            "energy-only-time",
+                                            {
+                                                **request,
+                                                "physical_time_s": native[
+                                                    "temperature"
+                                                ][0]["time"],
+                                            },
+                                        ),
+                                        (
                                             "invented-initial-time",
                                             {**request, "physical_time_s": 0},
                                         ),
@@ -406,7 +419,13 @@ def main():
                             original = target.read_bytes()
                             document = json.loads(original)
                             field = next(iter(native))
-                            document["fields"][field][0]["values"][0]["value"][0] += 1
+                            if thermal:
+                                node = next(iter(document["times"][0]["temperature_k"]))
+                                document["times"][0]["temperature_k"][node] += 1
+                            else:
+                                document["fields"][field][0]["values"][0]["value"][
+                                    0
+                                ] += 1
                             target.write_text(json.dumps(document))
                             request = {
                                 "schema_version": 1,

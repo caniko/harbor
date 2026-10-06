@@ -151,11 +151,16 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 
 The next results slice adds strict registered-v6 `results sample-thermal` and
 `compare-thermal` plus matching results-profile MCP tools. Complete JSON histories
-are independently checked against every authoritative native DAT snapshot and
-approved retained time before returning exact nodes. Native time-serialization
+are independently checked against their authoritative DAT counterparts; the
+complete native schedule/node coverage is separately verified. Only declared
+field-observation times authorize sampling. Native time-serialization
 error is exposed separately from exact requested times; signed comparisons keep
 both physical states. Treefmt, full CPU checks (81 Python cases) and generated
-Simit CI drift pass. Exact packaged result qualification remains pending.
+Simit CI drift pass. The first development diagnostic exposed the differing
+JSON observation/DAT energy schedules and remains retained as failed evidence.
+The corrected diagnostic matches both qualified thermal jobs at 10/120 s and
+their signed differences, including generated report-schema checks. Build 32
+predates that correction; exact packaged result qualification remains pending.
 
 ## External qualification prerequisites
 
