@@ -3,7 +3,8 @@
 `thermal-cpu` is an independent fixed native Gmsh 4.15.2/CalculiX 2.23 CPU
 reference. It uses the FEM bridge's isolated Python 3.13 ABI and structured
 C3D8 box mesh. `runtime-thermal-cpu` declares its immutable executable and
-the bubblewrap launcher. Its native build/qualification gate is pending.
+the bubblewrap launcher. `runtime-thermal-worker` adds a closure-only worker
+manifest. Exact native and worker qualification are tracked separately below.
 
 ## Model and applicability
 
@@ -104,3 +105,34 @@ before execution. The opt-in qualifier runs under the guarded Canix runtime
 lease and a bounded 2-GiB/no-swap/two-CPU service. Worker integration and its
 operation-specific sandbox have separate qualification. Neither standalone
 execution nor process exit establishes physical validation or solver resume.
+
+## Immutable worker planning
+
+`harbor-cad case plan-thermal-reference REQUEST.json --policy research` returns
+`{approval_digest, plan}`. The generated `ThermalReferenceSpec` schema describes
+the strict SI request; there are no inferred physical inputs. An independent
+version-6 plan binds the full histories, provenance, material domain, explicit
+moisture assessment, spatial resolution, solver substeps, physical observations
+and independently approved temperature/energy tolerances. Versions 1–5 retain
+their serialized identities and reject injected thermal capabilities.
+
+The DAG is `thermal_reference → bundle`, with CPU-only stages. Admission requires
+same-user authority, systemd ownership, an exact approved immutable native
+runtime and a conservative 2-GiB RAM reservation; output has an independent
+conservative budget. The `harbor-cad-thermal-cpu-v1` sandbox mounts only the
+operation's Nix closure plus a read-only exact request descriptor and private
+stage output. It verifies all eight CPU isolation boundaries before meshing.
+
+MCP `case_plan_thermal_reference` is available in `simulation`/`all` and uses the
+same Rust planner. Ordinary `job_submit` returns a durable job ID after explicit
+digest approval. `qualification_report` and CLI `qualify --job JOB` inspect
+checksummed historical evidence, retaining physical validation as unqualified.
+No thermal history becomes a boot, moisture or contact result.
+
+`scripts/verify_thermal_worker.py` requires matching immutable CLI/MCP/runtime
+and a standalone report for the exact adapter. It exercises both interfaces,
+changed-history and wrong-digest rejection, independent raw-field/energy
+rechecks, full checksummed exports, closure isolation, same-invocation worker
+restart/idempotency, forced complete-tree death, cancellation and final
+reservation/root release. This new package combination requires its own native
+and lifecycle runs; earlier static-FEM qualification is not inherited.

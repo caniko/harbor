@@ -16,9 +16,12 @@ pub const HIP_SANDBOX_POLICY: &str = "harbor-cad-native-hip-single-kfd-v1";
 pub const PRESENTATION_SANDBOX_POLICY: &str = "harbor-cad-presentation-v1";
 pub const FILTER_SANDBOX_POLICY: &str = "harbor-cad-filter-hip-single-kfd-v1";
 pub const FEM_SANDBOX_POLICY: &str = "harbor-cad-fem-cpu-v1";
+pub const THERMAL_SANDBOX_POLICY: &str = "harbor-cad-thermal-cpu-v1";
 
 fn sandbox_policy(plan: &ExecutionPlan) -> &'static str {
-    if plan.fem.is_some() {
+    if plan.thermal.is_some() {
+        THERMAL_SANDBOX_POLICY
+    } else if plan.fem.is_some() {
         FEM_SANDBOX_POLICY
     } else if plan.filter.is_some() {
         FILTER_SANDBOX_POLICY

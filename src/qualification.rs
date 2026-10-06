@@ -167,6 +167,12 @@ fn numerical(
                 Some(crate::fem::verify_receipt(plan, value)?),
             ));
         }
+        StageOperation::ThermalReference => {
+            return Ok((
+                EvidenceState::ReportedPass,
+                Some(crate::thermal::verify_receipt(plan, value)?),
+            ));
+        }
         _ => return Ok((EvidenceState::NotAssessed, None)),
     };
     let error = body[error_key]
@@ -232,6 +238,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::FemReference => {
                 ("stages/fem/fem-reference-receipt.json", Some("CalculiX"))
             }
+            StageOperation::ThermalReference => {
+                ("stages/thermal/thermal-receipt.json", Some("CalculiX"))
+            }
             StageOperation::Bundle => continue,
         };
         let loaded = registered_json(store, id, path)?;
@@ -243,21 +252,31 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: plan.fem.as_ref().map_or_else(
+            formulation: plan.thermal.as_ref().map_or_else(
                 || {
-                    plan.channel_case()
-                        .map(|c| c.applicability.formulation.clone())
+                    plan.fem.as_ref().map_or_else(
+                        || {
+                            plan.channel_case()
+                                .map(|c| c.applicability.formulation.clone())
+                        },
+                        |f| Ok(f.formulation().into()),
+                    )
                 },
-                |f| Ok(f.formulation().into()),
+                |t| Ok(t.formulation.clone()),
             )?,
             dimensions: plan
                 .case
                 .as_ref()
                 .map_or(3, |c| c.applicability.dimensionality),
             precision: None,
-            refinement: plan.fem.as_ref().map_or_else(
-                || plan.channel_case().map(|c| c.resolution),
-                |f| Ok(f.resolution),
+            refinement: plan.thermal.as_ref().map_or_else(
+                || {
+                    plan.fem.as_ref().map_or_else(
+                        || plan.channel_case().map(|c| c.resolution),
+                        |f| Ok(f.resolution),
+                    )
+                },
+                |t| Ok(t.resolution),
             )?,
             backend: stage
                 .selection

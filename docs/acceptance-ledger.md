@@ -56,6 +56,16 @@ integration now pass their separate gates; see
 [FEM reference scope](fem-references.md) and [exact evidence](evidence/fem-cpu.json).
 Static solver parameters retain no invented physical-time mapping.
 
+The independent version-6 prescribed transient thermal path is implemented:
+CLI/MCP planning binds explicit SI histories/material domains/provenance,
+native solver substeps and independent physical output times. Its CPU-only
+worker policy mounts an operation-specific closure and requires conservative
+authority-backed admission. The complete CPU gate passes with 55 Python cases,
+including legacy/schema/gate rejection, and the opt-in exact native/worker
+qualifiers are implemented. Native failures and the precision-only CalculiX
+patch are documented in [thermal histories](thermal-history.md); exact new
+package qualification is still pending.
+
 The updated complete CPU gate passes 103 Rust tests and 44 Python cases,
 Clippy with warnings denied, locked build, Treefmt and Ruff. New systemd jobs
 verify effective kernel controls before native launch and retain aggregate
@@ -129,7 +139,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation and independent v5 static FEM implemented; exact CLI/MCP native mesh/fields and operation-specific isolation qualified; broader native recipes pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | scoped v4 native/CLI/MCP analytical, CPU-HIP, byte/topology, source/lifecycle and aggregate RAM/CPU gates pass at the recorded revision; instruction trace, whole-card VRAM and broader filters pending |
 | P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | synthetic steady conduction/free expansion at 2/4/8 and CLI/MCP lifecycle pass; airflow separately scoped; imported CAD/Gmsh correspondence and wetting pending |
-| P5 / C | native thermal/contact/moisture/coupling slice | pending |
+| P5 / C | native thermal/contact/moisture/coupling slice | independent synthetic prescribed transient CLI/MCP recipe and closure-only CPU policy implemented; native qualification in progress; contact/moisture/coupling pending |
 | P6 / D | native local water, prescribed snow and retained-water freezing | pending |
 | P7 / E | native atmosphere/spectral irradiance/dose slice | pending |
 | P8 / F | bounded studies, retention/recovery/resume, measurements and product closure | pending |

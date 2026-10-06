@@ -459,19 +459,11 @@ def verify(spec, nodes, cells, fields):
     return results
 
 
-def main():
-    if len(sys.argv) != 3 or sys.argv[1] != "reference":
-        raise ValueError("usage: harbor-cad-fem reference request.json")
-    raw = read_regular(sys.argv[2], 1024**2)
-    spec = strict_json(raw)
-    validate(spec)
-    sandbox = None
-    if os.environ.get("HARBOR_CAD_FEM_POLICY"):
-        if os.environ["HARBOR_CAD_FEM_POLICY"] != "harbor-cad-fem-cpu-v1":
-            raise ValueError("exact CPU FEM sandbox policy required")
-        mounts = set(
-            read_regular("/fem-runtime-closure.txt", 2 * 1024**2).decode().splitlines()
-        )
+def cpu_sandbox(policy_variable, expected_policy, closure_path, request_path):
+    if os.environ.get(policy_variable):
+        if os.environ[policy_variable] != expected_policy:
+            raise ValueError("exact CPU solver sandbox policy required")
+        mounts = set(read_regular(closure_path, 2 * 1024**2).decode().splitlines())
         if set(map(str, Path("/nix/store").iterdir())) != mounts:
             raise ValueError("FEM sandbox must expose only its operation closure")
         checks = {
@@ -485,11 +477,26 @@ def main():
             "no_worker_socket": not list(Path("/work").glob("*.sock")),
             "network_namespace_isolated": os.readlink("/proc/self/ns/net")
             != os.environ["HARBOR_CAD_HOST_NETNS"],
-            "descriptor_readonly": os.statvfs(sys.argv[2]).f_flag & os.ST_RDONLY != 0,
+            "descriptor_readonly": os.statvfs(request_path).f_flag & os.ST_RDONLY != 0,
         }
         if not all(checks.values()):
             raise ValueError("CPU FEM sandbox boundary failed")
-        sandbox = {"policy": os.environ["HARBOR_CAD_FEM_POLICY"], "checks": checks}
+        return {"policy": expected_policy, "checks": checks}
+    return None
+
+
+def main():
+    if len(sys.argv) != 3 or sys.argv[1] != "reference":
+        raise ValueError("usage: harbor-cad-fem reference request.json")
+    raw = read_regular(sys.argv[2], 1024**2)
+    spec = strict_json(raw)
+    validate(spec)
+    sandbox = cpu_sandbox(
+        "HARBOR_CAD_FEM_POLICY",
+        "harbor-cad-fem-cpu-v1",
+        "/fem-runtime-closure.txt",
+        sys.argv[2],
+    )
     if any(Path.cwd().glob("reference.*")) or any(Path.cwd().glob("mesh.json*")):
         raise ValueError("new stage-local FEM directory required")
     start = time.monotonic()

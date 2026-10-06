@@ -93,6 +93,12 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Plan a prescribed synthetic transient CPU thermal history with independent output/solver schedules.
+    PlanThermalReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     /// Plan a static synthetic Gmsh/CalculiX CPU reference with explicit SI inputs.
     PlanFemReference {
         file: PathBuf,
@@ -266,6 +272,10 @@ fn run(cli: Cli) -> Result<()> {
             return worker::run_job(&state, &profile, &id);
         }
         Commands::Case { command } => match command {
+            Case::PlanThermalReference { file, policy } => {
+                let plan = ExecutionPlan::thermal_reference(read(&file)?, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
             Case::PlanFemReference { file, policy } => {
                 let plan = ExecutionPlan::fem_reference(read(&file)?, policy)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));

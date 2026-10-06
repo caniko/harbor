@@ -103,6 +103,12 @@ receipt with actual execution and no software fallback.
 from registered retained science. Its version-4 compute-only DAG, native package
 and qualification boundaries are described in [numerical filters](docs/numerical-filters.md).
 
+`case plan-thermal-reference REQUEST.json --policy research` plans synthetic
+prescribed CPU transient heat transfer. Its independent version-6 histories,
+temperature/energy gates, closure-only sandbox and CLI/MCP qualification are
+described in [thermal histories](docs/thermal-history.md). The simulation MCP
+profile exposes `case_plan_thermal_reference` and ordinary approved job submission.
+
 Standalone `render REQUEST.json` plans presentation from a completed registered
 field snapshot. Its approved version-2 plan uses only render, optional video and
 bundle stages; source science and original authorization remain immutable.

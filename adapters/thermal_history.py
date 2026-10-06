@@ -550,12 +550,16 @@ def verify(spec, nodes, cells, fields):
                 "reference": "256-mode Robin plane-wall series; exact convolution of prescribed piecewise-linear ambient/heater",
                 "normalized_max_abs_error": maximum_error,
                 "tolerance": spec["numerical_tolerance"],
+                "unit": "K",
+                "samples": len(nodes) * len(spec["observation_times_s"]),
                 "passed": True,
             },
             "energy": {
                 "reference": "volume-integrated rho*c*(T-T0) = prescribed heater minus trapezoid-integrated outward Robin flux",
                 "maximum_relative_balance_error": maximum_balance,
                 "tolerance": spec["energy_tolerance"],
+                "unit": "J",
+                "samples": len(requested),
                 "passed": True,
             },
         },
@@ -573,6 +577,12 @@ def main():
     raw = fem.read_regular(sys.argv[2], 1024**2)
     spec = fem.strict_json(raw)
     validate(spec)
+    sandbox = fem.cpu_sandbox(
+        "HARBOR_CAD_THERMAL_POLICY",
+        "harbor-cad-thermal-cpu-v1",
+        "/thermal-runtime-closure.txt",
+        sys.argv[2],
+    )
     if any(Path.cwd().glob("reference.*")) or any(Path.cwd().glob("mesh.json*")):
         raise ValueError("new stage-local thermal directory required")
     nodes, cells, sets = fem.mesh(spec)
@@ -645,6 +655,7 @@ def main():
             "native_field_sha256": hashlib.sha256(data).hexdigest(),
             "calculix_version": "@ccx_version@",
             "gmsh_version": "@gmsh_version@",
+            "gmsh_source_sha256": "be3f66f225d27ba9fa014f07e83169285da8a051b0e8ab7103d88066b39bdd3e",
             "calculix_source_sha256": "9c88385c10fb04f5dc6c4e98027a51bebdd8aee3920e05190d6c1dd08357d6e7",
             "temperature_serialization": "E23.15; 16 significant decimal digits from native real*8",
             "temperature_serialization_patch_sha256": "@temperature_patch_sha256@",
@@ -657,6 +668,7 @@ def main():
             "numerical_verification": checks,
             "moisture_risk": spec["moisture_risk"],
             "physical_validation": "unqualified",
+            "sandbox": sandbox,
             "limitations": [
                 "synthetic box and constant-property material domain only",
                 "prescribed planar convection; h is not inferred from velocity",

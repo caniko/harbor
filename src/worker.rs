@@ -169,9 +169,12 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
                     ));
                 }
             }
-            if matches!(stage.operation, StageOperation::FemReference) {
+            if matches!(
+                stage.operation,
+                StageOperation::FemReference | StageOperation::ThermalReference
+            ) {
                 crate::sandbox::importer_mounts(
-                    native.fem_closure()?,
+                    native.solver_closure(&stage.operation)?,
                     Path::new(native.executable(&stage.operation)?),
                 )?;
             }
@@ -449,6 +452,10 @@ fn dispatch(
             let plan = ExecutionPlan::fem_reference(*spec, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::PlanThermalReference { spec } => {
+            let plan = ExecutionPlan::thermal_reference(*spec, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
             ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
         )?),
@@ -504,7 +511,7 @@ fn dispatch(
                     "standalone presentation requires authoritative admission".into(),
                 ));
             }
-            if plan.fem.is_some() && authority.is_none() {
+            if (plan.fem.is_some() || plan.thermal.is_some()) && authority.is_none() {
                 return Err(Error::Unqualified(
                     "CPU FEM submission requires authoritative same-user admission".into(),
                 ));
@@ -550,11 +557,19 @@ fn dispatch(
                                     .into(),
                             );
                         }
-                        if matches!(stage.operation, StageOperation::FemReference) {
+                        if matches!(
+                            stage.operation,
+                            StageOperation::FemReference | StageOperation::ThermalReference
+                        ) {
                             files.insert(
-                                "fem_closure".into(),
+                                if plan.thermal.is_some() {
+                                    "thermal_closure"
+                                } else {
+                                    "fem_closure"
+                                }
+                                .into(),
                                 runtime
-                                    .fem_closure()?
+                                    .solver_closure(&stage.operation)?
                                     .to_str()
                                     .ok_or_else(|| invalid("FEM closure path"))?
                                     .into(),
@@ -849,10 +864,19 @@ struct NativeRuntime {
     fem: Option<String>,
     #[serde(default)]
     fem_closure: Option<String>,
+    #[serde(default)]
+    thermal: Option<String>,
+    #[serde(default)]
+    thermal_closure: Option<String>,
 }
 impl NativeRuntime {
-    fn fem_closure(&self) -> Result<&Path> {
-        self.fem_closure
+    fn solver_closure(&self, operation: &StageOperation) -> Result<&Path> {
+        let selected = match operation {
+            StageOperation::FemReference => &self.fem_closure,
+            StageOperation::ThermalReference => &self.thermal_closure,
+            _ => return Err(invalid("fixed CPU solver operation required for closure")),
+        };
+        selected
             .as_deref()
             .map(Path::new)
             .ok_or_else(|| Error::Unqualified("FEM operation closure absent".into()))
@@ -892,6 +916,9 @@ impl NativeRuntime {
             })?,
             StageOperation::FemReference => self.fem.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU FEM adapter absent from selected runtime".into())
+            })?,
+            StageOperation::ThermalReference => self.thermal.as_deref().ok_or_else(|| {
+                Error::Unqualified("CPU thermal adapter absent from selected runtime".into())
             })?,
             _ => return Err(invalid("not a native adapter operation")),
         };
@@ -989,16 +1016,36 @@ fn native_stage(
         StageOperation::CadInspect | StageOperation::CadFixture
     ) {
         crate::sandbox::mount_importer(&mut command, runtime.importer_closure()?, Path::new(exe))?;
-    } else if matches!(stage.operation, StageOperation::FemReference) {
-        crate::sandbox::mount_closure(&mut command, runtime.fem_closure()?, Path::new(exe))?;
+    } else if matches!(
+        stage.operation,
+        StageOperation::FemReference | StageOperation::ThermalReference
+    ) {
+        let thermal = matches!(stage.operation, StageOperation::ThermalReference);
+        crate::sandbox::mount_closure(
+            &mut command,
+            runtime.solver_closure(&stage.operation)?,
+            Path::new(exe),
+        )?;
         command
             .args(["--ro-bind"])
-            .arg(runtime.fem_closure()?)
-            .arg("/fem-runtime-closure.txt");
+            .arg(runtime.solver_closure(&stage.operation)?)
+            .arg(if thermal {
+                "/thermal-runtime-closure.txt"
+            } else {
+                "/fem-runtime-closure.txt"
+            });
         command.args([
             "--setenv",
-            "HARBOR_CAD_FEM_POLICY",
-            crate::execution::FEM_SANDBOX_POLICY,
+            if thermal {
+                "HARBOR_CAD_THERMAL_POLICY"
+            } else {
+                "HARBOR_CAD_FEM_POLICY"
+            },
+            if thermal {
+                crate::execution::THERMAL_SANDBOX_POLICY
+            } else {
+                crate::execution::FEM_SANDBOX_POLICY
+            },
         ]);
         command
             .args(["--setenv", "HARBOR_CAD_HOST_NETNS"])
@@ -1129,6 +1176,8 @@ fn native_stage(
         dir,
         &if matches!(stage.operation, StageOperation::FemReference) {
             "fem-reference-receipt.json".into()
+        } else if matches!(stage.operation, StageOperation::ThermalReference) {
+            "thermal-receipt.json".into()
         } else {
             format!("{op}-receipt.json")
         },
@@ -1146,6 +1195,8 @@ fn native_stage(
                 "native-filter-request.json"
             } else if matches!(stage.operation, StageOperation::FemReference) {
                 "native-fem-request.json"
+            } else if matches!(stage.operation, StageOperation::ThermalReference) {
+                "native-thermal-request.json"
             } else {
                 "native-plan.json"
             },
@@ -1156,6 +1207,8 @@ fn native_stage(
         .arg(exe)
         .arg(if matches!(stage.operation, StageOperation::FemReference) {
             "reference"
+        } else if matches!(stage.operation, StageOperation::ThermalReference) {
+            "run"
         } else {
             &op
         })
@@ -1209,6 +1262,9 @@ fn native_stage(
     }
     if matches!(stage.operation, StageOperation::FemReference) {
         crate::fem::verify_receipt(plan, &evidence)?;
+    }
+    if matches!(stage.operation, StageOperation::ThermalReference) {
+        crate::thermal::verify_receipt(plan, &evidence)?;
     }
     if let Some(frames) = &plan.frames {
         crate::frames::registered(store, id, plan)?;
@@ -1279,6 +1335,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::Video => "FFmpeg",
         StageOperation::NumericalFilter => "Viskores",
         StageOperation::FemReference => "CalculiX",
+        StageOperation::ThermalReference => "CalculiX",
         _ => return Err(invalid("not a native adapter operation")),
     };
     let backend = stage
@@ -1681,6 +1738,15 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         .as_ref()
                         .ok_or_else(|| invalid("FEM recipe required"))?;
                     store.add_artifact(id,&commit_artifact(&dir,"native-fem-request.json",&serde_json::to_vec(spec)?,"json","exact SI native FEM descriptor; static solver parameter is not physical time")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if matches!(stage.operation, StageOperation::ThermalReference) {
+                    let working = native_work.join("stages/thermal");
+                    private_dir(&working)?;
+                    let spec = plan
+                        .thermal
+                        .as_ref()
+                        .ok_or_else(|| invalid("thermal recipe required"))?;
+                    store.add_artifact(id,&commit_artifact(&dir,"native-thermal-request.json",&serde_json::to_vec(spec)?,"json","exact SI prescribed thermal history; explicit native substeps and independent energy/retained output schedules")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
                 } else {
                     native_stage(store, profile, &plan, stage, &native_work, id)?;

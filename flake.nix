@@ -96,7 +96,9 @@
     source = pkgs.lib.cleanSourceWith {
       src = ./.;
       filter = path: type:
-        craneLib.filterCargoSources path type || pkgs.lib.hasInfix "/profiles/" path;
+        craneLib.filterCargoSources path type
+        || pkgs.lib.hasInfix "/profiles/" path
+        || pkgs.lib.hasSuffix "/nix/patches/calculix-temperature-precision.patch" path;
     };
     common = {
       src = source;
@@ -164,7 +166,7 @@
       inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda openlb-hip runtime-cuda runtime-hip;
       inherit (filters) kokkos-hip vtk-hip filter-hip;
       inherit (fem) fem-cpu runtime-fem-cpu runtime-fem-worker;
-      inherit (thermal) thermal-cpu runtime-thermal-cpu;
+      inherit (thermal) thermal-cpu runtime-thermal-cpu runtime-thermal-worker;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
         cad = null;

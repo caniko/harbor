@@ -118,6 +118,14 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 )?;
                 2048 * MIB
             }
+            StageOperation::ThermalReference => {
+                plan.thermal
+                    .as_ref()
+                    .ok_or_else(|| invalid("thermal recipe required for resource estimate"))?
+                    .validate()?;
+                output = add(output, 256 * MIB)?;
+                2048 * MIB
+            }
             StageOperation::Bundle => 16 * MIB,
         };
         stages.push(StageMinimum {

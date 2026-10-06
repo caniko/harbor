@@ -225,6 +225,7 @@ impl ExecutionPlan {
             schema_version: 5,
             case: None,
             fem: Some(spec),
+            thermal: None,
             source: None,
             frames: None,
             filter: None,
