@@ -48,6 +48,9 @@ angle error must be at most `5°`. Inputs can tighten these gates.
 
 `scripts/verify_wetting_cpu.py` exercises n24/36/48 at equal physical duration
 for 90° and 100° references. Each solve retains its original field bytes and
+uses 24000/54000/96000 steps, respectively (0.016 s at the declared SI inputs).
+The shorter initial 0.005333 s campaign retained an unsettled 100° droplet;
+that failed settling gate does not establish convergence. Each reference
 must pass mass and angle gates; late angle change must be at most 0.2°, and
 angle error must decrease across mesh refinements. Unsupported inputs must
 reject with empty scientific output directories.

@@ -18,7 +18,9 @@ def checksum(path):
 
 
 def request(angle, n):
-    steps = 8000 * n * n // (24 * 24)
+    # Hold physical duration fixed as dt scales with dx². The initial cap
+    # requires this settling budget before comparing equilibrium angles.
+    steps = 24000 * n * n // (24 * 24)
     return {
         "schema_version": 1,
         "synthetic": True,
