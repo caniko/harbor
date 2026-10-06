@@ -63,14 +63,50 @@
     "repair_revision": "c1a58dc3444b7a09ee99745d7b83a14aa340367e",
     "repair": "disable bytecode generation before native helper imports; exact operation-closure check retained",
     "post_failure_observation": "zero canonical reservations and no remaining failed-worker retention intents/roots",
-    "repaired_package_qualification": "pending; no lifecycle/export qualification inherited"
+    "repaired_package_qualification": "fresh full worker attempt 3 passed; see qualified_worker, no failed-attempt promotion"
+  },
+  "qualified_worker": {
+    "build_revision": "c1a58dc3444b7a09ee99745d7b83a14aa340367e",
+    "qualifier_revision": "4fe2444aec7bec6c52cc110538f66b04e95e26ab",
+    "qualifier_identity": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/thermal-worker-3-qualifier-identity.json",
+    "qualifier_identity_sha256": "dea2a2719cf23eb040f36cf4467539b28513d88654cdec1331dd93cb1a08bb03",
+    "runtime": "/nix/store/4ics7k5zqhwv6p8blxx9s6vyif9d3his-harbor-cad-native-runtime.json",
+    "runtime_sha256": "bf6a4f9a24ca1485e895d6d776185a617e55da57a4249f7723f349d814511400",
+    "binary": "/nix/store/mms08igm8jfh0g4rapn4rc7afp7hla04-harbor-cad-0.1.0/bin/harbor-cad",
+    "binary_sha256": "f45bf7d0664381cf67d495dd3a1e41e67297fe6dbf16e5f22495f520bc4f0588",
+    "mcp": "/nix/store/rvfdy7p6r0wgw9d2lssraap1k6v9r40h-harbor-cad-mcp/bin/harbor-cad-mcp",
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/thermal-worker-3/verification.json",
+    "report_sha256": "05c15c7736e1b42fa6c47ba452d87f3242cb43d5a5e7a0f0f5c49f5e9145d49c",
+    "cli_job": "39d9acac-7360-4d26-810f-5c37b9c3d56b",
+    "mcp_job": "e708e786-9089-43bb-b1b8-886df3578e61",
+    "forced_death_job": "aa64eae5-baba-4b13-b799-4e6cd8a037c8",
+    "cancelled_job": "11a47ef3-a582-4dc7-af3f-22d43bcb386a",
+    "runtime_execution": "passed through CLI and official MCP; exact native-qualified adapter",
+    "numerical_verification": "passed; independent raw temperature/energy rechecks against original request bytes and unchanged 0.02 gates",
+    "approval_rejections": "wrong digest and changed heater history rejected through original approvals",
+    "isolation": "all eight CPU closure/request/home/session/device/worker/network/privilege checks passed",
+    "lifecycle": "each worker kill/restart retained the original live invocation; duplicate keys returned original jobs; forced complete-tree death and cancellation reached expected terminal states",
+    "exports": "two portable checksummed 25-record bundles, each containing original plan/request/runtime, native mesh/raw fields/metrics and owned-service measurements",
+    "kernel_resources": {
+      "memory_max_bytes": 2147483648,
+      "memory_swap_max_bytes": 0,
+      "cpu_max": "200000 100000",
+      "pids_max": 128,
+      "cli_memory_peak_bytes": 132182016,
+      "mcp_memory_peak_bytes": 135524352,
+      "cli_cpu_usage_microseconds": 131330692,
+      "mcp_cpu_usage_microseconds": 171344611
+    },
+    "release": "each service tree verified closed before reservation/roots release; final canonical reservation count 0; state retention intents/roots empty",
+    "physical_validation": "unqualified"
   },
   "failed_attempts_preserved": [
     {"attempt": "thermal-native-1", "cause": "right-endpoint heater ramp integrated 31 J instead of exact prescribed 30 J; both unchanged gates failed"},
     {"attempt": "thermal-native-2", "cause": "native fixed-width time-card truncation rejected the deck"},
     {"attempt": "thermal-native-3", "cause": "E13.6 native nodal-temperature serialization lost precision required by the early energy balance"},
     {"attempt": "thermal-native-4", "cause": "all numerical gates passed but fixed-mesh continuum error cancellation invalidated the original temporal-refinement check", "diagnosis_sha256": "a4b78f9095ae429e61034f3a5ec35e95549b6372cfc9655f381ef1c9da38bfb7"},
-    {"attempt": "runtime-thermal-cpu-14", "cause": "precision patch targeted the wrong native archive-root path; corrected patch verified with zero fuzz"}
+    {"attempt": "runtime-thermal-cpu-14", "cause": "precision patch targeted the wrong native archive-root path; corrected patch verified with zero fuzz"},
+    {"attempt": "thermal-worker-2", "cause": "CLI complete path passed but MCP cold n8/64-substep solve exceeded unchanged 180-second adapter timeout under a one-CPU quota; recorded 145348935 CPU microseconds, 35973256 throttled microseconds and native time 101.9219/120 seconds", "log_sha256": "2bcebc873c1b7ee60699d00fac72b4a6be80d8bdad6c86efa38f319488ce83ba", "resolution": "fresh worker attempt 3 requested and verified the same bounded two-CPU resource envelope as the native qualification; unchanged science/timeout/accuracy"}
   ],
   "limitations": ["synthetic prescribed inputs only", "constant properties within the approved material domain", "explicit missing/inapplicable moisture entry; no condensate mass", "no flow-to-convection conversion", "no contact, preload, seals or electronic boot reliability", "no hybrid/CUDA qualification", "a changed adapter/closure needs its own recorded qualification"]
 }

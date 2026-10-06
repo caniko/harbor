@@ -136,9 +136,9 @@ package is a distinct runtime and requires its own native/lifecycle gate.
 bytecode-repaired adapter at `c1a58dc`, with the same recorded numerical errors
 and time-convergence order. Its aggregate peak was `226689024 bytes`. Retained
 raw observations also passed the stronger aligned-native-time recheck at
-`76fdcd4`; that post-check is hash-bound separately. The corresponding CLI/MCP
-worker lifecycle/export gate is in progress, with its exact package combination
-and interface-source parity recorded independently.
+`76fdcd4`; that post-check is hash-bound separately. The exact package
+combination and interface-source parity of the corresponding CLI/MCP worker
+lifecycle/export gate are recorded independently.
 
 The second worker attempt passed the CLI adiabatic solve, restart, independent
 field/energy rechecks and portable export, then failed its MCP cold-history
@@ -149,6 +149,17 @@ two-CPU case completed in 168.72 wall seconds. The worker qualifier now requests
 and verifies that same explicit two-CPU envelope. All request bytes, native
 timeouts, mesh/step refinements, temperature and energy limits remain bound.
 The one-CPU failed attempt is retained independently.
+
+`thermal-worker-3` passed both CLI/MCP n8 solves, independent raw-field/energy
+checks, history-mutation approval rejection, all eight closure-only isolation
+checks and two 25-record checksummed portable bundles. Worker kill/restart kept
+the original live invocation; idempotency, forced complete-tree death and
+cancellation passed. Each service closure released its reservation and roots;
+the final canonical reservation count was zero and no retention intents/roots
+remained. Job memory peaks were `132182016` and `135524352 bytes` under the
+explicit 2-GiB/no-swap/two-CPU controls. The source-built package remains at
+`c1a58dc`, and the resource-aligned qualifier is independently bound to
+`4fe2444`; detailed hashes and job IDs are in the thermal evidence record.
 
 Bounded native time/output counts and explicit mesh refinement are checked
 before execution. The opt-in qualifier runs under the guarded Canix runtime

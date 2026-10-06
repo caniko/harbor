@@ -65,8 +65,11 @@ cases, including legacy/schema/gate rejection and imported geometry/origin
 contracts. `thermal-native-5` passed eight native solves, nine pre-output
 rejections and separate spatial/time assessments at the recorded exact package;
 the first worker attempt rejected a CPython cache entry before solving. The
-precise bytecode repair retains strict closure isolation and its fresh package
-qualification is pending. Exact evidence is in [thermal evidence](evidence/thermal-cpu.json).
+bytecode-repaired native package passed `thermal-native-6`; a one-CPU timeout
+in `thermal-worker-2` led to a fresh explicit two-CPU `thermal-worker-3`, which
+passed CLI/MCP, raw-field/energy checks, exports, restart/idempotency, forced
+complete-tree death, cancellation and final release. Exact evidence is in
+[thermal evidence](evidence/thermal-cpu.json).
 
 The updated complete CPU gate passes 103 Rust tests and 44 Python cases,
 Clippy with warnings denied, locked build, Treefmt and Ruff. New systemd jobs
@@ -141,7 +144,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation and independent v5 static FEM implemented; exact CLI/MCP native mesh/fields and operation-specific isolation qualified; closed BREP export, imported-box Gmsh correspondence and origin-aware static native FEM reference/qualifiers implemented, native gates pending; broader recipes pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | scoped v4 native/CLI/MCP analytical, CPU-HIP, byte/topology, source/lifecycle and aggregate RAM/CPU gates pass at the recorded revision; instruction trace, whole-card VRAM and broader filters pending |
 | P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | synthetic steady conduction/free expansion at 2/4/8 and CLI/MCP lifecycle pass; airflow separately scoped; imported CAD/Gmsh correspondence and wetting pending |
-| P5 / C | native thermal/contact/moisture/coupling slice | independent synthetic prescribed transient CLI/MCP recipe and closure-only CPU policy implemented; scoped native numerical/spatial/time gate passed; repaired exact worker package/lifecycle in progress; contact/moisture/coupling pending |
+| P5 / C | native thermal/contact/moisture/coupling slice | independent synthetic prescribed transient CLI/MCP recipe and closure-only CPU policy implemented; scoped native numerical/spatial/time and repaired exact CLI/MCP worker/export/lifecycle gates passed; contact/moisture/coupling pending |
 | P6 / D | native local water, prescribed snow and retained-water freezing | pending |
 | P7 / E | native atmosphere/spectral irradiance/dose slice | pending |
 | P8 / F | bounded studies, retention/recovery/resume, measurements and product closure | pending |
