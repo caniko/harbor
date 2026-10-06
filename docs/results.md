@@ -77,3 +77,28 @@ report. Signed `right-left` values compare those explicitly selected states,
 including different retained times. They do not establish numerical acceptance,
 component boot reliability or physical validation. Native packaged qualification
 of this new surface is pending.
+
+## Native surface moisture screening
+
+`results moisture REQUEST.json` / results-profile MCP `results_moisture` derive
+the minimum temperature across a complete registered planar-box surface at an
+exact retained thermal observation. Requests contain `schema_version: 1`,
+`job_id`, `physical_time_s`, `surface_region` (`xmin`, `xmax`, `ymin`, `ymax`,
+`zmin`, `zmax`) and `moisture_risk`. Named surface IDs are recomputed from native
+SI coordinates and matched to the complete registered semantic node set.
+Surface temperature is derived from verified native data; caller-supplied
+surface temperatures or ordinal face names reject.
+
+`moisture_risk` explicitly selects one of:
+
+- `{"assessment":"missing","reason":"humidity unavailable"}`;
+- `{"assessment":"inapplicable","justification":"declared dry reference"}`;
+- `{"assessment":"dew_point_screening","air_temperature":{"value":20,"unit":"degC"},"relative_humidity":0.5,"provenance":"explicit air input"}`.
+
+The source report identifies the minimum native node and temperature; it retains
+the mesh/field/DAT hashes, approved and observed time, and science/execution
+bindings. Magnus screening uses air 0–50 °C and `0 < RH <= 1`; subzero surfaces
+remain `unsupported_screening` pending a justified ice/frost model. Missing air
+data remains missing; justified inapplicability remains explicit. This is a
+synthetic planar-box screening result, with no condensate mass, moisture
+transport, frost, ingress, sealing or physical-validation inference.

@@ -216,6 +216,10 @@ enum Results {
     CompareThermal {
         request: PathBuf,
     },
+    /// Screen one complete native thermal box surface with explicit air inputs.
+    Moisture {
+        request: PathBuf,
+    },
 }
 #[derive(Subcommand)]
 enum Artifact {
@@ -419,6 +423,9 @@ fn run(cli: Cli) -> Result<()> {
                 request: Box::new(read(&request)?),
             },
             Results::CompareThermal { request } => Operation::ResultsCompareThermal {
+                request: Box::new(read(&request)?),
+            },
+            Results::Moisture { request } => Operation::ResultsMoisture {
                 request: Box::new(read(&request)?),
             },
         },

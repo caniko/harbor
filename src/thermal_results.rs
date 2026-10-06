@@ -179,7 +179,20 @@ fn verified_snapshot(
     chosen.ok_or_else(|| invalid("requested thermal snapshot absent"))
 }
 
+pub(crate) struct VerifiedThermalSample {
+    pub report: ThermalSampleReport,
+    pub mesh: serde_json::Value,
+    pub fields: serde_json::Value,
+}
+
 pub fn sample(store: &Store, request: &ThermalSampleRequest) -> Result<ThermalSampleReport> {
+    Ok(verified_sample(store, request)?.report)
+}
+
+pub(crate) fn verified_sample(
+    store: &Store,
+    request: &ThermalSampleRequest,
+) -> Result<VerifiedThermalSample> {
     request.validate()?;
     let plan = store.plan(&request.job_id)?;
     let spec = plan
@@ -230,7 +243,7 @@ pub fn sample(store: &Store, request: &ThermalSampleRequest) -> Result<ThermalSa
             duration: spec.duration_s,
         },
     )?;
-    Ok(ThermalSampleReport {
+    let report = ThermalSampleReport {
         sample: SampleReport {
             schema_version: 1,
             job_id: request.job_id.clone(),
@@ -254,6 +267,11 @@ pub fn sample(store: &Store, request: &ThermalSampleRequest) -> Result<ThermalSa
         },
         native_time_s,
         time_serialization_tolerance_s: time_tolerance(spec.duration_s),
+    };
+    Ok(VerifiedThermalSample {
+        report,
+        mesh,
+        fields,
     })
 }
 

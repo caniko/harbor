@@ -242,6 +242,11 @@ def build_server(profile: str) -> MCPServer:
             return await request("results_compare_thermal", request=request_spec)
 
         @server.tool()
+        async def results_moisture(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Screen a complete native box surface; explicit air inputs, missing or inapplicable."""
+            return await request("results_moisture", request=request_spec)
+
+        @server.tool()
         async def qualification_report(job_id: str) -> dict[str, Any]:
             """Inspect historical job evidence bound to its exact source/runtime/device; never promote qualification."""
             return await request("qualification_report", job_id=job_id)

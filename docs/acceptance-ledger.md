@@ -162,6 +162,14 @@ The corrected diagnostic matches both qualified thermal jobs at 10/120 s and
 their signed differences, including generated report-schema checks. Build 32
 predates that correction; exact packaged result qualification remains pending.
 
+Source-bound `results moisture` and matching results-profile MCP now reduce
+complete geometrically verified native thermal box surfaces at an exact retained
+time. Air inputs, missing data and justified inapplicability remain explicit;
+subzero surfaces retain the separate unsupported ice/frost status. The full CPU
+gate (82 Python cases), Treefmt and Simit drift pass. A retained development
+diagnostic checks both thermal jobs, native surface minima and all three
+assessment branches; exact packaged moisture qualification is pending.
+
 ## External qualification prerequisites
 
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched

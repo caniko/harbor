@@ -15,6 +15,7 @@ pub mod frames;
 pub mod lifecycle;
 pub mod materials;
 mod measurements;
+pub mod moisture_results;
 pub mod presentation;
 pub mod qualification;
 pub mod recipes;

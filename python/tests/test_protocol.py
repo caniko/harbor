@@ -140,6 +140,39 @@ def test_thermal_result_schema_requires_explicit_time_and_native_node_associatio
             Draft202012Validator(schemas["ThermalSampleRequest"]).validate(changed)
 
 
+def test_native_moisture_schema_rejects_caller_surface_temperatures_and_unknown_air():
+    schemas = json.loads(subprocess.check_output([binary(), "schema"]))
+    request = {
+        "schema_version": 1,
+        "job_id": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+        "physical_time_s": 60.0,
+        "surface_region": "xmin",
+        "moisture_risk": {
+            "assessment": "dew_point_screening",
+            "air_temperature": {"value": 20.0, "unit": "degC"},
+            "relative_humidity": 0.5,
+            "provenance": "synthetic air fixture",
+        },
+    }
+    validator = Draft202012Validator(schemas["NativeMoistureRequest"])
+    validator.validate(request)
+    for assessment in (
+        {"assessment": "missing", "reason": "humidity unavailable"},
+        {"assessment": "inapplicable", "justification": "explicit dry reference"},
+    ):
+        validator.validate({**request, "moisture_risk": assessment})
+    for changed in (
+        {**request, "minimum_surface_temperature": {"value": 20.0, "unit": "degC"}},
+        {**request, "surface_region": "face1"},
+        {
+            **request,
+            "moisture_risk": {**request["moisture_risk"], "relative_humidity": None},
+        },
+    ):
+        with pytest.raises(ValidationError):
+            validator.validate(changed)
+
+
 def test_wetting_si_descriptor_uses_generated_rust_schema_with_explicit_provenance():
     from test_wetting_reference import request
 
@@ -218,6 +251,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert {"results_sample_thermal", "results_compare_thermal"}.issubset(
                     names
                 )
+                assert "results_moisture" in names
                 rejected_sample = await client.call_tool(
                     "results_sample_thermal",
                     {

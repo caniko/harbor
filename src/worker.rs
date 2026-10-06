@@ -749,6 +749,9 @@ fn dispatch(
         Operation::ResultsCompareThermal { request } => Ok(serde_json::to_value(
             crate::thermal_results::compare(store, &request)?,
         )?),
+        Operation::ResultsMoisture { request } => Ok(serde_json::to_value(
+            crate::moisture_results::assess(store, &request)?,
+        )?),
         Operation::Describe { job_id } => {
             let plan = store.plan(&job_id)?;
             let binding = match store.execution_binding(&job_id) {

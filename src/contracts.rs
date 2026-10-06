@@ -1712,6 +1712,9 @@ pub enum Operation {
     ResultsCompareThermal {
         request: Box<crate::thermal_results::ThermalCompareRequest>,
     },
+    ResultsMoisture {
+        request: Box<crate::moisture_results::NativeMoistureRequest>,
+    },
     QualificationReport {
         job_id: String,
     },
@@ -1772,6 +1775,12 @@ pub fn schemas() -> serde_json::Value {
     ));
     schemas["ThermalCompareReport"] = serde_json::json!(schemars::schema_for!(
         crate::thermal_results::ThermalCompareReport
+    ));
+    schemas["NativeMoistureRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::moisture_results::NativeMoistureRequest
+    ));
+    schemas["NativeMoistureReport"] = serde_json::json!(schemars::schema_for!(
+        crate::moisture_results::NativeMoistureReport
     ));
     schemas
 }
