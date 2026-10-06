@@ -217,6 +217,16 @@ def assess_field(spec, data):
                 crossings.append(x - a / (b - a) if b != a else float(x))
         if not crossings:
             continue
+        # A circle can touch an integer-grid row at precisely phi=0.5.
+        # This zero-length tangency has one point and no liquid interval.
+        # Retain it as contour evidence without inventing a second crossing.
+        tangent = len(crossings) == 1 and all(
+            grid[x, y][1] >= 0.5 for x in range(shape[0])
+        )
+        if tangent and 1 < crossings[0] < shape[0] - 2:
+            if y - 0.5 >= units["interface_width_lattice"] / 2:
+                points.append((crossings[0], y))
+            continue
         if len(crossings) != 2 or crossings[0] <= 1 or crossings[1] >= shape[0] - 2:
             raise ValueError("one isolated droplet contour required")
         if y - 0.5 >= units["interface_width_lattice"] / 2:

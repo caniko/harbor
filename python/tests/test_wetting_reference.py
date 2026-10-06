@@ -41,11 +41,15 @@ def request(angle=90):
     }
 
 
-def cap(spec):
+def cap(spec, initial=False):
     n = spec["resolution"]
     dx = spec["diameter_m"] / n
     cx, radius = 1.25 * n, n / 2
-    cy = 0.5 - radius * math.cos(math.radians(spec["contact_angle_deg"]))
+    cy = (
+        1.0
+        if initial
+        else 0.5 - radius * math.cos(math.radians(spec["contact_angle_deg"]))
+    )
     width = spec["interface_width_m"] / dx
     rows = ["x_m,y_m,material,phi,u_lattice,v_lattice"]
     for y in range(int(1.5 * n) + 1):
@@ -116,3 +120,15 @@ def test_phase_mass_and_angle_failures_do_not_change_explicit_acceptance():
     result = bridge.verify(spec, snapshots)
     assert result["mass_relative_error"] == pytest.approx(0.002)
     assert not result["mass_passed"] and not result["angle_passed"]
+
+
+def test_exact_native_initial_cap_tangency_is_one_circle_not_a_second_droplet():
+    bridge, spec = module(), request()
+    spec["resolution"] = 36
+    data = cap(spec, initial=True)
+    grid, _ = bridge.read_field(data, spec["diameter_m"] / 36)
+    assert grid[45, 19][1] == 0.5
+    observed = bridge.assess_field(spec, data)
+    assert observed["contact_angle_deg"] == pytest.approx(
+        math.degrees(math.acos(-0.5 / 18)), abs=0.12
+    )
