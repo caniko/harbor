@@ -1,11 +1,22 @@
-# Planar contact reference contract
+# Planar contact reference
 
-The next C slice uses the pinned CalculiX 2.23 CPU/SPOOLES stack and isolated
+The independent C reference uses the pinned CalculiX 2.23 CPU/SPOOLES stack and isolated
 Gmsh 4.15.2 mesh ABI. It models two separate synthetic axis-aligned C3D8 blocks,
 an explicit initial gap, displacement-controlled compression and an explicit
 linear pressure/overclosure law. Material and interface inputs remain synthetic
 and source-labelled. Original gaps are retained; automatic contact `ADJUST` and
 geometry healing are excluded.
+
+`contact-reference-cpu` and `runtime-contact-reference-cpu` expose the fixed
+native adapter and closure-only CPU descriptor. `adapters/contact_reference.py`
+executes two static states: initial-temperature preload, then prescribed final
+compression and separate uniform lower/upper block temperatures. Each block has
+explicit constant Young's modulus and expansion coefficient; the formulation
+fixes Poisson ratio at zero and constrains transverse motion. Independent native
+DAT verification checks every displacement/stress component, complete nodal
+reaction forces, force balance and original geometric interface opening.
+Original native fields, decks and checksummed mesh/provenance remain retained.
+Static solver step parameters 1/2 have no inferred physical times.
 
 ## Immutable source evidence
 
@@ -56,3 +67,13 @@ cases, complete native coverage, immutable geometry correspondence and spatial
 refinement. Constant synthetic elastic properties and this planar interface law
 do not establish real cold-material behaviour, residual gasket compression,
 sealing, friction, adhesion, whole-device contact or hybrid GPU FEM.
+
+The requested normalized displacement, stress, reaction-force and gap tolerance
+must be positive and at most `0.002`. Axial displacement and thermal strain are
+bounded to `0.001` of block height/strain because the series-compliance reference
+is small strain while native face contact uses `NLGEOM`. These explicit bounds
+precede native qualification. `scripts/verify_contact_cpu.py` runs closed,
+cooled, opened, nonzero-initial-gap and dissimilar-material cases at n2/4/8 and
+eight pre-output rejections. Spatial pressure spread and field checks retain the
+same `0.002` gate. Native package realization/qualification and Rust CLI/MCP
+integration remain pending; analytical verifier tests do not qualify a solve.

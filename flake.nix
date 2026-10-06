@@ -140,6 +140,7 @@
     cadMesh = import ./nix/cad-mesh.nix {inherit pkgs fem;};
     femImported = import ./nix/fem-imported.nix {inherit pkgs fem cadMesh;};
     wetting = import ./nix/wetting.nix {inherit pkgs inputs cudaPkgs;};
+    contact = import ./nix/contact.nix {inherit pkgs fem;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
       projectRootFile = "flake.nix";
       programs.rustfmt = {
@@ -173,6 +174,7 @@
       inherit (cadMesh) cad-mesh-cpu runtime-cad-mesh-cpu runtime-cad-mesh-worker;
       inherit (femImported) fem-imported-cpu runtime-fem-imported-cpu runtime-fem-imported-worker;
       inherit (wetting) wetting-reference-cpu runtime-wetting-reference-cpu runtime-wetting-worker;
+      inherit (contact) contact-reference-cpu runtime-contact-reference-cpu;
       inherit (native) cad-mesh-fixtures runtime-cad-fixtures runtime-cad-only;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";

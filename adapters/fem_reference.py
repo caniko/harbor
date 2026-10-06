@@ -187,7 +187,27 @@ def import_brep(gmsh, geometry):
     return bodies[0][1]
 
 
-def mesh(spec, geometry=None):
+def planar_vertex_bounds(gmsh, dim, tag):
+    # getBoundingBox includes OCC tolerance padding. Exact four-vertex planar
+    # boxes can retain a tighter requested geometric gate using the native CAD
+    # coordinates, without changing coordinates or healing any gap.
+    vertices = gmsh.model.getBoundary([(dim, tag)], oriented=False, recursive=True)
+    if (
+        dim != 2
+        or gmsh.model.getType(dim, tag) != "Plane"
+        or len(vertices) != 4
+        or any(d != 0 for d, _ in vertices)
+    ):
+        raise ValueError("exact four-vertex planar face required")
+    points = [gmsh.model.getValue(0, t, []) for _, t in vertices]
+    if any(len(p) != 3 or not all(math.isfinite(v) for v in p) for p in points):
+        raise ValueError("finite exact native vertex coordinates required")
+    return tuple(min(p[a] for p in points) for a in range(3)) + tuple(
+        max(p[a] for p in points) for a in range(3)
+    )
+
+
+def mesh(spec, geometry=None, *, exact_planar_vertices=False):
     # This exact module path is substituted by Nix. It owns its compatible native
     # library; no ambient Python/Qt/loader search-path injection is needed.
     sys.path.insert(0, "@gmsh_module@")
@@ -248,7 +268,11 @@ def mesh(spec, geometry=None):
         for dim, tag in gmsh.model.getBoundary([(3, body)], oriented=False):
             if dim != 2:
                 raise ValueError("surface topology required")
-            box = gmsh.model.getBoundingBox(dim, tag)
+            box = (
+                planar_vertex_bounds(gmsh, dim, tag)
+                if exact_planar_vertices
+                else gmsh.model.getBoundingBox(dim, tag)
+            )
             if geometry is not None and gmsh.model.getType(dim, tag) != "Plane":
                 raise ValueError("unsupported curved imported reference face")
             faces[tag] = [box[0], box[3], box[1], box[4], box[2], box[5]]
@@ -403,13 +427,15 @@ def deck(spec, nodes, cells, sets):
     return "\n".join(lines) + "\n"
 
 
-def read_dat(text):
+def read_dat(text, *, reaction_forces=False):
     definitions = {
         "temperatures": ("temperature", "NALL", 1, 1),
         "displacements (vx,vy,vz)": ("displacement", "NALL", 1, 3),
         "heat flux (elem, integ.pnt.,qx,qy,qz)": ("heat_flux", "EALL", 2, 3),
         "stresses (elem, integ.pnt.,sxx,syy,szz,sxy,sxz,syz)": ("stress", "EALL", 2, 6),
     }
+    if reaction_forces:
+        definitions["forces (fx,fy,fz)"] = ("reaction_force", "NALL", 1, 3)
     fields, current, ids, count = {}, None, 0, 0
     for raw in text.splitlines():
         line = raw.strip()
