@@ -67,3 +67,21 @@ formulation, precision and supported topology in the capability record.
 Raw inspected files and their SHA-256 values are recorded in
 `/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/sources.json`.
 No dependency pin or qualification status has been changed by this inspection.
+
+## Candidate package wiring
+
+`nix/filters.nix` now defines separate lazy `kokkos-hip` and `vtk-hip` packages.
+Kokkos 4.3.01 is pinned at `6ecdf605e0f7639adec599d25cf0e206d7b8f9f5`
+with the fetched archive SHA-256
+`sha256-X1ApGi78zM48aG3IkPft1FWK+2dJ3kKl9lrq+sWleWc=`. Its upstream
+architecture table explicitly contains `AMD_GFX1100`; the package declares it
+and disables HIP relocatable device code. Both packages use locked Nixpkgs'
+ROCm 7.2.3 compiler/runtime and CMake HIP language support.
+
+The VTK candidate uses the exact existing ParaView archive, verifies the bundled
+wrapper/filter source file hashes, and enables accelerator filters plus XML I/O.
+It is a separate numerical library build with no EGL, Qt, MPI or Python; the
+Float64 wrapper change is scoped to this compute package. Builds do not discover
+devices. Package evaluation/build is currently blocked by another process owning
+the host evaluation guard. These outputs remain `unqualified`; no native filter
+runtime or B2 result is claimed by the declaration.

@@ -132,6 +132,7 @@
       dependencies = (python.loadUvWorkspace {workspaceRoot = ./.;}).deps.all;
     };
     native = import ./nix/native.nix {inherit pkgs cudaPkgs inputs;};
+    filters = import ./nix/filters.nix {inherit pkgs;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
       projectRootFile = "flake.nix";
       programs.rustfmt = {
@@ -159,6 +160,7 @@
       worker = cli;
       inherit mcp cargoArtifacts;
       inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda openlb-hip runtime-cuda runtime-hip;
+      inherit (filters) kokkos-hip vtk-hip;
       gui = pkgs.freecad;
     };
     apps.${system} = {
