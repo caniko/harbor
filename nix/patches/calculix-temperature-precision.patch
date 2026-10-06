@@ -1,6 +1,6 @@
---- a/printoutnode.f
-+++ b/printoutnode.f
-@@ -76,9 +76,9 @@
+--- a/ccx_2.23/src/printoutnode.f
++++ b/ccx_2.23/src/printoutnode.f
+@@ -76,10 +76,10 @@
        elseif((prlab(ii)(1:4).eq.'NT  ').or.
       &       (prlab(ii)(1:4).eq.'TS  ')) then
           if(ithermal(1).le.1) then
@@ -12,3 +12,4 @@
 +            write(5,'(i10,1x,1p,e23.15)') node,
       &           v(0,node)
           endif
+       elseif(prlab(ii)(1:4).eq.'PS  ') then
