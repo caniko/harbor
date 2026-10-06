@@ -1782,5 +1782,7 @@ pub fn schemas() -> serde_json::Value {
     schemas["NativeMoistureReport"] = serde_json::json!(schemars::schema_for!(
         crate::moisture_results::NativeMoistureReport
     ));
+    schemas["ContactReferenceSpec"] =
+        serde_json::json!(schemars::schema_for!(crate::contact::ContactReferenceSpec));
     schemas
 }

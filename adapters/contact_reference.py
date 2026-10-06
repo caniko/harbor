@@ -102,6 +102,12 @@ def validate(spec):
             raise ValueError(
                 "explicit small-strain displacement-controlled contact required"
             )
+    compliance = (
+        sum(h / e for e in spec["young_modulus_pa"])
+        + 1 / spec["contact_stiffness_pa_m"]
+    )
+    if not math.isfinite(compliance):
+        raise ValueError("finite explicit material/interface compliance required")
     for a, t in zip(spec["expansion_per_k"], spec["final_temperatures_k"], strict=True):
         if abs(a * (t - spec["reference_temperature_k"])) > 0.001:
             raise ValueError("small-strain constant-property thermal contact required")
@@ -325,6 +331,19 @@ def mesh(spec, fem):
     return nodes, cells, sets, element_offset
 
 
+def ccx_number(value):
+    # Pinned 2.23 expansions.f and boundarys.f read numeric fields using
+    # (f20.0). Long Float64 exponent strings can truncate mid-exponent.
+    value = number(value)
+    for digits in range(17, 12, -1):
+        text = format(value, f".{digits}g")
+        if len(text) <= 20 and abs(float(text) - value) <= abs(value) * 5e-13:
+            return text
+    raise ValueError(
+        "native 20-character numeric field cannot preserve approved SI value"
+    )
+
+
 def deck(spec, fem, nodes, cells, sets, element_offset):
     lines = fem.mesh_deck(nodes, cells, sets)
     for block, young, alpha in zip(
@@ -342,7 +361,7 @@ def deck(spec, fem, nodes, cells, sets, element_offset):
             f"*MATERIAL,NAME={block}",
             "*ELASTIC",
             f"{young:.17g},0.",
-            f"*EXPANSION,ZERO={spec['reference_temperature_k']:.17g}",
+            f"*EXPANSION,ZERO={ccx_number(spec['reference_temperature_k'])}",
             f"{alpha:.17g}",
             f"*SOLID SECTION,ELSET={block},MATERIAL={block}",
         ]
@@ -379,7 +398,7 @@ def deck(spec, fem, nodes, cells, sets, element_offset):
         lines += [
             "*STEP,NLGEOM,INC=100",
             "*STATIC,SOLVER=SPOOLES",
-            "0.1,1.,1e-8,0.1",
+            "0.1,1.,1e-6,0.1",
             "*BOUNDARY",
             f"TOP,3,3,{-expected['compression_m']:.17g}",
         ]
@@ -396,7 +415,21 @@ def deck(spec, fem, nodes, cells, sets, element_offset):
             "S",
             "*END STEP",
         ]
-    return "\n".join(lines) + "\n"
+    compact = []
+    for line in lines:
+        if line.startswith("*"):
+            compact.append(line)
+            continue
+        parts = []
+        for field in line.split(","):
+            try:
+                value = float(field)
+            except ValueError:
+                parts.append(field)
+            else:
+                parts.append(ccx_number(value))
+        compact.append(",".join(parts))
+    return "\n".join(compact) + "\n"
 
 
 def main():
@@ -488,6 +521,12 @@ def main():
             "backend": "cpu",
             "factorization": "SPOOLES",
             "precision": "float64",
+            "input_serialization": {
+                "native_numeric_field_characters": 20,
+                "maximum_relative_error": 5e-13,
+                "source": "CalculiX 2.23 expansions.f/boundarys.f f20.0",
+                "original_approved_si_request_preserved": True,
+            },
             "executed": True,
             "software_fallback": False,
             "synthetic": True,

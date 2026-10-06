@@ -18,6 +18,19 @@ reaction forces, force balance and original geometric interface opening.
 Original native fields, decks and checksummed mesh/provenance remain retained.
 Static solver step parameters 1/2 have no inferred physical times.
 
+`case validate-contact-reference REQUEST.json` validates the same strict Rust
+schema and reports both analytical states with `executed: false`. Explicit SI
+and provenance inputs, unsupported-physics and tolerance rejections match the
+native adapter; validation alone never establishes a native solve.
+
+Native attempt `contact-native-1` retains its rejected deck and solver log.
+The pinned source's `expansions.f` and `boundarys.f` read numeric fields with
+`f20.0`: unrestricted `.17g` exponent strings can exceed 20 characters and
+truncate before the exponent completes. The repaired contact serializer keeps
+the most significant digits that fit, with maximum relative serialization error
+`5e-13`. Exact original approved SI inputs remain in the receipt and all native
+field/force/gap checks still compare to those inputs with the unchanged gate.
+
 ## Immutable source evidence
 
 The matching official CalculiX manual is retained in

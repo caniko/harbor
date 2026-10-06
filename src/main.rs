@@ -97,6 +97,10 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Validate explicit SI planar contact/preload inputs and analytical states.
+    ValidateContactReference {
+        file: PathBuf,
+    },
     /// Plan a prescribed synthetic transient CPU thermal history with independent output/solver schedules.
     PlanThermalReference {
         file: PathBuf,
@@ -342,6 +346,13 @@ fn run(cli: Cli) -> Result<()> {
             Case::ValidateColdRestart { file } => {
                 let case: harbor_cad::recipes::ColdRestartSpec = read(&file)?;
                 return print(&case.inspect()?);
+            }
+            Case::ValidateContactReference { file } => {
+                let spec: harbor_cad::contact::ContactReferenceSpec = read(&file)?;
+                spec.validate()?;
+                return print(&serde_json::json!({"valid":true,"executed":false,
+                    "science_id":digest(&spec)?,"preload":spec.reference(1)?,
+                    "final":spec.reference(2)?,"physical_validation":"unqualified"}));
             }
             Case::PlanOpenlbReference { file, policy } => {
                 let plan = ExecutionPlan::openlb_reference(read(&file)?, policy)?;

@@ -2,6 +2,9 @@
 
 import copy
 import importlib.util
+import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -63,6 +66,7 @@ def test_contact_rejects_unsupported_physics_and_weakened_acceptance():
         ("poisson_ratio", 0.3),
         ("initial_gap_m", -1e-6),
         ("contact_stiffness_pa_m", 0),
+        ("contact_stiffness_pa_m", 5e-324),
         ("young_modulus_pa", [1e8, float("nan")]),
         ("final_temperatures_k", [0, 293]),
         ("expansion_per_k", [1e-2, 1e-5]),
@@ -153,3 +157,62 @@ def test_reaction_force_parser_is_opt_in_and_retains_native_component_identity()
     ):
         with pytest.raises(ValueError):
             fem.read_dat(changed, reaction_forces=True)
+
+
+def test_calculix_numeric_fields_fit_native_twenty_character_parser():
+    bridge = module()
+    for value in (
+        1e-5,
+        -0.5e-6,
+        293.15,
+        1.2345678901234567e-6,
+        -1.2345678901234567e-6,
+        1e12,
+        0.0,
+    ):
+        text = bridge.ccx_number(value)
+        assert len(text) <= 20
+        assert float(text) == pytest.approx(value, rel=5e-13, abs=0)
+
+
+def test_rust_generated_contact_schema_and_validation_match_native_contract(tmp_path):
+    binary = os.environ.get("HARBOR_CAD_TEST_BINARY", "target/debug/harbor-cad")
+    root = Path(__file__).resolve().parents[2]
+    schema = json.loads(subprocess.check_output([binary, "schema"], cwd=root))[
+        "ContactReferenceSpec"
+    ]
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == module().FIELDS
+    bridge, spec = module(), request()
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(spec))
+    report = json.loads(
+        subprocess.check_output(
+            [binary, "case", "validate-contact-reference", str(path)], cwd=root
+        )
+    )
+    assert (
+        report["executed"] is False and report["physical_validation"] == "unqualified"
+    )
+    assert report["preload"] == bridge.reference(spec, 1)
+    assert report["final"] == bridge.reference(spec, 2)
+    for key, value in (
+        ("poisson_ratio", 0.3),
+        ("numerical_tolerance", 0.01),
+        ("contact_stiffness_pa_m", 5e-324),
+        ("final_compression_m", 1e-4),
+        ("resolution", True),
+    ):
+        changed = {**spec, key: value}
+        path.write_text(json.dumps(changed))
+        with pytest.raises(ValueError):
+            bridge.validate(changed)
+        outcome = subprocess.run(
+            [binary, "case", "validate-contact-reference", str(path)],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+        rejected = json.loads(outcome.stdout)
+        assert outcome.returncode and rejected["ok"] is False
+        assert rejected["error"]["code"] in {"invalid_input", "protocol_error"}

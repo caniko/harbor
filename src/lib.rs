@@ -3,6 +3,7 @@ pub mod authority;
 pub mod cad;
 pub mod cad_mesh;
 pub mod cad_source;
+pub mod contact;
 pub mod contracts;
 pub mod devices;
 pub mod estimates;
