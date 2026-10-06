@@ -3,6 +3,8 @@ use crate::{Result, contracts::invalid};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub const SANDBOX_POLICY: &str = "harbor-cad-contact-cpu-v1";
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ContactReferenceSpec {
@@ -140,4 +142,128 @@ impl ContactReferenceSpec {
             model: "p=max(0,compression+sum(alpha*dT*h)-gap)/(sum(h/E)+1/K); Poisson ratio zero",
         })
     }
+}
+
+pub fn verify_native_outputs(
+    spec: &ContactReferenceSpec,
+    root: &std::path::Path,
+    value: &serde_json::Value,
+) -> Result<crate::qualification::NumericalEvidence> {
+    use crate::contracts::{digest, invalid};
+    use sha2::{Digest, Sha256};
+    spec.validate()?;
+    if value["schema_version"] != 1
+        || value["adapter"] != "CalculiX"
+        || value["backend"] != "cpu"
+        || value["factorization"] != "SPOOLES"
+        || value["precision"] != "float64"
+        || value["executed"] != true
+        || value["software_fallback"] != false
+        || value["synthetic"] != true
+        || value["formulation"] != spec.formulation
+        || value["request"] != serde_json::to_value(spec)?
+        || value["request_sha256"] != digest(spec)?
+        || value["calculix_version"] != "2.23"
+        || value["gmsh_version"] != "4.15.2"
+        || value["calculix_source_sha256"]
+            != "9c88385c10fb04f5dc6c4e98027a51bebdd8aee3920e05190d6c1dd08357d6e7"
+        || value["physical_validation"] != "unqualified"
+        || value["input_serialization"]
+            != serde_json::json!({"native_numeric_field_characters":20,"maximum_relative_error":5e-13,"source":"CalculiX 2.23 expansions.f/boundarys.f f20.0","original_approved_si_request_preserved":true})
+    {
+        return Err(invalid(
+            "exact original CPU contact request, solver identity and Float64 provenance required",
+        ));
+    }
+    let checks = [
+        "operation_closure_only",
+        "no_gpu_nodes",
+        "no_sysfs",
+        "no_host_home",
+        "no_session_bus",
+        "no_worker_socket",
+        "network_namespace_isolated",
+        "descriptor_readonly",
+    ];
+    if value["sandbox"]["policy"] != SANDBOX_POLICY
+        || value["sandbox"]["checks"]
+            .as_object()
+            .is_none_or(|v| v.len() != checks.len())
+        || checks.iter().any(|k| value["sandbox"]["checks"][k] != true)
+    {
+        return Err(invalid("complete isolated CPU contact sandbox required"));
+    }
+    let names = [
+        "mesh.json",
+        "fields.json",
+        "reference.inp",
+        "reference.dat",
+        "lower-reference.msh",
+    ];
+    let mut outputs = std::collections::BTreeMap::new();
+    if value["outputs"]
+        .as_object()
+        .is_none_or(|v| v.len() != names.len())
+    {
+        return Err(invalid(
+            "exact complete native contact output hashes required",
+        ));
+    }
+    for name in names {
+        let data =
+            crate::worker::read_bounded(&crate::storage::safe_path(root, name)?, 32 * 1024 * 1024)?;
+        if value["outputs"][name] != format!("{:x}", Sha256::digest(&data)) {
+            return Err(invalid("original contact native bytes changed"));
+        }
+        outputs.insert(name, data);
+    }
+    let mesh = serde_json::from_slice(&outputs["mesh.json"])?;
+    let fields: serde_json::Value = serde_json::from_slice(&outputs["fields.json"])?;
+    let original = crate::contact_fields::parse_dat(
+        std::str::from_utf8(&outputs["reference.dat"])
+            .map_err(|_| invalid("native DAT text required"))?,
+    )?;
+    if original != fields {
+        return Err(invalid(
+            "contact fields differ from authoritative original DAT",
+        ));
+    }
+    let independent = crate::contact_fields::assess(spec, &mesh, &fields)?;
+    let report = value["numerical_verification"]
+        .as_array()
+        .filter(|v| v.len() == 2)
+        .ok_or_else(|| invalid("complete two-state contact checks required"))?;
+    let mut maximum: f64 = 0.;
+    for (actual, expected) in report.iter().zip(
+        independent
+            .as_array()
+            .ok_or_else(|| invalid("native checks"))?,
+    ) {
+        if actual["passed"] != true
+            || actual["tolerance"].as_f64() != Some(spec.numerical_tolerance)
+            || actual["reference"] != expected["reference"]
+            || actual["normalized_errors"]
+                .as_object()
+                .is_none_or(|v| v.len() != 4)
+        {
+            return Err(invalid("contact static state, units or tolerance changed"));
+        }
+        for key in ["displacement", "stress", "reaction_force_balance", "gap"] {
+            let exact = expected["normalized_errors"][key]
+                .as_f64()
+                .ok_or_else(|| invalid("native contact error"))?;
+            let claimed = actual["normalized_errors"][key]
+                .as_f64()
+                .filter(|v| v.is_finite())
+                .ok_or_else(|| invalid("finite contact error required"))?;
+            if (exact - claimed).abs() > 1e-12 || claimed < 0. || claimed > spec.numerical_tolerance
+            {
+                return Err(invalid(
+                    "contact receipt differs from independent original field check",
+                ));
+            }
+            maximum = maximum.max(exact);
+        }
+    }
+    Ok(crate::qualification::NumericalEvidence {reference:"complete original C3D8 DAT displacement/stress/reaction-force balance and geometric opening vs explicit planar series compliance".into(),scope:"synthetic constant-property two-state zero-Poisson planar penalty contact; convergence and physical validation separate".into(),error_kind:"maximum_normalized_max_abs".into(),error:maximum,tolerance:spec.numerical_tolerance})
 }
