@@ -131,7 +131,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §7 compute filters vs presentation | `adapters/paraview_bridge.py`, `adapters/video_bridge.py`, `adapters/filters/` | independent EGL/VAAPI and scoped HIP numerical-gradient native/worker gates recorded; broader filters pending |
 | §7 portable provenance and retained re-render | immutable snapshot, source-bound v2/v3 plans | packaged standalone CLI/MCP rendering and independent video qualified at the recorded revision |
 | §7 Catalyst/Conduit | optional optimization | deferred until measured baseline justifies it |
-| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render/video/filter and CAD regions/export/mesh/imported-FEM surfaces implemented and scoped worker gates passed; CAD variants and sample/compare pending |
+| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render/video/filter and CAD regions/export/mesh/imported-FEM surfaces implemented and scoped worker gates passed; v5/v8 exact native sample/signed same-mesh compare pass packaged results-3 CLI/MCP gate (eight fields, 40 rejections); CAD variants pending |
 | §9 CI and negative tests | `scripts/check_cpu.py`, generated workflow, tests | local gate green; hardware gates remain opt-in and scoped |
 
 ## Ordered runnable slices
