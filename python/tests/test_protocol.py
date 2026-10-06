@@ -429,6 +429,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_fem_reference" not in names
                 assert "case_plan_thermal_reference" not in names
                 assert "case_plan_contact_reference" not in names
+                assert "results_transfer_temperature" in names
                 assert {"render_plan", "video_plan", "presentation_submit"}.issubset(
                     names
                 )

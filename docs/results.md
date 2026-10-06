@@ -111,3 +111,43 @@ transport, frost, ingress, sealing or physical-validation inference.
 The packaged moisture gate checks all six complete surfaces for both retained
 native thermal jobs and all three assessment branches. Original source trees,
 jobs, events and artifact registrations remain unchanged.
+
+## Conservative native temperature projection
+
+`results transfer-temperature REQUEST.json` and results-profile MCP
+`results_transfer_temperature` derive a uniform destination-block temperature
+from a complete registered version-6 thermal field at an exact approved time.
+The source DAT, JSON and native mesh are independently verified before mapping.
+No caller temperatures, material properties, ordinal faces or interpolated times
+are accepted.
+
+```json
+{
+  "schema_version": 1,
+  "source_job": "00000000-0000-0000-0000-000000000001",
+  "physical_time_s": 120,
+  "destination": {
+    "region": "lower",
+    "size_m": [0.02, 0.01, 0.01],
+    "origin_m": [0, 0, 0]
+  },
+  "maximum_projection_error_k": 1,
+  "maximum_relative_conservation_error": 1e-12
+}
+```
+
+The destination is an explicitly translated congruent whole-box uniform model.
+Both origin and dimensions enter its geometry identity; rotation/scaling and
+unresolved translations reject. Complete native C3D8 cells must tile the approved
+box with positive affine Jacobians. Each cell contributes `rho * cp * volume / 8`
+to each native node's lumped thermal capacitance. The projection conserves the
+constant-property capacitance-weighted temperature integral, using the typed
+conservative map. A node-count average is insufficient at boundaries.
+
+The report retains source science/execution/mesh/DAT/field identities and native
+time, source material provenance, temperature range, destination capacitance,
+the mapped Kelvin temperature, conservation receipt and maximum absolute
+pointwise projection error. The caller explicitly approves that error (at most
+1 K) and a conservation tolerance at most `1e-10`. Scientific source fields stay
+unchanged. Projection is a separately quantified uniform-model approximation;
+its receipt establishes neither a destination solve nor coupled-model validation.

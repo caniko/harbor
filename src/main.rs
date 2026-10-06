@@ -230,6 +230,10 @@ enum Results {
     Moisture {
         request: PathBuf,
     },
+    /// Conservatively project a complete verified native temperature field to an explicit uniform box.
+    TransferTemperature {
+        request: PathBuf,
+    },
 }
 #[derive(Subcommand)]
 enum Artifact {
@@ -447,6 +451,9 @@ fn run(cli: Cli) -> Result<()> {
                 request: Box::new(read(&request)?),
             },
             Results::Moisture { request } => Operation::ResultsMoisture {
+                request: Box::new(read(&request)?),
+            },
+            Results::TransferTemperature { request } => Operation::ResultsTransferTemperature {
                 request: Box::new(read(&request)?),
             },
         },
