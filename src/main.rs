@@ -85,6 +85,10 @@ enum Case {
     Validate {
         file: PathBuf,
     },
+    /// Validate a conservative one-way map without running a coupled solver.
+    ValidateTransfer {
+        file: PathBuf,
+    },
     Plan {
         file: PathBuf,
     },
@@ -226,6 +230,15 @@ fn run(cli: Cli) -> Result<()> {
                 let case: CaseSpec = read(&file)?;
                 case.validate()?;
                 return print(&serde_json::json!({"valid":true,"science_id":case.science_id()?}));
+            }
+            Case::ValidateTransfer { file } => {
+                let transfer: harbor_cad::transfers::ConservativeTransfer = read(&file)?;
+                transfer.validate()?;
+                return print(
+                    &serde_json::json!({"valid":true,"transfer_id":transfer.id()?,"source_elements":transfer.source.measures.len(),
+                    "destination_elements":transfer.destination.measures.len(),"geometric_correspondence":"requires native mesh verification",
+                    "physical_validation":"unqualified","executed":false}),
+                );
             }
             Case::Plan { file } => {
                 let plan = ExecutionPlan::reference(read(&file)?)?;

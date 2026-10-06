@@ -13,6 +13,7 @@ pub mod retention;
 pub mod sandbox;
 pub mod science;
 pub mod storage;
+pub mod transfers;
 pub mod worker;
 
 use serde::Serialize;

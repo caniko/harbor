@@ -18,8 +18,36 @@ impl Quantity {
             | ("temperature", "K")
             | ("density", "kg/m3")
             | ("kinematic_viscosity", "m2/s")
-            | ("acceleration", "m/s2") => (1., 0.),
+            | ("acceleration", "m/s2")
+            | ("temperature_interval", "K")
+            | ("temperature_interval", "delta_degC")
+            | ("time", "s")
+            | ("mass", "kg")
+            | ("area", "m2")
+            | ("volume", "m3")
+            | ("power", "W")
+            | ("energy", "J")
+            | ("pressure", "Pa")
+            | ("thermal_conductivity", "W/(m*K)")
+            | ("specific_heat", "J/(kg*K)")
+            | ("heat_capacity", "J/K")
+            | ("heat_transfer_coefficient", "W/(m2*K)")
+            | ("thermal_expansion", "1/K")
+            | ("surface_tension", "N/m")
+            | ("irradiance", "W/m2")
+            | ("radiant_exposure", "J/m2")
+            | ("spectral_irradiance", "W/(m2*m)") => (1., 0.),
             ("length", "mm") => (0.001, 0.),
+            ("length", "nm") => (1e-9, 0.),
+            ("area", "mm2") => (1e-6, 0.),
+            ("volume", "mm3") => (1e-9, 0.),
+            ("mass", "g") => (0.001, 0.),
+            ("time", "min") => (60., 0.),
+            ("time", "h") => (3600., 0.),
+            ("power", "kW") | ("energy", "kJ") | ("pressure", "kPa") => (1000., 0.),
+            ("pressure", "MPa") => (1e6, 0.),
+            ("radiant_exposure", "Wh/m2") => (3600., 0.),
+            ("spectral_irradiance", "W/(m2*nm)") => (1e9, 0.),
             ("temperature", "degC") => (1., 273.15),
             _ => {
                 return Err(invalid(format!(
@@ -28,7 +56,11 @@ impl Quantity {
                 )));
             }
         };
-        Ok(self.value * factor + offset)
+        let value = self.value * factor + offset;
+        if !value.is_finite() {
+            return Err(invalid("SI normalization overflow"));
+        }
+        Ok(value)
     }
 }
 // Magnus screening over water, 0–50 °C. This is not a moisture solver.

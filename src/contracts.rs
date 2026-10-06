@@ -1237,5 +1237,7 @@ pub fn schemas() -> serde_json::Value {
         "PresentationRequest": schemars::schema_for!(PresentationRequest),
         "FrameSource": schemars::schema_for!(FrameSource),
         "VideoRequest": schemars::schema_for!(VideoRequest),
+        "ConservativeTransfer": schemars::schema_for!(crate::transfers::ConservativeTransfer),
+        "TransferReceipt": schemars::schema_for!(crate::transfers::TransferReceipt),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
 }
