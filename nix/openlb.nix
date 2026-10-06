@@ -44,6 +44,8 @@ in
         USE_EMBEDDED_DEPENDENCIES := OFF
         EOF
         mkdir harbor-driver
+        cp ${../adapters/hip_identity.hpp} harbor-driver/hip_identity.hpp
+        substituteInPlace harbor-driver/hip_identity.hpp --replace-fail '@hip_architecture@' '${hipArchitecture}'
         cp ${../adapters/openlb.cpp} harbor-driver/harbor-cad-openlb.cpp
         substituteInPlace harbor-driver/harbor-cad-openlb.cpp \
           --replace-fail '@hip_architecture@' '${hipArchitecture}'

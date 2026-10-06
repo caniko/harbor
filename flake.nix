@@ -160,7 +160,7 @@
       worker = cli;
       inherit mcp cargoArtifacts;
       inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda openlb-hip runtime-cuda runtime-hip;
-      inherit (filters) kokkos-hip vtk-hip;
+      inherit (filters) kokkos-hip vtk-hip filter-hip;
       gui = pkgs.freecad;
     };
     apps.${system} = {

@@ -85,3 +85,28 @@ Float64 wrapper change is scoped to this compute package. Builds do not discover
 devices. Package evaluation/build is currently blocked by another process owning
 the host evaluation guard. These outputs remain `unqualified`; no native filter
 runtime or B2 result is claimed by the declaration.
+
+The separately packaged `filter-hip` adapter candidate supports one registered
+Float64 image-data shard and a point-gradient of `physVelocity` or `physPressure`.
+It verifies input hashes and point/allocation bounds, forces both
+`vtkmGradient::ForceVTKm` and the Viskores Kokkos device, and explicitly initializes
+Kokkos with the PCI/UUID-correlated HIP device. An explicit CPU-reference command
+uses VTK for comparison; it cannot satisfy required HIP execution.
+
+Kokkos 4.3.01's
+[profiling interface](https://github.com/kokkos/kokkos/blob/6ecdf605e0f7639adec599d25cf0e206d7b8f9f5/core/src/impl/Kokkos_Profiling_Interface.hpp)
+defines execution-space/device decoding, and its
+[profiling callbacks](https://github.com/kokkos/kokkos/blob/6ecdf605e0f7639adec599d25cf0e206d7b8f9f5/core/src/impl/Kokkos_Profiling.hpp)
+provide actual parallel dispatch and allocation events. The candidate rejects
+missing dispatches or non-HIP/foreign-device callbacks. It records the observed
+dispatch labels, process peak RSS and post-initialization Kokkos HIPSpace peak
+allocations. That memory metric excludes driver and non-Kokkos allocations;
+whole-card VRAM peaks and instruction-level kernel traces remain separate
+qualification work.
+
+Before publishing, the adapter checks its Float64 result, unchanged source array
+bytes and image topology/coordinates, then writes and reads back the VTI to check
+the same invariants. Original physical units and derivative units are explicit.
+Ghost arrays are rejected pending their own qualification. This is candidate
+implementation: it needs the guarded native build, analytical/CPU comparison,
+sandbox and worker integration gates before being exposed as a runnable job.

@@ -96,7 +96,25 @@
     };
     meta.license = lib.licenses.bsd3;
   };
+  adapter = rocm.rocmClangStdenv.mkDerivation {
+    pname = "harbor-cad-filter-hip";
+    version = "0.1.0";
+    src = ../adapters/filters;
+    nativeBuildInputs = [pkgs.cmake pkgs.ninja];
+    buildInputs = [vtk kokkos rocm.clr rocm.rocm-runtime pkgs.nlohmann_json pkgs.tinyxml-2 pkgs.openssl];
+    postPatch = ''
+      cp ${../adapters/hip_identity.hpp} hip_identity.hpp
+      substituteInPlace hip_identity.hpp --replace-fail '@hip_architecture@' '${architecture}'
+    '';
+    cmakeFlags = compilerFlags ++ ["-DKokkos_DIR=${kokkos}/lib/cmake/Kokkos"];
+    passthru = {
+      inherit vtk kokkos architecture;
+      qualification = "unqualified";
+    };
+    meta.license = lib.licenses.gpl3Plus;
+  };
 in {
   kokkos-hip = kokkos;
   vtk-hip = vtk;
+  filter-hip = adapter;
 }
