@@ -74,7 +74,10 @@ def main():
                 "allowed_input_root": str(root),
                 "max_ram_bytes": 2 * 1024**3,
                 "max_disk_bytes": 1024**3,
-                "threads": 1,
+                # Match the resource envelope that qualified the exact native
+                # n8/64-substep recipes. One CPU throttled the cold solve past
+                # its unchanged native 180-second limit (worker attempt 2).
+                "threads": 2,
                 "timeout_seconds": 240,
                 "native_runtime": str(runtime),
                 "service_mode": "systemd",
@@ -318,6 +321,10 @@ def main():
                 assert (
                     resources["job_id"] == job["id"]
                     and resources["invocation"] == running["invocation_id"]
+                )
+                assert (
+                    resources["kernel_resources"]["controls"]["cpu.max"]
+                    == "200000 100000"
                 )
                 assert resources["kernel_resources"]["aggregate_memory_peak_bytes"] > 0
                 assert (

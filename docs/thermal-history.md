@@ -140,6 +140,16 @@ raw observations also passed the stronger aligned-native-time recheck at
 worker lifecycle/export gate is in progress, with its exact package combination
 and interface-source parity recorded independently.
 
+The second worker attempt passed the CLI adiabatic solve, restart, independent
+field/energy rechecks and portable export, then failed its MCP cold-history
+solve at the unchanged 180-second adapter timeout. Its one-CPU job quota
+recorded 145.35 CPU seconds, 35.97 seconds throttled and a final native physical
+time of 101.922 seconds out of the required 120 seconds. The exact native
+two-CPU case completed in 168.72 wall seconds. The worker qualifier now requests
+and verifies that same explicit two-CPU envelope. All request bytes, native
+timeouts, mesh/step refinements, temperature and energy limits remain bound.
+The one-CPU failed attempt is retained independently.
+
 Bounded native time/output counts and explicit mesh refinement are checked
 before execution. The opt-in qualifier runs under the guarded Canix runtime
 lease and a bounded 2-GiB/no-swap/two-CPU service. Worker integration and its
