@@ -35,3 +35,11 @@ The MCP `cad` and `all` profiles expose `cad_plan_inspection`, `cad_submit`,
 version-1 CAD-inspection/bundle DAG and returns the durable job ID. The results
 profile also exposes the read-only `cad_regions` view. Physical validation
 remains explicit and unqualified.
+
+Local CLI/MCP view verification also passed against a checksummed copy of the
+original resolution-16 B1 job. The Rust schema validated the identical CLI/MCP
+region reports, CAD export retained all 41 registered records, metadata mutation
+rejected, and every original artifact hash remained unchanged. This is evidence
+for the historical read/export interfaces using a development runner, without a
+new solve or native-runtime promotion. The report is retained at
+`/data/scratch/tmp/opencode/harbor-cad-authority-20261005/cad-view-1/verification.json`.
