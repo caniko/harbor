@@ -2,7 +2,7 @@
   description = "harbor-db - secure generic lifecycle plans and NixOS systemd wiring";
 
   inputs = {
-    harbor-rs.url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=05cc4f162b55fa904b687db1821e2463fa813e50";
+    harbor-rs.url = "git+https://github.com/caniko/harbor-rs.git?ref=feat/portable-release-files&rev=195f8a7e81d67102868631015b6794280b492c88";
     rs-harbor.follows = "harbor-rs";
     harbor-meta = {
       url = "git+https://github.com/caniko/harbor-meta.git?ref=feat/shared-timezone-env&rev=1f272a44dea9dc531b30efb384720ddb46f083e3";
@@ -79,6 +79,7 @@
         inherit pkgs;
         sccachePackage = harbor-rs.packages.${pkgs.stdenv.hostPlatform.system}.sccache;
         cacheRoot = null;
+        ephemeralFallback = true;
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
       };
