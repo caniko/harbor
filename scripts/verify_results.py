@@ -1,4 +1,4 @@
-"""Exact CLI/MCP static native sampling/comparison against retained qualified fields."""
+"""Exact CLI/MCP native sampling/comparison against retained qualified fields."""
 
 import argparse
 import asyncio
@@ -33,11 +33,15 @@ def main():
     for name in ("binary", "mcp", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument("--source", type=Path, action="append", required=True)
+    parser.add_argument("--thermal", action="store_true")
     args = parser.parse_args()
     binary, mcp = args.binary.resolve(strict=True), args.mcp.resolve(strict=True)
     if not all(p.is_relative_to("/nix/store") for p in (binary, mcp)):
         raise ValueError("exact immutable packaged CLI/MCP required")
     before = service_resources()
+    schemas = json.loads(subprocess.check_output([str(binary), "schema"]))
+    from jsonschema import Draft202012Validator
+
     module = importlib.util.spec_from_file_location(
         "fem", Path(__file__).resolve().parents[1] / "adapters/fem_reference.py"
     )
@@ -139,13 +143,19 @@ def main():
                             ).fetchone()[0]
                             plan = json.loads(raw_plan)
                             source_versions.add(plan["schema_version"])
+                            thermal = "thermal" in plan
+                            assert thermal == args.thermal
                             prefix = (
-                                "stages/fem-imported"
+                                "stages/thermal"
+                                if thermal
+                                else "stages/fem-imported"
                                 if "imported_fem" in plan
                                 else "stages/fem"
                             )
                             artifact = (
-                                "imported-fields.json"
+                                "thermal-fields.json"
+                                if thermal
+                                else "imported-fields.json"
                                 if "imported_fem" in plan
                                 else "fields.json"
                             )
@@ -153,8 +163,42 @@ def main():
                             native = fem.read_dat(
                                 (directory / "reference.dat").read_text()
                             )
-                            for field, snapshots in native.items():
-                                ids = sorted(snapshots[0]["values"])
+                            points = []
+                            if thermal:
+                                history = json.loads(
+                                    (directory / artifact).read_text()
+                                )["fields"]["temperature"]
+                                assert len(history) == len(native["temperature"])
+                                for retained_field, snapshot in zip(
+                                    history, native["temperature"], strict=True
+                                ):
+                                    stamp = retained_field["physical_time_s"]
+                                    if stamp in plan["thermal"]["observation_times_s"]:
+                                        points.append(("temperature", snapshot, stamp))
+                                assert len(points) == len(
+                                    plan["thermal"]["observation_times_s"]
+                                )
+                            else:
+                                points = [
+                                    (field, snapshots[0], None)
+                                    for field, snapshots in native.items()
+                                ]
+                            sample_operation = "sample-thermal" if thermal else "sample"
+                            compare_operation = (
+                                "compare-thermal" if thermal else "compare"
+                            )
+                            sample_tool = (
+                                "results_sample_thermal"
+                                if thermal
+                                else "results_sample"
+                            )
+                            compare_tool = (
+                                "results_compare_thermal"
+                                if thermal
+                                else "results_compare"
+                            )
+                            for field, snapshot, physical_time in points:
+                                ids = sorted(snapshot["values"])
                                 retained = [ids[0], ids[len(ids) // 2], ids[-1]]
                                 locations = [
                                     {"association": "node", "node_id": identifier[0]}
@@ -172,16 +216,25 @@ def main():
                                     "field": field,
                                     "locations": locations,
                                 }
-                                observed = cli("sample", request)
+                                if thermal:
+                                    request["physical_time_s"] = physical_time
+                                observed = cli(sample_operation, request)
+                                Draft202012Validator(
+                                    schemas[
+                                        "ThermalSampleReport"
+                                        if thermal
+                                        else "SampleReport"
+                                    ]
+                                ).validate(observed)
                                 reply = await client.call_tool(
-                                    "results_sample", {"request_spec": request}
+                                    sample_tool, {"request_spec": request}
                                 )
                                 assert (
                                     not reply.is_error
                                     and reply.structured_content == observed
                                 )
                                 expected = [
-                                    snapshots[0]["values"][identity]
+                                    snapshot["values"][identity]
                                     for identity in retained
                                 ]
                                 assert [
@@ -200,7 +253,7 @@ def main():
                                     )
                                 assert (
                                     observed["source_samples"] == len(ids)
-                                    and observed["physical_time_s"] is None
+                                    and observed["physical_time_s"] == physical_time
                                 )
                                 assert (
                                     observed["coordinate_unit"] == "m"
@@ -211,9 +264,22 @@ def main():
                                     "left": request,
                                     "right": request,
                                 }
-                                delta = cli("compare", comparison)
+                                if thermal:
+                                    assert observed["native_time_s"] == snapshot["time"]
+                                    assert (
+                                        abs(snapshot["time"] - physical_time)
+                                        <= observed["time_serialization_tolerance_s"]
+                                    )
+                                delta = cli(compare_operation, comparison)
+                                Draft202012Validator(
+                                    schemas[
+                                        "ThermalCompareReport"
+                                        if thermal
+                                        else "CompareReport"
+                                    ]
+                                ).validate(delta)
                                 reply = await client.call_tool(
-                                    "results_compare", {"request_spec": comparison}
+                                    compare_tool, {"request_spec": comparison}
                                 )
                                 assert (
                                     not reply.is_error
@@ -260,9 +326,9 @@ def main():
                                         },
                                     ),
                                 ):
-                                    error = cli("sample", changed, False)
+                                    error = cli(sample_operation, changed, False)
                                     reply = await client.call_tool(
-                                        "results_sample", {"request_spec": changed}
+                                        sample_tool, {"request_spec": changed}
                                     )
                                     assert reply.is_error
                                     rejections.append(
@@ -274,6 +340,67 @@ def main():
                                             "mcp_rejected": True,
                                         }
                                     )
+                                if thermal:
+                                    for label, changed in (
+                                        (
+                                            "unretained-time",
+                                            {
+                                                **request,
+                                                "physical_time_s": physical_time + 1e-8,
+                                            },
+                                        ),
+                                        (
+                                            "invented-initial-time",
+                                            {**request, "physical_time_s": 0},
+                                        ),
+                                        (
+                                            "unsupported-field",
+                                            {**request, "field": "heat_flux"},
+                                        ),
+                                    ):
+                                        error = cli(sample_operation, changed, False)
+                                        reply = await client.call_tool(
+                                            sample_tool, {"request_spec": changed}
+                                        )
+                                        assert reply.is_error
+                                        rejections.append(
+                                            {
+                                                "case": label,
+                                                "job": job["id"],
+                                                "error": error,
+                                                "mcp_rejected": True,
+                                            }
+                                        )
+                            if thermal:
+                                first, last = points[0], points[-1]
+                                comparison = {
+                                    "schema_version": 1,
+                                    "left": {**request, "physical_time_s": first[2]},
+                                    "right": {**request, "physical_time_s": last[2]},
+                                }
+                                delta = cli(compare_operation, comparison)
+                                reply = await client.call_tool(
+                                    compare_tool, {"request_spec": comparison}
+                                )
+                                assert (
+                                    not reply.is_error
+                                    and reply.structured_content == delta
+                                )
+                                expected_delta = [
+                                    last[1]["values"][identity][0]
+                                    - first[1]["values"][identity][0]
+                                    for identity in retained
+                                ]
+                                assert [
+                                    value["value"][0] for value in delta["differences"]
+                                ] == expected_delta
+                                results.append(
+                                    {
+                                        "comparison": delta,
+                                        "independent_signed_difference": expected_delta,
+                                        "cli_mcp_parity": True,
+                                    }
+                                )
                             # Mutation targets are distinct copied bytes/SQLite; original evidence is untouched.
                             target = directory / artifact
                             original = target.read_bytes()
@@ -287,7 +414,9 @@ def main():
                                 "field": field,
                                 "locations": [{"association": "node", "node_id": 1}],
                             }
-                            error = cli("sample", request, False)
+                            if thermal:
+                                request["physical_time_s"] = points[-1][2]
+                            error = cli(sample_operation, request, False)
                             path = f"{prefix}/{artifact}"
                             manifest = json.loads(
                                 database.execute(
@@ -304,7 +433,7 @@ def main():
                                 (json.dumps(manifest), job["id"], path),
                             )
                             database.commit()
-                            bound_error = cli("sample", request, False)
+                            bound_error = cli(sample_operation, request, False)
                             assert (
                                 "authoritative native output" in bound_error["message"]
                             )
@@ -349,7 +478,7 @@ def main():
                 worker.wait(timeout=15)
                 database.close()
         assert tree_identity(source) == source_before
-    assert source_versions == {5, 8}
+    assert source_versions == ({6} if args.thermal else {5, 8})
     report = {
         "schema_version": 1,
         "binary": str(binary),
@@ -362,7 +491,9 @@ def main():
         "service_resources_after": service_resources(),
         "original_sources_unchanged": True,
         "physical_validation": "unqualified",
-        "scope": "exact registered static v5/v8 native samples and same-mesh comparisons through CLI/results MCP; no interpolated or transient sampling",
+        "scope": "exact registered v6 thermal samples and explicit retained-time signed comparisons"
+        if args.thermal
+        else "exact registered static v5/v8 native samples and same-mesh comparisons through CLI/results MCP; no interpolated or transient sampling",
     }
     (root / "verification.json").write_text(
         json.dumps(report, indent=2, allow_nan=False)
