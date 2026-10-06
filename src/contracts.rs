@@ -1662,6 +1662,7 @@ pub fn schemas() -> serde_json::Value {
         "ImportedFemRequest": schemars::schema_for!(crate::fem_imported::ImportedFemRequest),
         "ImportedFemSpec": schemars::schema_for!(crate::fem_imported::ImportedFemSpec),
         "FemReferenceSpec": schemars::schema_for!(crate::fem::FemReferenceSpec),
+        "WettingReferenceSpec": schemars::schema_for!(crate::wetting::WettingReferenceSpec),
         "ThermalReferenceSpec": schemars::schema_for!(crate::thermal::ThermalReferenceSpec),
         "ConservativeTransfer": schemars::schema_for!(crate::transfers::ConservativeTransfer),
         "TransferReceipt": schemars::schema_for!(crate::transfers::TransferReceipt),

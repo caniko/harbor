@@ -16,6 +16,9 @@ impermeable planar y walls, a prescribed uniform contact angle and no gravity.
 SI diameter, diffuse-interface thickness, density, kinematic viscosity and
 surface tension are explicit with material and boundary provenance. The fixed
 Navier–Stokes relaxation time is 1; the phase relaxation time is explicit.
+Rust owns the strict `WettingReferenceSpec` schema and matching SI/bounds checks;
+Python parity tests cover the same native descriptor. Durable worker planning
+and lifecycle remain a separate integration gate.
 
 For `dx = diameter / resolution`, the pinned converter gives
 `dt = (tau - 0.5) dx² / (3 nu)`. Surface tension in lattice units is

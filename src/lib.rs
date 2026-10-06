@@ -26,6 +26,7 @@ pub mod science;
 pub mod storage;
 pub mod thermal;
 pub mod transfers;
+pub mod wetting;
 pub mod worker;
 
 use serde::Serialize;

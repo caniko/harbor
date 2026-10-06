@@ -112,6 +112,21 @@ def test_static_result_schema_preserves_native_associations_and_rejects_interpol
             Draft202012Validator(schemas["SampleRequest"]).validate(changed)
 
 
+def test_wetting_si_descriptor_uses_generated_rust_schema_with_explicit_provenance():
+    from test_wetting_reference import request
+
+    schemas = json.loads(subprocess.check_output([binary(), "schema"]))
+    spec = request()
+    Draft202012Validator(schemas["WettingReferenceSpec"]).validate(spec)
+    for changed in (
+        {**spec, "evaporation": True},
+        {**spec, "material_provenance": None},
+        {**spec, "observation_steps": [0, True, spec["steps"]]},
+    ):
+        with pytest.raises(ValidationError):
+            Draft202012Validator(schemas["WettingReferenceSpec"]).validate(changed)
+
+
 def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
     from mcp import Client
     from mcp.client.stdio import StdioServerParameters

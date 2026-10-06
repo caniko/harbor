@@ -1,0 +1,48 @@
+use harbor_cad::{contracts::digest, wetting::WettingReferenceSpec};
+
+fn reference() -> serde_json::Value {
+    serde_json::json!({"schema_version":1,"synthetic":true,"backend":"cpu","formulation":"well_balanced_contact_angle_2d","diameter_m":48e-6,"resolution":48,"interface_width_m":6e-6,
+        "density_liquid_kg_m3":1000.,"density_vapor_kg_m3":1000.,"viscosity_liquid_m2_s":1e-6,"viscosity_vapor_m2_s":1e-6,"surface_tension_n_m":1e-4,"contact_angle_deg":100.,"phase_relaxation_time":1.,"steps":160000,"observation_steps":[0,80000,120000,160000],"mass_tolerance":1e-3,"angle_tolerance_deg":5.,"material_provenance":"synthetic equal-property fluid","boundary_provenance":"uniform planar wall angle; no inlet or gravity"})
+}
+
+#[test]
+fn explicit_wetting_si_converter_matches_constant_tau_and_retained_observations() {
+    let spec: WettingReferenceSpec = serde_json::from_value(reference()).unwrap();
+    spec.validate().unwrap();
+    assert!((spec.spacing_m() / 1e-6 - 1.).abs() < 1e-12);
+    assert!((spec.physical_step_s() / (1e-6 / 6.) - 1.).abs() < 1e-12);
+    assert!((spec.surface_tension_lattice() / (1e-4 / 0.036) - 1.).abs() < 1e-12);
+    assert!((spec.times_s()[3] / (0.16 / 6.) - 1.).abs() < 1e-12);
+    let mut changed = spec.clone();
+    changed.boundary_provenance = "different wall input".into();
+    assert_ne!(digest(&spec).unwrap(), digest(&changed).unwrap());
+}
+
+#[test]
+fn wetting_rejects_water_air_ratio_unresolved_interfaces_and_weakened_scientific_gates() {
+    for (key, value) in [
+        ("synthetic", serde_json::json!(false)),
+        ("backend", serde_json::json!("hip")),
+        ("density_vapor_kg_m3", serde_json::json!(1.2)),
+        ("viscosity_vapor_m2_s", serde_json::json!(1e-5)),
+        ("mass_tolerance", serde_json::json!(0.01)),
+        ("angle_tolerance_deg", serde_json::json!(6)),
+        ("interface_width_m", serde_json::json!(1e-7)),
+        ("surface_tension_n_m", serde_json::json!(0.072)),
+        ("material_provenance", serde_json::json!(" ")),
+        ("observation_steps", serde_json::json!([0, 160000, 160000])),
+        ("steps", serde_json::json!(200001)),
+        ("resolution", serde_json::json!(true)),
+    ] {
+        let mut raw = reference();
+        raw[key] = value;
+        assert!(
+            serde_json::from_value::<WettingReferenceSpec>(raw)
+                .map_or(true, |v| v.validate().is_err()),
+            "{key}"
+        );
+    }
+    let mut raw = reference();
+    raw["contact_line_model"] = serde_json::json!("injected");
+    assert!(serde_json::from_value::<WettingReferenceSpec>(raw).is_err());
+}
