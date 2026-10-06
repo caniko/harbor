@@ -132,6 +132,14 @@ Exact revisions, report/runtime hashes and failed-attempt provenance are in
 [thermal evidence](evidence/thermal-cpu.json). The bytecode-repaired worker
 package is a distinct runtime and requires its own native/lifecycle gate.
 
+`thermal-native-6` passed the complete fresh standalone gate for the
+bytecode-repaired adapter at `c1a58dc`, with the same recorded numerical errors
+and time-convergence order. Its aggregate peak was `226689024 bytes`. Retained
+raw observations also passed the stronger aligned-native-time recheck at
+`76fdcd4`; that post-check is hash-bound separately. The corresponding CLI/MCP
+worker lifecycle/export gate is in progress, with its exact package combination
+and interface-source parity recorded independently.
+
 Bounded native time/output counts and explicit mesh refinement are checked
 before execution. The opt-in qualifier runs under the guarded Canix runtime
 lease and a bounded 2-GiB/no-swap/two-CPU service. Worker integration and its

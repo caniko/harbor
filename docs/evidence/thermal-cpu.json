@@ -31,6 +31,23 @@
     "pre_output_rejections": 9,
     "kernel_resources": {"memory_max_bytes": 2147483648, "memory_swap_max_bytes": 0, "memory_peak_bytes": 314224640, "cpu_usage_microseconds": 499865057, "cpu_max": "200000 100000", "pids_max": 128}
   },
+  "repaired_standalone": {
+    "build_revision": "c1a58dc3444b7a09ee99745d7b83a14aa340367e",
+    "qualifier_revision": "c1a58dc3444b7a09ee99745d7b83a14aa340367e",
+    "runtime": "/nix/store/844njdi9psib35fsdykw1hmb070nrwdk-harbor-cad-thermal-runtime.json",
+    "runtime_sha256": "33fcd925116726503f5cdf268874f67cb0684d8aa81780d181f4d0b27ba0be5c",
+    "adapter": "/nix/store/lhdiwc0dvcx48ikff43cf7b5nrdlmnm4-harbor-cad-thermal/bin/harbor-cad-thermal",
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/thermal-native-6/verification.json",
+    "report_sha256": "af6376570e908c2dd9391fe274c85af1ef99ef8e8f77bbe8abc1a57a78a13540",
+    "runtime_execution": "passed; full fresh eight-solve and nine-rejection gate after bytecode repair",
+    "numerical_verification": "passed; unchanged independent 0.02 temperature and energy gates",
+    "spatial_and_temporal_assessments": "passed; same recorded errors/order as the prior package",
+    "aligned_time_recheck_revision": "76fdcd44fff1180008da7cc6fb316999e52ddd22",
+    "aligned_time_recheck": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/thermal-native-6-aligned-time-recheck.json",
+    "aligned_time_recheck_sha256": "29a1c8b8320fc531712a2e8cfcf84bf1b0a92fc4ecb34af77eab9681f04673e8",
+    "kernel_resources": {"memory_max_bytes": 2147483648, "memory_swap_max_bytes": 0, "memory_peak_bytes": 226689024, "cpu_usage_microseconds": 502496099, "cpu_max": "200000 100000", "pids_max": 128},
+    "physical_validation": "unqualified"
+  },
   "worker": {
     "build_revision": "d4ebd7a9ce4bb446a5e22e5380d103caa4763e39",
     "runtime": "/nix/store/hbyxvaqrl6cshmi5nn8q8naq70jas142-harbor-cad-native-runtime.json",

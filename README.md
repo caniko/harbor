@@ -8,8 +8,10 @@
 
 Local-first Rust CLI/worker and narrow Python MCP for scientific CAD jobs.
 The authoritative scope is [implementation-spec.md](docs/implementation-spec.md).
-The current implementation is **pre-qualification**: the CPU analytical-reference
-workflow is executable; native/GPU adapters require separate qualification.
+The CPU analytical-reference workflow is executable. Native CPU/HIP and
+presentation qualification is recorded for exact packages, formulations and
+host scope in the [acceptance ledger](docs/acceptance-ledger.md). Discovery does
+not qualify a changed runtime automatically.
 Process success is never a physical-validation claim.
 
 ## Run the implemented reference workflow
@@ -108,6 +110,12 @@ prescribed CPU transient heat transfer. Its independent version-6 histories,
 temperature/energy gates, closure-only sandbox and CLI/MCP qualification are
 described in [thermal histories](docs/thermal-history.md). The simulation MCP
 profile exposes `case_plan_thermal_reference` and ordinary approved job submission.
+
+Patched CAD inspection also exports checksummed named BREP solids with original
+units and placement. The independent [imported CAD mesh](docs/cad-mesh.md) and
+[origin-aware FEM references](docs/fem-imported.md) retain world coordinates
+through Gmsh/CalculiX; their exact native and durable-worker gates are tracked
+separately in the ledger.
 
 Standalone `render REQUEST.json` plans presentation from a completed registered
 field snapshot. Its approved version-2 plan uses only render, optional video and
