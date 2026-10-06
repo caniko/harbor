@@ -91,6 +91,13 @@ locked ROCm dependency. Build logs are retained in
 These outputs remain `unqualified`; no native filter runtime or B2 result is
 claimed by the declaration.
 
+Kokkos builds after propagating rocThrust and its CMake-required rocPRIM
+dependency. The next VTK configure exposed a directory-scope mismatch: the
+third-party directory's `find_package(Kokkos)` defines the compiler helper,
+while sibling accelerator directories cannot see its ordinary compiler variable.
+The candidate makes the same pinned ROCm compiler visible through a CMake cache
+entry; it retains the compiler existence check and native HIP language.
+
 The separately packaged `filter-hip` adapter candidate supports one registered
 Float64 image-data shard and a point-gradient of `physVelocity` or `physPressure`.
 It verifies input hashes and point/allocation bounds, forces both

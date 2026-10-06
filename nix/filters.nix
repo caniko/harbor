@@ -70,6 +70,9 @@
       ++ [
         "-DCMAKE_INSTALL_DOCDIR=share/doc/vtk"
         "-DKokkos_DIR=${kokkos}/lib/cmake/Kokkos"
+        # VTK finds Kokkos in its third-party directory, while accelerator
+        # siblings call the globally defined helper outside that variable scope.
+        "-DKokkos_CXX_COMPILER=${rocm.rocmClangStdenv.cc}/bin/clang++"
         "-DKokkos_DEVICES=HIP;SERIAL"
         "-DVTK_USE_KOKKOS=ON"
         "-DVTK_USE_CUDA=OFF"
