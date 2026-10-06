@@ -27,7 +27,41 @@ def checksum(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def main():
+class MeshRecipe:
+    schema_version = 7
+    closure_key = "cad_mesh_closure"
+    native_key = "cad_mesh"
+    cli = "cad", "mesh"
+    profile = "cad"
+    plan_tool = "cad_plan_mesh"
+    submit_tool = "cad_mesh_submit"
+    policy = "harbor-cad-cad-mesh-cpu-v1"
+    stage_directory = "stages/mesh"
+    receipt_file = "cad-mesh-receipt.json"
+    descriptor_file = "native-cad-mesh-request.json"
+    scope = "registered original CAD to isolated durable CPU imported mesh; geometric correspondence and lifecycle only"
+
+    def request(self, source_job, label, resolution):
+        return {
+            "source_job": source_job,
+            "region_name": "solid",
+            "resolution": resolution,
+            "geometry_tolerance_m": 1e-6,
+        }
+
+    def verify(self, plan, data, receipt):
+        spec = plan["cad_source"]["geometry"]
+        checked = verify_box_mesh(spec, json.loads((data / "mesh.json").read_text()))
+        assert checked["passed"] and receipt["mesh_sha256"] == checksum(
+            data / "mesh.json"
+        )
+        return {"mesh": checked}
+
+    def formulation(self, plan):
+        return plan["cad_source"]["geometry"]["formulation"]
+
+
+def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in (
         "executable",
@@ -38,7 +72,11 @@ def main():
         "output",
     ):
         parser.add_argument(f"--{name}", type=Path, required=True)
-    args = parser.parse_args()
+    parser.add_argument("--native-reference", type=Path)
+    return parser.parse_args()
+
+
+def run_gate(args, recipe):
     binary, runtime, mcp = (
         p.resolve(strict=True) for p in (args.executable, args.runtime, args.mcp)
     )
@@ -48,9 +86,20 @@ def main():
     ):
         raise ValueError("immutable exact CLI/runtime/MCP packages required")
     native = json.loads(runtime.read_text())
-    if not native.get("cad_mesh_closure") or any(
+    if not native.get(recipe.closure_key) or any(
         native.get(k)
-        for k in ("cad", "openlb", "fem", "thermal", "render", "video", "filter")
+        for k in (
+            "cad",
+            "openlb",
+            "fem",
+            "thermal",
+            "render",
+            "video",
+            "filter",
+            "cad_mesh",
+            "fem_imported",
+        )
+        if k != recipe.native_key
     ):
         raise ValueError("CPU imported-mesh-only closure runtime required")
     reference_path = args.cad_reference / "verification.json"
@@ -156,16 +205,11 @@ def main():
         raise TimeoutError("worker startup")
 
     def planned(label, key, resolution=8, allow_error=False):
-        request = {
-            "source_job": sources[label],
-            "region_name": "solid",
-            "resolution": resolution,
-            "geometry_tolerance_m": 1e-6,
-        }
+        request = recipe.request(sources[label], label, resolution)
         path = root / f"request-{key}.json"
         path.write_text(json.dumps(request))
         reply = command(
-            "--socket", endpoint, "cad", "mesh", path, allow_error=allow_error
+            "--socket", endpoint, *recipe.cli, path, allow_error=allow_error
         )
         return reply if allow_error else reply["data"]
 
@@ -192,24 +236,17 @@ def main():
 
         params = StdioServerParameters(
             command=str(mcp),
-            args=["--profile", "cad"],
+            args=["--profile", recipe.profile],
             env={**environment, "HARBOR_CAD_SOCKET": str(endpoint)},
         )
         async with Client(params) as client:
             reply = await client.call_tool(
-                "cad_plan_mesh",
-                {
-                    "request_spec": {
-                        "source_job": sources[label],
-                        "region_name": "solid",
-                        "resolution": 8,
-                        "geometry_tolerance_m": 1e-6,
-                    }
-                },
+                recipe.plan_tool,
+                {"request_spec": recipe.request(sources[label], label, 8)},
             )
             assert not reply.is_error and reply.structured_content == plan
             reply = await client.call_tool(
-                "cad_mesh_submit",
+                recipe.submit_tool,
                 {
                     "plan": plan["plan"],
                     "approved_digest": plan["approval_digest"],
@@ -226,7 +263,7 @@ def main():
                 key = f"mesh-{interface}"
                 plan = planned(label, key)
                 assert (
-                    plan["plan"]["schema_version"] == 7
+                    plan["plan"]["schema_version"] == recipe.schema_version
                     and "case" not in plan["plan"]
                     and "fem" not in plan["plan"]
                 )
@@ -262,10 +299,7 @@ def main():
                 source.write_bytes(original + b"original mutation after acknowledgment")
                 running = wait_job(str(binary), endpoint, job["id"], {"running"})
                 retention = retention_snapshot(state, job, str(binary))
-                assert (
-                    retention["intent"]["binding"]["sandbox_policy"]
-                    == "harbor-cad-cad-mesh-cpu-v1"
-                )
+                assert retention["intent"]["binding"]["sandbox_policy"] == recipe.policy
                 reservation = admission_record(state, job)
                 assert (
                     reservation is not None
@@ -286,27 +320,22 @@ def main():
                 bundle = root / f"bundle-{interface}"
                 command("artifact", "export", "--state", state, job["id"], bundle)
                 records = verify_manifest(bundle)
-                data = bundle / "stages/mesh"
-                receipt = json.loads((data / "cad-mesh-receipt.json").read_text())
+                data = bundle / recipe.stage_directory
+                receipt = json.loads((data / recipe.receipt_file).read_text())
                 spec = plan["plan"]["cad_source"]["geometry"]
-                checked = verify_box_mesh(
-                    spec, json.loads((data / "mesh.json").read_text())
-                )
-                assert checked["passed"] and receipt["mesh_sha256"] == checksum(
-                    data / "mesh.json"
-                )
+                checked = recipe.verify(plan["plan"], data, receipt)
                 assert receipt["brep_sha256"] == checksum(
                     bundle / "retained-cad/solid.brep"
                 )
                 assert receipt["request_sha256"] == checksum(
-                    bundle / "native-cad-mesh-request.json"
+                    bundle / recipe.descriptor_file
                 )
                 assert (
                     receipt["source_transform"] == spec["source_transform"]
                     and receipt["world_bounds_m"] == spec["bounds_m"]
                 )
                 assert (
-                    receipt["sandbox"]["policy"] == "harbor-cad-cad-mesh-cpu-v1"
+                    receipt["sandbox"]["policy"] == recipe.policy
                     and len(receipt["sandbox"]["checks"]) == 10
                     and all(receipt["sandbox"]["checks"].values())
                 )
@@ -326,7 +355,7 @@ def main():
                     and capability["numerical_verification"] == "reported_pass"
                 )
                 assert (
-                    capability["formulation"] == "imported_axis_aligned_box"
+                    capability["formulation"] == recipe.formulation(plan["plan"])
                     and historical["physical_validation"] == "unqualified"
                 )
                 results.append(
@@ -335,7 +364,7 @@ def main():
                         "source_fixture": label,
                         "job": outcome,
                         "receipt": receipt,
-                        "independent_mesh_check": checked,
+                        "independent_checks": checked,
                         "records": len(records),
                         "service_resources": resources,
                         "admission_record": reservation,
@@ -397,7 +426,15 @@ def main():
             "original_source_hashes": original_hashes,
             "results": results,
             "physical_validation": "unqualified",
-            "scope": "registered original CAD to isolated durable CPU imported mesh; geometric correspondence and lifecycle only",
+            "scope": recipe.scope,
+            "native_reference": str(args.native_reference)
+            if args.native_reference
+            else None,
+            "native_reference_sha256": checksum(
+                args.native_reference / "verification.json"
+            )
+            if args.native_reference
+            else None,
         }
         (root / "verification.json").write_text(
             json.dumps(report, allow_nan=False, indent=2)
@@ -414,4 +451,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_gate(arguments(), MeshRecipe())
