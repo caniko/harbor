@@ -80,6 +80,38 @@ def test_schema_parity_and_unknown_input_rejection():
         Draft202012Validator(schemas["CaseSpec"]).validate(case)
 
 
+def test_static_result_schema_preserves_native_associations_and_rejects_interpolation():
+    schemas = json.loads(subprocess.check_output([binary(), "schema"]))
+    sample = {
+        "schema_version": 1,
+        "job_id": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+        "field": "heat_flux",
+        "locations": [
+            {
+                "association": "integration_point",
+                "element_id": 7,
+                "integration_point": 2,
+            }
+        ],
+    }
+    Draft202012Validator(schemas["SampleRequest"]).validate(sample)
+    Draft202012Validator(schemas["CompareRequest"]).validate(
+        {"schema_version": 1, "left": sample, "right": sample}
+    )
+    for changed in (
+        {**sample, "time_s": 1},
+        {**sample, "artifact": "../../private.json"},
+        {**sample, "field": "velocity"},
+        {**sample, "locations": [{"association": "point", "coordinate_m": [0, 0, 0]}]},
+        {
+            **sample,
+            "locations": [{"association": "node", "node_id": 1, "element_id": 7}],
+        },
+    ):
+        with pytest.raises(ValidationError):
+            Draft202012Validator(schemas["SampleRequest"]).validate(changed)
+
+
 def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
     from mcp import Client
     from mcp.client.stdio import StdioServerParameters
@@ -121,6 +153,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
             async with Client(params) as client:
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" in names and "results_describe" in names
+                assert {"results_sample", "results_compare"}.issubset(names)
                 assert "case_plan_openlb_reference" in names
                 assert "cad_plan_inspection" in names
                 assert "cad_regions" in names and "cad_submit" in names
@@ -217,6 +250,27 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 ).structured_content
                 assert "velocity_m_s" not in json.dumps(description)
                 assert len(description["artifacts"]["items"]) == 5
+                sampling = {
+                    "schema_version": 1,
+                    "job_id": job["id"],
+                    "field": "temperature",
+                    "locations": [{"association": "node", "node_id": 1}],
+                }
+                rejected = await client.call_tool(
+                    "results_sample", {"request_spec": sampling}
+                )
+                assert rejected.is_error
+                rejected = await client.call_tool(
+                    "results_compare",
+                    {
+                        "request_spec": {
+                            "schema_version": 1,
+                            "left": sampling,
+                            "right": sampling,
+                        }
+                    },
+                )
+                assert rejected.is_error
                 Draft202012Validator(schemas["ExecutionBinding"]).validate(
                     description["execution_binding"]
                 )
@@ -250,6 +304,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" not in names and "results_describe" in names
                 assert "qualification_report" in names
+                assert {"results_sample", "results_compare"}.issubset(names)
                 assert "cad_plan_inspection" not in names
                 assert "cad_regions" in names and "cad_submit" not in names
                 assert "cold_restart_validate" not in names

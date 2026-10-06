@@ -213,6 +213,16 @@ def build_server(profile: str) -> MCPServer:
             return await request("describe", job_id=job_id)
 
         @server.tool()
+        async def results_sample(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Read at most 64 exact registered static FEM native locations with units and source identities."""
+            return await request("results_sample", request=request_spec)
+
+        @server.tool()
+        async def results_compare(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Compare registered static FEM fields on the same exact mesh; no interpolation or acceptance promotion."""
+            return await request("results_compare", request=request_spec)
+
+        @server.tool()
         async def qualification_report(job_id: str) -> dict[str, Any]:
             """Inspect historical job evidence bound to its exact source/runtime/device; never promote qualification."""
             return await request("qualification_report", job_id=job_id)

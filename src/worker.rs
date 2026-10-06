@@ -725,6 +725,12 @@ fn dispatch(
         Operation::CadRegions { job_id } => {
             Ok(serde_json::to_value(crate::cad::regions(store, &job_id)?)?)
         }
+        Operation::ResultsSample { request } => Ok(serde_json::to_value(crate::results::sample(
+            store, &request,
+        )?)?),
+        Operation::ResultsCompare { request } => Ok(serde_json::to_value(
+            crate::results::compare(store, &request)?,
+        )?),
         Operation::Describe { job_id } => {
             let plan = store.plan(&job_id)?;
             let binding = match store.execution_binding(&job_id) {

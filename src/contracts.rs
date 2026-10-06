@@ -272,7 +272,7 @@ pub enum GpuRequirement {
     Preferred,
     CpuOnly,
 }
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum StageOperation {
     ChannelReference,
@@ -1615,6 +1615,12 @@ pub enum Operation {
     Describe {
         job_id: String,
     },
+    ResultsSample {
+        request: Box<crate::results::SampleRequest>,
+    },
+    ResultsCompare {
+        request: Box<crate::results::CompareRequest>,
+    },
     QualificationReport {
         job_id: String,
     },
@@ -1646,6 +1652,10 @@ pub fn schemas() -> serde_json::Value {
         "VideoRequest": schemars::schema_for!(VideoRequest),
         "FilterRequest": schemars::schema_for!(FilterRequest),
         "JobEvidenceReport": schemars::schema_for!(crate::qualification::JobEvidenceReport),
+        "SampleRequest": schemars::schema_for!(crate::results::SampleRequest),
+        "SampleReport": schemars::schema_for!(crate::results::SampleReport),
+        "CompareRequest": schemars::schema_for!(crate::results::CompareRequest),
+        "CompareReport": schemars::schema_for!(crate::results::CompareReport),
         "RegionReport": schemars::schema_for!(crate::cad::RegionReport),
         "CadSource": schemars::schema_for!(crate::cad_source::CadSource),
         "CadMeshRequest": schemars::schema_for!(crate::cad_source::CadMeshRequest),

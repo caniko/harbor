@@ -191,7 +191,17 @@ enum Cad {
 }
 #[derive(Subcommand)]
 enum Results {
-    Describe { id: String },
+    Describe {
+        id: String,
+    },
+    /// Sample up to 64 exact registered static native FEM entity locations.
+    Sample {
+        request: PathBuf,
+    },
+    /// Compare registered static samples on the exact same mesh and associations.
+    Compare {
+        request: PathBuf,
+    },
 }
 #[derive(Subcommand)]
 enum Artifact {
@@ -379,9 +389,15 @@ fn run(cli: Cli) -> Result<()> {
             },
             Job::Cancel { id } => Operation::Cancel { job_id: id },
         },
-        Commands::Results {
-            command: Results::Describe { id },
-        } => Operation::Describe { job_id: id },
+        Commands::Results { command } => match command {
+            Results::Describe { id } => Operation::Describe { job_id: id },
+            Results::Sample { request } => Operation::ResultsSample {
+                request: Box::new(read(&request)?),
+            },
+            Results::Compare { request } => Operation::ResultsCompare {
+                request: Box::new(read(&request)?),
+            },
+        },
         Commands::Render { request } => Operation::PlanPresentation {
             request: read(&request)?,
         },
