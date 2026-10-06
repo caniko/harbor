@@ -605,4 +605,28 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn authoritative_native_float64_components_survive_json_roundtrip_exactly() {
+        for text in [
+            "2.931500E+02",
+            "3.031500E+02",
+            "-2.300123E-12",
+            "1.672231E-13",
+            "-1.123459E-09",
+            "1.052233E+04",
+            "0.000191416562595359",
+            "-5.293956E-23",
+        ] {
+            let expected = text.parse::<f64>().unwrap();
+            let data = serde_json::to_vec(&serde_json::json!({"value":[expected]})).unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&data).unwrap();
+            assert_eq!(
+                value["value"][0].as_f64().unwrap().to_bits(),
+                expected.to_bits(),
+                "{text}: {}",
+                String::from_utf8_lossy(&data)
+            );
+        }
+    }
 }

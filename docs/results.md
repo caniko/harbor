@@ -16,6 +16,9 @@ artifact identity and an absent physical time for static data. Arrays remain in
 registered artifacts; the response includes only the selected bounded values.
 The requested complete JSON field is independently matched to its final native
 DAT section and exact node/integration-point set before any value is returned.
+The pinned `serde_json` parser uses `float_roundtrip`: the default best-effort
+float parser changed a retained near-zero stress (`-5.293956e-23`) by one bit.
+Native comparisons retain exact Float64 equality rather than adding a tolerance.
 
 `results compare REQUEST.json`/MCP `results_compare` accept version 1 with
 `left` and `right` sampling requests. They require the same field, locations,
