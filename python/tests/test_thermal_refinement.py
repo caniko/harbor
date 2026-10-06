@@ -67,6 +67,7 @@ def test_refinement_cannot_replace_physics_change_units_or_mix_meshes(monkeypatc
         "nodes",
         "nonfinite",
         "divergence",
+        "observed-times",
     ):
         req, fld, msh = copy.deepcopy((requests, fields, meshes))
         if changes == "physics":
@@ -83,6 +84,8 @@ def test_refinement_cannot_replace_physics_change_units_or_mix_meshes(monkeypatc
             fld[1]["times"][0]["temperature_k"] = {}
         elif changes == "nonfinite":
             fld[1]["times"][0]["temperature_k"]["7"] = float("nan")
+        elif changes == "observed-times":
+            fld[1]["times"][0]["observed_s"] += 0.01
         else:
             fld[2]["times"][0]["temperature_k"]["7"] += 0.02
         with pytest.raises(ValueError):

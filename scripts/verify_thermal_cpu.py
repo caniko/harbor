@@ -47,6 +47,16 @@ def temporal_self_convergence(requests, fields, meshes):
                 "identical physical retained times and SI field association required"
             )
         for snapshot in field["times"]:
+            observed, requested = snapshot["observed_s"], snapshot["requested_s"]
+            if (
+                not isinstance(observed, (int, float))
+                or isinstance(observed, bool)
+                or not math.isfinite(observed)
+                or abs(observed - requested) > 1e-9 * max(1.0, abs(requested))
+            ):
+                raise ValueError(
+                    "temporal comparison requires aligned native physical times, not different nearest samples"
+                )
             if set(snapshot["temperature_k"]) != ids or any(
                 not isinstance(v, (int, float))
                 or isinstance(v, bool)

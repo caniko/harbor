@@ -98,6 +98,7 @@ Robin histories at three refinements, plus separate fixed-mesh temporal and
 fixed-time spatial sweeps. It requires unchanged `0.02` transient temperature
 and energy gates on every solve, decreasing spatial continuum-reference errors,
 decreasing fixed-mesh temporal solution differences, complete times/IDs,
+aligned native physical times for each temporal comparison,
 and nine pre-output rejection cases. These transient gates are independently
 specified; the static FEM `1e-6` gates remain separate.
 
