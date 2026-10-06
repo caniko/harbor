@@ -111,6 +111,18 @@ temperature/energy gates, closure-only sandbox and CLI/MCP qualification are
 described in [thermal histories](docs/thermal-history.md). The simulation MCP
 profile exposes `case_plan_thermal_reference` and ordinary approved job submission.
 
+The results profile reads registered native fields through `results sample` /
+`compare` for static FEM and `results sample-thermal` / `compare-thermal` at exact
+retained transient times. `results moisture` derives a complete named thermal
+surface minimum with explicit air inputs, missing-data or inapplicability status.
+See [native result queries](docs/results.md) for units, identities, limits and
+the independent packaged qualification state.
+
+`case plan-wetting-reference REQUEST.json` prepares the independent synthetic
+wall-centered planar OpenLB reference. Its original Float64 phase/velocity
+fields, SI conversion and separate mass, angle, settling and refinement gates
+are described in [wetting references](docs/wetting-reference.md).
+
 Patched CAD inspection also exports checksummed named BREP solids with original
 units and placement. The independent [imported CAD mesh](docs/cad-mesh.md) and
 [origin-aware FEM references](docs/fem-imported.md) retain world coordinates

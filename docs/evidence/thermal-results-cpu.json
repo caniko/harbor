@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "qualifier_revision": "20d3d990536acf80f5d8f6038e2dbbce8579362c",
+  "static_regression": {
+    "qualifier_revision": "9bb4bb451eac2fb10fe092a39a1ef2e5a18d4f4b",
+    "package_revision": "1f64cf5ea57e046983c72d6e11b30ec1a0c64c20",
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/results-4/verification.json",
+    "report_sha256": "7777fffdcb1c44a75994312cbe4514c71953b03a67cf4c3c02ce547170a3adb8",
+    "identity": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/results-4-identity.json",
+    "identity_sha256": "d70fd2dde7efb3640033afcec14022ca36ff2babdf129bd7e4559ab10e96f22c",
+    "fields": 8,
+    "rejections": 40
+  },
+  "thermal": {
+    "package_revision": "8f396d5796011cc6657564db607f9292e645aa1d",
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/thermal-results-2/verification.json",
+    "report_sha256": "1ce21dd4666156fe2f7c1148c107bab6f6aed1c0a668a9221657a1d7b56ceb6b",
+    "identity": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/thermal-results-2-identity.json",
+    "identity_sha256": "c647ddf6b31819113cf2f4aa46c51df2331c8b77185b69b6063b2bbdd9be6751",
+    "fields": 8,
+    "rejections": 52,
+    "memory_peak_bytes": 686862336
+  },
+  "thermal_and_moisture": {
+    "package_revision": "b61f735ed3048e2f474703c3dbb021f8649abb57",
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/moisture-results-1/verification.json",
+    "report_sha256": "d86fa888ae2d72c7fe7c13e138fe3a894a09990ad8390606d58492080650ed84",
+    "identity": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/moisture-results-1-identity.json",
+    "identity_sha256": "ca65150bab37df056baaa41781f43e64357ec49acc13b5698ce105e21c72fc8a",
+    "fields": 44,
+    "rejections": 62,
+    "memory_peak_bytes": 405606400
+  },
+  "passed": [
+    "CLI and real pinned results MCP agree exactly with original registered Float64 native outputs",
+    "complete native time and node schedules verified independently of retained JSON observations",
+    "only exact approved field-observation times authorize sampling; energy-only times and interpolation reject",
+    "same-mesh signed comparisons retain both explicit physical states and native serialized times",
+    "all six semantic thermal surfaces verified geometrically with complete native minima",
+    "missing, justified inapplicable and Magnus screening branches; subzero surface screening remains unsupported",
+    "approval, geometry, node, field, time, unknown-property and artifact mutation rejections",
+    "original closed source trees unchanged; read-only result operations leave jobs, events and artifacts unchanged",
+    "bounded two-CPU, 2 GiB, no-swap and 128-task kernel controls verified"
+  ],
+  "retained_failed_attempts": ["thermal-results-1: invalid lease wait rejected before execution", "thermal-results-diagnostic-1: native energy and field schedules differed"],
+  "physical_validation": "unqualified",
+  "scope": "registered v5/v8 static FEM and v6 synthetic planar-box transient temperature queries and moisture screening at the exact recorded package identities; no condensate, frost, ingress or boot-reliability inference"
+}

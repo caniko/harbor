@@ -71,7 +71,7 @@
     "pressure_verification": "unqualified beyond finite Float64 round trip",
     "physical_validation": "unqualified",
     "cuda": {"priority": "best_effort", "architecture": "sm_86", "build": "unqualified", "runtime": "unqualified", "sandbox": "unqualified"},
-    "hip": {"priority": "primary_on_amd", "architecture": "gfx1100", "precision": "float64", "rocm_runtime": "7.2.3", "rocm_compiler_package": "22.0.0-rocm", "build": "passed in Nix sandbox with explicit architecture", "runtime": "bounded native procedural probe passed on RX 7900 XTX; worker unqualified", "numerical": "periodic_forced_channel Float64 forced BGK D3Q19, resolutions 8/16; analytical and retained CPU velocity agreement passed", "sandbox": "production KFD/selected-device isolation unqualified", "evidence": "docs/evidence/gpu-backends.json"},
+     "hip": {"priority": "primary_on_amd", "architecture": "gfx1100", "precision": "float64", "rocm_runtime": "7.2.3", "rocm_compiler_package": "22.0.0-rocm", "build": "passed in Nix sandbox with explicit architecture", "runtime": "procedural probe and packaged CLI/MCP B1 passed on RX 7900 XTX at the recorded exact source/runtime identities", "numerical": "periodic_forced_channel Float64 forced BGK D3Q19, resolutions 8/16; analytical and retained CPU velocity agreement passed", "sandbox": "selected-device single-AMD-KFD isolation passed on the observed kernel; multi-GPU exclusion remains unqualified", "evidence": "docs/evidence/gpu-backends.json; docs/evidence/hip-sandbox.json; docs/evidence/native-hip-b1.json"},
     "vulkan": {"runtime": "unsupported at the pinned OpenLB source", "decision": "docs/gpu-backends.md", "performance_against_hip": "not measured"}
   },
   "wetting_cpu_reference": {
@@ -82,7 +82,7 @@
     "abi": "Float64 two-lattice D2Q9 well-balanced Cahn-Hilliard, CPU_SISD, no MPI/GPU; pure Python 3.13 independent native-field verification",
     "scope": "explicit equal-density/equal-viscosity synthetic static planar wetting; fixed physical diffuse interface and contact-angle refinements; water-air/inlet spray/ingress/evaporation remain unqualified",
     "sandbox": "harbor-cad-wetting-cpu-v1 operation closure only; exact read-only descriptor and eight CPU isolation checks",
-    "build": "pending exact candidate realization",
+    "build": "standalone and worker runtimes realized at a7808f2af544ae3b44c65bd74174633d5234a9da with immutable retained roots; build is separate from numerical qualification",
     "numerical": "pending native mass/contact-angle/refinement qualification; analytical circle, units and rejection regressions implemented",
     "physical_validation": "unqualified",
     "evidence": "docs/wetting-reference.md"
@@ -113,9 +113,9 @@
     "sandbox": "harbor-cad-thermal-cpu-v1; operation closure only, no GPU/network/home/session/socket access, exact read-only descriptor",
     "numerical_tolerance": 0.02,
     "energy_tolerance": 0.02,
-    "build": "precision-patched standalone package built; matching worker package realization in progress",
-    "runtime": "qualification in progress; prior failing native attempts retained",
-    "numerical": "qualification in progress; static FEM gates and qualification remain separate",
+    "build": "precision-patched standalone and matching worker packages realized at the recorded thermal evidence identities",
+    "runtime": "thermal-native-6 and packaged CLI/MCP thermal-worker-3 passed; prior failing native/worker attempts remain retained",
+    "numerical": "eight standalone solves and separate spatial/temporal checks passed unchanged 0.02 temperature/energy gates; worker raw fields, exports, restart, forced-tree death, cancellation and release passed; docs/evidence/thermal-cpu.json",
     "physical_validation": "unqualified",
     "evidence": "docs/thermal-history.md"
   },

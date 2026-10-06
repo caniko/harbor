@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "package_revision": "a7808f2af544ae3b44c65bd74174633d5234a9da",
+  "qualifier_revision": "a7808f2af544ae3b44c65bd74174633d5234a9da",
+  "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/wetting-native-7/verification.json",
+  "report_sha256": "fd382427ada36e962433317894e849db09e2214cb01cefcf50986c535edd1f9c",
+  "identity": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/wetting-native-7-identity.json",
+  "identity_sha256": "56c7801676b8f40c686ae5e4a594897799d43b041169a0613d48ebf064bfbb77",
+  "runtime": "/nix/store/j7p422axjgsfsi84b76bjyiczm9p5f1j-harbor-cad-wetting-reference-runtime.json",
+  "runtime_sha256": "9237afd184556e573ea790f57221b37d404c3528e8ccab11b2d99e52a077411c",
+  "native_solves": 6,
+  "native_rejections": 12,
+  "resolutions": [24, 36, 48],
+  "steps": [200000, 450000, 800000],
+  "physical_time_s": 0.13333333333333333,
+  "angle_errors_deg": {
+    "90": [0.5926964938902444, 0.03630745011616909, 0.03350170697545707],
+    "100": [1.0320762348166994, 0.28597364109545254, 0.2080321159660059]
+  },
+  "maximum_phase_mass_relative_error": 0.0007972988105164891,
+  "unchanged_gates": {"mass_relative_tolerance": 0.001, "angle_tolerance_deg": 5, "late_angle_change_deg": 0.2, "refinement": "strictly decreasing angle error at equal physical time"},
+  "memory_peak_bytes": 59043840,
+  "passed": ["complete original Float64 phase and lattice-velocity fields independently reconstructed", "native mass and whole-contour wall-angle checks", "both equal-physical-time refinement sequences", "late-angle settling gate on all cases", "twelve rejected science, domain, budget and acceptance substitutions", "eight closure-only CPU sandbox canaries", "bounded effective CPU, RAM, no-swap and task controls"],
+  "worker": "wetting-worker-1 failed before solve because the worker stage log conflicted with the adapter empty-directory guard; repair committed at 8ee49c2; changed runtime requires fresh qualification",
+  "physical_validation": "unqualified",
+  "scope": "static synthetic equal-density/equal-viscosity 2D planar diffuse-interface wetting; no real water-air, spray, ingress, retention, phase mobility or wetting-kinetics claim"
+}

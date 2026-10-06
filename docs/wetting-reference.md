@@ -38,6 +38,19 @@ reject before solving.
 
 ## Verification and isolation
 
+`wetting-native-7` passes six solves, twelve rejection cases and both 90°/100°
+refinement sequences at the explicit extended settling duration. Maximum phase
+mass error is `0.000797298811`, with all late-angle changes at most `0.2°`.
+The 90° errors are `0.592696494 → 0.036307450 → 0.033501707°`; the 100° errors are
+`1.032076235 → 0.285973641 → 0.208032116°` at n24/36/48. Exact identities and
+original report hashes are retained in [native evidence](evidence/wetting-native-cpu.json).
+
+The first packaged worker attempt fails before solving: its preopened
+`wetting.log` conflicts with the adapter's empty-directory guard. Revision
+`8ee49c2` admits only this empty, regular, single-link worker log and retains
+rejection of stale scientific output and aliased logs. The changed runtime and
+worker lifecycle remain subject to fresh packaged qualification.
+
 `runtime-wetting-reference-cpu` supplies the exact adapter and operation closure.
 The bridge requires `harbor-cad-wetting-cpu-v1`: closure-only read-only store,
 no GPU nodes/sysfs/host home/session bus/worker socket/network access and a
@@ -92,7 +105,8 @@ worker jobs, while preserving cell/snapshot/memory and every scientific gate.
 Phase relaxation time is an explicit lattice numerical parameter; the reference
 qualifies static angle/mass, not physical phase mobility or wetting kinetics.
 
-Exact worker lifecycle and native refinement qualification are pending. This static reference supplies part of
+Exact worker lifecycle and the changed launch runtime require qualification.
+The recorded native refinement campaign supplies part of
 the A1 feasibility foundation. Inlet spray momentum/drop sizes, 3D wetting,
 seal/pore ingress, vapor flux, evaporation, transient Stefan verification and
 physical validation retain their separate acceptance gates.

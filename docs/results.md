@@ -14,6 +14,9 @@ execution identities and passing scoped native numerical evidence. Results
 retain units, component counts, explicit native IDs, coordinate unit, source
 artifact identity and an absent physical time for static data. Arrays remain in
 registered artifacts; the response includes only the selected bounded values.
+Each registered mesh, JSON field or DAT object is bounded to 32 MiB for these
+read-only result operations; larger native objects require a separately budgeted
+sampling capability.
 The requested complete JSON field is independently matched to its final native
 DAT section and exact node/integration-point set before any value is returned.
 The pinned `serde_json` parser uses `float_roundtrip`: the default best-effort
@@ -75,8 +78,10 @@ explicit `left`/`right` thermal sampling requests. The exact mesh and ordered
 node locations must match; both selected times and provenance remain in the
 report. Signed `right-left` values compare those explicitly selected states,
 including different retained times. They do not establish numerical acceptance,
-component boot reliability or physical validation. Native packaged qualification
-of this new surface is pending.
+component boot reliability or physical validation. Packaged `thermal-results-2`
+passes eight field checks and 52 rejections; combined `moisture-results-1` passes
+44 thermal/surface checks and 62 rejections through CLI and the real results MCP.
+Exact package/report hashes are in [result evidence](evidence/thermal-results-cpu.json).
 
 ## Native surface moisture screening
 
@@ -102,3 +107,7 @@ remain `unsupported_screening` pending a justified ice/frost model. Missing air
 data remains missing; justified inapplicability remains explicit. This is a
 synthetic planar-box screening result, with no condensate mass, moisture
 transport, frost, ingress, sealing or physical-validation inference.
+
+The packaged moisture gate checks all six complete surfaces for both retained
+native thermal jobs and all three assessment branches. Original source trees,
+jobs, events and artifact registrations remain unchanged.
