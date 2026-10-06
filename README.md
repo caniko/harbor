@@ -6,7 +6,86 @@ switching in OpenCode. Language Harbors own compilers and their dev shells;
 approval policy and backend configuration. Model serving and provider catalogs
 belong to inference integrations, separate from this environment engine.
 
-## Contract
+## MCP admission library
+
+`harbor-llm/mcp-admission` is a provider-neutral ESM library with TypeScript
+declarations. The entrypoint has no runtime imports from OpenCode, Paperclip,
+Hermes or an MCP transport SDK. It performs no I/O and retains no credentials,
+grants or session state. The existing harness integration remains a separate
+entrypoint with its own dependencies.
+
+Consumers install this private source package from an exact Git revision of
+`https://github.com/caniko/harbor-llm.git`. Git installation needs no build or
+prepare script. Pin the full commit in the dependency declaration; a moving
+branch or a local worktree link is not a deployment pin. The MCP library and
+its contract assets use the MIT license in `src/mcp-admission.LICENSE`.
+
+```js
+import { bindMcpServersToRun, requireMcpRunBinding } from "harbor-llm/mcp-admission";
+
+const [server] = bindMcpServersToRun({
+  servers: [{ connectionId: "reader", url: "https://tools.example/mcp" }],
+  runId: "run-1",
+  executionHostId: "host-a",
+  policy: {
+    version: 1,
+    servers: {
+      reader: {
+        url: "https://tools.example/mcp",
+        gatewayUrl: "https://worker.example/api",
+        serverHostId: "host-a",
+        executionHostIds: ["host-a"],
+      },
+    },
+  },
+});
+requireMcpRunBinding(server.runBinding, {
+  runId: "run-1", executionHostId: "host-a", gatewayUrl: "https://worker.example/api",
+});
+```
+
+The operator/controller supplies the trusted policy after its own authorization.
+`connectionId`, `runId` and host IDs are opaque consumer identities. `url` is the
+exact resolved MCP endpoint; `gatewayUrl` is the exact approved credential
+recipient. Both require HTTPS or explicit loopback HTTP, without URL credentials,
+query strings or fragments. Display names and caller extensions survive binding;
+old binding metadata is replaced by a fresh frozen binding. Cross-host delivery
+requires an explicitly allowed execution host and an own `authorizedCrossHost:
+true` field at the consumer boundary. Consumers map an omitted execution target
+to their trusted local worker identity before calling; a missing identity is
+blocked rather than guessed.
+
+Consumer-owned recipient aliases may be supplied through `normalizeRecipient`.
+Raw approved and actual URLs are validated before normalization. Either callback
+failure yields a content-free `McpAdmissionError` with
+`code: "runtime_mcp_admission_blocked"` and a finite `reason`, without a retained
+exception cause. Limits cover eight servers per run, 64 execution hosts per
+server, 128-character identities, 2048-character endpoints and 64 KiB policies.
+
+Portable assets are exported under `harbor-llm/contracts/`:
+
+- `mcp-admission-policy.v1.schema.json`
+- `mcp-run-binding.v1.schema.json`
+- `mcp-admission-conformance.v1.json`
+
+These are the same schemas imported by the runtime, not a consumer-maintained
+copy. Version 1's identifier pattern requires a regex engine supporting negative
+lookahead (JavaScript and Python do; RE2 does not). Validators must reject a final
+newline rather than relying on `$` end-of-line semantics. Other languages must implement the semantic checks as well as structural
+schema validation. A JSON binding is metadata, never a bearer credential or an
+authenticated grant. Tenant/project/agent/task/operation grants, destination
+authentication, token expiry/revocation, physical-host attestation, network and
+shell isolation, provenance, recovery reauthorization, cancellation and verified
+operation settlement remain integration responsibilities. Sharing this metadata
+does not establish a reusable lifecycle runtime or prove live worker acceptance.
+
+Run the focused checks with `node --test test/mcp-admission*.test.mjs`. They cover
+the portable vectors, inherited authorization attacks, callback redaction, an
+independent authenticated loopback MCP service, and packed exports without
+installed harness dependencies. Consumers qualify their actual delivery paths
+separately.
+
+## Project environment contract
 
 - No agent command is accepted or executed by the environment backend.
 - An operator-installed registry names canonical project directories and exact

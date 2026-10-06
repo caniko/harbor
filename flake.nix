@@ -31,7 +31,7 @@
         npmDeps = pkgs.importNpmLock {npmRoot = ./.;};
         installPhase = ''
           mkdir -p $out/lib/harbor-llm
-          cp -r src plugins node_modules package.json $out/lib/harbor-llm/
+          cp -r src plugins contracts node_modules package.json $out/lib/harbor-llm/
         '';
       };
     });
@@ -49,6 +49,8 @@
       environments = pkgs.runCommand "harbor-llm-environments" {nativeBuildInputs = [pkgs.nodejs pkgs.util-linux pkgs.gnutar];} ''
         cp -r ${./src} src
         cp -r ${./test} test
+        cp -r ${./contracts} contracts
+        cp ${./package.json} package.json
         ln -s ${self.packages.${system}.default}/lib/harbor-llm/node_modules node_modules
         export HOME="$PWD/test-home"
         export XDG_RUNTIME_DIR="$PWD/test-runtime"
