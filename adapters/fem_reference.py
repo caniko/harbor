@@ -440,7 +440,9 @@ def read_dat(text):
     return fields
 
 
-def verify(spec, nodes, cells, fields):
+def verify(spec, nodes, cells, fields, origin=(0.0, 0.0, 0.0)):
+    if len(origin) != 3 or any(not math.isfinite(number(v)) for v in origin):
+        raise ValueError("finite explicit reference-origin coordinates required")
     requested = (
         {"temperature", "heat_flux"}
         if spec["mode"] == "thermal_boundary"
@@ -464,11 +466,19 @@ def verify(spec, nodes, cells, fields):
             raise ValueError("native fields omit nodes/integration points")
         if key == "temperature":
             error = max(
-                abs(v[0] - (t0 + (t1 - t0) * nodes[tag[0]][0] / spec["size_m"][0]))
+                abs(
+                    v[0]
+                    - (
+                        t0
+                        + (t1 - t0) * (nodes[tag[0]][0] - origin[0]) / spec["size_m"][0]
+                    )
+                )
                 for tag, v in values.items()
             ) / abs(t1 - t0)
             reference, unit = (
-                "T(x)=Tleft+(Tright-Tleft)*x/L; other faces adiabatic",
+                "T(x)=Tleft+(Tright-Tleft)*x/L; other faces adiabatic"
+                if not any(origin)
+                else "T(x)=Tleft+(Tright-Tleft)*(x-XMIN)/L; approved world-space origin, other faces adiabatic",
                 "K",
             )
         elif key == "heat_flux":
@@ -480,12 +490,14 @@ def verify(spec, nodes, cells, fields):
         elif key == "displacement":
             strain = spec["expansion_per_k"] * (t1 - t0)
             error = max(
-                abs(v[c] - strain * nodes[tag[0]][c])
+                abs(v[c] - strain * (nodes[tag[0]][c] - origin[c]))
                 for tag, v in values.items()
                 for c in range(3)
             ) / (abs(strain) * max(spec["size_m"]))
             reference, unit = (
-                "u=alpha*dT*x; symmetry faces remove rigid-body modes",
+                "u=alpha*dT*x; symmetry faces remove rigid-body modes"
+                if not any(origin)
+                else "u=alpha*dT*(x-origin); approved XMIN/YMIN/ZMIN symmetry faces remove rigid-body modes",
                 "m",
             )
         else:

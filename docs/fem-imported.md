@@ -1,0 +1,37 @@
+# Imported box static FEM references
+
+`fem-imported-cpu` continues the [CAD mesh correspondence](cad-mesh.md) slice
+through independent native CalculiX 2.23/SPOOLES conduction and free-expansion
+references. `runtime-fem-imported-cpu` is a standalone exact-runtime descriptor;
+authority-backed imported FEM worker planning remains a separate integration
+gate. The geometry/BREP, reference parameters, explicit material provenance and
+boundary provenance are distinct strict request fields. They must agree on
+synthetic status, SI box dimensions, mesh refinement and geometric tolerance.
+No missing material property is substituted and the maximum numerical gate
+remains the unchanged static `1e-6`.
+
+The solver consumes native world-space nodes from the imported BREP. It does
+not translate those nodes to fabricate an origin fixture. The analytical
+reference uses the explicit lower CAD world planes: conduction is
+`T=Tleft+(Tright-Tleft)*(x-XMIN)/Lx`; free expansion is
+`u=alpha*dT*(x-origin)`. The original matrix translation stays in millimetres,
+mesh coordinates/displacements stay in metres, and the receipt binds exact
+BREP/request/mesh/raw-field bytes and world bounds/origin. Static solver step
+parameters remain unmapped to physical time.
+
+The existing standalone static fixtures retain their default zero origin and
+serialized analytical-reference wording. Unit tests check nonzero translated
+temperature/displacement fields, unchanged raw world nodes, and rejection of
+wrong origins, changed mesh/reference policy, geometry, provenance or weakened
+acceptance.
+
+`scripts/verify_fem_imported.py` requires the complete native CAD correspondence
+report and re-verifies its portable source bundles. It runs both formulations
+at resolutions 2/4/8 for origin and translated solids. It independently checks
+mesh/world correspondence and rechecks all native nodal/integration-point fields
+against the prescribed reference. Eight pre-output rejections cover changed
+geometry/refinement/source bytes, missing provenance, unsupported backends,
+weakened numerical acceptance and contact injection. Exact package qualification is pending.
+This initial allowlist supports controlled synthetic axis-aligned boxes; it
+does not qualify contact, preload, seals, production materials or imported
+whole-device environmental conclusions.

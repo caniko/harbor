@@ -10,6 +10,7 @@
     exec ${pkgs.python313}/bin/python3 ${bridge} "$@"
   '';
 in {
+  inherit bridge;
   cad-mesh-cpu = adapter;
   runtime-cad-mesh-cpu = pkgs.writeText "harbor-cad-cad-mesh-runtime.json" (builtins.toJSON {
     schema_version = 1;
