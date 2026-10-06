@@ -90,6 +90,13 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 )?;
                 (512 * MIB).max(multiply(pixels, 16)?)
             }
+            StageOperation::NumericalFilter => {
+                // The first allowlist is bounded to one million image points,
+                // nine Float64 gradient components and all original arrays.
+                vram = 1024 * MIB;
+                output = add(output, 256 * MIB)?;
+                1024 * MIB
+            }
             StageOperation::Bundle => 16 * MIB,
         };
         stages.push(StageMinimum {

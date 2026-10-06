@@ -99,6 +99,35 @@ fn properties(path: &Path) -> Result<BTreeMap<String, u64>> {
 }
 
 impl HipIdentity {
+    pub fn verify_filter_receipt(&self, receipt: &serde_json::Value) -> Result<()> {
+        let compiled = receipt["compiled_hip_version"]
+            .as_u64()
+            .filter(|v| *v > 0)
+            .ok_or_else(|| invalid("compiled filter HIP version missing"))?;
+        if receipt["adapter"] != "Viskores"
+            || receipt["backend"] != "hip"
+            || receipt["pci"] != self.pci
+            || receipt["backend_uuid"] != self.backend_uuid
+            || receipt["architecture"] != self.architecture
+            || receipt["compiled_architecture"] != self.architecture
+            || receipt["hip_runtime_version"].as_u64() != Some(compiled)
+            || receipt["hip_driver_version"].as_u64() != Some(compiled)
+            || receipt["source_revision"] != "7c0494a68bff379d32d6b1fbaa3d10d27a73af54"
+            || receipt["viskores_revision"] != "521f3b72aabe0bf37e9972975700df27adbbae71"
+            || receipt["kokkos_revision"] != "6ecdf605e0f7639adec599d25cf0e206d7b8f9f5"
+            || receipt["executed"] != true
+            || receipt["software_fallback"] != false
+            || receipt["precision"] != "float64"
+            || receipt["gpu_kernel_completion_verified"] != true
+            || receipt["hip_dispatches"].as_u64().is_none_or(|n| n == 0)
+        {
+            return Err(Error::Unqualified(
+                "filter receipt differs from exact HIP device/source/ABI or completion evidence"
+                    .into(),
+            ));
+        }
+        Ok(())
+    }
     pub fn verify_receipt(&self, receipt: &serde_json::Value) -> Result<()> {
         let compiled = receipt["compiled_hip_version"]
             .as_u64()

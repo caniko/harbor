@@ -44,6 +44,125 @@ fn request() -> PresentationRequest {
     }
 }
 
+fn filter_request() -> FilterRequest {
+    FilterRequest {
+        source_job: request().source_job,
+        filter: FilterSpec {
+            time_s: 20.,
+            field: GradientField::Velocity,
+        },
+        compute: GpuSelection {
+            role: Role::Compute,
+            backend: "hip".into(),
+            pci: "0000:03:00.0".into(),
+            backend_uuid: Some("GPU-reference".into()),
+        },
+    }
+}
+
+#[test]
+fn numerical_filter_is_source_bound_compute_only_and_has_an_independent_approval() {
+    let original = source_plan();
+    let plan = ExecutionPlan::numerical_filter(
+        &original,
+        source(&original),
+        filter_request(),
+        "research".into(),
+    )
+    .unwrap();
+    assert_eq!(plan.schema_version, 4);
+    assert_eq!(
+        plan.case.science_id().unwrap(),
+        original.case.science_id().unwrap()
+    );
+    assert_eq!(plan.observation.retained_times_s, vec![20.]);
+    assert_eq!(plan.stages.len(), 2);
+    assert!(matches!(
+        plan.stages[0].operation,
+        StageOperation::NumericalFilter
+    ));
+    assert_eq!(
+        plan.stages[0].selection.as_ref().unwrap().role,
+        Role::Compute
+    );
+    let round: ExecutionPlan =
+        serde_json::from_value(serde_json::to_value(&plan).unwrap()).unwrap();
+    assert_eq!(round.id().unwrap(), plan.id().unwrap());
+    let mut changed = plan.clone();
+    changed.filter.as_mut().unwrap().field = GradientField::Pressure;
+    assert_ne!(changed.id().unwrap(), plan.id().unwrap());
+    let mut wrong = plan.clone();
+    wrong.stages[0].gpu = GpuRequirement::Preferred;
+    assert!(wrong.validate().is_err());
+    let mut wrong = plan.clone();
+    wrong.stages[0].operation = StageOperation::Render;
+    assert!(wrong.validate().is_err());
+    let mut wrong = plan.clone();
+    wrong.observation.retained_times_s = vec![0., 20.];
+    assert!(wrong.validate().is_err());
+    let mut missing = serde_json::to_value(&plan).unwrap();
+    missing.as_object_mut().unwrap().remove("filter");
+    assert!(serde_json::from_value::<ExecutionPlan>(missing).is_err());
+    for version in [1, 2, 3] {
+        let mut foreign = serde_json::to_value(&plan).unwrap();
+        foreign["schema_version"] = version.into();
+        assert!(serde_json::from_value::<ExecutionPlan>(foreign).is_err());
+    }
+    let mut injected = original;
+    injected.stages = plan.stages.clone();
+    assert!(injected.validate().is_err());
+}
+
+#[test]
+fn numerical_filter_rejects_unretained_time_device_substitution_and_unapproved_source() {
+    let original = source_plan();
+    for field in ["time", "role", "backend", "uuid", "job"] {
+        let mut request = filter_request();
+        match field {
+            "time" => request.filter.time_s = 5.,
+            "role" => request.compute.role = Role::Render,
+            "backend" => request.compute.backend = "vulkan".into(),
+            "uuid" => request.compute.backend_uuid = None,
+            _ => request.source_job = "unknown-job".into(),
+        }
+        assert!(
+            ExecutionPlan::numerical_filter(
+                &original,
+                source(&original),
+                request,
+                "research".into()
+            )
+            .is_err()
+        );
+    }
+    let plan = ExecutionPlan::numerical_filter(
+        &original,
+        source(&original),
+        filter_request(),
+        "research".into(),
+    )
+    .unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let store = harbor_cad::storage::Store::open(&temp.path().join("state")).unwrap();
+    assert!(store.submit(&plan, "unauthorized-filter").is_err());
+    let profile = harbor_cad::worker::load_profile(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/profiles/ci.json"
+    )))
+    .unwrap();
+    let binding = harbor_cad::execution::ExecutionBinding::capture(
+        &plan,
+        &profile,
+        std::path::Path::new(env!("CARGO_BIN_EXE_harbor-cad")),
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        binding.sandbox_policy,
+        "harbor-cad-filter-hip-single-kfd-v1"
+    );
+}
+
 #[test]
 fn presentation_changes_camera_without_solver_or_science_changes() {
     let original = source_plan();

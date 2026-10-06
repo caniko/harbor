@@ -105,6 +105,7 @@
     postPatch = ''
       cp ${../adapters/hip_identity.hpp} hip_identity.hpp
       substituteInPlace hip_identity.hpp --replace-fail '@hip_architecture@' '${architecture}'
+      substituteInPlace filter.cpp --replace-fail '@hip_architecture@' '${architecture}'
     '';
     cmakeFlags = compilerFlags ++ ["-DKokkos_DIR=${kokkos}/lib/cmake/Kokkos"];
     passthru = {

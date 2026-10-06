@@ -161,6 +161,15 @@
       inherit mcp cargoArtifacts;
       inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda openlb-hip runtime-cuda runtime-hip;
       inherit (filters) kokkos-hip vtk-hip filter-hip;
+      runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+        bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+        cad = null;
+        openlb = null;
+        openlb_backend = "hip";
+        render = null;
+        video = null;
+        filter = "${filters.filter-hip}/bin/harbor-cad-filter";
+      });
       gui = pkgs.freecad;
     };
     apps.${system} = {

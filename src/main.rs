@@ -64,6 +64,10 @@ enum Commands {
     Video {
         request: PathBuf,
     },
+    /// Plan HIP point-gradient filtering of registered retained fields.
+    Filter {
+        request: PathBuf,
+    },
     Artifact {
         #[command(subcommand)]
         command: Artifact,
@@ -299,6 +303,9 @@ fn run(cli: Cli) -> Result<()> {
         },
         Commands::Video { request } => Operation::PlanVideo {
             request: read(&request)?,
+        },
+        Commands::Filter { request } => Operation::PlanFilter {
+            request: Box::new(read(&request)?),
         },
         Commands::Artifact { command } => match command {
             Artifact::List { id, after, limit } => Operation::Artifacts {

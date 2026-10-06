@@ -62,6 +62,12 @@ def test_schema_parity_and_unknown_input_rejection():
     injected = dict(planned, source=None)
     with pytest.raises(ValidationError):
         Draft202012Validator(schemas["ExecutionPlan"]).validate(injected)
+    injected_filter = dict(planned, filter={"time_s": 0, "field": "velocity"})
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schemas["ExecutionPlan"]).validate(injected_filter)
+    missing_filter = dict(planned, schema_version=4)
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schemas["ExecutionPlan"]).validate(missing_filter)
     incomplete_v2 = dict(planned, schema_version=2)
     with pytest.raises(ValidationError):
         Draft202012Validator(schemas["ExecutionPlan"]).validate(incomplete_v2)
@@ -114,6 +120,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_openlb_reference" in names
                 assert "cad_plan_inspection" in names
                 assert "cold_restart_validate" in names
+                assert "filter_plan" in names
                 cold = cold_inputs()
                 checked = await client.call_tool(
                     "cold_restart_validate", {"case": cold}
@@ -203,6 +210,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "job_submit" not in names and "results_describe" in names
                 assert "cad_plan_inspection" not in names
                 assert "cold_restart_validate" not in names
+                assert "filter_plan" not in names
                 assert {"render_plan", "video_plan", "presentation_submit"}.issubset(
                     names
                 )

@@ -279,6 +279,7 @@ pub enum StageOperation {
     CadFixture,
     CadInspect,
     Openlb,
+    NumericalFilter,
     Render,
     Video,
     Bundle,
@@ -359,6 +360,28 @@ pub struct VideoRequest {
     pub media: GpuSelection,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GradientField {
+    Velocity,
+    Pressure,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FilterSpec {
+    pub time_s: f64,
+    pub field: GradientField,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FilterRequest {
+    pub source_job: String,
+    pub filter: FilterSpec,
+    pub compute: GpuSelection,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionPlan {
@@ -374,6 +397,8 @@ pub struct ExecutionPlan {
     pub source: Option<RetainedSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frames: Option<FrameSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<FilterSpec>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -393,6 +418,14 @@ struct ExecutionPlanRecord {
     source: Option<RetainedSource>,
     #[serde(default, deserialize_with = "frame_source")]
     frames: Option<FrameSource>,
+    #[serde(default, deserialize_with = "filter_spec")]
+    filter: Option<FilterSpec>,
+}
+
+fn filter_spec<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<FilterSpec>, D::Error> {
+    FilterSpec::deserialize(decoder).map(Some)
 }
 
 fn frame_source<'de, D: serde::Deserializer<'de>>(
@@ -411,11 +444,19 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> std::result::Result<Self, D::Error> {
         use serde::de::Error;
         let plan = ExecutionPlanRecord::deserialize(decoder)?;
-        match (plan.schema_version, &plan.source, &plan.frames) {
-            (1, None, None) | (2, Some(_), None) | (3, Some(_), Some(_)) => {}
+        match (
+            plan.schema_version,
+            &plan.source,
+            &plan.frames,
+            &plan.filter,
+        ) {
+            (1, None, None, None)
+            | (2, Some(_), None, None)
+            | (3, Some(_), Some(_), None)
+            | (4, Some(_), None, Some(_)) => {}
             _ => {
                 return Err(D::Error::custom(
-                    "explicit v1, source-bound v2 or frame-bound v3 execution plan required",
+                    "explicit v1, retained-source v2, frame-bound v3 or numerical-filter v4 plan required",
                 ));
             }
         }
@@ -430,17 +471,84 @@ impl JsonSchema for ExecutionPlan {
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
-            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3]);
+            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3, 4]);
         }
         schema.insert("allOf".into(), serde_json::json!([
-            {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]}]}}},
-            {"if":{"properties":{"schema_version":{"const":2}}},"then":{"required":["source"],"properties":{"source":{"type":"object"}},"not":{"required":["frames"]}}},
-            {"if":{"properties":{"schema_version":{"const":3}}},"then":{"required":["source","frames"],"properties":{"source":{"type":"object"},"frames":{"type":"object"}}}}
+            {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}}},
+            {"if":{"properties":{"schema_version":{"const":2}}},"then":{"required":["source"],"properties":{"source":{"type":"object"}},"not":{"anyOf":[{"required":["frames"]},{"required":["filter"]}]}}},
+            {"if":{"properties":{"schema_version":{"const":3}}},"then":{"required":["source","frames"],"properties":{"source":{"type":"object"},"frames":{"type":"object"}},"not":{"required":["filter"]}}},
+            {"if":{"properties":{"schema_version":{"const":4}}},"then":{"required":["source","filter"],"properties":{"source":{"type":"object"},"filter":{"type":"object"}},"not":{"required":["frames"]}}}
         ]));
         schema
     }
 }
 impl ExecutionPlan {
+    pub fn numerical_filter(
+        original: &Self,
+        source: RetainedSource,
+        request: FilterRequest,
+        policy: String,
+    ) -> Result<Self> {
+        if source.job_id != request.source_job
+            || source.plan_digest != original.id()?
+            || source.science_id != original.case.science_id()?
+            || !original
+                .observation
+                .retained_times_s
+                .contains(&request.filter.time_s)
+            || request.compute.role != Role::Compute
+            || request.compute.backend != "hip"
+            || request.compute.backend_uuid.is_none()
+        {
+            return Err(invalid(
+                "numerical filter requires exact retained source and HIP compute selection",
+            ));
+        }
+        let mut plan = Self {
+            schema_version: 4,
+            case: original.case.clone(),
+            source: Some(source),
+            frames: None,
+            filter: Some(request.filter.clone()),
+            stages: vec![
+                Stage {
+                    id: "filter".into(),
+                    dependencies: vec![],
+                    operation: StageOperation::NumericalFilter,
+                    gpu: GpuRequirement::Required,
+                    selection: Some(request.compute),
+                    ram_bytes: 1,
+                    vram_bytes: 1,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec!["filter".into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 16 * 1024 * 1024,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec![],
+                probes: vec![],
+                retained_times_s: vec![request.filter.time_s],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 0,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
     pub fn video(
         render: &Self,
         source: RetainedSource,
@@ -466,6 +574,7 @@ impl ExecutionPlan {
             case: render.case.clone(),
             source: Some(source),
             frames: Some(frames),
+            filter: None,
             stages: vec![
                 Stage {
                     id: "video".into(),
@@ -579,6 +688,7 @@ impl ExecutionPlan {
             policy,
             source: Some(source),
             frames: None,
+            filter: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -615,6 +725,7 @@ impl ExecutionPlan {
             policy: "ci".into(),
             source: None,
             frames: None,
+            filter: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -663,6 +774,7 @@ impl ExecutionPlan {
             policy,
             source: None,
             frames: None,
+            filter: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -727,6 +839,7 @@ impl ExecutionPlan {
             policy,
             source: None,
             frames: None,
+            filter: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -815,8 +928,16 @@ impl ExecutionPlan {
     pub fn validate(&self) -> Result<()> {
         self.case.validate()?;
         if !matches!(
-            (self.schema_version, &self.source, &self.frames),
-            (1, None, None) | (2, Some(_), None) | (3, Some(_), Some(_))
+            (
+                self.schema_version,
+                &self.source,
+                &self.frames,
+                &self.filter
+            ),
+            (1, None, None, None)
+                | (2, Some(_), None, None)
+                | (3, Some(_), Some(_), None)
+                | (4, Some(_), None, Some(_))
         ) || self.fleetix_revision != FLEETIX_REV
             || self.fleetix_contract_digest != fleetix_digest()
         {
@@ -871,9 +992,24 @@ impl ExecutionPlan {
                 operations.as_slice(),
                 [StageOperation::Video, StageOperation::Bundle]
             );
-            if (self.frames.is_none() && !render) || (self.frames.is_some() && !video) {
+            let numerical = matches!(
+                operations.as_slice(),
+                [StageOperation::NumericalFilter, StageOperation::Bundle]
+            );
+            if (self.filter.is_some() && !numerical)
+                || (self.filter.is_none() && self.frames.is_none() && !render)
+                || (self.frames.is_some() && !video)
+            {
                 return Err(invalid(
-                    "source-bound plans permit only retained-field rendering or independent frame video",
+                    "source-bound plans require their exact render, video or numerical-filter DAG",
+                ));
+            }
+            if let Some(filter) = &self.filter
+                && (!filter.time_s.is_finite()
+                    || self.observation.retained_times_s != vec![filter.time_s])
+            {
+                return Err(invalid(
+                    "numerical filter requires one exact retained physical time",
                 ));
             }
             if let Some(frames) = &self.frames {
@@ -906,13 +1042,19 @@ impl ExecutionPlan {
                 };
                 if stage.dependencies != dependencies
                     || stage.selection.as_ref().is_some_and(|s| {
-                        s.backend_uuid.is_some()
-                            || s.backend
-                                != if s.role == Role::Render {
-                                    "egl"
-                                } else {
-                                    "vaapi"
-                                }
+                        if matches!(stage.operation, StageOperation::NumericalFilter) {
+                            s.role != Role::Compute
+                                || s.backend != "hip"
+                                || s.backend_uuid.as_deref().is_none_or(|id| !token(id))
+                        } else {
+                            s.backend_uuid.is_some()
+                                || s.backend
+                                    != if s.role == Role::Render {
+                                        "egl"
+                                    } else {
+                                        "vaapi"
+                                    }
+                        }
                     })
                 {
                     return Err(invalid(
@@ -927,6 +1069,11 @@ impl ExecutionPlan {
         let mut seen = BTreeSet::new();
         let mut operations = BTreeSet::new();
         for stage in &self.stages {
+            if matches!(stage.operation, StageOperation::NumericalFilter) && self.filter.is_none() {
+                return Err(invalid(
+                    "numerical compute stage requires a source-bound version-4 filter specification",
+                ));
+            }
             let op_name = serde_json::to_string(&stage.operation)?;
             if !operations.insert(op_name) {
                 return Err(invalid(
@@ -978,6 +1125,7 @@ impl ExecutionPlan {
                 }
                 StageOperation::Render => Some(Role::Render),
                 StageOperation::Video => Some(Role::Media),
+                StageOperation::NumericalFilter => Some(Role::Compute),
                 _ => None,
             };
             if let Some(role) = expected_role {
@@ -1191,6 +1339,9 @@ pub enum Operation {
     PlanVideo {
         request: Box<VideoRequest>,
     },
+    PlanFilter {
+        request: Box<FilterRequest>,
+    },
     Submit {
         plan: Box<ExecutionPlan>,
         approved_digest: String,
@@ -1240,6 +1391,7 @@ pub fn schemas() -> serde_json::Value {
         "PresentationRequest": schemars::schema_for!(PresentationRequest),
         "FrameSource": schemars::schema_for!(FrameSource),
         "VideoRequest": schemars::schema_for!(VideoRequest),
+        "FilterRequest": schemars::schema_for!(FilterRequest),
         "ConservativeTransfer": schemars::schema_for!(crate::transfers::ConservativeTransfer),
         "TransferReceipt": schemars::schema_for!(crate::transfers::TransferReceipt),
         "ThermalMaterial": schemars::schema_for!(crate::materials::ThermalMaterial),

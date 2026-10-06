@@ -74,7 +74,7 @@ lease bypass or resource override was used.
 | P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | implemented, CPU verified; packaged qualification next |
 | P1b | independent registered-frame video plans, lifecycle and source mutation rejection | implemented; CPU tests pass; packaged lifecycle qualification pending |
 | P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation implemented; CLI/MCP/schema CPU gates pass; native recipe/mesh execution and stage isolation pending |
-| P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | pending |
+| P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | source-bound v4 gradient/CLI/MCP and separate native candidate implemented; CPU gates pass; native build/reference/lifecycle/trace qualification pending |
 | P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | pending |
 | P5 / C | native thermal/contact/moisture/coupling slice | pending |
 | P6 / D | native local water, prescribed snow and retained-water freezing | pending |

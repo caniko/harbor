@@ -155,7 +155,7 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
             ) {
                 crate::sandbox::importer_mounts(
                     native.importer_closure()?,
-                    Path::new(&native.cad),
+                    Path::new(native.executable(&stage.operation)?),
                 )?;
             }
             if matches!(stage.operation, StageOperation::Openlb) {
@@ -472,6 +472,10 @@ fn dispatch(
                 ));
             }
             let plan = crate::frames::plan(store, *request, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
+        Operation::PlanFilter { request } => {
+            let plan = crate::filters::plan(store, *request, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
         Operation::Submit {
@@ -798,13 +802,15 @@ pub fn doctor() -> Result<serde_json::Value> {
 #[serde(deny_unknown_fields)]
 struct NativeRuntime {
     bwrap: String,
-    cad: String,
+    cad: Option<String>,
     #[serde(default)]
     cad_closure: Option<String>,
     openlb: Option<String>,
     openlb_backend: String,
     render: Option<String>,
     video: Option<String>,
+    #[serde(default)]
+    filter: Option<String>,
 }
 impl NativeRuntime {
     fn importer_closure(&self) -> Result<&Path> {
@@ -820,7 +826,11 @@ impl NativeRuntime {
     }
     fn executable(&self, operation: &StageOperation) -> Result<&str> {
         let path = match operation {
-            StageOperation::CadFixture | StageOperation::CadInspect => self.cad.as_str(),
+            StageOperation::CadFixture | StageOperation::CadInspect => {
+                self.cad.as_deref().ok_or_else(|| {
+                    Error::Unqualified("CAD importer absent from selected runtime".into())
+                })?
+            }
             StageOperation::Openlb => self
                 .openlb
                 .as_deref()
@@ -830,6 +840,11 @@ impl NativeRuntime {
             })?,
             StageOperation::Video => self.video.as_deref().ok_or_else(|| {
                 Error::Unqualified("hardware media adapter absent from selected runtime".into())
+            })?,
+            StageOperation::NumericalFilter => self.filter.as_deref().ok_or_else(|| {
+                Error::Unqualified(
+                    "HIP numerical-filter adapter absent from selected runtime".into(),
+                )
             })?,
             _ => return Err(invalid("not a native adapter operation")),
         };
@@ -929,6 +944,10 @@ fn native_stage(
         crate::sandbox::mount_importer(&mut command, runtime.importer_closure()?, Path::new(exe))?;
     } else {
         command.args(["--ro-bind", "/nix/store", "/nix/store"]);
+    }
+    if matches!(stage.operation, StageOperation::NumericalFilter) {
+        let (root, _, _) = crate::fields::registered(store, id)?;
+        command.args(["--ro-bind"]).arg(root).arg("/inputs/fields");
     }
     let retained_fields = if matches!(
         stage.operation,
@@ -1053,7 +1072,14 @@ fn native_stage(
     }
     command
         .args(["--ro-bind"])
-        .arg(safe_path(&store.job_dir(id)?, "native-plan.json")?)
+        .arg(safe_path(
+            &store.job_dir(id)?,
+            if matches!(stage.operation, StageOperation::NumericalFilter) {
+                "native-filter-request.json"
+            } else {
+                "native-plan.json"
+            },
+        )?)
         .arg("/plan.json");
     command.arg("--").arg(exe).arg(&op).arg("/plan.json");
     let log = OpenOptions::new()
@@ -1100,6 +1126,9 @@ fn native_stage(
     }
     let evidence = read_native_receipt(&receipt)?;
     validate_native_receipt(stage, &evidence)?;
+    if matches!(stage.operation, StageOperation::NumericalFilter) {
+        crate::filters::verify_receipt(store, id, plan, dir, &evidence)?;
+    }
     if let Some(frames) = &plan.frames {
         crate::frames::registered(store, id, plan)?;
         if evidence["source_render_execution_id"] != frames.plan_digest
@@ -1125,7 +1154,11 @@ fn native_stage(
         }
     }
     if let Some(identity) = hip_identity {
-        identity.verify_receipt(&evidence)?;
+        if matches!(stage.operation, StageOperation::NumericalFilter) {
+            identity.verify_filter_receipt(&evidence)?;
+        } else {
+            identity.verify_receipt(&evidence)?;
+        }
     }
     store.event(
         id,
@@ -1163,6 +1196,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::Openlb => "OpenLB",
         StageOperation::Render => "ParaView",
         StageOperation::Video => "FFmpeg",
+        StageOperation::NumericalFilter => "Viskores",
         _ => return Err(invalid("not a native adapter operation")),
     };
     let backend = stage
@@ -1514,7 +1548,25 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     )?)?;
                     native_pending = true;
                 }
-                native_stage(store, profile, &plan, stage, &native_work, id)?;
+                if matches!(stage.operation, StageOperation::NumericalFilter) {
+                    let working = native_work.join("stages/filter");
+                    private_dir(&working)?;
+                    store.add_artifact(
+                        id,
+                        &commit_artifact(
+                            &dir,
+                            "native-filter-request.json",
+                            &serde_json::to_vec_pretty(&crate::filters::descriptor(
+                                store, id, &plan,
+                            )?)?,
+                            "json",
+                            "trusted source-bound filter descriptor; mounted read-only",
+                        )?,
+                    )?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
+                } else {
+                    native_stage(store, profile, &plan, stage, &native_work, id)?;
+                }
                 if matches!(stage.operation, StageOperation::Openlb)
                     && plan
                         .stages

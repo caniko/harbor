@@ -24,6 +24,28 @@ fn hip_receipts_bind_kernel_identity_and_compiled_runtime_without_fallback() {
         "gpu_blocks":1, "gpu_kernel_completion_verified":true
     });
     identity.verify_receipt(&receipt).unwrap();
+    assert!(identity.verify_filter_receipt(&receipt).is_err());
+    let mut filter = receipt.clone();
+    filter["adapter"] = json!("Viskores");
+    filter["source_revision"] = json!("7c0494a68bff379d32d6b1fbaa3d10d27a73af54");
+    filter["viskores_revision"] = json!("521f3b72aabe0bf37e9972975700df27adbbae71");
+    filter["kokkos_revision"] = json!("6ecdf605e0f7639adec599d25cf0e206d7b8f9f5");
+    filter["hip_dispatches"] = json!(4);
+    identity.verify_filter_receipt(&filter).unwrap();
+    assert!(identity.verify_receipt(&filter).is_err());
+    for (field, value) in [
+        ("hip_dispatches", json!(0)),
+        ("kokkos_revision", json!("unbound")),
+        ("viskores_revision", json!("unbound")),
+        ("pci", json!("0000:04:00.0")),
+        ("hip_driver_version", json!(0)),
+        ("precision", json!("float32")),
+        ("software_fallback", json!(true)),
+    ] {
+        let mut changed = filter.clone();
+        changed[field] = value;
+        assert!(identity.verify_filter_receipt(&changed).is_err(), "{field}");
+    }
     for (field, value) in [
         ("backend_uuid", json!("GPU-stale")),
         ("pci", json!("0000:04:00.0")),

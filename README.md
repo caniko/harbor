@@ -99,6 +99,10 @@ and exposed read-only; subsequent changes to the original file cannot alter the
 importer's input. Every native stage requires a fresh matching adapter/backend
 receipt with actual execution and no software fallback.
 
+`filter REQUEST.json` plans an independently approved HIP point-gradient job
+from registered retained science. Its version-4 compute-only DAG, native package
+and qualification boundaries are described in [numerical filters](docs/numerical-filters.md).
+
 Standalone `render REQUEST.json` plans presentation from a completed registered
 field snapshot. Its approved version-2 plan uses only render, optional video and
 bundle stages; source science and original authorization remain immutable.

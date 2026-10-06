@@ -159,11 +159,11 @@ static void preserved(vtkImageData* source, vtkImageData* result, bool gradient)
 }
 
 static json execute(const json& request, bool reference) {
-  keys(request, {"schema_version", "selection", "field", "source_file", "source_sha256", "source_snapshot_sha256", "science_id", "execution_id", "max_input_bytes", "max_points", "max_output_bytes"});
+  keys(request, {"schema_version", "selection", "field", "source_file", "source_sha256", "source_snapshot_sha256", "science_id", "execution_id", "filter_execution_id", "max_input_bytes", "max_points", "max_output_bytes"});
   require(request.at("schema_version") == 1, "unsupported numerical-filter version");
   const std::string field = request.at("field");
   require(field == "physVelocity" || field == "physPressure", "unsupported gradient field");
-  for (const auto& id : {"source_sha256", "source_snapshot_sha256", "science_id", "execution_id"}) require(hash(request.at(id)), "exact source identities required");
+  for (const auto& id : {"source_sha256", "source_snapshot_sha256", "science_id", "execution_id", "filter_execution_id"}) require(hash(request.at(id)), "exact source identities required");
   for (const auto& budget : {"max_input_bytes", "max_points", "max_output_bytes"}) require(request.at(budget).is_number_unsigned(), "integer filter budgets required");
   const uint64_t maximum_input = request.at("max_input_bytes"), maximum_points = request.at("max_points"), maximum_output = request.at("max_output_bytes");
   require(maximum_input > 0 && maximum_input <= 64*1024*1024 && maximum_points > 0 && maximum_points <= 1000000 && maximum_output > 0 && maximum_output <= 256*1024*1024, "bounded numerical-filter budgets required");
@@ -235,7 +235,7 @@ static json execute(const json& request, bool reference) {
   struct rusage usage{}; require(getrusage(RUSAGE_SELF, &usage) == 0, "process RAM measurement failed");
   json receipt = {{"schema_version",1}, {"operation","float64_image_point_gradient"}, {"backend",reference ? "cpu_reference" : "hip"},
     {"device",device}, {"source_sha256",request.at("source_sha256")}, {"source_snapshot_sha256",request.at("source_snapshot_sha256")},
-    {"science_id",request.at("science_id")}, {"execution_id",request.at("execution_id")}, {"source_field",field},
+    {"science_id",request.at("science_id")}, {"execution_id",request.at("execution_id")}, {"filter_execution_id",request.at("filter_execution_id")}, {"source_field",field},
     {"output_field","gradient"}, {"association","point"}, {"precision","float64"}, {"gradient_ordering","du/dx,du/dy,du/dz,dv/dx,dv/dy,dv/dz,dw/dx,dw/dy,dw/dz"},
     {"source_unit",field == "physVelocity" ? "m/s" : "Pa"}, {"output_unit",field == "physVelocity" ? "1/s" : "Pa/m"},
     {"coordinate_and_source_array_roundtrip","exact_bytes"}, {"points",input->GetNumberOfPoints()}, {"cells",input->GetNumberOfCells()},
@@ -253,6 +253,13 @@ static json execute(const json& request, bool reference) {
     require(final_device == device, "actual HIP identity changed");
     int runtime=0, driver=0; hip_check(hipRuntimeGetVersion(&runtime)); hip_check(hipDriverGetVersion(&driver));
     receipt["hip_versions"] = {{"compiled",HIP_VERSION}, {"runtime",runtime}, {"driver",driver}};
+    receipt["compiled_hip_version"] = HIP_VERSION; receipt["hip_runtime_version"] = runtime; receipt["hip_driver_version"] = driver;
+    receipt["pci"] = device.at("pci"); receipt["backend_uuid"] = device.at("backend_uuid");
+    receipt["architecture"] = device.at("architecture"); receipt["compiled_architecture"] = "@hip_architecture@";
+    receipt["source_revision"] = "7c0494a68bff379d32d6b1fbaa3d10d27a73af54";
+    receipt["viskores_revision"] = "521f3b72aabe0bf37e9972975700df27adbbae71";
+    receipt["kokkos_revision"] = "6ecdf605e0f7639adec599d25cf0e206d7b8f9f5";
+    receipt["gpu_kernel_completion_verified"] = true;
     require(runtime == HIP_VERSION && driver == HIP_VERSION, "loaded HIP ABI differs from compiled runtime");
   }
   fs::rename("gradient.vti.partial", "gradient.vti");
@@ -265,12 +272,12 @@ int main(int argc, char** argv) {
       std::cout << json({{"backend","hip"},{"executed",false},{"devices",hip_inventory()}}).dump(2) << std::endl;
       return 0;
     }
-    require(argc == 3 && (std::string(argv[1]) == "gradient" || std::string(argv[1]) == "gradient-cpu-reference"), "usage: harbor-cad-filter gradient|gradient-cpu-reference request.json");
+    require(argc == 3 && (std::string(argv[1]) == "numerical_filter" || std::string(argv[1]) == "gradient" || std::string(argv[1]) == "gradient-cpu-reference"), "usage: harbor-cad-filter numerical_filter|gradient-cpu-reference request.json");
     const auto receipt = execute(json::parse(read(argv[2], 1024*1024)), std::string(argv[1]) == "gradient-cpu-reference");
-    require(!fs::exists("filter-receipt.json"), "new stage-local filter receipt required");
-    std::ofstream file("filter-receipt.json.partial", std::ios::binary); file << receipt.dump(2); file.close();
+    require(!fs::exists("numerical_filter-receipt.json") && !fs::exists("numerical_filter-receipt.json.partial"), "new stage-local filter receipt required");
+    std::ofstream file("numerical_filter-receipt.json.partial", std::ios::binary); file << receipt.dump(2); file.close();
     require(bool(file), "filter receipt write failed");
-    fs::rename("filter-receipt.json.partial", "filter-receipt.json");
+    fs::rename("numerical_filter-receipt.json.partial", "numerical_filter-receipt.json");
     std::cout << receipt.dump(2) << std::endl;
     if (Kokkos::is_initialized()) Kokkos::finalize();
     return 0;

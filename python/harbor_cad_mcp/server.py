@@ -71,6 +71,14 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"simulation", "all"}:
 
         @server.tool()
+        async def filter_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan required HIP point-gradient filtering from one registered retained time.
+
+            A numerical compute stage with independent approval; no solver or rendering.
+            """
+            return await request("plan_filter", request=request_spec)
+
+        @server.tool()
         async def cold_restart_validate(case: dict[str, Any]) -> dict[str, Any]:
             """Validate cold-restart histories and material ranges, preserving missing inputs.
 

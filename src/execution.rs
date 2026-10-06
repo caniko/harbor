@@ -14,9 +14,12 @@ use std::{
 pub const SANDBOX_POLICY: &str = "harbor-cad-native-v2";
 pub const HIP_SANDBOX_POLICY: &str = "harbor-cad-native-hip-single-kfd-v1";
 pub const PRESENTATION_SANDBOX_POLICY: &str = "harbor-cad-presentation-v1";
+pub const FILTER_SANDBOX_POLICY: &str = "harbor-cad-filter-hip-single-kfd-v1";
 
 fn sandbox_policy(plan: &ExecutionPlan) -> &'static str {
-    if plan.source.is_some() {
+    if plan.filter.is_some() {
+        FILTER_SANDBOX_POLICY
+    } else if plan.source.is_some() {
         PRESENTATION_SANDBOX_POLICY
     } else if plan.stages.iter().any(|stage| {
         stage
