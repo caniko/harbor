@@ -123,6 +123,12 @@ allocations. That memory metric excludes driver and non-Kokkos allocations;
 whole-card VRAM peaks and instruction-level kernel traces remain separate
 qualification work.
 
+The guarded one-job/two-core build from
+`06b018a8aaae754353acbd3d11a32bb3cf2e4877` succeeded, realizing runtime
+`/nix/store/43gfq7a6rxpx168is3dm82vybbd1fhhr-harbor-cad-native-runtime.json`.
+Native scalar-label and direction-guard updates require a fresh exact adapter
+build; no numerical or hardware qualification is inherited from this build.
+
 Before publishing, the adapter checks its Float64 result, unchanged source array
 bytes and image topology/coordinates, then writes and reads back the VTI to check
 the same invariants. Original physical units and derivative units are explicit.

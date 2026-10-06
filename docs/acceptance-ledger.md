@@ -54,12 +54,18 @@ native field parsing. Its source/manual APIs are inspected and parser/selector
 rejection tests pass. Native build/execution and worker integration are pending;
 see [FEM reference scope](fem-references.md).
 
-The updated complete CPU gate passes 101 Rust tests and 41 Python cases,
+The updated complete CPU gate passes 101 Rust tests and 44 Python cases,
 Clippy with warnings denied, locked build, Treefmt and Ruff. New systemd jobs
 verify effective kernel controls before native launch and retain aggregate
 process-tree RAM peaks/CPU usage through orderly completion; abrupt kills have
 explicitly absent final peak records. Packaged effective-control and B2 native
 qualification are still pending.
+
+The guarded filter build from `06b018a8aaae754353acbd3d11a32bb3cf2e4877`
+successfully compiled the pinned Kokkos, VTK/Viskores and native HIP adapter.
+This establishes a build, not native numerical/device qualification. The
+subsequent scalar-label/direction guards and latest runner must be realized
+before their exact-package qualification.
 
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
