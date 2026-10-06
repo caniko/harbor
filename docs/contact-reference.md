@@ -88,5 +88,21 @@ is small strain while native face contact uses `NLGEOM`. These explicit bounds
 precede native qualification. `scripts/verify_contact_cpu.py` runs closed,
 cooled, opened, nonzero-initial-gap and dissimilar-material cases at n2/4/8 and
 eight pre-output rejections. Spatial pressure spread and field checks retain the
-same `0.002` gate. Native package realization/qualification and Rust CLI/MCP
-integration remain pending; analytical verifier tests do not qualify a solve.
+same `0.002` gate. Exact native attempt `contact-native-2` is pending against
+build 37; analytical verifier tests do not qualify a solve.
+
+Version-10 `case plan-contact-reference` and simulation-profile MCP
+`case_plan_contact_reference` bind the independent SI recipe to a contact→bundle
+DAG. Approved submission uses the same durable worker, authority-backed shared
+2 GiB RAM reservation, closed exact runtime identities and systemd service tree.
+`runtime-contact-worker` contains only this fixed adapter/operation closure.
+Plans retain the complete two-state outputs, not invented physical times;
+versions 1–9 reject contact injection, including null fields.
+
+Rust independently reconstructs every original DAT node/integration-point value,
+matches the complete retained JSON exactly, verifies both translated native
+blocks, all affine positive C3D8 maps and complete semantic interfaces, and
+recomputes force balance, stress, displacement and opening gates before success.
+Historical job qualification also verifies the registered original bytes.
+CLI/MCP native execution/export/restart/death/cancellation/release qualification
+remains pending at the changed packaged worker identity.

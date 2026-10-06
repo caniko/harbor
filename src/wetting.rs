@@ -41,6 +41,7 @@ impl ExecutionPlan {
             cad_source: None,
             imported_fem: None,
             wetting: Some(spec),
+            contact: None,
             source: None,
             frames: None,
             filter: None,

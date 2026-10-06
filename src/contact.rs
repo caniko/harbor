@@ -144,6 +144,63 @@ impl ContactReferenceSpec {
     }
 }
 
+impl crate::contracts::ExecutionPlan {
+    pub fn contact_reference(spec: ContactReferenceSpec, policy: String) -> Result<Self> {
+        use crate::contracts::*;
+        spec.validate()?;
+        let mut plan = Self {
+            schema_version: 10,
+            case: None,
+            fem: None,
+            thermal: None,
+            cad_source: None,
+            imported_fem: None,
+            wetting: None,
+            contact: Some(spec),
+            source: None,
+            frames: None,
+            filter: None,
+            stages: vec![
+                Stage {
+                    id: "contact".into(),
+                    dependencies: vec![],
+                    operation: StageOperation::ContactReference,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 2 * 1024 * 1024 * 1024,
+                    vram_bytes: 0,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec!["contact".into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 16 * 1024 * 1024,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec![],
+                probes: vec![],
+                retained_times_s: vec![],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 128 * 1024 * 1024,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
+}
+
 pub fn verify_native_outputs(
     spec: &ContactReferenceSpec,
     root: &std::path::Path,
@@ -266,4 +323,27 @@ pub fn verify_native_outputs(
         }
     }
     Ok(crate::qualification::NumericalEvidence {reference:"complete original C3D8 DAT displacement/stress/reaction-force balance and geometric opening vs explicit planar series compliance".into(),scope:"synthetic constant-property two-state zero-Poisson planar penalty contact; convergence and physical validation separate".into(),error_kind:"maximum_normalized_max_abs".into(),error:maximum,tolerance:spec.numerical_tolerance})
+}
+
+pub(crate) fn annotate_fields(
+    plan: &crate::contracts::ExecutionPlan,
+    artifacts: &mut [crate::contracts::ArtifactManifest],
+) {
+    if plan.contact.is_none() {
+        return;
+    }
+    for artifact in artifacts {
+        if ["stages/contact/fields.json", "stages/contact/reference.dat"]
+            .contains(&artifact.path.as_str())
+        {
+            artifact.units =
+                Some("coordinates m; displacement m; reaction_force N; stress Pa".into());
+            artifact.association = Some("native_node_and_integration_point".into());
+            artifact.time_s = None;
+            artifact.provenance.push_str("; original native C3D8 fields at preload/final solver parameters 1/2; static states have no inferred physical time");
+        } else if artifact.path == "stages/contact/mesh.json" {
+            artifact.units = Some("m".into());
+            artifact.association = Some("native_node_and_c3d8_element".into());
+        }
+    }
 }

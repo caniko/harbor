@@ -174,7 +174,7 @@
       inherit (cadMesh) cad-mesh-cpu runtime-cad-mesh-cpu runtime-cad-mesh-worker;
       inherit (femImported) fem-imported-cpu runtime-fem-imported-cpu runtime-fem-imported-worker;
       inherit (wetting) wetting-reference-cpu runtime-wetting-reference-cpu runtime-wetting-worker;
-      inherit (contact) contact-reference-cpu runtime-contact-reference-cpu;
+      inherit (contact) contact-reference-cpu runtime-contact-reference-cpu runtime-contact-worker;
       inherit (native) cad-mesh-fixtures runtime-cad-fixtures runtime-cad-only;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";

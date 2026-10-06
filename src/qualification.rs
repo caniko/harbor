@@ -250,6 +250,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                 "stages/wetting/verified-wetting-receipt.json",
                 Some("OpenLB"),
             ),
+            StageOperation::ContactReference => {
+                ("stages/contact/contact-receipt.json", Some("CalculiX"))
+            }
             StageOperation::Bundle => continue,
         };
         let loaded = registered_json(store, id, path)?;
@@ -261,7 +264,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if let Some(spec) = &plan.wetting {
+            formulation: if let Some(spec) = &plan.contact {
+                spec.formulation.clone()
+            } else if let Some(spec) = &plan.wetting {
                 spec.formulation.clone()
             } else if let Some(spec) = &plan.imported_fem {
                 spec.formulation()
@@ -289,7 +294,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     .map_or(3, |c| c.applicability.dimensionality)
             },
             precision: None,
-            refinement: if let Some(spec) = &plan.wetting {
+            refinement: if let Some(spec) = &plan.contact {
+                spec.resolution
+            } else if let Some(spec) = &plan.wetting {
                 spec.resolution
             } else if let Some(source) = &plan.cad_source {
                 source.geometry.resolution
@@ -421,6 +428,42 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     capability.numerical_verification = EvidenceState::ReportedPass;
                     capability.convergence =
                         "geometric correspondence; no field solve or convergence claim".into();
+                } else if matches!(stage.operation, StageOperation::ContactReference) {
+                    let root = store.job_dir(id)?.join("stages/contact");
+                    for name in [
+                        "mesh.json",
+                        "fields.json",
+                        "reference.inp",
+                        "reference.dat",
+                        "lower-reference.msh",
+                    ] {
+                        let path = format!("stages/contact/{name}");
+                        let record = store
+                            .artifact_record(id, &path)?
+                            .ok_or_else(|| invalid("registered contact output absent"))?;
+                        let observed = crate::storage::native_manifest(
+                            &store.job_dir(id)?,
+                            &path,
+                            32 * 1024 * 1024,
+                            "verify historical original contact output",
+                        )?;
+                        if record.bytes == 0
+                            || record.bytes > 32 * 1024 * 1024
+                            || record.sha256 != observed.sha256
+                            || record.bytes != observed.bytes
+                        {
+                            return Err(invalid("registered original contact bytes changed"));
+                        }
+                    }
+                    capability.numerical_evidence = Some(crate::contact::verify_native_outputs(
+                        plan.contact
+                            .as_ref()
+                            .ok_or_else(|| invalid("native contact recipe required"))?,
+                        &root,
+                        &value,
+                    )?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                    capability.convergence="one declared mesh; native planar spatial-reference campaign assessed separately".into();
                 } else if matches!(stage.operation, StageOperation::WettingReference) {
                     let fields = value["independent_fields"]
                         .as_array()

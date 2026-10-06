@@ -22,4 +22,15 @@ in {
     backend = "cpu";
     qualification = "unqualified";
   });
+  runtime-contact-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    contact = "${adapter}/bin/harbor-cad-contact";
+    contact_closure = "${closure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+    filter = null;
+  });
 }

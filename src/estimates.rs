@@ -127,6 +127,20 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 )?;
                 2048 * MIB
             }
+            StageOperation::ContactReference => {
+                let spec = plan
+                    .contact
+                    .as_ref()
+                    .ok_or_else(|| invalid("contact resource recipe required"))?;
+                output = add(
+                    output,
+                    add(
+                        128 * MIB,
+                        multiply(u64::from(spec.resolution).pow(3), 16384)?,
+                    )?,
+                )?;
+                2048 * MIB
+            }
             StageOperation::FemImported => {
                 let spec = plan
                     .imported_fem

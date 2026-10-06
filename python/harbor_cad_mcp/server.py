@@ -137,6 +137,11 @@ def build_server(profile: str) -> MCPServer:
             return await request("plan_wetting_reference", spec=spec)
 
         @server.tool()
+        async def case_plan_contact_reference(spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan synthetic planar CPU preload/thermal opening with explicit SI inputs and two static states; requires approval."""
+            return await request("plan_contact_reference", spec=spec)
+
+        @server.tool()
         async def filter_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
             """Plan required HIP point-gradient filtering from one registered retained time.
 

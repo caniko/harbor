@@ -97,6 +97,12 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Plan a native synthetic planar CPU contact/preload and thermal opening reference.
+    PlanContactReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     /// Validate explicit SI planar contact/preload inputs and analytical states.
     ValidateContactReference {
         file: PathBuf,
@@ -353,6 +359,10 @@ fn run(cli: Cli) -> Result<()> {
                 return print(&serde_json::json!({"valid":true,"executed":false,
                     "science_id":digest(&spec)?,"preload":spec.reference(1)?,
                     "final":spec.reference(2)?,"physical_validation":"unqualified"}));
+            }
+            Case::PlanContactReference { file, policy } => {
+                let plan = ExecutionPlan::contact_reference(read(&file)?, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
             }
             Case::PlanOpenlbReference { file, policy } => {
                 let plan = ExecutionPlan::openlb_reference(read(&file)?, policy)?;

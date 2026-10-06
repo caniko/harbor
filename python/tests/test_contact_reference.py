@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator, ValidationError
 
 
 def module():
@@ -216,3 +217,27 @@ def test_rust_generated_contact_schema_and_validation_match_native_contract(tmp_
         rejected = json.loads(outcome.stdout)
         assert outcome.returncode and rejected["ok"] is False
         assert rejected["error"]["code"] in {"invalid_input", "protocol_error"}
+
+
+def test_contact_cli_plan_schema_rejects_old_version_capability_injection(tmp_path):
+    binary = os.environ["HARBOR_CAD_TEST_BINARY"]
+    path = tmp_path / "contact.json"
+    path.write_text(json.dumps(request()))
+    planned = json.loads(
+        subprocess.check_output([binary, "case", "plan-contact-reference", str(path)])
+    )
+    plan = planned["plan"]
+    assert plan["schema_version"] == 10 and plan["contact"] == request()
+    assert [s["operation"] for s in plan["stages"]] == ["contact_reference", "bundle"]
+    assert plan["observation"]["retained_times_s"] == []
+    schema = json.loads(subprocess.check_output([binary, "schema"]))
+    validator = Draft202012Validator(schema["ExecutionPlan"])
+    validator.validate(plan)
+    for changed in (
+        {**plan, "contact": None},
+        {**plan, "schema_version": 9},
+        {**plan, "wetting": None},
+        {**plan, "case": None},
+    ):
+        with pytest.raises(ValidationError):
+            validator.validate(changed)

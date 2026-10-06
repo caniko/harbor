@@ -1,4 +1,5 @@
 use harbor_cad::contact::ContactReferenceSpec;
+use harbor_cad::contracts::{ExecutionPlan, StageOperation};
 
 fn fixture() -> serde_json::Value {
     serde_json::json!({
@@ -53,4 +54,34 @@ fn contact_contract_rejects_backend_physics_or_acceptance_substitution() {
             "{key}"
         );
     }
+}
+
+#[test]
+fn version_ten_contact_plan_binds_two_static_states_and_exact_cpu_dag() {
+    let spec: ContactReferenceSpec = serde_json::from_value(fixture()).unwrap();
+    let plan = ExecutionPlan::contact_reference(spec, "research".into()).unwrap();
+    assert_eq!(plan.schema_version, 10);
+    assert_eq!(plan.stages[0].operation, StageOperation::ContactReference);
+    assert_eq!(plan.stages[1].dependencies, ["contact"]);
+    assert!(plan.observation.retained_times_s.is_empty());
+    assert_eq!(plan.stages[0].ram_bytes, 2 * 1024 * 1024 * 1024);
+    let value = serde_json::to_value(&plan).unwrap();
+    assert!(!value.as_object().unwrap().contains_key("wetting"));
+    let mut changed = plan.clone();
+    changed.contact.as_mut().unwrap().preload_compression_m *= 0.5;
+    assert_ne!(plan.id().unwrap(), changed.id().unwrap());
+    assert_ne!(plan.science_id().unwrap(), changed.science_id().unwrap());
+    for version in 1..10 {
+        let mut older = value.clone();
+        older["schema_version"] = serde_json::json!(version);
+        assert!(serde_json::from_value::<ExecutionPlan>(older).is_err());
+    }
+    for (key, value) in [("contact", serde_json::Value::Null), ("wetting", fixture())] {
+        let mut bad = serde_json::to_value(&plan).unwrap();
+        bad[key] = value;
+        assert!(serde_json::from_value::<ExecutionPlan>(bad).is_err());
+    }
+    let mut bad = plan;
+    bad.observation.retained_times_s.push(1.0);
+    assert!(bad.validate().is_err());
 }
