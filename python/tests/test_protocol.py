@@ -112,6 +112,34 @@ def test_static_result_schema_preserves_native_associations_and_rejects_interpol
             Draft202012Validator(schemas["SampleRequest"]).validate(changed)
 
 
+def test_thermal_result_schema_requires_explicit_time_and_native_node_association():
+    schemas = json.loads(subprocess.check_output([binary(), "schema"]))
+    sample = {
+        "schema_version": 1,
+        "job_id": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+        "field": "temperature",
+        "physical_time_s": 60.0,
+        "locations": [{"association": "node", "node_id": 1}],
+    }
+    Draft202012Validator(schemas["ThermalSampleRequest"]).validate(sample)
+    Draft202012Validator(schemas["ThermalCompareRequest"]).validate(
+        {
+            "schema_version": 1,
+            "left": sample,
+            "right": {**sample, "physical_time_s": 120.0},
+        }
+    )
+    for changed in (
+        {k: v for k, v in sample.items() if k != "physical_time_s"},
+        {**sample, "physical_time_s": None},
+        {**sample, "field": "heat_flux"},
+        {**sample, "interpolation": "linear"},
+        {**sample, "locations": [{"association": "point", "coordinate_m": [0, 0, 0]}]},
+    ):
+        with pytest.raises(ValidationError):
+            Draft202012Validator(schemas["ThermalSampleRequest"]).validate(changed)
+
+
 def test_wetting_si_descriptor_uses_generated_rust_schema_with_explicit_provenance():
     from test_wetting_reference import request
 
@@ -187,6 +215,22 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "job_submit" in names and "results_describe" in names
                 assert {"results_sample", "results_compare"}.issubset(names)
+                assert {"results_sample_thermal", "results_compare_thermal"}.issubset(
+                    names
+                )
+                rejected_sample = await client.call_tool(
+                    "results_sample_thermal",
+                    {
+                        "request_spec": {
+                            "schema_version": 1,
+                            "job_id": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+                            "field": "temperature",
+                            "physical_time_s": 60.0,
+                            "locations": [{"association": "node", "node_id": 1}],
+                        }
+                    },
+                )
+                assert rejected_sample.is_error
                 assert "case_plan_openlb_reference" in names
                 assert "cad_plan_inspection" in names
                 assert "cad_regions" in names and "cad_submit" in names

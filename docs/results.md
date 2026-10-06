@@ -1,4 +1,4 @@
-# Registered static result sampling and comparison
+# Registered native result sampling and comparison
 
 `results sample REQUEST.json` and results-profile MCP `results_sample` use the
 same read-only Rust worker. The version-1 request contains `job_id`, `field` and
@@ -38,3 +38,40 @@ and the maximum absolute difference. Comparisons have no implicit registration,
 resampling, relative-error denominator, numerical acceptance or physical
 validation claim. Different geometry or native node/integration associations
 reject; material/science/runtime identities stay explicit on both sides.
+
+## Retained thermal time samples
+
+`results sample-thermal REQUEST.json` and results-profile MCP
+`results_sample_thermal` accept an independent strict version-1 request:
+
+```json
+{
+  "schema_version": 1,
+  "job_id": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+  "field": "temperature",
+  "physical_time_s": 60.0,
+  "locations": [{"association": "node", "node_id": 7}]
+}
+```
+
+Only succeeded registered v6 thermal reference jobs with passing native numerical
+evidence are supported. The time must match an approved retained output exactly;
+requests for unretained time, spatial/temporal interpolation, integration-point
+temperature or other fields reject. The response retains K, m, science/execution
+bindings and all three registered artifact hashes. Every native snapshot and
+node is checked against the JSON history and approved schedule before returning
+the selected 1–64 distinct nodes. Float64 temperatures match DAT exactly.
+
+CalculiX serializes DAT times with seven significant digits. The existing thermal
+verification permits only `1e-7 * max(1, abs(time_s))` seconds of serialization
+error. Reports expose both the approved `physical_time_s` and original
+`native_time_s`, plus `time_serialization_tolerance_s`; this does not authorize
+interpolation or an approximate request time.
+
+`results compare-thermal` / MCP `results_compare_thermal` take version 1 with
+explicit `left`/`right` thermal sampling requests. The exact mesh and ordered
+node locations must match; both selected times and provenance remain in the
+report. Signed `right-left` values compare those explicitly selected states,
+including different retained times. They do not establish numerical acceptance,
+component boot reliability or physical validation. Native packaged qualification
+of this new surface is pending.

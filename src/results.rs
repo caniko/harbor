@@ -11,6 +11,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 const FIELD_LIMIT: u64 = 32 * 1024 * 1024;
+type NativeValues = BTreeMap<Vec<u64>, Vec<f64>>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -134,12 +135,16 @@ pub struct CompareReport {
     pub physical_validation: String,
 }
 
-fn registered(store: &Store, id: &str, path: &str) -> Result<(EvidenceRecord, serde_json::Value)> {
+pub(crate) fn registered(
+    store: &Store,
+    id: &str,
+    path: &str,
+) -> Result<(EvidenceRecord, serde_json::Value)> {
     let (record, data) = registered_bytes(store, id, path, "json")?;
     Ok((record, serde_json::from_slice(&data)?))
 }
 
-fn registered_bytes(
+pub(crate) fn registered_bytes(
     store: &Store,
     id: &str,
     path: &str,
@@ -171,7 +176,21 @@ fn registered_bytes(
 }
 
 fn native_field(field: &StaticField, text: &str) -> Result<serde_json::Value> {
-    let (name, _, components, nodal) = field.metadata();
+    let snapshots = native_snapshots(field, text)?;
+    if snapshots.len() != 1 || snapshots[0].0 != 1. {
+        return Err(invalid("one final native static section required"));
+    }
+    let name = field.metadata().0;
+    Ok(
+        serde_json::json!({"schema_version":1,"static":true,"coordinate_unit":"m","fields":{name:[{"solver_step_parameter":1.,"physical_time_s":null,"values":snapshots[0].1}]}}),
+    )
+}
+
+pub(crate) fn native_snapshots(
+    field: &StaticField,
+    text: &str,
+) -> Result<Vec<(f64, serde_json::Value)>> {
+    let (_, _, components, nodal) = field.metadata();
     let label = match field {
         StaticField::Temperature => "temperatures",
         StaticField::HeatFlux => "heat flux (elem, integ.pnt.,qx,qy,qz)",
@@ -180,25 +199,32 @@ fn native_field(field: &StaticField, text: &str) -> Result<serde_json::Value> {
     };
     let expected_set = if nodal { "NALL" } else { "EALL" };
     let ids = if nodal { 1 } else { 2 };
-    let mut observed = false;
     let mut active = false;
-    let mut values = BTreeMap::new();
+    let mut snapshots: Vec<(f64, NativeValues)> = Vec::new();
     for line in text.lines().map(str::trim).filter(|s| !s.is_empty()) {
         if let Some((section, rest)) = line.split_once(" for set ") {
             active = section == label;
             if active {
                 let header: Vec<_> = rest.split_whitespace().collect();
-                if observed
-                    || header.len() != 4
-                    || header[0] != expected_set
-                    || header[1..3] != ["and", "time"]
-                    || header[3].replace('D', "E").parse::<f64>().ok() != Some(1.)
+                if header.len() != 4 || header[0] != expected_set || header[1..3] != ["and", "time"]
                 {
                     return Err(invalid(
-                        "one final native static section and exact entity set required",
+                        "exact native field section and entity set required",
                     ));
                 }
-                observed = true;
+                let time = header[3]
+                    .replace('D', "E")
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|t| t.is_finite() && *t >= 0.)
+                    .ok_or_else(|| invalid("finite nonnegative native time required"))?;
+                if snapshots
+                    .last()
+                    .is_some_and(|(previous, _)| time <= *previous)
+                {
+                    return Err(invalid("strictly increasing native field times required"));
+                }
+                snapshots.push((time, BTreeMap::new()));
             }
         } else if line.starts_with("S T E P ") || line.starts_with("INCREMENT ") {
             active = false;
@@ -226,21 +252,30 @@ fn native_field(field: &StaticField, text: &str) -> Result<serde_json::Value> {
                         .ok_or_else(|| invalid("finite native static component required"))
                 })
                 .collect::<Result<Vec<_>>>()?;
-            if values.insert(identity, value).is_some() {
+            if snapshots
+                .last_mut()
+                .ok_or_else(|| invalid("native field header required"))?
+                .1
+                .insert(identity, value)
+                .is_some()
+            {
                 return Err(invalid("duplicate authoritative native static ID"));
             }
         }
     }
-    if !observed {
+    if snapshots.is_empty() || snapshots.iter().any(|(_, values)| values.is_empty()) {
         return Err(invalid("authoritative native static field absent"));
     }
-    let records: Vec<_> = values
+    Ok(snapshots
         .into_iter()
-        .map(|(id, value)| serde_json::json!({"id":id,"value":value}))
-        .collect();
-    Ok(
-        serde_json::json!({"schema_version":1,"static":true,"coordinate_unit":"m","fields":{name:[{"solver_step_parameter":1.,"physical_time_s":null,"values":records}]}}),
-    )
+        .map(|(time, values)| {
+            let records: Vec<_> = values
+                .into_iter()
+                .map(|(id, value)| serde_json::json!({"id":id,"value":value}))
+                .collect();
+            (time, serde_json::Value::Array(records))
+        })
+        .collect())
 }
 
 fn extract(
@@ -250,7 +285,7 @@ fn extract(
     resolution: u32,
 ) -> Result<(usize, Vec<SampleValue>)> {
     request.validate()?;
-    let (name, _, components, nodal) = request.field.metadata();
+    let name = request.field.metadata().0;
     if fields["schema_version"] != 1 || fields["static"] != true || fields["coordinate_unit"] != "m"
     {
         return Err(invalid("explicit static SI native result required"));
@@ -268,7 +303,18 @@ fn extract(
             "static solver parameter must not invent physical time",
         ));
     }
-    let records = snapshots[0]["values"]
+    extract_values(request, mesh, &snapshots[0]["values"], resolution)
+}
+
+pub(crate) fn extract_values(
+    request: &SampleRequest,
+    mesh: &serde_json::Value,
+    records: &serde_json::Value,
+    resolution: u32,
+) -> Result<(usize, Vec<SampleValue>)> {
+    request.validate()?;
+    let (_, _, components, nodal) = request.field.metadata();
+    let records = records
         .as_array()
         .ok_or_else(|| invalid("explicit native field samples required"))?;
     let count = if nodal {
@@ -429,7 +475,7 @@ pub fn compare(store: &Store, request: &CompareRequest) -> Result<CompareReport>
         sample(store, &request.right)?,
     )
 }
-fn compare_reports(left: SampleReport, right: SampleReport) -> Result<CompareReport> {
+pub(crate) fn compare_reports(left: SampleReport, right: SampleReport) -> Result<CompareReport> {
     if left.mesh_artifact.sha256 != right.mesh_artifact.sha256
         || left.field != right.field
         || left.unit != right.unit

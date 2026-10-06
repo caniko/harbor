@@ -149,6 +149,14 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | P7 / E | native atmosphere/spectral irradiance/dose slice | pending |
 | P8 / F | bounded studies, retention/recovery/resume, measurements and product closure | pending |
 
+The next results slice adds strict registered-v6 `results sample-thermal` and
+`compare-thermal` plus matching results-profile MCP tools. Complete JSON histories
+are independently checked against every authoritative native DAT snapshot and
+approved retained time before returning exact nodes. Native time-serialization
+error is exposed separately from exact requested times; signed comparisons keep
+both physical states. Treefmt, full CPU checks (81 Python cases) and generated
+Simit CI drift pass. Exact packaged result qualification remains pending.
+
 ## External qualification prerequisites
 
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched

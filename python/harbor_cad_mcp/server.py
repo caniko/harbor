@@ -228,6 +228,20 @@ def build_server(profile: str) -> MCPServer:
             return await request("results_compare", request=request_spec)
 
         @server.tool()
+        async def results_sample_thermal(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Sample up to 64 native thermal nodes at one exact approved retained time."""
+            return await request("results_sample_thermal", request=request_spec)
+
+        @server.tool()
+        async def results_compare_thermal(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Compare same-mesh thermal nodes at explicit retained times; right minus left."""
+            return await request("results_compare_thermal", request=request_spec)
+
+        @server.tool()
         async def qualification_report(job_id: str) -> dict[str, Any]:
             """Inspect historical job evidence bound to its exact source/runtime/device; never promote qualification."""
             return await request("qualification_report", job_id=job_id)

@@ -208,6 +208,14 @@ enum Results {
     Compare {
         request: PathBuf,
     },
+    /// Sample registered thermal nodes at one exact approved retained time.
+    SampleThermal {
+        request: PathBuf,
+    },
+    /// Compare registered thermal samples on the exact same mesh; right minus left.
+    CompareThermal {
+        request: PathBuf,
+    },
 }
 #[derive(Subcommand)]
 enum Artifact {
@@ -405,6 +413,12 @@ fn run(cli: Cli) -> Result<()> {
                 request: Box::new(read(&request)?),
             },
             Results::Compare { request } => Operation::ResultsCompare {
+                request: Box::new(read(&request)?),
+            },
+            Results::SampleThermal { request } => Operation::ResultsSampleThermal {
+                request: Box::new(read(&request)?),
+            },
+            Results::CompareThermal { request } => Operation::ResultsCompareThermal {
                 request: Box::new(read(&request)?),
             },
         },

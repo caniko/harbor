@@ -1706,6 +1706,12 @@ pub enum Operation {
     ResultsCompare {
         request: Box<crate::results::CompareRequest>,
     },
+    ResultsSampleThermal {
+        request: Box<crate::thermal_results::ThermalSampleRequest>,
+    },
+    ResultsCompareThermal {
+        request: Box<crate::thermal_results::ThermalCompareRequest>,
+    },
     QualificationReport {
         job_id: String,
     },
@@ -1721,7 +1727,7 @@ pub struct WorkerRequest {
     pub request: Operation,
 }
 pub fn schemas() -> serde_json::Value {
-    serde_json::json!({"CaseSpec": schemars::schema_for!(CaseSpec), "PhysicsApplicability": schemars::schema_for!(PhysicsApplicability),
+    let mut schemas = serde_json::json!({"CaseSpec": schemars::schema_for!(CaseSpec), "PhysicsApplicability": schemars::schema_for!(PhysicsApplicability),
         "ExecutionPlan": schemars::schema_for!(ExecutionPlan), "TransferSpec": schemars::schema_for!(TransferSpec),
         "HostExecutionProfile": schemars::schema_for!(HostExecutionProfile), "GpuSelection": schemars::schema_for!(GpuSelection),
         "ObservationPlan": schemars::schema_for!(ObservationPlan), "ArtifactManifest": schemars::schema_for!(ArtifactManifest),
@@ -1753,5 +1759,19 @@ pub fn schemas() -> serde_json::Value {
         "TransferReceipt": schemars::schema_for!(crate::transfers::TransferReceipt),
         "ThermalMaterial": schemars::schema_for!(crate::materials::ThermalMaterial),
         "ColdRestartSpec": schemars::schema_for!(crate::recipes::ColdRestartSpec),
-        "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)})
+        "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)});
+    // Keep individual expansions below the macro recursion bound as contracts grow.
+    schemas["ThermalSampleRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::thermal_results::ThermalSampleRequest
+    ));
+    schemas["ThermalSampleReport"] = serde_json::json!(schemars::schema_for!(
+        crate::thermal_results::ThermalSampleReport
+    ));
+    schemas["ThermalCompareRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::thermal_results::ThermalCompareRequest
+    ));
+    schemas["ThermalCompareReport"] = serde_json::json!(schemars::schema_for!(
+        crate::thermal_results::ThermalCompareReport
+    ));
+    schemas
 }
