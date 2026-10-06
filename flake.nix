@@ -133,6 +133,7 @@
     };
     native = import ./nix/native.nix {inherit pkgs cudaPkgs inputs;};
     filters = import ./nix/filters.nix {inherit pkgs;};
+    fem = import ./nix/fem.nix {inherit pkgs;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
       projectRootFile = "flake.nix";
       programs.rustfmt = {
@@ -161,6 +162,7 @@
       inherit mcp cargoArtifacts;
       inherit (native) cad visualization media runtime-cpu openlb-cpu openlb-cuda openlb-hip runtime-cuda runtime-hip;
       inherit (filters) kokkos-hip vtk-hip filter-hip;
+      inherit (fem) fem-cpu runtime-fem-cpu;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
         cad = null;
@@ -208,6 +210,7 @@
         cp ${./adapters/freecad_bridge.py} adapters/freecad_bridge.py
         cp ${./adapters/video_bridge.py} adapters/video_bridge.py
         cp ${./adapters/import_policy.py} adapters/import_policy.py
+        cp ${./adapters/fem_reference.py} adapters/fem_reference.py
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
       '';

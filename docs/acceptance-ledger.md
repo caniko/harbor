@@ -47,6 +47,13 @@ inspect checksummed historical receipts and immutable execution/device/source
 identities. They distinguish recorded execution from reported numerical checks
 and leave current-runtime qualification/physical validation unpromoted.
 
+An independent locked Gmsh/CalculiX CPU candidate now implements synthetic
+steady conduction/Fourier flux and free-expansion reference decks, semantic
+planar face predicates, positive-Jacobian/volume correspondence and complete
+native field parsing. Its source/manual APIs are inspected and parser/selector
+rejection tests pass. Native build/execution and worker integration are pending;
+see [FEM reference scope](fem-references.md).
+
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
 | §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |
