@@ -227,21 +227,20 @@ def main():
         return response if allow_error else response["data"]
 
     async def mcp_submit(spec, key):
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
+        from mcp import Client
+        from mcp.client.stdio import StdioServerParameters
 
         params = StdioServerParameters(
             command=str(mcp),
             args=["--profile", "simulation"],
             env={**environment, "HARBOR_CAD_SOCKET": str(endpoint)},
         )
-        async with stdio_client(params) as streams, ClientSession(*streams) as session:
-            await session.initialize()
-            response = await session.call_tool("filter_plan", {"request_spec": spec})
-            if response.isError:
+        async with Client(params) as client:
+            response = await client.call_tool("filter_plan", {"request_spec": spec})
+            if response.is_error:
                 raise RuntimeError(response)
-            plan = response.structuredContent
-            response = await session.call_tool(
+            plan = response.structured_content
+            response = await client.call_tool(
                 "job_submit",
                 {
                     "plan": plan["plan"],
@@ -249,9 +248,9 @@ def main():
                     "idempotency_key": key,
                 },
             )
-            if response.isError:
+            if response.is_error:
                 raise RuntimeError(response)
-            return plan, response.structuredContent
+            return plan, response.structured_content
 
     source = copied / "retained-fields" / time_record["shards"][0]
     source_data = source.read_bytes()
