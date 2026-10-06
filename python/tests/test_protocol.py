@@ -119,6 +119,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "job_submit" in names and "results_describe" in names
                 assert "case_plan_openlb_reference" in names
                 assert "cad_plan_inspection" in names
+                assert "cad_regions" in names and "cad_submit" in names
                 assert "cold_restart_validate" in names
                 assert "filter_plan" in names
                 cold = cold_inputs()
@@ -225,6 +226,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "job_submit" not in names and "results_describe" in names
                 assert "qualification_report" in names
                 assert "cad_plan_inspection" not in names
+                assert "cad_regions" in names and "cad_submit" not in names
                 assert "cold_restart_validate" not in names
                 assert "filter_plan" not in names
                 assert {"render_plan", "video_plan", "presentation_submit"}.issubset(
@@ -242,6 +244,19 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
             async with Client(build_server("cad")) as client:
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "cad_plan_inspection" in names and "job_submit" not in names
+                assert "cad_regions" in names and "cad_submit" in names
+                assert "job_status" in names and "job_logs" in names
+                rejected = await client.call_tool("cad_regions", {"job_id": job["id"]})
+                assert rejected.is_error
+                rejected = await client.call_tool(
+                    "cad_submit",
+                    {
+                        "plan": result["plan"],
+                        "approved_digest": result["approval_digest"],
+                        "idempotency_key": "wrong-cad-operation",
+                    },
+                )
+                assert rejected.is_error
 
         asyncio.run(check())
     finally:

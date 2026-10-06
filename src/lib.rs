@@ -1,5 +1,6 @@
 pub mod admission;
 pub mod authority;
+pub mod cad;
 pub mod contracts;
 pub mod devices;
 pub mod estimates;

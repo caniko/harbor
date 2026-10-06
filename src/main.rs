@@ -48,6 +48,10 @@ enum Commands {
         #[command(subcommand)]
         command: Case,
     },
+    Cad {
+        #[command(subcommand)]
+        command: Cad,
+    },
     Job {
         #[command(subcommand)]
         command: Job,
@@ -145,6 +149,26 @@ enum Job {
     },
     Cancel {
         id: String,
+    },
+}
+#[derive(Subcommand)]
+enum Cad {
+    /// Prepare an approval-bound sandboxed inspection plan; submit with job submit.
+    Inspect {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+        #[arg(long, default_value = "67108864")]
+        max_artifact_bytes: u64,
+    },
+    /// Read registered named-solid metadata from a succeeded bound CAD job.
+    Regions { id: String },
+    /// Export the complete checksummed CAD job, preserving the approved original.
+    Export {
+        #[arg(long)]
+        state: PathBuf,
+        id: String,
+        destination: PathBuf,
     },
 }
 #[derive(Subcommand)]
@@ -280,6 +304,29 @@ fn run(cli: Cli) -> Result<()> {
             } => {
                 let plan = ExecutionPlan::b1(read(&file)?, read(&devices)?, policy)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+        },
+        Commands::Cad { command } => match command {
+            Cad::Inspect {
+                file,
+                policy,
+                max_artifact_bytes,
+            } => {
+                let plan = ExecutionPlan::cad_inspection(read(&file)?, policy, max_artifact_bytes)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Cad::Regions { id } => Operation::CadRegions { job_id: id },
+            Cad::Export {
+                state,
+                id,
+                destination,
+            } => {
+                let store = Store::open(&state)?;
+                harbor_cad::cad::regions(&store, &id)?;
+                let count = store.export(&id, &destination)?;
+                return print(
+                    &serde_json::json!({"exported":destination,"artifacts":count,"uploads":false}),
+                );
             }
         },
         Commands::Job { command } => match command {

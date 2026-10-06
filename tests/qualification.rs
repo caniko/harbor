@@ -113,6 +113,16 @@ fn mutated_registered_evidence_fails_and_foreign_receipts_cannot_qualify_a_stage
             .iter()
             .any(|s| s["backend"] == "hip")
     );
+    let fake_cad = commit_artifact(
+        &root,
+        "cad_fixture-receipt.json",
+        br#"{"adapter":"FreeCAD","backend":"cpu","executed":true,"software_fallback":false}"#,
+        "json",
+        "synthetic unrelated CAD receipt",
+    )
+    .unwrap();
+    store.add_artifact(&job.id, &fake_cad).unwrap();
+    assert!(harbor_cad::cad::regions(&store, &job.id).is_err());
     std::fs::write(
         root.join("validation.json"),
         br#"{"process":"succeeded","numerical_error":0,"physical_validation":"qualified"}"#,

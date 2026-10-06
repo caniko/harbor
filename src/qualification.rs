@@ -87,7 +87,11 @@ fn optional_text(value: &Value, key: &str) -> Result<Option<String>> {
     Ok(Some(text.into()))
 }
 
-fn receipt(store: &Store, id: &str, path: &str) -> Result<Option<(EvidenceRecord, Value)>> {
+pub(crate) fn registered_json(
+    store: &Store,
+    id: &str,
+    path: &str,
+) -> Result<Option<(EvidenceRecord, Value)>> {
     let Some(record) = store.artifact_record(id, path)? else {
         return Ok(None);
     };
@@ -221,7 +225,7 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::Video => ("video-receipt.json", Some("FFmpeg")),
             StageOperation::Bundle => continue,
         };
-        let loaded = receipt(store, id, path)?;
+        let loaded = registered_json(store, id, path)?;
         let operation_key = serde_json::to_string(&stage.operation)?;
         let native_bound = binding.as_ref().is_some_and(|b| {
             adapter.is_none()

@@ -633,6 +633,9 @@ fn dispatch(
         Operation::QualificationReport { job_id } => Ok(serde_json::to_value(
             crate::qualification::inspect(store, &job_id)?,
         )?),
+        Operation::CadRegions { job_id } => {
+            Ok(serde_json::to_value(crate::cad::regions(store, &job_id)?)?)
+        }
         Operation::Describe { job_id } => {
             let plan = store.plan(&job_id)?;
             let binding = match store.execution_binding(&job_id) {

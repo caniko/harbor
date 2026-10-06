@@ -68,6 +68,31 @@ def build_server(profile: str) -> MCPServer:
                 "plan_cad_inspection", case=case, max_artifact_bytes=max_artifact_bytes
             )
 
+        @server.tool()
+        async def cad_submit(
+            plan: dict[str, Any], approved_digest: str, idempotency_key: str
+        ) -> dict[str, Any]:
+            """Submit only an approved CAD inspection plan; return its durable job ID."""
+            operations = [stage.get("operation") for stage in plan.get("stages", [])]
+            if plan.get("schema_version") != 1 or operations != [
+                "cad_inspect",
+                "bundle",
+            ]:
+                raise ValueError("exact approved CAD inspection DAG required")
+            return await request(
+                "submit",
+                plan=plan,
+                approved_digest=approved_digest,
+                idempotency_key=idempotency_key,
+            )
+
+    if profile in {"cad", "results", "all"}:
+
+        @server.tool()
+        async def cad_regions(job_id: str) -> dict[str, Any]:
+            """Read bounded checksummed named-solid metadata from one native CAD job."""
+            return await request("cad_regions", job_id=job_id)
+
     if profile in {"simulation", "all"}:
 
         @server.tool()
@@ -104,7 +129,7 @@ def build_server(profile: str) -> MCPServer:
             """Cancel only a tracked owned service tree, with bounded escalation."""
             return await request("cancel", job_id=job_id)
 
-    if profile in {"simulation", "results", "all"}:
+    if profile in {"cad", "simulation", "results", "all"}:
 
         @server.tool()
         async def job_status(job_id: str) -> dict[str, Any]:

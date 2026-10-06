@@ -54,7 +54,7 @@ native field parsing. Its source/manual APIs are inspected and parser/selector
 rejection tests pass. Native build/execution and worker integration are pending;
 see [FEM reference scope](fem-references.md).
 
-The updated complete CPU gate passes 101 Rust tests and 44 Python cases,
+The updated complete CPU gate passes 103 Rust tests and 44 Python cases,
 Clippy with warnings denied, locked build, Treefmt and Ruff. New systemd jobs
 verify effective kernel controls before native launch and retain aggregate
 process-tree RAM peaks/CPU usage through orderly completion; abrupt kills have
@@ -66,6 +66,13 @@ successfully compiled the pinned Kokkos, VTK/Viskores and native HIP adapter.
 This establishes a build, not native numerical/device qualification. The
 subsequent scalar-label/direction guards and latest runner must be realized
 before their exact-package qualification.
+
+CAD-facing `cad inspect|regions|export` and MCP `cad_submit`/`cad_regions` now
+use the same approved worker jobs. Region views are bounded/checksummed and bind
+the succeeded native CAD stage, original science/execution and placement units.
+The CAD profile can submit its own inspection DAG and read durable status/logs;
+foreign plans and receipts reject. Ordinal face identities, controlled variants
+and imported-CAD/Gmsh correspondence remain pending.
 
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|

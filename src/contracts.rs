@@ -1371,6 +1371,9 @@ pub enum Operation {
     QualificationReport {
         job_id: String,
     },
+    CadRegions {
+        job_id: String,
+    },
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -1396,6 +1399,7 @@ pub fn schemas() -> serde_json::Value {
         "VideoRequest": schemars::schema_for!(VideoRequest),
         "FilterRequest": schemars::schema_for!(FilterRequest),
         "JobEvidenceReport": schemars::schema_for!(crate::qualification::JobEvidenceReport),
+        "RegionReport": schemars::schema_for!(crate::cad::RegionReport),
         "ConservativeTransfer": schemars::schema_for!(crate::transfers::ConservativeTransfer),
         "TransferReceipt": schemars::schema_for!(crate::transfers::TransferReceipt),
         "ThermalMaterial": schemars::schema_for!(crate::materials::ThermalMaterial),
