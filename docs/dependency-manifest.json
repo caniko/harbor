@@ -74,6 +74,19 @@
     "hip": {"priority": "primary_on_amd", "architecture": "gfx1100", "precision": "float64", "rocm_runtime": "7.2.3", "rocm_compiler_package": "22.0.0-rocm", "build": "passed in Nix sandbox with explicit architecture", "runtime": "bounded native procedural probe passed on RX 7900 XTX; worker unqualified", "numerical": "periodic_forced_channel Float64 forced BGK D3Q19, resolutions 8/16; analytical and retained CPU velocity agreement passed", "sandbox": "production KFD/selected-device isolation unqualified", "evidence": "docs/evidence/gpu-backends.json"},
     "vulkan": {"runtime": "unsupported at the pinned OpenLB source", "decision": "docs/gpu-backends.md", "performance_against_hip": "not measured"}
   },
+  "wetting_cpu_reference": {
+    "review_date": "2026-10-06",
+    "source_revision": "145cd54810b468f4b6fd3ed86b10644264841578",
+    "source_evidence": "pinned OpenLB examples/multiComponent/contactAngle2d/contactAngle2d.cpp, src/core/unitConverter.h, src/dynamics/phaseFieldCoupling.h and src/geometry/superGeometry.hh",
+    "license": "GPL-2.0-or-later",
+    "abi": "Float64 two-lattice D2Q9 well-balanced Cahn-Hilliard, CPU_SISD, no MPI/GPU; pure Python 3.13 independent native-field verification",
+    "scope": "explicit equal-density/equal-viscosity synthetic static planar wetting; fixed physical diffuse interface and contact-angle refinements; water-air/inlet spray/ingress/evaporation remain unqualified",
+    "sandbox": "harbor-cad-wetting-cpu-v1 operation closure only; exact read-only descriptor and eight CPU isolation checks",
+    "build": "pending exact candidate realization",
+    "numerical": "pending native mass/contact-angle/refinement qualification; analytical circle, units and rejection regressions implemented",
+    "physical_validation": "unqualified",
+    "evidence": "docs/wetting-reference.md"
+  },
   "fem_cpu_reference": {
     "review_date": "2026-10-06",
     "nixpkgs_revision": "73e728ddb6b7a12d18808f510813a13ee1fe4cce",

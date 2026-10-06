@@ -139,6 +139,7 @@
     thermal = import ./nix/thermal.nix {inherit pkgs fem;};
     cadMesh = import ./nix/cad-mesh.nix {inherit pkgs fem;};
     femImported = import ./nix/fem-imported.nix {inherit pkgs fem cadMesh;};
+    wetting = import ./nix/wetting.nix {inherit pkgs inputs cudaPkgs;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
       projectRootFile = "flake.nix";
       programs.rustfmt = {
@@ -171,6 +172,7 @@
       inherit (thermal) thermal-cpu runtime-thermal-cpu runtime-thermal-worker;
       inherit (cadMesh) cad-mesh-cpu runtime-cad-mesh-cpu runtime-cad-mesh-worker;
       inherit (femImported) fem-imported-cpu runtime-fem-imported-cpu runtime-fem-imported-worker;
+      inherit (wetting) wetting-reference-cpu runtime-wetting-reference-cpu;
       inherit (native) cad-mesh-fixtures runtime-cad-fixtures runtime-cad-only;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
@@ -214,12 +216,8 @@
         export HARBOR_CAD_TEST_BINARY=${cli}/bin/harbor-cad
         cp -r ${self}/python ./python
         cp -r ${self}/profiles ./profiles
-        mkdir adapters
-        cp ${./adapters/paraview_bridge.py} adapters/paraview_bridge.py
-        cp ${./adapters/freecad_bridge.py} adapters/freecad_bridge.py
-        cp ${./adapters/video_bridge.py} adapters/video_bridge.py
-        cp ${./adapters/import_policy.py} adapters/import_policy.py
-        cp ${./adapters/fem_reference.py} adapters/fem_reference.py
+        cp -r ${self}/adapters ./adapters
+        cp -r ${self}/scripts ./scripts
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
       '';
