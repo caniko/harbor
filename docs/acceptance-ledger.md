@@ -32,6 +32,16 @@ Generated CI drift check passes. Packaged candidate evaluation reached the
 600-second wait limit while another Canix operation owned the host guard; no
 lease bypass or resource override was used.
 
+Subsequent guarded evaluation and one-job/two-core realization completed for
+`6ec1289df74593d682c71690f71b9f53136a863f`. The packaged P1 qualifier passed
+CLI/MCP retained-field rendering and independent registered-frame VAAPI video,
+including direct source/frame mutation before/after acknowledgment and
+worker restart/retry with unchanged service invocation. Cancellation preserved
+science, all five new service trees closed, and runtime roots/reservations
+released. See [scoped P1 evidence](evidence/standalone-presentation.json).
+Version-4 source-bound HIP gradient contracts/CLI/MCP pass the CPU gate; their
+separate native build and hardware qualification remain in progress.
+
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
 | §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |
@@ -44,7 +54,7 @@ lease bypass or resource override was used.
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
-| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1/v2 plans and original approval compatibility tested; recipe-specific contracts pending |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1/v2/v3/v4 plans and original approval compatibility tested; broader recipe-specific contracts pending |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
 | §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; native contact/optical execution pending |
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
@@ -61,9 +71,9 @@ lease bypass or resource override was used.
 | §7 arrays and format round trips | `src/fields.rs`, retained-field verifiers | Float64 image graph preserved; broad topology/ghost/node-cell round trips pending |
 | §7 atomic committed data/exports and sole-source safety | `src/storage.rs`, `src/presentation.rs` | distinct verified source copies, staging intents, atomic bundle/checksum tests |
 | §7 compute filters vs presentation | `adapters/paraview_bridge.py`, `adapters/video_bridge.py` | EGL/VAAPI recorded; actual qualified numerical filter pending |
-| §7 portable provenance and retained re-render | immutable snapshot, source-bound v2 plan | CPU gates pass; packaged standalone qualification next |
+| §7 portable provenance and retained re-render | immutable snapshot, source-bound v2/v3 plans | packaged standalone CLI/MCP rendering and independent video qualified at the recorded revision |
 | §7 Catalyst/Conduit | optional optimization | deferred until measured baseline justifies it |
-| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render surfaces; CAD regions/export/variant, sample/compare and independent video pending |
+| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render/video/filter surfaces; CAD regions/export/variant and sample/compare pending |
 | §9 CI and negative tests | `scripts/check_cpu.py`, generated workflow, tests | local gate green; hardware gates remain opt-in and scoped |
 
 ## Ordered runnable slices
@@ -71,8 +81,8 @@ lease bypass or resource override was used.
 | Slice | Acceptance | State |
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |
-| P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | implemented, CPU verified; packaged qualification next |
-| P1b | independent registered-frame video plans, lifecycle and source mutation rejection | implemented; CPU tests pass; packaged lifecycle qualification pending |
+| P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | complete at the recorded package/hardware scope; packaged mutation/lifecycle/exports pass |
+| P1b | independent registered-frame video plans, lifecycle and source mutation rejection | complete at the recorded package/hardware scope; CLI/MCP frame mutation, restart/retry and release pass |
 | P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation implemented; CLI/MCP/schema CPU gates pass; native recipe/mesh execution and stage isolation pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | source-bound v4 gradient/CLI/MCP and separate native candidate implemented; CPU gates pass; native build/reference/lifecycle/trace qualification pending |
 | P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | pending |
@@ -87,9 +97,8 @@ lease bypass or resource override was used.
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.
   CUDA remains best-effort; available AMD work continues independently.
-- The existing pinned ParaView renderer has no established HIP numerical filter
-  stack. Resolve exact bundled VTK/filter-library compatibility before packaging
-  that separate compute stage.
+- The separate compatible VTK/Viskores/Kokkos HIP filter candidate is implemented;
+  guarded build, actual kernel/reference and resource qualification are pending.
 - Real environmental claims need geometry, material/contact/wetting/optical data,
   operating histories, acceptance limits and prototype evidence. Synthetic native
   reference implementation can progress; missing physical inputs stay explicit.

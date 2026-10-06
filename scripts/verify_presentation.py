@@ -320,7 +320,7 @@ def main():
                 results.append(
                     {
                         "interface": interface,
-                        "job": job,
+                        "job": outcome,
                         "bundle_records": len(records),
                         "render": render,
                         "active_runtime_retention": active_retention,
@@ -336,6 +336,29 @@ def main():
                     key = f"independent-video-{interface}"
                     if interface == "cli":
                         plan = planned(spec, key, "video")
+                        parent = state / "artifacts" / source_render
+                        original_frame = (parent / "frame0000.png").read_bytes()
+                        (parent / "frame0000.png").write_bytes(
+                            b"changed before video acknowledgment"
+                        )
+                        rejected_plan = root / "plan-reject-frame-mutation.json"
+                        rejected_plan.write_text(json.dumps(plan["plan"]))
+                        assert (
+                            command(
+                                "--socket",
+                                endpoint,
+                                "job",
+                                "submit",
+                                rejected_plan,
+                                "--approve",
+                                plan["approval_digest"],
+                                "--idempotency-key",
+                                "reject-frame-mutation",
+                                allow_error=True,
+                            )["ok"]
+                            is False
+                        )
+                        (parent / "frame0000.png").write_bytes(original_frame)
                         job = submit(plan, key)
                     else:
                         plan, job = asyncio.run(mcp_submit(spec, key, "video_plan"))
@@ -348,9 +371,30 @@ def main():
                     assert (frames / "frame0000.png").stat().st_ino != (
                         parent / "frame0000.png"
                     ).stat().st_ino
-                    wait_job(
+                    sequence = json.loads((frames / "frame-sequence.json").read_text())
+                    for row in sequence["frames"]:
+                        assert (frames / row["path"]).read_bytes() == (
+                            parent / row["path"]
+                        ).read_bytes()
+                        assert (frames / row["path"]).stat().st_ino != (
+                            parent / row["path"]
+                        ).stat().st_ino
+                    original_frame = (parent / "frame0000.png").read_bytes()
+                    (parent / "frame0000.png").write_bytes(
+                        b"changed after video acknowledgment"
+                    )
+                    running = wait_job(str(binary), endpoint, job["id"], {"running"})
+                    active_retention = retention_snapshot(state, job, binary)
+                    assert admission_record(state, job) is not None
+                    worker.kill()
+                    worker.wait(timeout=5)
+                    worker = start(log)
+                    assert submit(plan, key)["id"] == job["id"]
+                    outcome = wait_job(
                         str(binary), endpoint, job["id"], {"succeeded"}, timeout=130
                     )
+                    assert outcome["invocation_id"] == running["invocation_id"]
+                    (parent / "frame0000.png").write_bytes(original_frame)
                     assert submit(plan, key)["id"] == job["id"]
                     wait_retention_release(state, job)
                     wait_admission_release(state, job)
@@ -378,9 +422,12 @@ def main():
                     independent.append(
                         {
                             "interface": interface,
-                            "job": job,
+                            "job": outcome,
                             "bundle_records": len(records),
                             "video": receipt,
+                            "active_runtime_retention": active_retention,
+                            "frame_mutation_after_acknowledgment": "committed child inodes used through restart/retry",
+                            "restart": "same invocation",
                             "reservation_and_roots_released": True,
                         }
                     )
@@ -435,6 +482,9 @@ def main():
                 },
                 "results": results,
                 "independent_video": independent,
+                "frame_mutation_before_acknowledgment": "rejected"
+                if args.independent_video
+                else "not tested",
                 "source_mutation_before_acknowledgment": "rejected",
                 "source_mutation_after_acknowledgment": "original committed child inodes used through restart/retry",
                 "cancellation": "complete tree; source bytes preserved; roots/reservation released",
