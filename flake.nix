@@ -30,7 +30,7 @@
           then nixpkgs-darwin
           else nixpkgs
         ) {inherit system;}));
-    lib = import ./lib {inherit nixpkgs harbor-meta;};
+    lib = import ./lib {inherit harbor-meta;};
   in {
     inherit lib;
     treefmtModules.solidity = ./nix/treefmt/solidity.nix;

@@ -1,7 +1,4 @@
-{
-  nixpkgs,
-  harbor-meta,
-}: rec {
+{harbor-meta}: rec {
   timezone = harbor-meta.lib.timezone;
   mkEthToolchain = {
     pkgs,
