@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
     flake-parts.url = "github:hercules-ci/flake-parts";
 
     harbor-meta = {
@@ -50,15 +51,29 @@
         };
       };
 
-      perSystem = {pkgs, ...}: let
+      perSystem = {
+        pkgs,
+        system,
+        ...
+      }: let
+        platformNixpkgs =
+          if system == "x86_64-darwin"
+          then inputs.nixpkgs-darwin
+          else inputs.nixpkgs;
         treefmt = inputs.treefmt-nix.lib.evalModule pkgs {
           imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml self.treefmtModules.java self.treefmtModules.kotlin];
           projectRootFile = "flake.nix";
         };
       in {
-        checks = import ./checks {
-          inherit pkgs self;
+        _module.args.pkgs = platformNixpkgs.legacyPackages.${system};
+
+        checks = import ./checks/platform-policy.nix {
+          inherit pkgs;
           lib = self.lib;
+          tests = import ./checks {
+            inherit pkgs self;
+            lib = self.lib;
+          };
         };
 
         formatter = treefmt.config.build.wrapper;
