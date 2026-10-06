@@ -24,7 +24,7 @@ if (!bin || !pluginMjs || !registry || !nix || !nodeBin || !capture || !pklLsp) 
 }
 
 const { createAdapter } = await import("../src/adapter.mjs");
-const { HarborCanixLlm } = await import("../src/opencode.mjs");
+const { HarborLlm } = await import("../src/opencode.mjs");
 
 const drv = (tag) => `/nix/store/00000000000000000000000000000000-${tag}.drv`;
 const scratch = [];
@@ -172,7 +172,7 @@ console.log("consistency: packaged adapter matches adapter under test");
 // a silently-skipped adapter is an operational residual (monitor the
 // session error stream), not a gate failure.
 {
-  await assert.rejects(HarborCanixLlm({}, { ...pluginOptions, registry: "/nonexistent.json" }), /ENOENT/);
+  await assert.rejects(HarborLlm({}, { ...pluginOptions, registry: "/nonexistent.json" }), /ENOENT/);
   console.log("entrypoint: bogus registry refused before any hook exists");
 }
 
@@ -200,7 +200,7 @@ console.log("consistency: packaged adapter matches adapter under test");
     ask: async () => {},
   });
   const verify = (sessionID) =>
-    adapter.shellEnvironment({ cwd: gate, sessionID, harborCanixLlm: 1 }, { env: {} });
+    adapter.shellEnvironment({ cwd: gate, sessionID, harborLlm: 1 }, { env: {} });
   const lspOutput = (sessionID, cwd = gate) => {
     const output = { env: {} };
     return adapter.lspEnvironment({ cwd, sessionID }, output).then(() => output);
@@ -219,8 +219,8 @@ console.log("consistency: packaged adapter matches adapter under test");
   assert.equal(out.env.GATE_SENTINEL, "shell-2");
   assert.equal(preparations, 2);
   const shellOut = { env: {} };
-  await adapter.shellEnvironment({ cwd: nested, sessionID: "a", harborCanixLlm: 1 }, shellOut);
-  assert.equal(shellOut.harborCanixLlmReplace, true);
+  await adapter.shellEnvironment({ cwd: nested, sessionID: "a", harborLlm: 1 }, shellOut);
+  assert.equal(shellOut.harborLlmReplace, true);
   assert.equal(shellOut.env.GATE_SENTINEL, "shell-2");
 
   // Second session is isolated from the first.
@@ -253,7 +253,7 @@ console.log("consistency: packaged adapter matches adapter under test");
 
 // --- Part 4: session.deleted releases through the real plugin entrypoint.
 {
-  const plugin = await HarborCanixLlm({}, pluginOptions);
+  const plugin = await HarborLlm({}, pluginOptions);
   assert.equal(typeof plugin["shell.env"], "function");
   assert.equal(typeof plugin["lsp.env"], "function");
   await plugin.event({ event: { type: "session.deleted", properties: { info: { id: "ghost" } } } });

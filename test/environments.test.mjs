@@ -57,7 +57,7 @@ test("capture runs a fixed target and strips startup injection without revealing
   assert.equal(env.BASH_ENV, undefined);
   assert.equal(env.SECRET_VALUE, "not-for-logs");
   assert.throws(() => parseCapture("missing frame"));
-  assert.throws(() => parseCapture('\0harbor-canix-llm-v1\0{"PATH":3}\0'));
+  assert.throws(() => parseCapture('\0harbor-llm-v1\0{"PATH":3}\0'));
 });
 
 test("switching replaces environments, reuses session cache, and preserves in-flight snapshots", async (t) => {
@@ -146,18 +146,18 @@ test("adapter requires patched boundary and requests exact preparation permissio
   const args = { action: "select", project: "project", shell: "native" };
   await assert.rejects(adapter.execute(args, context), /not verified/);
   await assert.rejects(adapter.shellEnvironment({ cwd: root, sessionID: "session" }, { env: {} }), /lacks/);
-  await adapter.shellEnvironment({ cwd: root, sessionID: "session", harborCanixLlm: 1 }, { env: {} });
+  await adapter.shellEnvironment({ cwd: root, sessionID: "session", harborLlm: 1 }, { env: {} });
   await adapter.execute(args, context);
   assert.equal(requests[0].permission, "harbor_dev_shell_prepare");
   assert.deepEqual(requests[0].patterns, [`project:native:${a}`]);
   assert.deepEqual(requests[0].always, requests[0].patterns);
   const output = { env: { STALE: "must disappear" } };
-  await adapter.shellEnvironment({ cwd: root, sessionID: "session", harborCanixLlm: 1 }, output);
+  await adapter.shellEnvironment({ cwd: root, sessionID: "session", harborLlm: 1 }, output);
   assert.deepEqual(output.env, { PATH: "/native" });
-  assert.equal(output.harborCanixLlmReplace, true);
+  assert.equal(output.harborLlmReplace, true);
   const sessionless = { env: {} };
-  await adapter.shellEnvironment({ cwd: root, harborCanixLlm: 1 }, sessionless);
-  assert.equal(sessionless.harborCanixLlmReplace, undefined);
+  await adapter.shellEnvironment({ cwd: root, harborLlm: 1 }, sessionless);
+  assert.equal(sessionless.harborLlmReplace, undefined);
 });
 
 test("real child processes see replacement and removal, not parent mutation", async (t) => {
@@ -185,9 +185,9 @@ test("adapter does not share handshakes or accept command arguments", async (t) 
   const adapter = createAdapter(registry, async () => ({ PATH: "/native" }));
   const context = { sessionID: "one", directory: root, ask: async () => {} };
   const args = { action: "select", project: "project", shell: "native" };
-  await adapter.shellEnvironment({ cwd: root, harborCanixLlm: 1 }, { env: {} });
+  await adapter.shellEnvironment({ cwd: root, harborLlm: 1 }, { env: {} });
   await assert.rejects(adapter.execute(args, context), /not verified/);
-  await adapter.shellEnvironment({ cwd: root, sessionID: "one", harborCanixLlm: 1 }, { env: {} });
+  await adapter.shellEnvironment({ cwd: root, sessionID: "one", harborLlm: 1 }, { env: {} });
   await assert.rejects(adapter.execute(args, { ...context, sessionID: "two" }), /not verified/);
   await assert.rejects(adapter.execute({ ...args, command: "sh" }, context), /commands and overrides/);
 });

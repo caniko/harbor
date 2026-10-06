@@ -41,7 +41,7 @@ export async function waitForEnvironmentApproval({ request, sessionID, approval,
 }
 
 export default {
-  id: "canix.project-environment-prototype",
+  id: "harbor-llm.project-environment-prototype",
   async setup(ctx) {
     const { roots, direnv, nix, system, serverURL } = ctx.options;
     const backend = new URL(serverURL);
@@ -76,6 +76,7 @@ export default {
         ...ctx.options.bootstrapEnvironment,
       },
       consistencyLocks: ctx.options.consistencyLocks,
+      preparationLockDirectory: ctx.options.preparationLockDirectory,
       direnvApproval: ctx.options.direnvApproval,
       preparationTimeoutMs: ctx.options.preparationTimeoutMs,
       setsid: ctx.options.setsid,

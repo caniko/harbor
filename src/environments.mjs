@@ -5,7 +5,7 @@ import path from "node:path";
 
 const identifier = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 const derivation = /^\/nix\/store\/[0-9abcdfghijklmnpqrsvwxyz]{32}-[a-zA-Z0-9+._?=-]+\.drv$/;
-const marker = "\0harbor-canix-llm-v1\0";
+const marker = "\0harbor-llm-v1\0";
 const protectedVariables = /^(BASH_ENV|ENV|SHELLOPTS|BASHOPTS|BASH_FUNC_.*|LD_PRELOAD|LD_AUDIT|NODE_OPTIONS|NODE_PATH|PYTHONSTARTUP|PROMPT_COMMAND|ZDOTDIR)$/;
 // ponytail: retain GC roots for the harness lifetime; per-call refcounts if retention becomes costly.
 const profileRoots = new Set();
@@ -56,7 +56,7 @@ export function parseCapture(stdout) {
   }
   if (!env || Array.isArray(env) || typeof env !== "object") throw new Error("Invalid captured environment");
   for (const [key, value] of Object.entries(env)) {
-    if (protectedVariables.test(key) || key.startsWith("OPENCODE_") || key.startsWith("HARBOR_CANIX_LLM_")) {
+    if (protectedVariables.test(key) || key.startsWith("OPENCODE_") || key.startsWith("HARBOR_LLM_")) {
       delete env[key];
       continue;
     }
@@ -82,7 +82,7 @@ export async function prepare({ nix, node, capture, drv, cwd, baseline, signal }
     throw new Error("A private, canonical user runtime directory is required for dev-shell GC roots");
   }
   signal?.throwIfAborted();
-  const profileRoot = await mkdtemp(path.join(runtime, "harbor-canix-llm-"));
+  const profileRoot = await mkdtemp(path.join(runtime, "harbor-llm-"));
   profileRoots.add(profileRoot);
   const env = { ...baseline };
   for (const key of Object.keys(env)) {

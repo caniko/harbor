@@ -49,6 +49,13 @@ test("invalid approval mode fails configuration validation", () => {
   assert.throws(() => createProjectEnvironments({ direnvApproval: "always" }), /auto or manual/);
 });
 
+test("relative preparation lock directories are rejected", () => {
+  assert.throws(() => createProjectEnvironments({
+    roots: ["/workspace"], direnv: "/bin/direnv", nix: "/bin/nix",
+    baseline: {}, preparationLockDirectory: "relative",
+  }), /preparationLockDirectory must be an absolute path/);
+});
+
 test("bootstrap is explicitly configured and never invokes project executables", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bootstrap-environment-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -356,8 +363,32 @@ test("separate processes serialize exports through the same persistent anchor", 
   ]);
   assert.equal(parent.env.PROJECT_TEST, "serialized");
   assert.deepEqual((await readFile(events, "utf8")).trim().split("\n"), ["start", "end", "start", "end"]);
-  const anchors = await readdir(path.join(baseline.XDG_RUNTIME_DIR, "harbor-canix-llm"));
+  const anchors = await readdir(path.join(baseline.XDG_RUNTIME_DIR, "harbor-llm"));
   assert.equal(anchors.length, 1, "the released anchor remains present");
+});
+
+test("an explicitly configured transition directory coordinates separate processes", integration, async (t) => {
+  const { projects: [cwd], baseline } = await fixture(t, { direnvApproval: "auto" });
+  const directory = path.join(baseline.XDG_RUNTIME_DIR, "existing-preparation-locks");
+  const options = { roots: [cwd], baseline, direnv, nix,
+    system: process.arch === "arm64" ? "aarch64-linux" : "x86_64-linux",
+    direnvApproval: "auto", preparationLockDirectory: directory };
+  const environments = createProjectEnvironments(options);
+  await writeFile(path.join(cwd, ".envrc"), 'mkdir busy || exit 19\necho start >> events\nsleep 0.2\necho end >> events\nrmdir busy\nexport PROJECT_TEST="transition"\n');
+  const script = `
+    import { createProjectEnvironments } from ${JSON.stringify(new URL("../src/project-environment.mjs", import.meta.url).href)};
+    const environments = createProjectEnvironments(${JSON.stringify(options)});
+    await environments.resolve({sessionID: "child", cwd: ${JSON.stringify(cwd)}});
+  `;
+  await Promise.all([
+    environments.resolve({sessionID: "parent", cwd}),
+    exec(process.execPath, ["--input-type=module", "-e", script], {env: baseline}),
+  ]);
+  assert.deepEqual((await readFile(path.join(cwd, "events"), "utf8")).trim().split("\n"), ["start", "end", "start", "end"]);
+  assert.equal((await readdir(directory)).length, 1);
+  const inode = (await stat(path.join(directory, (await readdir(directory))[0]))).ino;
+  await environments.resolve({sessionID: "again", cwd});
+  assert.equal((await stat(path.join(directory, (await readdir(directory))[0]))).ino, inode);
 });
 
 test("auto is default and approves only when preparation is requested", integration, async (t) => {

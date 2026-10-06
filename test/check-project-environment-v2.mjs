@@ -42,7 +42,7 @@ const url = `http://127.0.0.1:${socket.address().port}`;
 await new Promise((resolve) => socket.close(resolve));
 await writeFile(`${probe}/server.js`, `
 import {writeFile} from "node:fs/promises";
-export default {id:"canix.env-probe", async setup(ctx) {
+export default {id:"harbor-llm.env-probe", async setup(ctx) {
  await ctx.command.transform(editor => editor.add({name:"env-probe", async execute({sessionID,prompt}) {
   const input = JSON.parse(prompt.text);
   const shell = (await ctx.tool.list()).find(tool => tool.name === "shell");
@@ -75,7 +75,7 @@ try {
  await request("GET",`/api/config?${query}`);
  for (let i=0;i<100;i++) {
   const plugins = await request("GET",`/api/plugin?${query}`);
-  if (plugins.data.some(p=>p.id==="canix.env-probe" && p.state.status==="active")) break;
+  if (plugins.data.some(p=>p.id==="harbor-llm.env-probe" && p.state.status==="active")) break;
   await new Promise(resolve=>setTimeout(resolve,100));
  }
  const create = async (effect = "allow") => (await request("POST","/api/session",{location:{directory:a},permissions:[{action:"*",resource:"*",effect:"allow"},{action:"shell",resource:"*",effect}]})).data.id;

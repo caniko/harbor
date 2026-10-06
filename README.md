@@ -1,9 +1,10 @@
-# harbor-canix-llm
+# harbor-llm
 
-Canix-specific harness orchestration, starting with session/project-scoped
-dev-shell switching in OpenCode. Language Harbors still own compilers and
-their dev shells. `harbor-meta` owns generic shell composition. This project
-owns personal harness policy and adapters; Canix supplies the approved projects.
+Generic harness integrations, starting with session/project-scoped dev-shell
+switching in OpenCode. Language Harbors own compilers and their dev shells;
+`harbor-meta` owns generic shell composition. Consumers supply project roots,
+approval policy and backend configuration. Model serving and provider catalogs
+belong to inference integrations, separate from this environment engine.
 
 ## Contract
 
@@ -200,15 +201,16 @@ permits an in-memory relock even when both flags are supplied.
 
 `consistencyLocks` maps canonical project roots to absolute persistent anchors.
 Exports and catalog queries take shared locks; a cooperating declaration/lock
-promotion takes the same anchor exclusively. Configure Canix's anchor as
-`/data/nvme0/can/canix/.git/environment-preparation.lock`. The lock covers definition
+promotion takes the same anchor exclusively. For example, configure an anchor
+at `/workspaces/example/.git/environment-preparation.lock`. The lock covers definition
 visibility only; it does not replace evaluation or nix-direnv layout locks.
 
 The old registered-tool wrapper's direct-shell bypass is closed in that modified
 candidate: both paths now wait at the same hook, and native command denial still
 prevents side effects. This is not evidence that unmodified upstream is ready.
 PTYs and formatters still need equivalent context/coverage; this entrypoint is
-not yet an all-commands production policy. Canix does not apply this core patch.
+not yet an all-commands production policy. Verify the native hook capability
+against the exact backend selected by the consumer.
 
 Run the model-free native-executor canary against an explicit candidate:
 
@@ -233,45 +235,52 @@ environment preparation, not a separate language-server implementation.
 ### V1 environment adapter
 
 After publishing and locking this flake, import
-`inputs.harbor-canix-llm.homeManagerModules.default`. Minimal consumer:
+`inputs.harbor-llm.homeManagerModules.default`. Minimal V1 consumer:
 
 ```nix
-{inputs, pkgs, ...}: {
-  imports = [inputs.harbor-canix-llm.homeManagerModules.default];
+{inputs, pkgs, compatibleOpencode, ...}: {
+  imports = [inputs.harbor-llm.homeManagerModules.default];
   programs.opencode = {
     enable = true;
-    package = inputs.harbor-canix-llm.lib.patchOpencode pkgs.opencode;
+    package = compatibleOpencode;
   };
-  programs.harborCanixLlm = {
+  programs.harborLlm = {
     enable = true;
     opencode.enable = true;
-    projects.modde = {
-      root = "/data/nvme0/can/canix/projects/repos/owned/rs-modde";
+    opencode.apiVersion = "v1";
+    projects.example = {
+      root = "/workspaces/example";
       shells = {
-        default = inputs.modde.devShells.${pkgs.stdenv.hostPlatform.system}.default;
-        docs = inputs.modde.devShells.${pkgs.stdenv.hostPlatform.system}.docs;
+        default = inputs.example.devShells.${pkgs.stdenv.hostPlatform.system}.default;
+        docs = inputs.example.devShells.${pkgs.stdenv.hostPlatform.system}.docs;
       };
     };
   };
 }
 ```
 
-Patch the real OpenCode derivation, not a launcher wrapper. Canix's scoped
-launcher must carry `harborCanixLlmEnvironmentVersion = 1` in its passthru after
-wrapping that patched runtime. The Home Manager assertion rejects an unmarked
-package. The adapter also requires a runtime hook handshake before selection;
-the package marker alone is not execution evidence.
+`compatibleOpencode` must implement the neutral version-1 replacement contract:
+the `shell.env` input carries `harborLlm: 1`, and `harborLlmReplace: true` in
+the output requests full environment replacement. Permission checks precede
+preparation and replacement. The package exposes
+`harborLlmEnvironmentVersion = 1` in its passthru, preserved by any wrapper.
+The module rejects an unmarked V1 package, and the adapter independently
+requires the runtime handshake before selection. A package marker alone is
+not execution evidence. Runtime patches and architecture-specific process
+policies belong to the consumer's integration layer.
 
-The patch is targeted at Canix's `21105065b9e74d80f4f1c85b082e546ec9254791`
-OpenCode source. That shipped revision does not have the local checkout's
-uncommitted direnv loader. The patch introduces full-environment replacement
-after normal command permission checks and preserves the shipped baseline when
-no environment is selected. It neither loads nor auto-approves .envrc. A future
-direnv integration must load only on the no-selection branch. The runtime wrapper
-sets `HARBOR_CANIX_LLM_REQUIRE_LEGACY=1`; V2 Bash explicitly fails after permission
-checking because that execution path has no replacement hook. Review patch
-applicability and permission ordering when updating the harness. Do not enable
-the adapter on unsupported runtimes or through a source that changes this order.
+V2 is the module's default API. Set `programs.harborLlm.opencode.options`
+with explicit `roots`, `serverURL` and managed `opencode` executable (or supply
+the native service credential at runtime). The module supplies immutable
+direnv/Nix/setsid/flock paths. V1 uses `plugin`; V2 uses `plugins`; only one
+entrypoint is rendered. The V2 runtime must expose the session-aware native
+shell hook described above.
+
+`preparationLockDirectory` optionally selects an absolute persistent lock
+directory. Its default is `harbor-llm` under the private runtime directory,
+or the user's cache fallback. Integrations migrating an existing installation
+must configure the old directory until all old preparation processes have
+drained. Keep the same anchor inodes throughout that transition.
 
 Restart OpenCode once after installing the module. Run an ordinary Bash call to
 verify the replacement hook (a direnv rejection can still establish the hook
@@ -287,8 +296,8 @@ not reused across sessions. Private runtime profiles retain toolchain GC roots
 for the harness process lifetime; normal exit removes them, while a crash may
 leave them until reboot. These profiles contain Nix store references, not
 captured credentials. No cache publication or credential refresh is
-performed by this adapter. Canix operators may pre-realize approved shells
-through `canix cache build` under their normal private-cache policy.
+performed by this adapter. Operators may pre-realize approved shells through
+their normal build and cache publication workflow.
 
 Hooks that depend on an interactive TTY, leave background services running, or
 export paths into Nix's disposable preparation directory are not supported.
@@ -300,12 +309,11 @@ project-independent setup in language Harbor hooks, such as Harbor's Cargo cache
 
 ```sh
 node --test test/*.test.mjs
-node test/check-opencode.mjs /path/to/the-pinned-opencode-source
+treefmt --ci
 ```
 
-The second command patches temporary copies and verifies permission ordering,
-full child environment replacement, and preservation of the harness OOM policy.
-It does not modify the OpenCode checkout. Flake checks expose
-the stdlib tests and the `harbor-meta` dev-shell check. Live OpenCode permission
+Flake checks expose the stdlib tests, packaged plugin entrypoints, module
+evaluation, formatting and the `harbor-meta` dev-shell check. Runtime patch
+qualification belongs to the integration that owns the patch. Live OpenCode permission
 denial, two-shell switching, and Rust compilation still require deploying the
 patched runtime. Unit tests do not establish those live integration guarantees.

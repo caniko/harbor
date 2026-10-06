@@ -4,7 +4,7 @@ self: {
   pkgs,
   ...
 }: let
-  cfg = config.programs.harborCanixLlm;
+  cfg = config.programs.harborLlm;
   registryText = builtins.toJSON {
     version = 1;
     projects =
@@ -17,28 +17,46 @@ self: {
       cfg.projects;
   };
   registry = assert lib.all (context: !(context.allOutputs or false)) (builtins.attrValues (builtins.getContext registryText));
-    pkgs.writeText "harbor-canix-llm-registry.json" registryText;
-  runtime = "${cfg.package}/lib/harbor-canix-llm/src";
-  opencodeSettings = {
-    plugin = [
-      [
-        "${runtime}/opencode.mjs"
+    pkgs.writeText "harbor-llm-registry.json" registryText;
+  runtime = "${cfg.package}/lib/harbor-llm/src";
+  opencodeSettings =
+    if cfg.opencode.apiVersion == "v1"
+    then {
+      plugin = [
+        [
+          "${runtime}/opencode.mjs"
+          {
+            inherit registry;
+            nix = lib.getExe pkgs.nix;
+            node = lib.getExe pkgs.nodejs;
+            capture = "${runtime}/capture.mjs";
+          }
+        ]
+      ];
+      permission = {
+        harbor_devshell = "allow";
+        harbor_dev_shell_prepare = "ask";
+      };
+    }
+    else {
+      plugins = [
         {
-          inherit registry;
-          nix = lib.getExe pkgs.nix;
-          node = lib.getExe pkgs.nodejs;
-          capture = "${runtime}/capture.mjs";
+          package = "${cfg.package}/lib/harbor-llm/plugins/project-environment-prototype";
+          options =
+            {
+              direnv = lib.getExe pkgs.direnv;
+              nix = lib.getExe pkgs.nix;
+              setsid = "${pkgs.util-linux}/bin/setsid";
+              flock = "${pkgs.util-linux}/bin/flock";
+              system = pkgs.stdenv.hostPlatform.system;
+            }
+            // cfg.opencode.options;
         }
-      ]
-    ];
-    permission = {
-      harbor_devshell = "allow";
-      harbor_dev_shell_prepare = "ask";
+      ];
     };
-  };
 in {
-  options.programs.harborCanixLlm = {
-    enable = lib.mkEnableOption "Canix LLM harness orchestration";
+  options.programs.harborLlm = {
+    enable = lib.mkEnableOption "generic LLM harness integrations";
     package = lib.mkOption {
       type = lib.types.package;
       default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
@@ -54,10 +72,20 @@ in {
       });
     };
     opencode.enable = lib.mkEnableOption "OpenCode environment replacement adapter";
+    opencode.apiVersion = lib.mkOption {
+      type = lib.types.enum ["v1" "v2"];
+      default = "v2";
+      description = "Native plugin API. V1 requires the versioned environment replacement capability.";
+    };
+    opencode.options = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = {};
+      description = "Explicit V2 project environment options, including roots, backend URL and bootstrap environment.";
+    };
     opencode.configFile = lib.mkOption {
       type = lib.types.package;
       readOnly = true;
-      default = pkgs.writeText "harbor-canix-llm-opencode.json" (builtins.toJSON opencodeSettings);
+      default = pkgs.writeText "harbor-llm-opencode.json" (builtins.toJSON opencodeSettings);
       description = "Harbor-only configuration overlay for a scoped backend rollout through OPENCODE_CONFIG, without replacing unrelated harness settings.";
     };
   };
@@ -65,15 +93,15 @@ in {
     assertions = [
       {
         assertion = pkgs.stdenv.hostPlatform.isLinux;
-        message = "harbor-canix-llm currently supports Linux only";
+        message = "harbor-llm currently supports Linux only";
       }
       {
         assertion = !cfg.opencode.enable || config.programs.opencode.enable;
-        message = "Enable OpenCode before enabling its harbor-canix-llm adapter";
+        message = "Enable OpenCode before enabling its harbor-llm adapter";
       }
       {
-        assertion = !cfg.opencode.enable || (config.programs.opencode.package.harborCanixLlmEnvironmentVersion or 0) == 1;
-        message = "Apply harbor-canix-llm.lib.patchOpencode to the actual OpenCode runtime and preserve its environment-version passthru on wrappers";
+        assertion = !cfg.opencode.enable || cfg.opencode.apiVersion != "v1" || (config.programs.opencode.package.harborLlmEnvironmentVersion or 0) == 1;
+        message = "The V1 runtime must implement Harbor environment replacement contract version 1; wrappers must preserve its harborLlmEnvironmentVersion capability";
       }
     ];
     programs.opencode.settings = lib.mkIf cfg.opencode.enable opencodeSettings;

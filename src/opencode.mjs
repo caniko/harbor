@@ -3,8 +3,8 @@ import { tool } from "@opencode-ai/plugin";
 import { createAdapter } from "./adapter.mjs";
 import { prepare } from "./environments.mjs";
 
-export const HarborCanixLlm = async (_context, options) => {
-  if (process.platform !== "linux") throw new Error("harbor-canix-llm currently supports Linux only");
+export const HarborLlm = async (_context, options) => {
+  if (process.platform !== "linux") throw new Error("harbor-llm currently supports Linux only");
   const registryPath = await realpath(options.registry);
   if (!registryPath.startsWith("/nix/store/")) throw new Error("Registry must be an operator-installed Nix store file");
   const registry = JSON.parse(await readFile(registryPath, "utf8"));

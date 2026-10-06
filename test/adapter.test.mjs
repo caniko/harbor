@@ -17,7 +17,7 @@ async function fixture(t, projects) {
   const select = async (session = "one", cwd = root) => {
     // Selections require a verified replacement contract, established by an
     // ordinary shell-environment resolution first.
-    await adapter.shellEnvironment({ cwd, sessionID: session, harborCanixLlm: 1 }, { env: {} });
+    await adapter.shellEnvironment({ cwd, sessionID: session, harborLlm: 1 }, { env: {} });
     return adapter.execute(
       { action: "select", project: "project", shell: "native" },
       { sessionID: session, directory: root, worktree: root, abort: undefined, ask: async () => {} },
@@ -80,7 +80,7 @@ test("overlapping parent/child selections fail closed, never merged", async (t) 
   const registry = {
     version: 1,
     projects: [
-      { name: "canix", root, shells: { native: a } },
+      { name: "example", root, shells: { native: a } },
       { name: "modde-rs", root: child, shells: { native: a } },
     ],
   };
@@ -88,7 +88,7 @@ test("overlapping parent/child selections fail closed, never merged", async (t) 
   const adapter = createAdapter(registry, async () => ({ PATH: `/capture-${++preparations}` }));
   const ctx = { directory: root, worktree: root };
   const verify = async (session) =>
-    adapter.shellEnvironment({ cwd: root, sessionID: session, harborCanixLlm: 1 }, { env: {} });
+    adapter.shellEnvironment({ cwd: root, sessionID: session, harborLlm: 1 }, { env: {} });
   const pick = async (session, project) => {
     await verify(session);
     return adapter.execute(
@@ -96,17 +96,17 @@ test("overlapping parent/child selections fail closed, never merged", async (t) 
       { sessionID: session, ...ctx, abort: undefined, ask: async () => {} },
     );
   };
-  await pick("one", "canix");
+  await pick("one", "example");
   await pick("one", "modde-rs");
   // Both selections contain the child cwd: resolution must refuse, and the
   // shell hook must refuse the same way.
   await assert.rejects(adapter.lspEnvironment({ cwd: child, sessionID: "one" }, { env: {} }), /clear all but one/);
   await assert.rejects(
-    adapter.shellEnvironment({ cwd: child, sessionID: "one", harborCanixLlm: 1 }, { env: {} }),
+    adapter.shellEnvironment({ cwd: child, sessionID: "one", harborLlm: 1 }, { env: {} }),
     /clear all but one/,
   );
   // Clearing the parent restores the child selection.
-  await adapter.execute({ action: "clear", project: "canix" }, { sessionID: "one" });
+  await adapter.execute({ action: "clear", project: "example" }, { sessionID: "one" });
   const output = { env: {} };
   await adapter.lspEnvironment({ cwd: child, sessionID: "one" }, output);
   assert.equal(output.replace, true);
@@ -119,11 +119,11 @@ test("shell.env behavior is unchanged by the shared lookup", async (t) => {
   assert.deepEqual(output, { env: {} });
   await assert.rejects(
     adapter.shellEnvironment({ cwd: root, sessionID: "one" }, { env: {} }),
-    /lacks the harbor-canix-llm replacement contract/,
+    /lacks the harbor-llm replacement contract/,
   );
   await select();
   const replaced = { env: {} };
-  await adapter.shellEnvironment({ cwd: root, sessionID: "one", harborCanixLlm: 1 }, replaced);
-  assert.equal(replaced.harborCanixLlmReplace, true);
+  await adapter.shellEnvironment({ cwd: root, sessionID: "one", harborLlm: 1 }, replaced);
+  assert.equal(replaced.harborLlmReplace, true);
   assert.equal(replaced.env.LSP_YES, "1");
 });

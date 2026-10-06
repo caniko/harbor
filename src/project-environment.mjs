@@ -128,13 +128,16 @@ const SELECTION_NEEDS_LOCAL_ENVRC = "Shell selection requires a .envrc inside th
 
 // Selection metadata only. Every launch asks direnv to evaluate from the
 // same baseline; nix-direnv owns its build cache and watch invalidation.
-export function createProjectEnvironments({ roots, direnv, nix, system, baseline, bootstrapEnvironment, consistencyLocks = {}, direnvApproval = "auto", preparationTimeoutMs = 600_000, onProgress, setsid = "setsid", flock = "flock" }) {
+export function createProjectEnvironments({ roots, direnv, nix, system, baseline, bootstrapEnvironment, consistencyLocks = {}, preparationLockDirectory, direnvApproval = "auto", preparationTimeoutMs = 600_000, onProgress, setsid = "setsid", flock = "flock" }) {
   if (!["auto", "manual"].includes(direnvApproval)) throw new Error("direnvApproval must be auto or manual");
   if (!Number.isSafeInteger(preparationTimeoutMs) || preparationTimeoutMs <= 0 || preparationTimeoutMs > 3_600_000) {
     throw new Error("preparationTimeoutMs must be a positive integer no greater than 3600000");
   }
   if (!roots?.length || ![...roots, direnv, nix].every((p) => typeof p === "string" && path.isAbsolute(p))) {
     throw new Error("Project environments require absolute roots and executable paths");
+  }
+  if (preparationLockDirectory !== undefined && (typeof preparationLockDirectory !== "string" || !path.isAbsolute(preparationLockDirectory))) {
+    throw new Error("preparationLockDirectory must be an absolute path");
   }
   const selections = new Map();
   const blocked = new Map();
@@ -284,7 +287,7 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
   // frozen copy so no launch can mutate the shared configuration.
   const fallback = () => Object.freeze({ ...base });
   async function preparationLock(envrc) {
-    const directory = path.join(base.XDG_RUNTIME_DIR ?? path.join(base.HOME, ".cache"), "harbor-canix-llm");
+    const directory = preparationLockDirectory ?? path.join(base.XDG_RUNTIME_DIR ?? path.join(base.HOME, ".cache"), "harbor-llm");
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const metadata = await stat(directory);
     if (await realpath(directory) !== directory || metadata.uid !== process.getuid() || (metadata.mode & 0o077)) {
