@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
 
     flake-utils.url = "github:numtide/flake-utils";
 
@@ -48,6 +49,7 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-darwin,
     flake-utils,
     pyproject-nix,
     uv2nix,
@@ -61,6 +63,7 @@
     lib = import ./lib {
       inherit
         nixpkgs
+        nixpkgs-darwin
         pyproject-nix
         uv2nix
         pyproject-build-systems
@@ -97,7 +100,7 @@
 
         checks =
           import ./checks {
-            inherit self pkgs system nixpkgs treefmt-nix git-hooks;
+            inherit self pkgs system nixpkgs nixpkgs-darwin treefmt-nix git-hooks;
             harbor = lib;
             meta = harbor-meta.lib;
           }

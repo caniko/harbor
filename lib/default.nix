@@ -1,5 +1,6 @@
 {
   nixpkgs,
+  nixpkgs-darwin ? nixpkgs,
   pyproject-nix,
   uv2nix,
   pyproject-build-systems,
@@ -43,7 +44,11 @@ in
       overlays ? [],
       config ? {},
     }:
-      import nixpkgs {
+      import (
+        if system == "x86_64-darwin"
+        then nixpkgs-darwin
+        else nixpkgs
+      ) {
         inherit system overlays;
         config =
           {

@@ -4,6 +4,7 @@
   pkgs,
   system,
   nixpkgs,
+  nixpkgs-darwin,
   treefmt-nix,
   git-hooks,
   meta,
@@ -162,7 +163,7 @@ in
       inherit pkgs system;
       flakeNix = ../templates/default/flake.nix;
       inputs = {
-        inherit nixpkgs treefmt-nix git-hooks;
+        inherit nixpkgs nixpkgs-darwin treefmt-nix git-hooks;
         harbor-py = self;
       };
       requiredFiles = [
@@ -176,6 +177,7 @@ in
       ];
       requiredInputs = [
         "harbor-py"
+        "nixpkgs-darwin"
         "treefmt-nix"
         "git-hooks"
       ];
