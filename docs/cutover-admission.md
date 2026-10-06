@@ -7,6 +7,10 @@ Nix evaluation, checks the selected candidate contract before system realization
 and reruns candidate admission under the target's activation lease before changing
 the system profile. Resumes and delegated builds retain these checks.
 
+Manifest symlinks in Nix guard bundles and `/etc` are resolved once before
+dispatch. Every service-user worker receives that same canonical target;
+regular-file reads retain their no-follow protection.
+
 PostgreSQL automatically enrolls when its Harbor-DB lifecycle guard is enabled.
 An enabled unguarded primary is a configuration error. Existing PostgreSQL
 identity, staged-upgrade, recovery snapshot and independent restore acceptance

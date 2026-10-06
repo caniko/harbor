@@ -67,6 +67,22 @@ class CutoverProcessTests(unittest.TestCase):
                 self.assertEqual(json.loads(result.stdout)["status"], "ready")
         self.assertEqual(before, {path: path.read_bytes() for path in before})
 
+    def test_deployed_manifest_symlink_works_through_real_worker_dispatch(self):
+        regular_contract = self.contract
+        self.contract = self.root / "bundle" / "manifest.json"
+        self.contract.parent.mkdir()
+        self.contract.symlink_to(regular_contract)
+        result = self.run_command("certify", "--resource", "archive", "--identity", "historical-corpus",
+                                  "--restore-root", str(self.restore))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        before = {path: path.read_bytes() for path in self.authority.iterdir()}
+        for phase in ("preflight", "activate", "startup"):
+            with self.subTest(phase=phase):
+                result = self.run_command("check", "--phase", phase)
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                self.assertEqual(json.loads(result.stdout)["status"], "ready")
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+
     def test_removed_corpus_blocks_real_dispatch_without_replacement(self):
         (self.source / "historical-object").unlink()
         self.source.rmdir()
