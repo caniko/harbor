@@ -112,6 +112,16 @@ both unchanged acceptance gates remain recorded and required for every solve.
 Time self-convergence establishes neither absolute accuracy nor convergence to
 the continuum on that fixed mesh; the separate analytical/spatial gates do that.
 
+The first worker run of this package rejected its exact-closure check before
+solving. An isolated import reproduced CPython creating
+`/nix/store/__pycache__/...fem_reference.cpython-313.pyc` in the namespace's
+temporary store root; `python -B` removed the unexpected entry with all 53
+declared closure entries still present. Dynamic native adapters now disable
+bytecode generation before helper imports, retaining the exact closure check.
+Regression tests reproduce immutable top-level helper loading and verify that
+an invalid request still rejects before output without adding sibling caches.
+The failed run and its precise diagnosis remain retained; no mount is broadened.
+
 Bounded native time/output counts and explicit mesh refinement are checked
 before execution. The opt-in qualifier runs under the guarded Canix runtime
 lease and a bounded 2-GiB/no-swap/two-CPU service. Worker integration and its

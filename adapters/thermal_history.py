@@ -569,6 +569,10 @@ def verify(spec, nodes, cells, fields):
 
 
 def main():
+    # Helper scripts are top-level immutable store files. CPython otherwise
+    # creates a writable sibling cache in the namespace's temporary store root.
+    # Keep the operation closure exact; scientific output has its own budget.
+    sys.dont_write_bytecode = True
     if len(sys.argv) != 3 or sys.argv[1] != "run":
         raise ValueError("usage: harbor-cad-thermal run request.json")
     source = importlib.util.spec_from_file_location("harbor_cad_fem", "@fem_bridge@")
