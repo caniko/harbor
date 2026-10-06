@@ -85,7 +85,7 @@ fn failed_job_exports_qualified_status_and_every_registered_diagnostic() {
     assert_eq!(execution["physical_validation"], "unqualified");
     assert_eq!(
         execution["plan"]["case"]["resolution"],
-        plan.case.resolution
+        plan.channel_case().unwrap().resolution
     );
     assert_eq!(
         std::fs::read(destination.join("failed-native/tolerance.log")).unwrap(),
@@ -101,7 +101,7 @@ fn historical_plan_keeps_its_original_inputs_when_current_applicability_rejects_
     case.applicability.formulation = "periodic_forced_channel".into();
     case.acceleration.value = 0.001;
     let mut prior = ExecutionPlan::openlb_reference(case, "research".into()).unwrap();
-    prior.case.acceleration.value = 0.1;
+    prior.case.as_mut().unwrap().acceleration.value = 0.1;
     let id = uuid::Uuid::new_v4().to_string();
     // Simulate an older worker that accepted this immutable plan and recorded
     // a failed execution. The new worker must forbid relaunch, while preserving

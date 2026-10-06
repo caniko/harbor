@@ -45,10 +45,7 @@ fn parse_importer_mounts(data: &str, executable: &Path) -> Result<Vec<PathBuf>> 
 }
 
 pub fn mount_importer(command: &mut Command, manifest: &Path, executable: &Path) -> Result<()> {
-    command.args(["--dir", "/nix", "--dir", "/nix/store"]);
-    for path in importer_mounts(manifest, executable)? {
-        command.arg("--ro-bind").arg(&path).arg(&path);
-    }
+    mount_closure(command, manifest, executable)?;
     command
         .args(["--ro-bind"])
         .arg(manifest)
@@ -66,6 +63,14 @@ pub fn mount_importer(command: &mut Command, manifest: &Path, executable: &Path)
         if let Some(value) = std::env::var_os(name) {
             command.args(["--setenv", name]).arg(value);
         }
+    }
+    Ok(())
+}
+
+pub fn mount_closure(command: &mut Command, manifest: &Path, executable: &Path) -> Result<()> {
+    command.args(["--dir", "/nix", "--dir", "/nix/store"]);
+    for path in importer_mounts(manifest, executable)? {
+        command.arg("--ro-bind").arg(&path).arg(&path);
     }
     Ok(())
 }

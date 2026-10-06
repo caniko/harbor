@@ -17,6 +17,7 @@
   adapter = pkgs.writeShellScriptBin "harbor-cad-fem" ''
     exec ${pkgs.python313}/bin/python3 ${bridge} "$@"
   '';
+  closure = pkgs.closureInfo {rootPaths = [adapter];};
 in {
   fem-cpu = adapter;
   inherit gmsh calculix;
@@ -26,5 +27,17 @@ in {
     fem = "${adapter}/bin/harbor-cad-fem";
     backend = "cpu";
     qualification = "unqualified";
+  });
+  runtime-fem-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    fem = "${adapter}/bin/harbor-cad-fem";
+    fem_closure = "${closure}/store-paths";
+    cad = null;
+    cad_closure = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+    filter = null;
   });
 }

@@ -460,6 +460,31 @@ def main():
     raw = read_regular(sys.argv[2], 1024**2)
     spec = strict_json(raw)
     validate(spec)
+    sandbox = None
+    if os.environ.get("HARBOR_CAD_FEM_POLICY"):
+        if os.environ["HARBOR_CAD_FEM_POLICY"] != "harbor-cad-fem-cpu-v1":
+            raise ValueError("exact CPU FEM sandbox policy required")
+        mounts = set(
+            read_regular("/fem-runtime-closure.txt", 2 * 1024**2).decode().splitlines()
+        )
+        if set(map(str, Path("/nix/store").iterdir())) != mounts:
+            raise ValueError("FEM sandbox must expose only its operation closure")
+        checks = {
+            "operation_closure_only": True,
+            "no_gpu_nodes": not Path("/dev/dri").exists()
+            and not Path("/dev/kfd").exists(),
+            "no_sysfs": not Path("/sys").exists(),
+            "no_host_home": set(Path("/home").iterdir()) == {Path("/home/worker")},
+            "no_session_bus": not Path("/run/user").exists()
+            and "DBUS_SESSION_BUS_ADDRESS" not in os.environ,
+            "no_worker_socket": not list(Path("/work").glob("*.sock")),
+            "network_namespace_isolated": os.readlink("/proc/self/ns/net")
+            != os.environ["HARBOR_CAD_HOST_NETNS"],
+            "descriptor_readonly": os.statvfs(sys.argv[2]).f_flag & os.ST_RDONLY != 0,
+        }
+        if not all(checks.values()):
+            raise ValueError("CPU FEM sandbox boundary failed")
+        sandbox = {"policy": os.environ["HARBOR_CAD_FEM_POLICY"], "checks": checks}
     if any(Path.cwd().glob("reference.*")) or any(Path.cwd().glob("mesh.json*")):
         raise ValueError("new stage-local FEM directory required")
     start = time.monotonic()
@@ -531,6 +556,7 @@ def main():
         "calculix_version": "@ccx_version@",
         "calculix_source_sha256": "9c88385c10fb04f5dc6c4e98027a51bebdd8aee3920e05190d6c1dd08357d6e7",
         "gmsh_version": "@gmsh_version@",
+        "gmsh_source_sha256": "be3f66f225d27ba9fa014f07e83169285da8a051b0e8ab7103d88066b39bdd3e",
         "mesh_sha256": hashlib.sha256(
             read_regular("mesh.json", 32 * 1024**2)
         ).hexdigest(),
@@ -548,6 +574,8 @@ def main():
         "convergence": "static analytical consistency only; no transient/refinement claim",
         "physical_validation": "unqualified",
     }
+    if sandbox is not None:
+        receipt["sandbox"] = sandbox
     atomic_json("fem-reference-receipt.json", receipt)
     print(json.dumps(receipt, allow_nan=False, indent=2))
 

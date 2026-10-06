@@ -18,7 +18,7 @@ fn source(plan: &ExecutionPlan) -> RetainedSource {
         authorization_digest: "b".repeat(64),
         snapshot_sha256: "c".repeat(64),
         artifact_id: "d".repeat(64),
-        science_id: plan.case.science_id().unwrap(),
+        science_id: plan.science_id().unwrap(),
         bytes: 4096,
     }
 }
@@ -71,10 +71,7 @@ fn numerical_filter_is_source_bound_compute_only_and_has_an_independent_approval
     )
     .unwrap();
     assert_eq!(plan.schema_version, 4);
-    assert_eq!(
-        plan.case.science_id().unwrap(),
-        original.case.science_id().unwrap()
-    );
+    assert_eq!(plan.science_id().unwrap(), original.science_id().unwrap());
     assert_eq!(plan.observation.retained_times_s, vec![20.]);
     assert_eq!(plan.stages.len(), 2);
     assert!(matches!(
@@ -170,10 +167,7 @@ fn presentation_changes_camera_without_solver_or_science_changes() {
         ExecutionPlan::presentation(&original, source(&original), request(), "research".into())
             .unwrap();
     assert_eq!(plan.schema_version, 2);
-    assert_eq!(
-        plan.case.science_id().unwrap(),
-        original.case.science_id().unwrap()
-    );
+    assert_eq!(plan.science_id().unwrap(), original.science_id().unwrap());
     assert_eq!(plan.observation.retained_times_s, vec![0., 20.]);
     assert_eq!(plan.stages.len(), 2);
     assert!(matches!(plan.stages[0].operation, StageOperation::Render));
@@ -285,10 +279,7 @@ fn independent_video_has_only_media_stages_and_preserves_source_science() {
     )
     .unwrap();
     assert_eq!(plan.schema_version, 3);
-    assert_eq!(
-        plan.case.science_id().unwrap(),
-        original.case.science_id().unwrap()
-    );
+    assert_eq!(plan.science_id().unwrap(), original.science_id().unwrap());
     assert_eq!(
         plan.observation.retained_times_s,
         render.observation.retained_times_s

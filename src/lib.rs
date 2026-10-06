@@ -5,6 +5,7 @@ pub mod contracts;
 pub mod devices;
 pub mod estimates;
 pub mod execution;
+pub mod fem;
 pub mod fields;
 pub mod filters;
 pub mod frames;

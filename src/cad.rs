@@ -119,11 +119,11 @@ pub fn regions(store: &Store, id: &str) -> Result<RegionReport> {
     let (evidence, value) = qualification::registered_json(store, id, "regions.json")?
         .ok_or_else(|| invalid("registered CAD regions required"))?;
     let snapshot: RegionSnapshot = serde_json::from_value(value)?;
-    snapshot.verify(&plan.case, capability.operation.clone())?;
+    snapshot.verify(plan.channel_case()?, capability.operation.clone())?;
     Ok(RegionReport {
         schema_version: 1,
         job_id: id.into(),
-        science_id: plan.case.science_id()?,
+        science_id: plan.science_id()?,
         execution_id: plan.id()?,
         execution_binding_digest: digest(&binding)?,
         evidence,

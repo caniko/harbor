@@ -93,6 +93,12 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Plan a static synthetic Gmsh/CalculiX CPU reference with explicit SI inputs.
+    PlanFemReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     Init,
     Validate {
         file: PathBuf,
@@ -260,6 +266,10 @@ fn run(cli: Cli) -> Result<()> {
             return worker::run_job(&state, &profile, &id);
         }
         Commands::Case { command } => match command {
+            Case::PlanFemReference { file, policy } => {
+                let plan = ExecutionPlan::fem_reference(read(&file)?, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
             Case::Init => {
                 return print(&CaseSpec::reference());
             }

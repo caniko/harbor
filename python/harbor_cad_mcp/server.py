@@ -96,6 +96,11 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"simulation", "all"}:
 
         @server.tool()
+        async def case_plan_fem_reference(spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan an explicit static synthetic CPU FEM job; no native imports or solve."""
+            return await request("plan_fem_reference", spec=spec)
+
+        @server.tool()
         async def filter_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
             """Plan required HIP point-gradient filtering from one registered retained time.
 

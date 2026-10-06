@@ -78,19 +78,20 @@ fn changed_retention_geometry_or_resolution_cannot_keep_the_original_low_estimat
         "full-field output must scale with every retained time"
     );
     let mut refined = plan.clone();
-    refined.case.resolution *= 2;
+    refined.case.as_mut().unwrap().resolution *= 2;
     assert!(
         refined.validate().is_err(),
         "distributions and halo allocation grow under refinement"
     );
     let mut longer = plan.clone();
-    longer.case.length.value *= 2.;
+    longer.case.as_mut().unwrap().length.value *= 2.;
     assert!(
         longer.validate().is_err(),
         "whole allocated lattice must be budgeted"
     );
     let mut forged = plan;
-    forged.observation.max_artifact_bytes = u64::from(forged.case.resolution) * 128;
+    forged.observation.max_artifact_bytes =
+        u64::from(forged.channel_case().unwrap().resolution) * 128;
     assert!(
         forged.validate().is_err(),
         "old generic point-count gate cannot admit native fields"

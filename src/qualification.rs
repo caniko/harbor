@@ -130,7 +130,7 @@ fn numerical(
         StageOperation::ChannelReference => (
             value,
             "numerical_error",
-            plan.case.applicability.numerical_tolerance,
+            plan.channel_case()?.applicability.numerical_tolerance,
             "analytical channel residual".into(),
             "synthetic reference only".into(),
             "relative_residual",
@@ -141,7 +141,7 @@ fn numerical(
             let tolerance = body["tolerance"]
                 .as_f64()
                 .ok_or_else(|| invalid("numerical tolerance missing"))?;
-            if tolerance != plan.case.applicability.numerical_tolerance {
+            if tolerance != plan.channel_case()?.applicability.numerical_tolerance {
                 return Err(invalid(
                     "receipt weakened or changed the approved numerical tolerance",
                 ));
@@ -160,6 +160,12 @@ fn numerical(
                         .ok_or_else(|| invalid("numerical status missing"))?,
                 ),
             )
+        }
+        StageOperation::FemReference => {
+            return Ok((
+                EvidenceState::ReportedPass,
+                Some(crate::fem::verify_receipt(plan, value)?),
+            ));
         }
         _ => return Ok((EvidenceState::NotAssessed, None)),
     };
@@ -223,6 +229,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             ),
             StageOperation::Render => ("render-receipt.json", Some("ParaView")),
             StageOperation::Video => ("video-receipt.json", Some("FFmpeg")),
+            StageOperation::FemReference => {
+                ("stages/fem/fem-reference-receipt.json", Some("CalculiX"))
+            }
             StageOperation::Bundle => continue,
         };
         let loaded = registered_json(store, id, path)?;
@@ -234,10 +243,22 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: plan.case.applicability.formulation.clone(),
-            dimensions: plan.case.applicability.dimensionality,
+            formulation: plan.fem.as_ref().map_or_else(
+                || {
+                    plan.channel_case()
+                        .map(|c| c.applicability.formulation.clone())
+                },
+                |f| Ok(f.formulation().into()),
+            )?,
+            dimensions: plan
+                .case
+                .as_ref()
+                .map_or(3, |c| c.applicability.dimensionality),
             precision: None,
-            refinement: plan.case.resolution,
+            refinement: plan.fem.as_ref().map_or_else(
+                || plan.channel_case().map(|c| c.resolution),
+                |f| Ok(f.resolution),
+            )?,
             backend: stage
                 .selection
                 .as_ref()
@@ -261,7 +282,13 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             };
             capability.convergence =
                 optional_text(&value, "convergence")?.unwrap_or_else(|| "not_assessed".into());
-            for key in ["source_revision", "viskores_revision", "kokkos_revision"] {
+            for key in [
+                "source_revision",
+                "viskores_revision",
+                "kokkos_revision",
+                "gmsh_source_sha256",
+                "calculix_source_sha256",
+            ] {
                 if let Some(text) = optional_text(&value, key)? {
                     capability
                         .declared_source_revisions
@@ -312,7 +339,7 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         scope: "historical_job_evidence".into(),
         job_id: job.id,
         job_state: job.state,
-        science_id: plan.case.science_id()?,
+        science_id: plan.science_id()?,
         execution_id: job.plan_digest,
         execution_binding: binding,
         authorization_digest,
@@ -335,7 +362,11 @@ mod tests {
         case.max_time_s = 20.;
         case.applicability.formulation = "periodic_forced_channel".into();
         let plan = ExecutionPlan::openlb_reference(case, "research".into()).unwrap();
-        let tolerance = plan.case.applicability.numerical_tolerance;
+        let tolerance = plan
+            .channel_case()
+            .unwrap()
+            .applicability
+            .numerical_tolerance;
         let good = serde_json::json!({"numerical_verification":{
             "passed":true,"relative_l2_error":tolerance/2.,"tolerance":tolerance,
             "reference":"analytical parallel plate velocity","scope":"velocity only; pressure unqualified"}});

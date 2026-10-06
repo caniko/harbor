@@ -61,7 +61,7 @@ fn idempotency_is_durable_and_plan_is_immutable() {
     let store = Store::open(&root).unwrap();
     assert_eq!(a.id, store.submit(&plan, "same-key").unwrap().id);
     let mut other = plan.clone();
-    other.case.resolution += 1;
+    other.case.as_mut().unwrap().resolution += 1;
     assert!(store.submit(&other, "same-key").is_err());
 }
 
@@ -74,7 +74,7 @@ fn dag_and_budget_rejections_happen_before_submission() {
     plan.observation.max_artifact_bytes = 1;
     assert!(plan.validate().is_err());
     plan.observation.max_artifact_bytes = 1048576;
-    plan.case.kinematic_viscosity.value = f64::NAN;
+    plan.case.as_mut().unwrap().kinematic_viscosity.value = f64::NAN;
     assert!(plan.validate().is_err());
 }
 
@@ -158,7 +158,7 @@ fn native_cpu_plan_is_explicit_and_keeps_scientific_parameters() {
     case.max_time_s = 20.;
     let plan = ExecutionPlan::openlb_reference(case.clone(), "research".into()).unwrap();
     plan.validate().unwrap();
-    assert_eq!(plan.case.science_id().unwrap(), case.science_id().unwrap());
+    assert_eq!(plan.science_id().unwrap(), case.science_id().unwrap());
     assert!(matches!(
         plan.stages[0].operation,
         StageOperation::CadFixture
@@ -180,7 +180,7 @@ fn cad_inspection_binds_a_source_digest_and_has_no_implicit_solver() {
     };
     let plan =
         ExecutionPlan::cad_inspection(case.clone(), "research".into(), 64 * 1024 * 1024).unwrap();
-    assert_eq!(plan.case.science_id().unwrap(), case.science_id().unwrap());
+    assert_eq!(plan.science_id().unwrap(), case.science_id().unwrap());
     assert_eq!(plan.stages.len(), 2);
     assert!(matches!(
         plan.stages[0].operation,
@@ -191,16 +191,16 @@ fn cad_inspection_binds_a_source_digest_and_has_no_implicit_solver() {
     assert!(ExecutionPlan::cad_inspection(case, "ci".into(), 64 * 1024 * 1024).is_err());
     for sha in [None, Some("b".repeat(63)), Some("g".repeat(64))] {
         let mut corrupted = plan.clone();
-        corrupted.case.geometry.sha256 = sha;
+        corrupted.case.as_mut().unwrap().geometry.sha256 = sha;
         assert!(corrupted.validate().is_err());
     }
     for source in ["", "../outside.FCStd", "/absolute.FCStd"] {
         let mut corrupted = plan.clone();
-        corrupted.case.geometry.source = source.into();
+        corrupted.case.as_mut().unwrap().geometry.source = source.into();
         assert!(corrupted.validate().is_err());
     }
     let mut changed = plan.clone();
-    changed.case.geometry.sha256 = Some("b".repeat(64));
+    changed.case.as_mut().unwrap().geometry.sha256 = Some("b".repeat(64));
     assert_ne!(plan.id().unwrap(), changed.id().unwrap());
 }
 
@@ -274,10 +274,7 @@ fn b1_planning_keeps_compute_render_and_media_independent_and_required() {
     hip.compute.backend = "hip".into();
     hip.compute.backend_uuid = Some("GPU-0123456789abcdef0123456789abcdef".into());
     let hip_plan = ExecutionPlan::b1(case.clone(), hip.clone(), "research".into()).unwrap();
-    assert_eq!(
-        hip_plan.case.science_id().unwrap(),
-        plan.case.science_id().unwrap()
-    );
+    assert_eq!(hip_plan.science_id().unwrap(), plan.science_id().unwrap());
     assert_ne!(hip_plan.id().unwrap(), plan.id().unwrap());
     assert_eq!(
         serde_json::to_value(hip_plan.stages[1].selection.as_ref().unwrap()).unwrap(),
@@ -340,13 +337,13 @@ fn native_approval_rejects_formulation_and_lattice_time_drift() {
     case.max_time_s = 20.;
     let plan = ExecutionPlan::openlb_reference(case, "research".into()).unwrap();
     let mut high_mach = plan.clone();
-    high_mach.case.acceleration.value = 0.1;
+    high_mach.case.as_mut().unwrap().acceleration.value = 0.1;
     assert!(
         high_mach.validate().is_err(),
         "hand-built plans must enforce the same formulation gate"
     );
     let mut extent = plan.clone();
-    extent.case.length.value = 0.0201;
+    extent.case.as_mut().unwrap().length.value = 0.0201;
     assert!(
         extent.validate().is_err(),
         "nonintegral periodic extent cannot be silently rounded"
@@ -358,7 +355,7 @@ fn native_approval_rejects_formulation_and_lattice_time_drift() {
         "distinct SI times collapse on this lattice"
     );
     let mut substep = plan.clone();
-    substep.case.max_time_s = 0.001;
+    substep.case.as_mut().unwrap().max_time_s = 0.001;
     substep.observation.retained_times_s = vec![0., 0.001];
     assert!(
         substep.validate().is_err(),

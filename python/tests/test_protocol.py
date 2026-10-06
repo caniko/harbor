@@ -122,6 +122,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "cad_regions" in names and "cad_submit" in names
                 assert "cold_restart_validate" in names
                 assert "filter_plan" in names
+                assert "case_plan_fem_reference" in names
                 cold = cold_inputs()
                 checked = await client.call_tool(
                     "cold_restart_validate", {"case": cold}
@@ -229,6 +230,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "cad_regions" in names and "cad_submit" not in names
                 assert "cold_restart_validate" not in names
                 assert "filter_plan" not in names
+                assert "case_plan_fem_reference" not in names
                 assert {"render_plan", "video_plan", "presentation_submit"}.issubset(
                     names
                 )
@@ -246,6 +248,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "cad_plan_inspection" in names and "job_submit" not in names
                 assert "cad_regions" in names and "cad_submit" in names
                 assert "job_status" in names and "job_logs" in names
+                assert "case_plan_fem_reference" not in names
                 rejected = await client.call_tool("cad_regions", {"job_id": job["id"]})
                 assert rejected.is_error
                 rejected = await client.call_tool(

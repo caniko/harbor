@@ -14,8 +14,9 @@ fn fixture(root: &Path) -> ExecutionPlan {
     fs::create_dir_all(root.join("tmp/vtkData/data")).unwrap();
     let mut pvd = String::from("<VTKFile type=\"Collection\"><Collection>");
     let mut times = Vec::new();
-    let dx = plan.case.channel_height.value / f64::from(plan.case.resolution);
-    let dt = ((0.8f64 - 0.5) / 3.) * (dx * dx) / plan.case.kinematic_viscosity.value;
+    let case = plan.channel_case().unwrap();
+    let dx = case.channel_height.value / f64::from(case.resolution);
+    let dt = ((0.8f64 - 0.5) / 3.) * (dx * dx) / case.kinematic_viscosity.value;
     for (index, time) in plan.observation.retained_times_s.iter().enumerate() {
         let step = (*time / dt + 0.5).floor() as u64;
         pvd.push_str(&format!(
@@ -39,7 +40,7 @@ fn snapshot_preserves_relative_graph_binds_science_and_detects_changed_bytes() {
     let plan = fixture(&source);
     let root = temp.path().join("snapshot");
     let snapshot = fields::capture(&source, &root, &plan, "exact-execution-binding").unwrap();
-    assert_eq!(snapshot.science_id, plan.case.science_id().unwrap());
+    assert_eq!(snapshot.science_id, plan.science_id().unwrap());
     assert_eq!(snapshot.execution_id, plan.id().unwrap());
     assert_eq!(snapshot.times.len(), 3);
     for file in &snapshot.files {

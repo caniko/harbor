@@ -34,10 +34,12 @@ fn lattice_cells(case: &CaseSpec) -> Result<u64> {
 }
 
 pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
-    let pixels = multiply(
-        u64::from(plan.case.presentation.width),
-        u64::from(plan.case.presentation.height),
-    )?;
+    let pixels = plan.case.as_ref().map_or(Ok(0), |case| {
+        multiply(
+            u64::from(case.presentation.width),
+            u64::from(case.presentation.height),
+        )
+    })?;
     let snapshots = plan.observation.retained_times_s.len() as u64;
     let native = plan.stages.iter().any(|s| {
         !matches!(
@@ -57,12 +59,15 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
         let mut vram = 0;
         let ram = match stage.operation {
             StageOperation::ChannelReference => {
-                output = output.max(multiply(u64::from(plan.case.resolution), 128)?);
-                add(16 * MIB, multiply(u64::from(plan.case.resolution), 160)?)?
+                output = output.max(multiply(u64::from(plan.channel_case()?.resolution), 128)?);
+                add(
+                    16 * MIB,
+                    multiply(u64::from(plan.channel_case()?.resolution), 160)?,
+                )?
             }
             StageOperation::CadFixture | StageOperation::CadInspect => 1024 * MIB,
             StageOperation::Openlb => {
-                let cells = lattice_cells(&plan.case)?;
+                let cells = lattice_cells(plan.channel_case()?)?;
                 // Two D3Q19 Float64 distribution sets, fields, geometry, halo
                 // storage and staging; use the established 2048-byte allowance.
                 let ram = add(64 * MIB, multiply(cells, 2048)?)?;
@@ -73,7 +78,7 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 ram
             }
             StageOperation::Render => {
-                let cells = lattice_cells(&plan.case)?;
+                let cells = lattice_cells(plan.channel_case()?)?;
                 vram = add(add(128 * MIB, multiply(pixels, 32)?)?, multiply(cells, 64)?)?;
                 // Bound PNG worst-case staging and reader/display copies.
                 output = add(
@@ -96,6 +101,22 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 vram = 1024 * MIB;
                 output = add(output, 256 * MIB)?;
                 1024 * MIB
+            }
+            StageOperation::FemReference => {
+                let recipe = plan
+                    .fem
+                    .as_ref()
+                    .ok_or_else(|| invalid("FEM recipe required for resource estimate"))?;
+                // Sparse fill-in depends on ordering/topology. The initial
+                // allowlist caps n<=32 and reserves a full 2 GiB, no GPU claim.
+                output = add(
+                    output,
+                    add(
+                        64 * MIB,
+                        multiply(u64::from(recipe.resolution).pow(3), 4096)?,
+                    )?,
+                )?;
+                2048 * MIB
             }
             StageOperation::Bundle => 16 * MIB,
         };

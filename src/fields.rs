@@ -229,9 +229,10 @@ pub fn capture(
     let expected = &plan.observation.retained_times_s;
     plan.validate()?;
     // Same operation order as the pinned OpenLB converter and approval gate.
-    let dx = plan.case.channel_height.si("length")? / f64::from(plan.case.resolution);
-    let dt = ((0.8f64 - 0.5) / 3.) * (dx * dx)
-        / plan.case.kinematic_viscosity.si("kinematic_viscosity")?;
+    let case = plan.channel_case()?;
+    let dx = case.channel_height.si("length")? / f64::from(case.resolution);
+    let dt =
+        ((0.8f64 - 0.5) / 3.) * (dx * dx) / case.kinematic_viscosity.si("kinematic_viscosity")?;
     if retained.len() != expected.len()
         || expected.is_empty()
         || receipt["executed"] != true
@@ -361,7 +362,7 @@ pub fn capture(
     }
     let snapshot = FieldSnapshot {
         schema_version: 1,
-        science_id: plan.case.science_id()?,
+        science_id: plan.science_id()?,
         execution_id: plan.id()?,
         execution_binding_digest: binding_digest.into(),
         artifact_id: digest(&files)?,
@@ -483,7 +484,7 @@ mod tests {
         // the native-field tests. Even self-consistent metadata must match it.
         let mut snapshot = FieldSnapshot {
             schema_version: 1,
-            science_id: plan.case.science_id().unwrap(),
+            science_id: plan.science_id().unwrap(),
             execution_id: plan.id().unwrap(),
             execution_binding_digest: "binding".into(),
             artifact_id: digest(&Vec::<ArtifactManifest>::new()).unwrap(),

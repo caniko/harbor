@@ -29,7 +29,13 @@ from a CPU result.
 
 Source/manual research is retained under
 `/data/scratch/tmp/opencode/harbor-cad-fem-research-20261006/`.
-The candidate build/native execution and worker integration remain pending.
+The exact standalone reference package at revision
+`60defb0f7f239b1d0abb5d9f9615edb12b7579d1` passes the bounded native gate for
+both formulations at resolutions 2/4/8 and seven pre-output rejection cases.
+The raw report is
+`/data/scratch/tmp/opencode/harbor-cad-authority-20261005/fem-native-2/verification.json`;
+runtime `/nix/store/35nn40275w6ng653dnsqxib7pss6kp1j-harbor-cad-fem-reference-runtime.json`.
+Worker integration has separate qualification below.
 
 ## Scientific and geometric contract
 
@@ -69,3 +75,32 @@ Transient heater/convection histories, imported-CAD mesh correspondence,
 contact, conservative one-way field exchange and hybrid PaStiX/PaRSEC require
 their own execution and evidence. The references establish neither physical
 validation nor component boot reliability.
+
+## Independent version-5 worker plans
+
+`case plan-fem-reference SPEC.json --policy research` produces an immutable
+version-5 plan and approval digest. `FemReferenceSpec` uses explicit SI field
+names and labels synthetic geometry/material values. It has its own science
+identity and contains no fluid `CaseSpec`, camera or invented physical-time
+observations. Plans v1–v4 retain their original serialization/digests and reject
+FEM injection. The simulation MCP profile's `case_plan_fem_reference` returns
+the same plan, and `job_submit` returns the same worker's durable job ID.
+
+The worker executes Gmsh/CalculiX in `harbor-cad-fem-cpu-v1`, with the immutable
+operation closure only, no GPU/sysfs/session/home/network access, a read-only
+request and a stage-local writable directory. The native receipt checks these
+boundaries, binds exact request/source identities, preserves positive mesh
+Jacobians/volume and complete node/integration-point fields, and enforces all
+approved numerical tolerances. `runtime-fem-worker` exposes that exact
+operation manifest, independently of `runtime-fem-cpu` used for native gates.
+Submission requires installed same-user authority, reserves 2 GiB CPU RAM and
+bounded mesh/field/output copies, and retains active runtime closures. The
+reservation is an admission estimate; systemd enforces RAM/no-swap/CPU/tasks.
+
+`scripts/verify_fem_worker.py` qualifies exact-package CLI/MCP field integrity,
+analytical rechecks, isolation, service peaks, worker restart/idempotency,
+forced death, cancellation and admission/root release. Its package gate is
+pending. Historical `qualify --job` reports these two static formulations'
+checks separately from current-runtime qualification, convergence and physical
+validation. Imported CAD, contact, transient thermal history and hybrid GPU
+factorization remain separately scoped work.

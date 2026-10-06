@@ -169,6 +169,12 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
                     ));
                 }
             }
+            if matches!(stage.operation, StageOperation::FemReference) {
+                crate::sandbox::importer_mounts(
+                    native.fem_closure()?,
+                    Path::new(native.executable(&stage.operation)?),
+                )?;
+            }
         }
     }
     Ok(())
@@ -439,6 +445,10 @@ fn dispatch(
             )
         }
         Operation::Plan { case } => Ok(serde_json::to_value(ExecutionPlan::reference(*case)?)?),
+        Operation::PlanFemReference { spec } => {
+            let plan = ExecutionPlan::fem_reference(*spec, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
             ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
         )?),
@@ -494,6 +504,11 @@ fn dispatch(
                     "standalone presentation requires authoritative admission".into(),
                 ));
             }
+            if plan.fem.is_some() && authority.is_none() {
+                return Err(Error::Unqualified(
+                    "CPU FEM submission requires authoritative same-user admission".into(),
+                ));
+            }
             if authority.is_none()
                 && plan.stages.iter().any(|s| {
                     s.selection
@@ -532,6 +547,16 @@ fn dispatch(
                                     .importer_closure()?
                                     .to_str()
                                     .ok_or_else(|| invalid("importer closure path"))?
+                                    .into(),
+                            );
+                        }
+                        if matches!(stage.operation, StageOperation::FemReference) {
+                            files.insert(
+                                "fem_closure".into(),
+                                runtime
+                                    .fem_closure()?
+                                    .to_str()
+                                    .ok_or_else(|| invalid("FEM closure path"))?
                                     .into(),
                             );
                         }
@@ -644,8 +669,8 @@ fn dispatch(
                 Err(error) => return Err(error),
             };
             Ok(
-                serde_json::json!({"job":store.job(&job_id)?,"science_id":plan.case.science_id()?,
-                "execution_id":plan.id()?,"presentation_id":digest(&plan.case.presentation)?,
+                serde_json::json!({"job":store.job(&job_id)?,"science_id":plan.science_id()?,
+                "execution_id":plan.id()?,"presentation_id":plan.case.as_ref().map(|c| digest(&c.presentation)).transpose()?,
                 "execution_binding":binding,
                 "execution_authorization":store.execution_authorization(&job_id)?,
                 "artifacts":store.artifact_page(&job_id, None, default_artifact_limit())?,"arrays":"retained in artifacts; not embedded in responses"}),
@@ -791,6 +816,7 @@ pub fn backends() -> serde_json::Value {
         {"adapter":"openlb","backend":"cuda","runtime":"unqualified","priority":"best_effort","precision":"float64","formulation":"periodic_forced_channel"},
         {"adapter":"openlb","backend":"vulkan","runtime":"unsupported","reason":"no Vulkan backend in pinned OpenLB; Float64 and workload performance require separate evidence","decision_evidence":"docs/gpu-backends.md"},
         {"adapter":"viskores","backend":"hip","runtime":"unqualified","precision":"float64","operation":"image_data_point_gradient","scope":"physVelocity/physPressure; one retained time/shard","reference_evidence":"docs/numerical-filters.md"},
+        {"adapter":"calculix","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["thermal_boundary","free_expansion"],"factorization":"SPOOLES","scope":"synthetic static C3D8 Gmsh box; imported CAD/contact/transients separate","reference_evidence":"docs/fem-references.md"},
         {"adapter":"paraview","backend":"egl","runtime":"unqualified"},
         {"adapter":"ffmpeg","backend":"vaapi","runtime":"unqualified"}
     ])
@@ -819,8 +845,18 @@ struct NativeRuntime {
     video: Option<String>,
     #[serde(default)]
     filter: Option<String>,
+    #[serde(default)]
+    fem: Option<String>,
+    #[serde(default)]
+    fem_closure: Option<String>,
 }
 impl NativeRuntime {
+    fn fem_closure(&self) -> Result<&Path> {
+        self.fem_closure
+            .as_deref()
+            .map(Path::new)
+            .ok_or_else(|| Error::Unqualified("FEM operation closure absent".into()))
+    }
     fn importer_closure(&self) -> Result<&Path> {
         self.cad_closure.as_deref().map(Path::new).ok_or_else(|| {
             Error::Unqualified("runtime lacks operation-specific importer closure policy".into())
@@ -853,6 +889,9 @@ impl NativeRuntime {
                 Error::Unqualified(
                     "HIP numerical-filter adapter absent from selected runtime".into(),
                 )
+            })?,
+            StageOperation::FemReference => self.fem.as_deref().ok_or_else(|| {
+                Error::Unqualified("CPU FEM adapter absent from selected runtime".into())
             })?,
             _ => return Err(invalid("not a native adapter operation")),
         };
@@ -950,6 +989,20 @@ fn native_stage(
         StageOperation::CadInspect | StageOperation::CadFixture
     ) {
         crate::sandbox::mount_importer(&mut command, runtime.importer_closure()?, Path::new(exe))?;
+    } else if matches!(stage.operation, StageOperation::FemReference) {
+        crate::sandbox::mount_closure(&mut command, runtime.fem_closure()?, Path::new(exe))?;
+        command
+            .args(["--ro-bind"])
+            .arg(runtime.fem_closure()?)
+            .arg("/fem-runtime-closure.txt");
+        command.args([
+            "--setenv",
+            "HARBOR_CAD_FEM_POLICY",
+            crate::execution::FEM_SANDBOX_POLICY,
+        ]);
+        command
+            .args(["--setenv", "HARBOR_CAD_HOST_NETNS"])
+            .arg(fs::read_link("/proc/self/ns/net")?);
     } else {
         command.args(["--ro-bind", "/nix/store", "/nix/store"]);
     }
@@ -969,7 +1022,7 @@ fn native_stage(
                 "HARBOR_CAD_PRESENTATION_EXECUTION_ID",
                 &plan.id()?,
             ]);
-        } else if snapshot.science_id != plan.case.science_id()?
+        } else if snapshot.science_id != plan.science_id()?
             || snapshot.execution_id != plan.id()?
             || snapshot.execution_binding_digest != digest(&store.execution_binding(id)?)?
         {
@@ -1049,13 +1102,13 @@ fn native_stage(
     if matches!(stage.operation, StageOperation::CadInspect) {
         let source = safe_path(
             Path::new(&profile.allowed_input_root),
-            &plan.case.geometry.source,
+            &plan.channel_case()?.geometry.source,
         )?;
         let job_dir = store.job_dir(id)?;
         let artifact = snapshot_cad_input(
             &source,
             &job_dir,
-            plan.case
+            plan.channel_case()?
                 .geometry
                 .sha256
                 .as_deref()
@@ -1072,7 +1125,14 @@ fn native_stage(
         .as_str()
         .ok_or_else(|| invalid("operation"))?
         .to_owned();
-    let receipt = safe_path(dir, &format!("{op}-receipt.json"))?;
+    let receipt = safe_path(
+        dir,
+        &if matches!(stage.operation, StageOperation::FemReference) {
+            "fem-reference-receipt.json".into()
+        } else {
+            format!("{op}-receipt.json")
+        },
+    )?;
     if fs::symlink_metadata(&receipt).is_ok() {
         return Err(invalid(
             "native receipt already exists before its stage; stale or forged output rejected",
@@ -1084,12 +1144,22 @@ fn native_stage(
             &store.job_dir(id)?,
             if matches!(stage.operation, StageOperation::NumericalFilter) {
                 "native-filter-request.json"
+            } else if matches!(stage.operation, StageOperation::FemReference) {
+                "native-fem-request.json"
             } else {
                 "native-plan.json"
             },
         )?)
         .arg("/plan.json");
-    command.arg("--").arg(exe).arg(&op).arg("/plan.json");
+    command
+        .arg("--")
+        .arg(exe)
+        .arg(if matches!(stage.operation, StageOperation::FemReference) {
+            "reference"
+        } else {
+            &op
+        })
+        .arg("/plan.json");
     let log = OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -1136,6 +1206,9 @@ fn native_stage(
     validate_native_receipt(stage, &evidence)?;
     if matches!(stage.operation, StageOperation::NumericalFilter) {
         crate::filters::verify_receipt(store, id, plan, dir, &evidence)?;
+    }
+    if matches!(stage.operation, StageOperation::FemReference) {
+        crate::fem::verify_receipt(plan, &evidence)?;
     }
     if let Some(frames) = &plan.frames {
         crate::frames::registered(store, id, plan)?;
@@ -1205,6 +1278,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::Render => "ParaView",
         StageOperation::Video => "FFmpeg",
         StageOperation::NumericalFilter => "Viskores",
+        StageOperation::FemReference => "CalculiX",
         _ => return Err(invalid("not a native adapter operation")),
     };
     let backend = stage
@@ -1482,7 +1556,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         store.event(id, "stage_started", &stage.id)?;
         match stage.operation {
             StageOperation::ChannelReference => {
-                let c = &plan.case;
+                let c = plan.channel_case()?;
                 let result = science::channel_reference(
                     c.acceleration.si("acceleration")?,
                     c.channel_height.si("length")?,
@@ -1561,17 +1635,18 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     store.add_artifact(id, &commit_artifact(&dir, "native-runtime.json", &read_bounded(&runtime, MAX_MESSAGE)?, "json",
                         &format!("exact immutable runtime manifest from {}; store paths bind packaged executable closures", runtime.display()))?)?;
                     let mut normalized = plan.clone();
-                    let c = &mut normalized.case;
-                    for (quantity, dimension, unit) in [
-                        (&mut c.length, "length", "m"),
-                        (&mut c.channel_height, "length", "m"),
-                        (&mut c.geometry_tolerance, "length", "m"),
-                        (&mut c.kinematic_viscosity, "kinematic_viscosity", "m2/s"),
-                        (&mut c.acceleration, "acceleration", "m/s2"),
-                        (&mut c.material.density, "density", "kg/m3"),
-                    ] {
-                        quantity.value = quantity.si(dimension)?;
-                        quantity.unit = unit.into();
+                    if let Some(c) = &mut normalized.case {
+                        for (quantity, dimension, unit) in [
+                            (&mut c.length, "length", "m"),
+                            (&mut c.channel_height, "length", "m"),
+                            (&mut c.geometry_tolerance, "length", "m"),
+                            (&mut c.kinematic_viscosity, "kinematic_viscosity", "m2/s"),
+                            (&mut c.acceleration, "acceleration", "m/s2"),
+                            (&mut c.material.density, "density", "kg/m3"),
+                        ] {
+                            quantity.value = quantity.si(dimension)?;
+                            quantity.unit = unit.into();
+                        }
                     }
                     store.add_artifact(id, &commit_artifact(
                         &dir,
@@ -1597,6 +1672,15 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                             "trusted source-bound filter descriptor; mounted read-only",
                         )?,
                     )?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if matches!(stage.operation, StageOperation::FemReference) {
+                    let working = native_work.join("stages/fem");
+                    private_dir(&working)?;
+                    let spec = plan
+                        .fem
+                        .as_ref()
+                        .ok_or_else(|| invalid("FEM recipe required"))?;
+                    store.add_artifact(id,&commit_artifact(&dir,"native-fem-request.json",&serde_json::to_vec(spec)?,"json","exact SI native FEM descriptor; static solver parameter is not physical time")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
                 } else {
                     native_stage(store, profile, &plan, stage, &native_work, id)?;

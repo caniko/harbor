@@ -30,7 +30,7 @@ pub fn source(store: &Store, id: &str) -> Result<(PathBuf, FieldSnapshot, Retain
     authorization.verify(&plan, &store.job_profile(id)?, &binding)?;
     let (root, snapshot, hash) = fields::registered(store, id)?;
     if snapshot.execution_id != plan.id()?
-        || snapshot.science_id != plan.case.science_id()?
+        || snapshot.science_id != plan.science_id()?
         || snapshot.execution_binding_digest != digest(&binding)?
         || snapshot
             .times
@@ -295,7 +295,7 @@ mod tests {
         .unwrap();
         let snapshot = FieldSnapshot {
             schema_version: 1,
-            science_id: plan.case.science_id().unwrap(),
+            science_id: plan.science_id().unwrap(),
             execution_id: plan.id().unwrap(),
             execution_binding_digest: digest(&binding).unwrap(),
             artifact_id: digest(&vec![field.clone()]).unwrap(),

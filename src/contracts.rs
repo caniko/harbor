@@ -280,6 +280,7 @@ pub enum StageOperation {
     CadInspect,
     Openlb,
     NumericalFilter,
+    FemReference,
     Render,
     Video,
     Bundle,
@@ -386,7 +387,8 @@ pub struct FilterRequest {
 #[serde(deny_unknown_fields)]
 pub struct ExecutionPlan {
     pub schema_version: u32,
-    pub case: CaseSpec,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case: Option<CaseSpec>,
     pub stages: Vec<Stage>,
     pub transfers: Vec<TransferSpec>,
     pub observation: ObservationPlan,
@@ -399,6 +401,8 @@ pub struct ExecutionPlan {
     pub frames: Option<FrameSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter: Option<FilterSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fem: Option<crate::fem::FemReferenceSpec>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -407,7 +411,8 @@ pub struct ExecutionPlan {
 #[serde(remote = "ExecutionPlan", deny_unknown_fields)]
 struct ExecutionPlanRecord {
     schema_version: u32,
-    case: CaseSpec,
+    #[serde(default, deserialize_with = "channel_case")]
+    case: Option<CaseSpec>,
     stages: Vec<Stage>,
     transfers: Vec<TransferSpec>,
     observation: ObservationPlan,
@@ -420,6 +425,19 @@ struct ExecutionPlanRecord {
     frames: Option<FrameSource>,
     #[serde(default, deserialize_with = "filter_spec")]
     filter: Option<FilterSpec>,
+    #[serde(default, deserialize_with = "fem_spec")]
+    fem: Option<crate::fem::FemReferenceSpec>,
+}
+
+fn channel_case<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<CaseSpec>, D::Error> {
+    CaseSpec::deserialize(decoder).map(Some)
+}
+fn fem_spec<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<crate::fem::FemReferenceSpec>, D::Error> {
+    crate::fem::FemReferenceSpec::deserialize(decoder).map(Some)
 }
 
 fn filter_spec<'de, D: serde::Deserializer<'de>>(
@@ -449,14 +467,17 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
             &plan.source,
             &plan.frames,
             &plan.filter,
+            &plan.case,
+            &plan.fem,
         ) {
-            (1, None, None, None)
-            | (2, Some(_), None, None)
-            | (3, Some(_), Some(_), None)
-            | (4, Some(_), None, Some(_)) => {}
+            (1, None, None, None, Some(_), None)
+            | (2, Some(_), None, None, Some(_), None)
+            | (3, Some(_), Some(_), None, Some(_), None)
+            | (4, Some(_), None, Some(_), Some(_), None)
+            | (5, None, None, None, None, Some(_)) => {}
             _ => {
                 return Err(D::Error::custom(
-                    "explicit v1, retained-source v2, frame-bound v3 or numerical-filter v4 plan required",
+                    "explicit v1, retained-source v2, frame-bound v3, numerical-filter v4 or independent FEM v5 plan required",
                 ));
             }
         }
@@ -471,18 +492,31 @@ impl JsonSchema for ExecutionPlan {
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
-            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3, 4]);
+            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3, 4, 5]);
         }
         schema.insert("allOf".into(), serde_json::json!([
             {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}}},
             {"if":{"properties":{"schema_version":{"const":2}}},"then":{"required":["source"],"properties":{"source":{"type":"object"}},"not":{"anyOf":[{"required":["frames"]},{"required":["filter"]}]}}},
             {"if":{"properties":{"schema_version":{"const":3}}},"then":{"required":["source","frames"],"properties":{"source":{"type":"object"},"frames":{"type":"object"}},"not":{"required":["filter"]}}},
-            {"if":{"properties":{"schema_version":{"const":4}}},"then":{"required":["source","filter"],"properties":{"source":{"type":"object"},"filter":{"type":"object"}},"not":{"required":["frames"]}}}
+            {"if":{"properties":{"schema_version":{"const":4}}},"then":{"required":["source","filter"],"properties":{"source":{"type":"object"},"filter":{"type":"object"}},"not":{"required":["frames"]}}},
+            {"if":{"properties":{"schema_version":{"const":5}}},"then":{"required":["fem"],"properties":{"fem":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}},"else":{"required":["case"],"properties":{"case":{"type":"object"}},"not":{"required":["fem"]}}}
         ]));
         schema
     }
 }
 impl ExecutionPlan {
+    pub fn channel_case(&self) -> Result<&CaseSpec> {
+        self.case
+            .as_ref()
+            .ok_or_else(|| invalid("fluid/CAD case required for this operation"))
+    }
+    pub fn science_id(&self) -> Result<String> {
+        match (&self.case, &self.fem) {
+            (Some(case), None) => case.science_id(),
+            (None, Some(fem)) => digest(fem),
+            _ => Err(invalid("one scientific recipe required")),
+        }
+    }
     pub fn numerical_filter(
         original: &Self,
         source: RetainedSource,
@@ -491,7 +525,7 @@ impl ExecutionPlan {
     ) -> Result<Self> {
         if source.job_id != request.source_job
             || source.plan_digest != original.id()?
-            || source.science_id != original.case.science_id()?
+            || source.science_id != original.science_id()?
             || !original
                 .observation
                 .retained_times_s
@@ -510,6 +544,7 @@ impl ExecutionPlan {
             source: Some(source),
             frames: None,
             filter: Some(request.filter.clone()),
+            fem: None,
             stages: vec![
                 Stage {
                     id: "filter".into(),
@@ -558,7 +593,7 @@ impl ExecutionPlan {
     ) -> Result<Self> {
         if frames.job_id != request.source_job
             || frames.plan_digest != render.id()?
-            || render.case.science_id()? != source.science_id
+            || render.science_id()? != source.science_id
             || !render
                 .stages
                 .iter()
@@ -575,6 +610,7 @@ impl ExecutionPlan {
             source: Some(source),
             frames: Some(frames),
             filter: None,
+            fem: None,
             stages: vec![
                 Stage {
                     id: "video".into(),
@@ -622,7 +658,7 @@ impl ExecutionPlan {
     ) -> Result<Self> {
         if source.job_id != request.source_job
             || source.plan_digest != original.id()?
-            || source.science_id != original.case.science_id()?
+            || source.science_id != original.science_id()?
             || request
                 .times_s
                 .iter()
@@ -637,7 +673,7 @@ impl ExecutionPlan {
                 "presentation source, retained times or operation roles differ",
             ));
         }
-        let mut case = original.case.clone();
+        let mut case = original.channel_case()?.clone();
         case.presentation = request.presentation;
         let mut stages = vec![Stage {
             id: "render".into(),
@@ -670,7 +706,7 @@ impl ExecutionPlan {
         });
         let mut plan = Self {
             schema_version: 2,
-            case,
+            case: Some(case),
             stages,
             transfers: vec![],
             observation: ObservationPlan {
@@ -689,6 +725,7 @@ impl ExecutionPlan {
             source: Some(source),
             frames: None,
             filter: None,
+            fem: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -699,7 +736,7 @@ impl ExecutionPlan {
         let max_artifact_bytes = 1048576u64.max(u64::from(case.resolution) * 128);
         let plan = Self {
             schema_version: 1,
-            case,
+            case: Some(case),
             stages: vec![Stage {
                 id: "reference".into(),
                 dependencies: vec![],
@@ -726,6 +763,7 @@ impl ExecutionPlan {
             source: None,
             frames: None,
             filter: None,
+            fem: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -737,7 +775,7 @@ impl ExecutionPlan {
         }
         let plan = Self {
             schema_version: 1,
-            case,
+            case: Some(case),
             stages: vec![
                 Stage {
                     id: "cad".into(),
@@ -775,6 +813,7 @@ impl ExecutionPlan {
             source: None,
             frames: None,
             filter: None,
+            fem: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -821,7 +860,7 @@ impl ExecutionPlan {
         let end = case.max_time_s;
         let mut plan = Self {
             schema_version: 1,
-            case,
+            case: Some(case),
             stages,
             transfers: vec![],
             observation: ObservationPlan {
@@ -840,6 +879,7 @@ impl ExecutionPlan {
             source: None,
             frames: None,
             filter: None,
+            fem: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -890,8 +930,8 @@ impl ExecutionPlan {
         flow.gpu = GpuRequirement::Required;
         flow.selection = Some(selections.compute);
         flow.vram_bytes = flow.ram_bytes;
-        let pixels =
-            u64::from(plan.case.presentation.width) * u64::from(plan.case.presentation.height);
+        let pixels = u64::from(plan.channel_case()?.presentation.width)
+            * u64::from(plan.channel_case()?.presentation.height);
         plan.stages.extend([
             Stage {
                 id: "render".into(),
@@ -926,18 +966,26 @@ impl ExecutionPlan {
         Ok(plan)
     }
     pub fn validate(&self) -> Result<()> {
-        self.case.validate()?;
+        if let Some(case) = &self.case {
+            case.validate()?;
+        }
+        if let Some(fem) = &self.fem {
+            fem.validate()?;
+        }
         if !matches!(
             (
                 self.schema_version,
                 &self.source,
                 &self.frames,
-                &self.filter
+                &self.filter,
+                &self.case,
+                &self.fem,
             ),
-            (1, None, None, None)
-                | (2, Some(_), None, None)
-                | (3, Some(_), Some(_), None)
-                | (4, Some(_), None, Some(_))
+            (1, None, None, None, Some(_), None)
+                | (2, Some(_), None, None, Some(_), None)
+                | (3, Some(_), Some(_), None, Some(_), None)
+                | (4, Some(_), None, Some(_), Some(_), None)
+                | (5, None, None, None, None, Some(_))
         ) || self.fleetix_revision != FLEETIX_REV
             || self.fleetix_contract_digest != fleetix_digest()
         {
@@ -945,6 +993,27 @@ impl ExecutionPlan {
         }
         if !["ci", "prototype", "production", "research"].contains(&self.policy.as_str()) {
             return Err(invalid("policy"));
+        }
+        if self.fem.is_some() {
+            let operations: Vec<_> = self.stages.iter().map(|s| &s.operation).collect();
+            if self.policy == "ci"
+                || !matches!(
+                    operations.as_slice(),
+                    [StageOperation::FemReference, StageOperation::Bundle]
+                )
+                || !self.stages[0].dependencies.is_empty()
+                || self.stages[1].dependencies != [self.stages[0].id.clone()]
+                || !self.observation.metrics.is_empty()
+                || !self.observation.probes.is_empty()
+                || !self.observation.retained_times_s.is_empty()
+                || !self.observation.checkpoint_times_s.is_empty()
+                || !self.observation.preview_times_s.is_empty()
+                || self.observation.preview_may_drop
+            {
+                return Err(invalid(
+                    "static independent FEM CPU DAG required; no fluid case, physical-time observations or implicit coupling",
+                ));
+            }
         }
         if let Some(source) = &self.source {
             let hashes = [
@@ -963,10 +1032,10 @@ impl ExecutionPlan {
                             .bytes()
                             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
                 })
-                || source.science_id != self.case.science_id()?
+                || source.science_id != self.science_id()?
                 || source.bytes == 0
                 || source.bytes > self.observation.max_artifact_bytes
-                || self.case.presentation.field != "velocity"
+                || self.channel_case()?.presentation.field != "velocity"
                 || self.observation.retained_times_s.is_empty()
                 || !self.observation.metrics.is_empty()
                 || !self.observation.probes.is_empty()
@@ -1069,6 +1138,9 @@ impl ExecutionPlan {
         let mut seen = BTreeSet::new();
         let mut operations = BTreeSet::new();
         for stage in &self.stages {
+            if matches!(stage.operation, StageOperation::FemReference) && self.fem.is_none() {
+                return Err(invalid("FEM operation requires a version-5 recipe"));
+            }
             if matches!(stage.operation, StageOperation::NumericalFilter) && self.filter.is_none() {
                 return Err(invalid(
                     "numerical compute stage requires a source-bound version-4 filter specification",
@@ -1092,26 +1164,32 @@ impl ExecutionPlan {
                 return Err(invalid("explicit RAM estimate required"));
             }
             if matches!(stage.operation, StageOperation::ChannelReference)
-                && self.case.applicability.formulation != "steady_incompressible_channel"
+                && self.channel_case()?.applicability.formulation != "steady_incompressible_channel"
             {
                 return Err(invalid("analytical adapter formulation mismatch"));
             }
             if matches!(stage.operation, StageOperation::Openlb)
-                && (!self.case.geometry.synthetic
-                    || self.case.applicability.formulation != "periodic_forced_channel")
+                && (!self.channel_case()?.geometry.synthetic
+                    || self.channel_case()?.applicability.formulation != "periodic_forced_channel")
             {
                 return Err(invalid(
                     "OpenLB adapter supports only the synthetic periodic channel",
                 ));
             }
             if matches!(stage.operation, StageOperation::CadInspect)
-                && (self.case.geometry.sha256.as_ref().is_none_or(|s| {
-                    s.len() != 64
-                        || !s
-                            .bytes()
-                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-                }) || self.case.geometry.source.is_empty()
-                    || std::path::Path::new(&self.case.geometry.source)
+                && (self
+                    .channel_case()?
+                    .geometry
+                    .sha256
+                    .as_ref()
+                    .is_none_or(|s| {
+                        s.len() != 64
+                            || !s
+                                .bytes()
+                                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    })
+                    || self.channel_case()?.geometry.source.is_empty()
+                    || std::path::Path::new(&self.channel_case()?.geometry.source)
                         .components()
                         .any(|c| !matches!(c, std::path::Component::Normal(_))))
             {
@@ -1157,7 +1235,10 @@ impl ExecutionPlan {
                 "coupled transfers require model-specific conservation qualification".into(),
             ));
         }
-        if self.observation.max_artifact_bytes < u64::from(self.case.resolution) * 128
+        if self
+            .case
+            .as_ref()
+            .is_some_and(|c| self.observation.max_artifact_bytes < u64::from(c.resolution) * 128)
             || self.observation.max_artifact_bytes > 1_000_000_000_000
             || self.observation.scientific_congestion != "fail"
         {
@@ -1179,9 +1260,11 @@ impl ExecutionPlan {
             &self.observation.preview_times_s,
         ] {
             if times.len() > 1024
-                || times
-                    .iter()
-                    .any(|t| !t.is_finite() || *t < 0. || *t > self.case.max_time_s)
+                || times.iter().any(|t| {
+                    !t.is_finite()
+                        || *t < 0.
+                        || self.case.as_ref().is_none_or(|c| *t > c.max_time_s)
+                })
                 || times.windows(2).any(|p| p[0] >= p[1])
             {
                 return Err(invalid("ordered, bounded observation times required"));
@@ -1201,7 +1284,7 @@ impl ExecutionPlan {
         Ok(())
     }
     fn validate_openlb_lattice(&self) -> Result<()> {
-        let c = &self.case;
+        let c = self.channel_case()?;
         let height = c.channel_height.si("length")?;
         let dx = height / f64::from(c.resolution);
         let viscosity = c.kinematic_viscosity.si("kinematic_viscosity")?;
@@ -1326,6 +1409,9 @@ pub enum Operation {
         case: Box<CaseSpec>,
         max_artifact_bytes: u64,
     },
+    PlanFemReference {
+        spec: Box<crate::fem::FemReferenceSpec>,
+    },
     PlanB1 {
         case: Box<CaseSpec>,
         selections: B1Selections,
@@ -1400,6 +1486,7 @@ pub fn schemas() -> serde_json::Value {
         "FilterRequest": schemars::schema_for!(FilterRequest),
         "JobEvidenceReport": schemars::schema_for!(crate::qualification::JobEvidenceReport),
         "RegionReport": schemars::schema_for!(crate::cad::RegionReport),
+        "FemReferenceSpec": schemars::schema_for!(crate::fem::FemReferenceSpec),
         "ConservativeTransfer": schemars::schema_for!(crate::transfers::ConservativeTransfer),
         "TransferReceipt": schemars::schema_for!(crate::transfers::TransferReceipt),
         "ThermalMaterial": schemars::schema_for!(crate::materials::ThermalMaterial),

@@ -77,14 +77,14 @@ pub(crate) fn sequence(
         }
         // Only the fixed PNG product from the renderer is accepted. Bound the
         // decoded dimensions before the encoder can allocate frame buffers.
-        let pixels =
-            u64::from(render.case.presentation.width) * u64::from(render.case.presentation.height);
+        let pixels = u64::from(render.channel_case()?.presentation.width)
+            * u64::from(render.channel_case()?.presentation.height);
         let bytes = checked_record(root, record, pixels * 8 + 1024 * 1024)?;
         if bytes.len() < 33
             || &bytes[..8] != b"\x89PNG\r\n\x1a\n"
             || &bytes[12..16] != b"IHDR"
-            || bytes[16..20] != render.case.presentation.width.to_be_bytes()
-            || bytes[20..24] != render.case.presentation.height.to_be_bytes()
+            || bytes[16..20] != render.channel_case()?.presentation.width.to_be_bytes()
+            || bytes[20..24] != render.channel_case()?.presentation.height.to_be_bytes()
         {
             return Err(invalid(
                 "bounded PNG dimensions differ from approved rendering",
@@ -103,7 +103,8 @@ pub(crate) fn sequence(
         || proof["frame_sequence_sha256"] != manifest.sha256
         || proof["frames"] != value["frames"]
         || proof["physical_times_s"] != serde_json::to_value(&render.observation.retained_times_s)?
-        || proof["observed_camera"] != serde_json::to_value(render.case.presentation.camera)?
+        || proof["observed_camera"]
+            != serde_json::to_value(render.channel_case()?.presentation.camera)?
         || [
             "field_snapshot_sha256",
             "field_artifact_id",
@@ -372,7 +373,7 @@ mod tests {
             authorization_digest: "b".repeat(64),
             snapshot_sha256: "c".repeat(64),
             artifact_id: "d".repeat(64),
-            science_id: original.case.science_id().unwrap(),
+            science_id: original.science_id().unwrap(),
             bytes: 4096,
         };
         let render = ExecutionPlan::presentation(
@@ -381,7 +382,7 @@ mod tests {
             PresentationRequest {
                 source_job: fields.job_id.clone(),
                 times_s: vec![0.],
-                presentation: original.case.presentation.clone(),
+                presentation: original.channel_case().unwrap().presentation.clone(),
                 render: GpuSelection {
                     role: Role::Render,
                     backend: "egl".into(),
@@ -394,8 +395,22 @@ mod tests {
         )
         .unwrap();
         let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
-        png.extend(render.case.presentation.width.to_be_bytes());
-        png.extend(render.case.presentation.height.to_be_bytes());
+        png.extend(
+            render
+                .channel_case()
+                .unwrap()
+                .presentation
+                .width
+                .to_be_bytes(),
+        );
+        png.extend(
+            render
+                .channel_case()
+                .unwrap()
+                .presentation
+                .height
+                .to_be_bytes(),
+        );
         png.resize(33, 0); // Header-only fixture; never passed to a native encoder.
         let frame = commit_artifact(
             root,
@@ -423,7 +438,8 @@ mod tests {
         receipt["software_fallback"] = false.into();
         receipt["frame_sequence_sha256"] = manifest.sha256.clone().into();
         receipt["physical_times_s"] = serde_json::json!([0.]);
-        receipt["observed_camera"] = serde_json::to_value(render.case.presentation.camera).unwrap();
+        receipt["observed_camera"] =
+            serde_json::to_value(render.channel_case().unwrap().presentation.camera).unwrap();
         let receipt = commit_artifact(
             root,
             "render-receipt.json",
@@ -450,7 +466,7 @@ mod tests {
         wrong_time.observation.retained_times_s = vec![5.];
         assert!(sequence(root, &records, &wrong_time, &fields, None).is_err());
         let mut wrong_camera = render.clone();
-        wrong_camera.case.presentation.camera[0] += 1.;
+        wrong_camera.case.as_mut().unwrap().presentation.camera[0] += 1.;
         assert!(sequence(root, &records, &wrong_camera, &fields, None).is_err());
         let mut bytes = fs::read(root.join("frame0000.png")).unwrap();
         bytes[16..20].copy_from_slice(&16384u32.to_be_bytes());
