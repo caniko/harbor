@@ -290,6 +290,33 @@ def main():
                     and child.stat().st_ino != source.stat().st_ino
                 )
                 running = wait_job(str(binary), endpoint, job["id"], {"running"})
+                properties = subprocess.check_output(
+                    [
+                        "systemctl",
+                        "--user",
+                        "show",
+                        job["unit"],
+                        "--property=InvocationID,MainPID,ControlGroup,MemoryMax,MemorySwapMax,TasksMax,KillMode,CPUQuotaPerSecUSec,NoNewPrivileges",
+                    ],
+                    text=True,
+                )
+                controls = dict(
+                    line.split("=", 1)
+                    for line in properties.splitlines()
+                    if "=" in line
+                )
+                assert controls["InvocationID"] == running["invocation_id"]
+                assert controls["MemoryMax"] == str(
+                    max(s["ram_bytes"] for s in plan["plan"]["stages"])
+                )
+                assert (
+                    controls["MemorySwapMax"] == "0" and controls["TasksMax"] == "128"
+                )
+                assert (
+                    controls["KillMode"] == "control-group"
+                    and controls["NoNewPrivileges"] == "yes"
+                )
+                assert controls["CPUQuotaPerSecUSec"] == "1s"
                 retained = retention_snapshot(state, job, binary)
                 assert (
                     retained["intent"]["binding"]["sandbox_policy"]
@@ -310,9 +337,7 @@ def main():
                 wait_admission_release(state, job)
                 wait_retention_release(state, job)
                 destination = root / f"bundle-{interface}"
-                command(
-                    "--socket", endpoint, "results", "export", job["id"], destination
-                )
+                command("artifact", "export", "--state", state, job["id"], destination)
                 records = verify_manifest(destination)
                 assert (
                     not list(destination.glob("*openlb*"))
@@ -372,11 +397,43 @@ def main():
                         "description": description,
                         "cpu_max_abs_disagreement": error,
                         "active_runtime_retention": retained,
+                        "effective_controls": controls,
                         "admission_record": reservation,
                         "restart": "same invocation",
                         "reservation_and_roots_released": True,
                     }
                 )
+            plan = planned(request(), "forced-death")
+            forced = submit(plan, "forced-filter-death")
+            owned.append(forced["unit"])
+            wait_job(str(binary), endpoint, forced["id"], {"running"})
+            forced_retention = retention_snapshot(state, forced, binary)
+            worker.kill()
+            worker.wait(timeout=5)
+            subprocess.run(
+                [
+                    "systemctl",
+                    "--user",
+                    "kill",
+                    "--signal=KILL",
+                    "--kill-whom=all",
+                    forced["unit"],
+                ],
+                check=True,
+                timeout=10,
+            )
+            worker = start(log)
+            forced_outcome = wait_job(str(binary), endpoint, forced["id"], {"failed"})
+            assert submit(plan, "forced-filter-death")["id"] == forced["id"]
+            wait_admission_release(state, forced)
+            wait_retention_release(state, forced)
+            assert (
+                state
+                / "artifacts"
+                / forced["id"]
+                / "retained-fields"
+                / time_record["shards"][0]
+            ).read_bytes() == source_data
             plan = planned(request(), "cancel")
             job = submit(plan, "cancel-filter")
             owned.append(job["unit"])
@@ -411,6 +468,13 @@ def main():
                 "source_mutation_before_acknowledgment": "rejected",
                 "source_mutation_after_acknowledgment": "verified child bytes through restart/retry",
                 "cancellation": "complete tree and admission/runtime-root release; source preserved",
+                "forced_death": {
+                    "job": forced_outcome,
+                    "active_runtime_retention": forced_retention,
+                    "retry": "same failed job, no implicit relaunch",
+                    "source_preserved": True,
+                    "reservation_and_roots_released": True,
+                },
                 "unretained_time": "rejected",
                 "original_source": "registered hashes unchanged",
                 "physical_validation": "unqualified",
