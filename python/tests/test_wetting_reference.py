@@ -2,6 +2,7 @@
 
 import importlib.util
 import math
+import os
 from pathlib import Path
 
 import pytest
@@ -152,3 +153,38 @@ def test_long_equilibrium_integration_requires_a_bounded_explicit_step_budget():
     spec["observation_steps"][-1] = spec["steps"]
     with pytest.raises(ValueError):
         bridge.validate(spec)
+
+
+def test_worker_owned_empty_log_allows_fresh_wetting_stage(tmp_path):
+    bridge = module()
+    bridge.check_output_directory(tmp_path)
+    log = tmp_path / "wetting.log"
+    log.write_bytes(b"")
+    bridge.check_output_directory(tmp_path)
+    for name in ("process.log", "wetting-receipt.json", "wetting-0.csv"):
+        stale = tmp_path / name
+        stale.write_bytes(b"")
+        with pytest.raises(ValueError):
+            bridge.check_output_directory(tmp_path)
+        stale.unlink()
+    log.write_bytes(b"old launch")
+    with pytest.raises(ValueError):
+        bridge.check_output_directory(tmp_path)
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory", "hardlink"])
+def test_worker_log_cannot_alias_data_or_be_a_directory(tmp_path, kind):
+    bridge = module()
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    target = tmp_path / "original"
+    target.write_bytes(b"")
+    log = stage / "wetting.log"
+    if kind == "symlink":
+        log.symlink_to(target)
+    elif kind == "directory":
+        log.mkdir()
+    else:
+        os.link(target, log)
+    with pytest.raises(ValueError):
+        bridge.check_output_directory(stage)

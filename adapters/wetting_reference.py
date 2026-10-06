@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import math
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -274,6 +275,22 @@ def verify(spec, snapshots):
     }
 
 
+def check_output_directory(root):
+    # The worker opens its stage log before native launch. No scientific output
+    # or aliased/nonregular log may predate this immutable run.
+    for entry in root.iterdir():
+        metadata = entry.lstat()
+        if (
+            entry.name != "wetting.log"
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or metadata.st_size != 0
+        ):
+            raise ValueError(
+                "fresh wetting stage with only its empty worker log required"
+            )
+
+
 def main():
     if len(sys.argv) != 3 or sys.argv[1] != "reference":
         raise ValueError("usage: harbor-cad-wetting reference request.json")
@@ -288,8 +305,7 @@ def main():
     )
     if sandbox is None:
         raise ValueError("operation-specific CPU wetting sandbox required")
-    if any(Path.cwd().iterdir()):
-        raise ValueError("empty stage-local wetting outputs required")
+    check_output_directory(Path.cwd())
     with Path("process.log").open("xb") as log:
         process = subprocess.run(
             ["@native@", "reference", sys.argv[2]],
