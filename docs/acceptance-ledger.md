@@ -51,8 +51,10 @@ An independent locked Gmsh/CalculiX CPU candidate now implements synthetic
 steady conduction/Fourier flux and free-expansion reference decks, semantic
 planar face predicates, positive-Jacobian/volume correspondence and complete
 native field parsing. Its source/manual APIs are inspected and parser/selector
-rejection tests pass. Native build/execution and worker integration are pending;
-see [FEM reference scope](fem-references.md).
+rejection tests pass. The exact native references and version-5 CLI/MCP worker
+integration now pass their separate gates; see
+[FEM reference scope](fem-references.md) and [exact evidence](evidence/fem-cpu.json).
+Static solver parameters retain no invented physical-time mapping.
 
 The updated complete CPU gate passes 103 Rust tests and 44 Python cases,
 Clippy with warnings denied, locked build, Treefmt and Ruff. New systemd jobs
@@ -124,9 +126,9 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |
 | P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | complete at the recorded package/hardware scope; packaged mutation/lifecycle/exports pass |
 | P1b | independent registered-frame video plans, lifecycle and source mutation rejection | complete at the recorded package/hardware scope; CLI/MCP frame mutation, restart/retry and release pass |
-| P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation implemented; CLI/MCP/schema CPU gates pass; native recipe/mesh execution and stage isolation pending |
+| P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation and independent v5 static FEM implemented; exact CLI/MCP native mesh/fields and operation-specific isolation qualified; broader native recipes pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | scoped v4 native/CLI/MCP analytical, CPU-HIP, byte/topology, source/lifecycle and aggregate RAM/CPU gates pass at the recorded revision; instruction trace, whole-card VRAM and broader filters pending |
-| P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | pending |
+| P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | synthetic steady conduction/free expansion at 2/4/8 and CLI/MCP lifecycle pass; airflow separately scoped; imported CAD/Gmsh correspondence and wetting pending |
 | P5 / C | native thermal/contact/moisture/coupling slice | pending |
 | P6 / D | native local water, prescribed snow and retained-water freezing | pending |
 | P7 / E | native atmosphere/spectral irradiance/dose slice | pending |

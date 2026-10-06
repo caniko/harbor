@@ -66,6 +66,9 @@ bounded no-swap/two-CPU/2-GiB user service runs both formulations at resolutions
 2/4/8 in fresh CPU-only namespaces and rejects unsupported backends, modes,
 material/temperature inputs, excessive refinement and weakened error gates.
 It records effective kernel limits before/after execution and artifact hashes.
+The matching version-5 candidate passes this gate and the separate packaged
+CLI/MCP worker gate; see [exact FEM evidence](evidence/fem-cpu.json). Changed
+packages inherit no qualification.
 The native solver computes in Float64; CCX's `.dat` serialization uses its
 documented 7-8-significant-digit text formats. Original text and mesh files stay
 available, and numerical comparison must pass at that actual output precision.
@@ -99,8 +102,13 @@ reservation is an admission estimate; systemd enforces RAM/no-swap/CPU/tasks.
 
 `scripts/verify_fem_worker.py` qualifies exact-package CLI/MCP field integrity,
 analytical rechecks, isolation, service peaks, worker restart/idempotency,
-forced death, cancellation and admission/root release. Its package gate is
-pending. Historical `qualify --job` reports these two static formulations'
+forced death, cancellation and admission/root release. The exact gate passes
+with 24 records exported per success, complete node/integration-point coverage,
+unchanged `1e-6` analytical tolerances and zero final reservations/retentions.
+The first packaged attempt's root-registration failure is retained separately:
+the CLI passed, MCP created no job, and exact root reproduction plus the second
+full gate passed. Its suppressed helper diagnostic prevents a root-cause claim.
+Historical `qualify --job` reports these two static formulations'
 checks separately from current-runtime qualification, convergence and physical
 validation. Imported CAD, contact, transient thermal history and hybrid GPU
 factorization remain separately scoped work.
