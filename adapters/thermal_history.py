@@ -42,6 +42,7 @@ def validate(spec):
         "convection_w_m2_k",
         "duration_s",
         "max_step_s",
+        "integration_substeps",
         "observation_times_s",
         "ambient_history",
         "heater_history",
@@ -87,6 +88,13 @@ def validate(spec):
     duration = spec["duration_s"]
     if duration / spec["max_step_s"] > 1024 or spec["max_step_s"] > duration:
         raise ValueError("bounded explicitly approved temporal refinement required")
+    if (
+        type(spec["integration_substeps"]) is not int
+        or not 1 <= spec["integration_substeps"] <= 64
+    ):
+        raise ValueError(
+            "explicit bounded solver substeps independent of energy output required"
+        )
     for key in ("numerical_tolerance", "energy_tolerance"):
         if not 0 < finite(spec[key]) <= 0.02:
             raise ValueError(
@@ -336,6 +344,10 @@ def output_times(spec):
     )
 
 
+def integration_step(spec):
+    return spec["max_step_s"] / spec["integration_substeps"]
+
+
 def deck(spec, fem, nodes, cells, sets):
     lines = fem.mesh_deck(nodes, cells, sets)
     lines += [
@@ -361,10 +373,11 @@ def deck(spec, fem, nodes, cells, sets):
     lines += [
         ",".join(f"{t:.17g}" for t in times[i : i + 8]) for i in range(0, len(times), 8)
     ]
+    step = integration_step(spec)
     lines += [
-        "*STEP,INC=4096",
+        "*STEP,INC=131072",
         "*HEAT TRANSFER,SOLVER=SPOOLES",
-        f"{spec['max_step_s']:.17g},{spec['duration_s']:.17g},{spec['max_step_s'] * 1e-4:.17g},{spec['max_step_s']:.17g}",
+        f"{step:.17g},{spec['duration_s']:.17g},{step * 1e-4:.17g},{step:.17g}",
         "*DFLUX,AMPLITUDE=HEATER",
         f"EALL,BF,{1.0 / math.prod(spec['size_m']):.17g}",
     ]
@@ -627,6 +640,9 @@ def main():
             "nodes": len(nodes),
             "elements": len(cells),
             "physical_times_s": spec["observation_times_s"],
+            "integration_substeps": spec["integration_substeps"],
+            "maximum_native_step_s": integration_step(spec),
+            "energy_output_times_s": output_times(spec),
             "numerical_verification": checks,
             "moisture_risk": spec["moisture_risk"],
             "physical_validation": "unqualified",

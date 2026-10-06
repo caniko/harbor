@@ -74,6 +74,12 @@ snapshots. Energy accounting integrates the actual linear element nodal
 temperatures over mesh volumes and the Robin flux over verified face areas.
 Trapezoidal time integration of outward flux is explicitly identified and
 tested through refinement. Prescribed heater energy is not retained heat.
+Solver increments and energy-output intervals are independent: an explicit
+`integration_substeps` (1–64) divides the prescribed `max_step_s` interval for
+native integration, leaving its energy-output times and physical histories
+unchanged. The native receipt records both schedules. This resolves the first
+native attempt's insufficient first-order time integration without changing
+the temperature or energy acceptance gates; that failed run remains retained.
 
 `scripts/verify_thermal_cpu.py` exercises adiabatic heating and cold/heater/
 Robin histories at three refinements, plus separate fixed-mesh temporal and

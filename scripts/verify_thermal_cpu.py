@@ -43,6 +43,7 @@ def main():
         "convection_w_m2_k": 200.0,
         "duration_s": 120.0,
         "max_step_s": 1.0,
+        "integration_substeps": 64,
         "observation_times_s": [10.0, 60.0, 120.0],
         "ambient_history": [[0.0, 253.15], [60.0, 253.15], [120.0, 273.15]],
         "heater_history": [[0.0, 0.0], [60.0, 0.0], [120.0, 1.0]],

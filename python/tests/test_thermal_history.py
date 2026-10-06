@@ -93,6 +93,7 @@ def fixture():
         "convection_w_m2_k": 200.0,
         "duration_s": 120.0,
         "max_step_s": 1.0,
+        "integration_substeps": 64,
         "observation_times_s": [10.0, 60.0, 120.0],
         "ambient_history": [[0.0, 253.15], [60.0, 253.15], [120.0, 273.15]],
         "heater_history": [[0.0, 0.0], [60.0, 0.0], [120.0, 1.0]],
@@ -117,6 +118,8 @@ def test_transient_admission_preserves_ranges_histories_and_unknown_moisture():
         ("density_kg_m3", 0.0),
         ("material_temperature_domain_k", [270.0, 320.0]),
         ("max_step_s", 1e-10),
+        ("integration_substeps", 65),
+        ("integration_substeps", True),
         ("observation_times_s", [10.0, 120.0, 60.0]),
         ("numerical_tolerance", 0.1),
         ("heater_history", [[0.0, 0.0], [60.0, None], [120.0, 1.0]]),
@@ -197,3 +200,17 @@ def test_native_thermal_verification_rejects_incomplete_fields_and_false_energy(
     fields["temperature"][0]["values"] = {(n,): [250.0] for n in nodes}
     with pytest.raises(ValueError):
         bridge.verify(spec, nodes, cells, fields)
+
+
+def test_solver_substeps_preserve_energy_observation_times_and_physical_histories():
+    bridge = module()
+    request = fixture()
+    original_times = bridge.output_times(request)
+    assert bridge.integration_step(request) == 1.0 / 64.0
+    assert (
+        bridge.output_times({**request, "integration_substeps": 32}) == original_times
+    )
+    assert (
+        bridge.integration_step({**request, "integration_substeps": 32}) == 1.0 / 32.0
+    )
+    assert bridge.history_energy(request["heater_history"], 120.0) == 30.0
