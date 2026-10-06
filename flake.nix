@@ -50,6 +50,9 @@
         cp -r ${./src} src
         cp -r ${./test} test
         ln -s ${self.packages.${system}.default}/lib/harbor-llm/node_modules node_modules
+        export HOME="$PWD/test-home"
+        export XDG_RUNTIME_DIR="$PWD/test-runtime"
+        mkdir -m 700 "$HOME" "$XDG_RUNTIME_DIR"
         DIRENV_BIN=${pkgs.direnv}/bin/direnv NIX_BIN=${pkgs.nix}/bin/nix \
           node --test test/*.test.mjs
         touch $out

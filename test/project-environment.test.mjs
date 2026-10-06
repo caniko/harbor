@@ -25,7 +25,7 @@ async function fixture(t, options = { direnvApproval: "manual" }, approved = tru
   const baseline = { ...process.env, HOME: `${root}/home`, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: `${root}/runtime`, PROJECT_TEST_BASE: "baseline" };
   // Pure fixture flakes need no downloads/builds. A private local store lets
   // the real Nix catalog query run inside the Nix check without its daemon.
-  baseline.NIX_CONFIG = `experimental-features = nix-command flakes\nstore = local?root=${root}/nix\n`;
+  baseline.NIX_CONFIG = `experimental-features = nix-command flakes\nstore = local?root=${root}/nix\nmin-free = 0\nmax-free = 0\nsubstituters =\n`;
   delete baseline.DIRENV_CONFIG;
   for (const name of Object.keys(baseline)) if (name.startsWith("DIRENV_")) delete baseline[name];
   const system = process.arch === "arm64" ? "aarch64-linux" : "x86_64-linux";
