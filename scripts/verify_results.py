@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import shutil
 import sqlite3
@@ -35,9 +36,12 @@ def main():
     parser.add_argument("--source", type=Path, action="append", required=True)
     parser.add_argument("--thermal", action="store_true")
     parser.add_argument("--moisture", action="store_true")
+    parser.add_argument("--projection", action="store_true")
     args = parser.parse_args()
     if args.moisture and not args.thermal:
         parser.error("native moisture screening requires thermal sources")
+    if args.projection and not args.thermal:
+        parser.error("native temperature projection requires thermal sources")
     binary, mcp = args.binary.resolve(strict=True), args.mcp.resolve(strict=True)
     if not all(p.is_relative_to("/nix/store") for p in (binary, mcp)):
         raise ValueError("exact immutable packaged CLI/MCP required")
@@ -417,6 +421,216 @@ def main():
                                         "cli_mcp_parity": True,
                                     }
                                 )
+                            if args.projection:
+                                mesh = json.loads((directory / "mesh.json").read_text())
+                                spec = plan["thermal"]
+                                size, n = spec["size_m"], spec["resolution"]
+                                cell_capacitance = (
+                                    math.prod(size)
+                                    * spec["density_kg_m3"]
+                                    * spec["specific_heat_j_kg_k"]
+                                    / n**3
+                                )
+                                weights = {}
+                                for node, coordinate in mesh["nodes"].items():
+                                    factors = [
+                                        0.5
+                                        if min(abs(x), abs(x - length))
+                                        < spec["geometry_tolerance_m"]
+                                        else 1.0
+                                        for x, length in zip(
+                                            coordinate, size, strict=True
+                                        )
+                                    ]
+                                    weights[int(node)] = cell_capacitance * math.prod(
+                                        factors
+                                    )
+                                total = math.fsum(weights.values())
+                                native_values = points[-1][1]["values"]
+                                integral = math.fsum(
+                                    weights[node] * native_values[node,][0]
+                                    for node in weights
+                                )
+                                mean = integral / total
+                                error = max(
+                                    abs(native_values[node,][0] - mean)
+                                    for node in weights
+                                )
+                                assert error <= 1.0
+                                projection_request = {
+                                    "schema_version": 1,
+                                    "source_job": job["id"],
+                                    "physical_time_s": points[-1][2],
+                                    "destination": {
+                                        "region": "lower",
+                                        "size_m": size,
+                                        "origin_m": [0.0, 0.0, 0.0],
+                                    },
+                                    "maximum_projection_error_k": 1.0,
+                                    "maximum_relative_conservation_error": 1e-12,
+                                }
+                                projected = []
+                                for region, origin in (
+                                    ("lower", [0.0, 0.0, 0.0]),
+                                    ("upper", [0.0, 0.0, size[2] + 0.25e-6]),
+                                ):
+                                    query = {
+                                        **projection_request,
+                                        "destination": {
+                                            **projection_request["destination"],
+                                            "region": region,
+                                            "origin_m": origin,
+                                        },
+                                    }
+                                    observed = cli("transfer-temperature", query)
+                                    Draft202012Validator(
+                                        schemas["ThermalProjectionReport"]
+                                    ).validate(observed)
+                                    reply = await client.call_tool(
+                                        "results_transfer_temperature",
+                                        {"request_spec": query},
+                                    )
+                                    assert (
+                                        not reply.is_error
+                                        and reply.structured_content == observed
+                                    )
+                                    assert observed["request"] == query and observed[
+                                        "source_nodes"
+                                    ] == len(weights)
+                                    assert (
+                                        abs(
+                                            observed["destination_temperature_k"] - mean
+                                        )
+                                        <= 1e-9
+                                    )
+                                    assert (
+                                        abs(observed["capacitance_j_k"] - total)
+                                        <= total * 1e-12
+                                    )
+                                    assert (
+                                        abs(
+                                            observed["maximum_abs_projection_error_k"]
+                                            - error
+                                        )
+                                        <= 1e-9
+                                    )
+                                    assert (
+                                        abs(
+                                            observed["receipt"]["source_integral"]
+                                            - integral
+                                        )
+                                        <= integral * 1e-12
+                                    )
+                                    assert (
+                                        observed["receipt"][
+                                            "relative_conservation_error"
+                                        ]
+                                        <= query["maximum_relative_conservation_error"]
+                                    )
+                                    assert (
+                                        observed["source"]["native_time_s"]
+                                        == points[-1][1]["time"]
+                                        and observed["source"]["physical_time_s"]
+                                        == query["physical_time_s"]
+                                    )
+                                    assert observed["source"]["native_artifact"][
+                                        "sha256"
+                                    ] == checksum(directory / "reference.dat")
+                                    projected.append(observed)
+                                    results.append(
+                                        {
+                                            "projection": observed,
+                                            "independent_capacitance_j_k": total,
+                                            "independent_temperature_integral_j": integral,
+                                            "independent_weighted_temperature_k": mean,
+                                            "independent_projection_error_k": error,
+                                            "cli_mcp_parity": True,
+                                        }
+                                    )
+                                assert (
+                                    projected[0]["projection_id"]
+                                    != projected[1]["projection_id"]
+                                )
+                                assert (
+                                    projected[0]["destination_mesh_sha256"]
+                                    != projected[1]["destination_mesh_sha256"]
+                                )
+                                for label, changed in (
+                                    (
+                                        "caller-temperature",
+                                        {**projection_request, "temperature_k": 293.15},
+                                    ),
+                                    (
+                                        "caller-material",
+                                        {**projection_request, "density_kg_m3": 1000.0},
+                                    ),
+                                    (
+                                        "scaled-destination",
+                                        {
+                                            **projection_request,
+                                            "destination": {
+                                                **projection_request["destination"],
+                                                "size_m": [size[0] * 2.0, *size[1:]],
+                                            },
+                                        },
+                                    ),
+                                    (
+                                        "unresolved-translation",
+                                        {
+                                            **projection_request,
+                                            "destination": {
+                                                **projection_request["destination"],
+                                                "origin_m": [1e15, 0.0, 0.0],
+                                            },
+                                        },
+                                    ),
+                                    (
+                                        "unretained-transfer-time",
+                                        {
+                                            **projection_request,
+                                            "physical_time_s": points[-1][2] + 1e-8,
+                                        },
+                                    ),
+                                    (
+                                        "weakened-conservation",
+                                        {
+                                            **projection_request,
+                                            "maximum_relative_conservation_error": 0.01,
+                                        },
+                                    ),
+                                    (
+                                        "weakened-projection",
+                                        {
+                                            **projection_request,
+                                            "maximum_projection_error_k": 10.0,
+                                        },
+                                    ),
+                                    (
+                                        "unapproved-loss",
+                                        {
+                                            **projection_request,
+                                            "maximum_projection_error_k": error / 2.0
+                                            if error > 1e-9
+                                            else -1.0,
+                                        },
+                                    ),
+                                ):
+                                    error_reply = cli(
+                                        "transfer-temperature", changed, False
+                                    )
+                                    reply = await client.call_tool(
+                                        "results_transfer_temperature",
+                                        {"request_spec": changed},
+                                    )
+                                    assert reply.is_error
+                                    rejections.append(
+                                        {
+                                            "case": label,
+                                            "job": job["id"],
+                                            "error": error_reply,
+                                            "mcp_rejected": True,
+                                        }
+                                    )
                             if args.moisture:
                                 mesh = json.loads((directory / "mesh.json").read_text())
                                 for surface, nodes in mesh[
@@ -576,6 +790,16 @@ def main():
                             if thermal:
                                 request["physical_time_s"] = points[-1][2]
                             error = cli(sample_operation, request, False)
+                            if args.projection:
+                                projection_error = cli(
+                                    "transfer-temperature", projection_request, False
+                                )
+                                rejections.append(
+                                    {
+                                        "case": "mutated-transfer-source",
+                                        "error": projection_error,
+                                    }
+                                )
                             path = f"{prefix}/{artifact}"
                             manifest = json.loads(
                                 database.execute(
@@ -593,6 +817,26 @@ def main():
                             )
                             database.commit()
                             bound_error = cli(sample_operation, request, False)
+                            if args.projection:
+                                projection_error = cli(
+                                    "transfer-temperature", projection_request, False
+                                )
+                                assert (
+                                    "authoritative native output"
+                                    in projection_error["message"]
+                                )
+                                reply = await client.call_tool(
+                                    "results_transfer_temperature",
+                                    {"request_spec": projection_request},
+                                )
+                                assert reply.is_error
+                                rejections.append(
+                                    {
+                                        "case": "self-consistent-transfer-json-substitution",
+                                        "error": projection_error,
+                                        "mcp_rejected": True,
+                                    }
+                                )
                             assert (
                                 "authoritative native output" in bound_error["message"]
                             )
@@ -651,6 +895,7 @@ def main():
         "original_sources_unchanged": True,
         "physical_validation": "unqualified",
         "native_moisture_screening": args.moisture,
+        "native_temperature_projection": args.projection,
         "scope": "exact registered v6 thermal samples and explicit retained-time signed comparisons; native planar surface moisture branches enabled when requested"
         if args.thermal
         else "exact registered static v5/v8 native samples and same-mesh comparisons through CLI/results MCP; no interpolated or transient sampling",
