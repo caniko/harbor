@@ -52,6 +52,24 @@ def number(value):
     return float(value)
 
 
+def strict_json(raw):
+    def pairs(entries):
+        result = {}
+        for name, value in entries:
+            if name in result:
+                raise ValueError("duplicate FEM request field")
+            result[name] = value
+        return result
+
+    def constant(_):
+        raise ValueError("standard finite JSON numbers required")
+
+    result = json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
+    if not isinstance(result, dict):
+        raise TypeError("exact FEM request object required")
+    return result
+
+
 def validate(spec):
     common = {
         "schema_version",
@@ -437,7 +455,7 @@ def main():
     if len(sys.argv) != 3 or sys.argv[1] != "reference":
         raise ValueError("usage: harbor-cad-fem reference request.json")
     raw = read_regular(sys.argv[2], 1024**2)
-    spec = json.loads(raw)
+    spec = strict_json(raw)
     validate(spec)
     if any(Path.cwd().glob("reference.*")) or any(Path.cwd().glob("mesh.json*")):
         raise ValueError("new stage-local FEM directory required")
