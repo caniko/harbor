@@ -121,6 +121,10 @@ test("bootstrap repair bypasses a held project preparation queue", { timeout: 10
 
 test("native Nix lock drift can be repaired through bootstrap before project execution resumes", integration, async (t) => {
   const { projects: [cwd], baseline } = await fixture(t);
+  const native = async (args, env = baseline) => {
+    t.diagnostic(`native lock fixture: ${args.join(" ")}`);
+    return exec(nix, args, { cwd, env, timeout: 8_000 });
+  };
   const input = path.join(cwd, "input");
   await mkdir(input);
   await writeFile(path.join(input, "flake.nix"), "{ outputs = _: {}; }");
@@ -131,21 +135,23 @@ test("native Nix lock drift can be repaired through bootstrap before project exe
   const beforeArchive = path.join(cwd, "input-before.tar");
   await writeFile(beforeArchive, await readFile(archive));
   await writeFile(path.join(cwd, "flake.nix"), `{ inputs.fixture.url = ${JSON.stringify(`tarball+file://${beforeArchive}`)}; outputs = _: {}; }`);
-  await exec(nix, ["flake", "lock"], { cwd, env: baseline });
+  await native(["flake", "lock"]);
   await writeFile(path.join(cwd, "flake.nix"), `{ inputs.fixture.url = ${JSON.stringify(`tarball+file://${archive}`)}; outputs = _: {}; }`);
-  await assert.rejects(exec(nix, ["flake", "metadata", "--no-update-lock-file"], { cwd, env: baseline }), error => {
+  await assert.rejects(native(["flake", "metadata", "--no-update-lock-file"]), error => {
     assert.match(error.stderr, /requires lock file changes but they're not allowed/);
     return true;
   });
   const counter = path.join(cwd, "exports");
   await writeFile(path.join(cwd, ".envrc"), `strict_env\nwatch_file flake.nix flake.lock\necho export >> ${JSON.stringify(counter)}\n${JSON.stringify(nix)} flake metadata --no-update-lock-file >/dev/null || exit 1\nexport PROJECT_TEST="repaired"\n`);
-  const environments = createProjectEnvironments({ roots: [cwd], direnv, nix, system: "x86_64-linux", baseline, direnvApproval: "auto", bootstrapEnvironment: { PATH: baseline.PATH, HOME: baseline.HOME, NIX_CONFIG: baseline.NIX_CONFIG } });
+  const environments = createProjectEnvironments({ roots: [cwd], direnv, nix, system: "x86_64-linux", baseline, direnvApproval: "auto", preparationTimeoutMs: 8_000,
+    onProgress: event => t.diagnostic(`native lock fixture: ${event.phase} ${event.status}`),
+    bootstrapEnvironment: { PATH: baseline.PATH, HOME: baseline.HOME, NIX_CONFIG: baseline.NIX_CONFIG } });
   await assert.rejects(environments.list(cwd), { code: "LOCK_DRIFT" });
   await assert.rejects(environments.resolve({ sessionID: "a", cwd }), { code: "LOCK_DRIFT" });
   await assert.rejects(environments.resolve({ sessionID: "b", cwd }), { code: "LOCK_DRIFT" });
   assert.equal((await readFile(counter, "utf8")).trim(), "export");
   const repair = await environments.resolve({ sessionID: "a", cwd, environment: "bootstrap" });
-  await exec(nix, ["flake", "lock"], { cwd, env: repair.env });
+  await native(["flake", "lock"], repair.env);
   assert.equal((await environments.resolve({ sessionID: "a", cwd })).env.PROJECT_TEST, "repaired");
   assert.equal((await readFile(counter, "utf8")).trim().split("\n").length, 2);
 });
