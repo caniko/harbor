@@ -7,6 +7,7 @@ Source API evidence: docs/cad-mesh.md. This operation is meshing, not a solve.
 import hashlib
 import importlib.util
 import math
+import os
 import re
 import sys
 from pathlib import Path
@@ -153,13 +154,29 @@ def main():
     raw = fem.read_regular(sys.argv[2], 1024**2)
     spec = fem.strict_json(raw)
     validate(spec)
+    sandbox = fem.cpu_sandbox(
+        "HARBOR_CAD_CAD_MESH_POLICY",
+        "harbor-cad-cad-mesh-cpu-v1",
+        "/cad-mesh-runtime-closure.txt",
+        sys.argv[2],
+    )
+    if sandbox is not None:
+        checks = sandbox["checks"]
+        checks["source_brep_readonly"] = (
+            os.statvfs("/inputs/solid.brep").f_flag & os.ST_RDONLY != 0
+        )
+        checks["named_source_only"] = set(Path("/inputs").iterdir()) == {
+            Path("/inputs/solid.brep")
+        }
+        if not all(checks.values()):
+            raise ValueError("imported CAD mesh source sandbox boundary failed")
     brep = fem.read_regular("/inputs/solid.brep", 64 * 1024**2)
     if (
         len(brep) != spec["brep_bytes"]
         or hashlib.sha256(brep).hexdigest() != spec["brep_sha256"]
     ):
         raise ValueError("imported BREP source bytes changed")
-    if list(Path.cwd().iterdir()):
+    if any(p.name != "mesh.log" for p in Path.cwd().iterdir()):
         raise ValueError("new empty stage-local CAD mesh directory required")
     mesh_spec = {
         "size_m": expected_lengths(spec),
@@ -216,6 +233,7 @@ def main():
             "boundary_node_counts": {name: len(ids) for name, ids in sets.items()},
             "gap_healing": False,
             "physical_validation": "unqualified",
+            **({"sandbox": sandbox} if sandbox is not None else {}),
         },
     )
 

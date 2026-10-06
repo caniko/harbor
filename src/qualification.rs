@@ -228,6 +228,7 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::ChannelReference => ("validation.json", None),
             StageOperation::CadFixture => ("cad_fixture-receipt.json", Some("FreeCAD")),
             StageOperation::CadInspect => ("cad_inspect-receipt.json", Some("FreeCAD")),
+            StageOperation::CadMesh => ("stages/mesh/cad-mesh-receipt.json", Some("Gmsh")),
             StageOperation::Openlb => ("openlb-receipt.json", Some("OpenLB")),
             StageOperation::NumericalFilter => (
                 "stages/filter/numerical_filter-receipt.json",
@@ -252,32 +253,40 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: plan.thermal.as_ref().map_or_else(
-                || {
-                    plan.fem.as_ref().map_or_else(
-                        || {
-                            plan.channel_case()
-                                .map(|c| c.applicability.formulation.clone())
-                        },
-                        |f| Ok(f.formulation().into()),
-                    )
-                },
-                |t| Ok(t.formulation.clone()),
-            )?,
+            formulation: if let Some(source) = &plan.cad_source {
+                source.geometry.formulation.clone()
+            } else {
+                plan.thermal.as_ref().map_or_else(
+                    || {
+                        plan.fem.as_ref().map_or_else(
+                            || {
+                                plan.channel_case()
+                                    .map(|c| c.applicability.formulation.clone())
+                            },
+                            |f| Ok(f.formulation().into()),
+                        )
+                    },
+                    |t| Ok(t.formulation.clone()),
+                )?
+            },
             dimensions: plan
                 .case
                 .as_ref()
                 .map_or(3, |c| c.applicability.dimensionality),
             precision: None,
-            refinement: plan.thermal.as_ref().map_or_else(
-                || {
-                    plan.fem.as_ref().map_or_else(
-                        || plan.channel_case().map(|c| c.resolution),
-                        |f| Ok(f.resolution),
-                    )
-                },
-                |t| Ok(t.resolution),
-            )?,
+            refinement: if let Some(source) = &plan.cad_source {
+                source.geometry.resolution
+            } else {
+                plan.thermal.as_ref().map_or_else(
+                    || {
+                        plan.fem.as_ref().map_or_else(
+                            || plan.channel_case().map(|c| c.resolution),
+                            |f| Ok(f.resolution),
+                        )
+                    },
+                    |t| Ok(t.resolution),
+                )?
+            },
             backend: stage
                 .selection
                 .as_ref()
@@ -345,10 +354,38 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     ));
                 }
                 capability.runtime_execution = EvidenceState::Recorded;
-                (
-                    capability.numerical_verification,
-                    capability.numerical_evidence,
-                ) = numerical(&value, &plan, &stage.operation)?;
+                if matches!(stage.operation, StageOperation::CadMesh) {
+                    let record = store
+                        .artifact_record(id, "stages/mesh/mesh.json")?
+                        .ok_or_else(|| invalid("registered imported mesh evidence missing"))?;
+                    let observed = crate::storage::native_manifest(
+                        &store.job_dir(id)?,
+                        &record.path,
+                        32 * 1024 * 1024,
+                        "historical bounded imported mesh byte verification",
+                    )?;
+                    if record.format != "json"
+                        || record.sha256 != observed.sha256
+                        || record.bytes != observed.bytes
+                    {
+                        return Err(invalid(
+                            "historical imported mesh differs from its registered bytes",
+                        ));
+                    }
+                    capability.numerical_evidence = Some(crate::cad_mesh::verify_receipt(
+                        &plan,
+                        &store.job_dir(id)?.join("stages/mesh"),
+                        &value,
+                    )?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                    capability.convergence =
+                        "geometric correspondence; no field solve or convergence claim".into();
+                } else {
+                    (
+                        capability.numerical_verification,
+                        capability.numerical_evidence,
+                    ) = numerical(&value, &plan, &stage.operation)?;
+                }
             }
         }
         capabilities.push(capability);

@@ -48,6 +48,15 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
         )
     });
     let mut output = if native { 16 * MIB } else { MIB };
+    if let Some(source) = &plan.cad_source {
+        output = add(
+            output,
+            add(
+                source.brep.bytes,
+                add(source.manifest.bytes, source.region_evidence.bytes)?,
+            )?,
+        )?;
+    }
     if let Some(source) = &plan.source {
         output = add(output, source.bytes)?;
     }
@@ -117,6 +126,16 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                     )?,
                 )?;
                 2048 * MIB
+            }
+            StageOperation::CadMesh => {
+                let source = plan
+                    .cad_source
+                    .as_ref()
+                    .ok_or_else(|| invalid("imported CAD mesh source required"))?;
+                let n = u64::from(source.geometry.resolution);
+                let nodes = multiply(multiply(add(n, 1)?, add(n, 1)?)?, add(n, 1)?)?;
+                output = add(output, multiply(nodes, 4096)?)?;
+                add(1024 * MIB, multiply(nodes, 65536)?)?
             }
             StageOperation::ThermalReference => {
                 plan.thermal

@@ -1,13 +1,88 @@
 //! Closed named BREP evidence for imported recipes; no native document opens.
 use crate::{
     Result,
-    contracts::{ArtifactManifest, digest, invalid, token},
+    contracts::*,
     qualification::{self, EvidenceRecord},
-    storage::{Store, native_manifest},
+    storage::{
+        Store, commit_artifact, copy_verified, native_manifest, private_dir, publish_directory,
+        safe_path, sync_directories,
+    },
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CadMeshRequest {
+    pub source_job: String,
+    pub region_name: String,
+    pub resolution: u32,
+    pub geometry_tolerance_m: f64,
+}
+
+impl ExecutionPlan {
+    pub fn cad_mesh(source: CadSource, policy: String) -> Result<Self> {
+        let mut plan = Self {
+            schema_version: 7,
+            case: None,
+            fem: None,
+            thermal: None,
+            cad_source: Some(source),
+            source: None,
+            frames: None,
+            filter: None,
+            stages: vec![
+                Stage {
+                    id: "mesh".into(),
+                    dependencies: vec![],
+                    operation: StageOperation::CadMesh,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 1,
+                    vram_bytes: 0,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec!["mesh".into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 16 * 1024 * 1024,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec!["geometry_correspondence".into()],
+                probes: vec![],
+                retained_times_s: vec![],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 0,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
+}
+
+pub fn plan(store: &Store, request: CadMeshRequest, policy: String) -> Result<ExecutionPlan> {
+    let (_, bound) = source(
+        store,
+        &request.source_job,
+        &request.region_name,
+        request.resolution,
+        request.geometry_tolerance_m,
+    )?;
+    ExecutionPlan::cad_mesh(bound, policy)
+}
 
 /// Exact standalone Gmsh descriptor, with source CAD and placement units retained.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -320,4 +395,169 @@ pub fn source(
     };
     bound.validate()?;
     Ok((root, bound))
+}
+
+/// Run inside the submission writer transaction before acknowledgment. The
+/// verified source is copied to distinct inodes, not exposed through the worker.
+pub(crate) fn retain(store: &Store, id: &str, plan: &ExecutionPlan) -> Result<()> {
+    let Some(expected) = &plan.cad_source else {
+        return Ok(());
+    };
+    let (root, observed) = source(
+        store,
+        &expected.job_id,
+        &expected.geometry.region_name,
+        expected.geometry.resolution,
+        expected.geometry.geometry_tolerance_m,
+    )?;
+    if digest(&observed)? != digest(expected)? {
+        return Err(invalid("approved imported CAD source changed"));
+    }
+    let job_dir = store.job_dir(id)?;
+    let destination = job_dir.join("retained-cad");
+    if destination.exists() {
+        return Err(invalid("immutable CAD source destination already exists"));
+    }
+    let intent = commit_artifact(
+        &job_dir,
+        "cad-source-retention.json",
+        &serde_json::to_vec(expected)?,
+        "json",
+        "durable imported CAD staging intent; recovery verifies original source before deleting unpublished copies",
+    )?;
+    let staging = job_dir.join(format!(".retained-cad-{}", uuid::Uuid::new_v4()));
+    private_dir(&staging)?;
+    for path in [
+        &expected.brep.path,
+        &expected.manifest.path,
+        &expected.region_evidence.path,
+    ] {
+        let record = store
+            .artifact_record(&expected.job_id, path)?
+            .ok_or_else(|| invalid("original CAD source record missing"))?;
+        copy_verified(&root, &staging, &record)?;
+    }
+    if expected.brep.path != "solid.brep" {
+        fs::rename(
+            safe_path(&staging, &expected.brep.path)?,
+            staging.join("solid.brep"),
+        )?;
+    }
+    verify_copies(&staging, expected)?;
+    sync_directories(&staging)?;
+    publish_directory(&staging, &destination)?;
+    fs::File::open(&job_dir)?.sync_all()?;
+    for path in ["solid.brep", "brep-manifest.json", "regions.json"] {
+        let record = native_manifest(
+            &job_dir,
+            &format!("retained-cad/{path}"),
+            64 * 1024 * 1024,
+            "verified distinct-inode immutable CAD source; original mm placement retained beside SI world bounds",
+        )?;
+        store.add_artifact(id, &record)?;
+    }
+    let provenance = serde_json::json!({"source":expected,"plan":store.recorded_plan(&expected.job_id)?,"host_profile":store.job_profile(&expected.job_id)?,
+        "execution_binding":store.execution_binding(&expected.job_id)?,"execution_authorization":store.execution_authorization(&expected.job_id)?});
+    store.add_artifact(
+        id,
+        &commit_artifact(
+            &job_dir,
+            "cad-source-execution.json",
+            &serde_json::to_vec_pretty(&provenance)?,
+            "json",
+            "original authorized CAD source execution; no upgraded qualification",
+        )?,
+    )?;
+    store.add_artifact(id, &intent)?;
+    Ok(())
+}
+
+fn verify_copies(root: &std::path::Path, source: &CadSource) -> Result<()> {
+    source.validate()?;
+    for (path, hash, bytes) in [
+        ("solid.brep", &source.brep.sha256, source.brep.bytes),
+        (
+            "brep-manifest.json",
+            &source.manifest.sha256,
+            source.manifest.bytes,
+        ),
+        (
+            "regions.json",
+            &source.region_evidence.sha256,
+            source.region_evidence.bytes,
+        ),
+    ] {
+        let observed =
+            native_manifest(root, path, 64 * 1024 * 1024, "recheck immutable CAD source")?;
+        if &observed.sha256 != hash || observed.bytes != bytes {
+            return Err(invalid(
+                "retained imported CAD bytes differ from approved source",
+            ));
+        }
+    }
+    let names = fs::read_dir(root)?
+        .map(|e| e.map(|e| e.file_name()))
+        .collect::<std::io::Result<std::collections::BTreeSet<_>>>()?;
+    if names
+        != ["solid.brep", "brep-manifest.json", "regions.json"]
+            .into_iter()
+            .map(std::ffi::OsString::from)
+            .collect()
+    {
+        return Err(invalid("only exact retained CAD source evidence permitted"));
+    }
+    Ok(())
+}
+
+pub fn registered(store: &Store, id: &str, plan: &ExecutionPlan) -> Result<PathBuf> {
+    let expected = plan
+        .cad_source
+        .as_ref()
+        .ok_or_else(|| invalid("source-bound CAD plan required"))?;
+    let root = store.job_dir(id)?;
+    let intent =
+        crate::worker::read_bounded(&safe_path(&root, "cad-source-retention.json")?, MAX_MESSAGE)?;
+    let source: CadSource = serde_json::from_slice(&intent)?;
+    if digest(&source)? != digest(expected)? {
+        return Err(invalid("retained CAD intent differs from approved plan"));
+    }
+    let copies = safe_path(&root, "retained-cad")?;
+    verify_copies(&copies, expected)?;
+    for path in ["solid.brep", "brep-manifest.json", "regions.json"] {
+        let record = store
+            .artifact_record(id, &format!("retained-cad/{path}"))?
+            .ok_or_else(|| invalid("retained CAD artifact registration missing"))?;
+        let observed = native_manifest(
+            &root,
+            &record.path,
+            64 * 1024 * 1024,
+            "recheck retained CAD registration",
+        )?;
+        if record.sha256 != observed.sha256 || record.bytes != observed.bytes {
+            return Err(invalid("retained CAD artifact registry changed"));
+        }
+    }
+    Ok(copies)
+}
+
+pub(crate) fn recover_orphan(store: &Store, id: &str) -> Result<()> {
+    let root = safe_path(&store.root, &format!("artifacts/{id}"))?;
+    let intent = safe_path(&root, "cad-source-retention.json")?;
+    if !intent.exists() {
+        return Ok(());
+    }
+    let expected: CadSource =
+        serde_json::from_slice(&crate::worker::read_bounded(&intent, MAX_MESSAGE)?)?;
+    if let Ok((_, original)) = source(
+        store,
+        &expected.job_id,
+        &expected.geometry.region_name,
+        expected.geometry.resolution,
+        expected.geometry.geometry_tolerance_m,
+    ) && digest(&original)? == digest(&expected)?
+    {
+        fs::remove_dir_all(&root)?;
+        fs::File::open(root.parent().ok_or_else(|| invalid("CAD orphan parent"))?)?.sync_all()?;
+    }
+    Ok(())
 }

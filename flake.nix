@@ -169,7 +169,7 @@
       inherit (filters) kokkos-hip vtk-hip filter-hip;
       inherit (fem) fem-cpu runtime-fem-cpu runtime-fem-worker;
       inherit (thermal) thermal-cpu runtime-thermal-cpu runtime-thermal-worker;
-      inherit (cadMesh) cad-mesh-cpu runtime-cad-mesh-cpu;
+      inherit (cadMesh) cad-mesh-cpu runtime-cad-mesh-cpu runtime-cad-mesh-worker;
       inherit (femImported) fem-imported-cpu runtime-fem-imported-cpu;
       inherit (native) cad-mesh-fixtures runtime-cad-fixtures runtime-cad-only;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {

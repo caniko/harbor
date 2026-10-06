@@ -1,6 +1,7 @@
 pub mod admission;
 pub mod authority;
 pub mod cad;
+pub mod cad_mesh;
 pub mod cad_source;
 pub mod contracts;
 pub mod devices;

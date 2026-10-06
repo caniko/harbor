@@ -165,6 +165,8 @@ enum Job {
 }
 #[derive(Subcommand)]
 enum Cad {
+    /// Plan correspondence meshing from registered authorized BREP; requires the worker.
+    Mesh { request: PathBuf },
     /// Prepare an approval-bound sandboxed inspection plan; submit with job submit.
     Inspect {
         file: PathBuf,
@@ -327,6 +329,9 @@ fn run(cli: Cli) -> Result<()> {
             }
         },
         Commands::Cad { command } => match command {
+            Cad::Mesh { request } => Operation::PlanCadMesh {
+                request: Box::new(read(&request)?),
+            },
             Cad::Inspect {
                 file,
                 policy,

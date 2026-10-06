@@ -56,6 +56,27 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"cad", "all"}:
 
         @server.tool()
+        async def cad_plan_mesh(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan a CPU mesh from one registered authorized CAD solid; preserve exact BREP/world placement."""
+            return await request("plan_cad_mesh", request=request_spec)
+
+        @server.tool()
+        async def cad_mesh_submit(
+            plan: dict[str, Any], approved_digest: str, idempotency_key: str
+        ) -> dict[str, Any]:
+            """Submit only an approved source-bound mesh; return its durable job ID."""
+            if plan.get("schema_version") != 7 or [
+                s.get("operation") for s in plan.get("stages", [])
+            ] != ["cad_mesh", "bundle"]:
+                raise ValueError("exact approved imported CAD mesh DAG required")
+            return await request(
+                "submit",
+                plan=plan,
+                approved_digest=approved_digest,
+                idempotency_key=idempotency_key,
+            )
+
+        @server.tool()
         async def cad_plan_inspection(
             case: dict[str, Any], max_artifact_bytes: int = 67108864
         ) -> dict[str, Any]:

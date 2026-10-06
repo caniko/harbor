@@ -278,6 +278,7 @@ pub enum StageOperation {
     ChannelReference,
     CadFixture,
     CadInspect,
+    CadMesh,
     Openlb,
     NumericalFilter,
     FemReference,
@@ -406,6 +407,8 @@ pub struct ExecutionPlan {
     pub fem: Option<crate::fem::FemReferenceSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thermal: Option<crate::thermal::ThermalReferenceSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cad_source: Option<crate::cad_source::CadSource>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -432,6 +435,14 @@ struct ExecutionPlanRecord {
     fem: Option<crate::fem::FemReferenceSpec>,
     #[serde(default, deserialize_with = "thermal_spec")]
     thermal: Option<crate::thermal::ThermalReferenceSpec>,
+    #[serde(default, deserialize_with = "cad_source")]
+    cad_source: Option<crate::cad_source::CadSource>,
+}
+
+fn cad_source<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<crate::cad_source::CadSource>, D::Error> {
+    crate::cad_source::CadSource::deserialize(decoder).map(Some)
 }
 
 fn channel_case<'de, D: serde::Deserializer<'de>>(
@@ -480,16 +491,18 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
             &plan.case,
             &plan.fem,
             &plan.thermal,
+            &plan.cad_source,
         ) {
-            (1, None, None, None, Some(_), None, None)
-            | (2, Some(_), None, None, Some(_), None, None)
-            | (3, Some(_), Some(_), None, Some(_), None, None)
-            | (4, Some(_), None, Some(_), Some(_), None, None)
-            | (5, None, None, None, None, Some(_), None)
-            | (6, None, None, None, None, None, Some(_)) => {}
+            (1, None, None, None, Some(_), None, None, None)
+            | (2, Some(_), None, None, Some(_), None, None, None)
+            | (3, Some(_), Some(_), None, Some(_), None, None, None)
+            | (4, Some(_), None, Some(_), Some(_), None, None, None)
+            | (5, None, None, None, None, Some(_), None, None)
+            | (6, None, None, None, None, None, Some(_), None)
+            | (7, None, None, None, None, None, None, Some(_)) => {}
             _ => {
                 return Err(D::Error::custom(
-                    "explicit v1, retained-source v2, frame-bound v3, numerical-filter v4, independent FEM v5 or thermal v6 plan required",
+                    "explicit v1, retained-source v2, frame-bound v3, numerical-filter v4, independent FEM v5, thermal v6 or imported CAD mesh v7 plan required",
                 ));
             }
         }
@@ -504,7 +517,7 @@ impl JsonSchema for ExecutionPlan {
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
-            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3, 4, 5, 6]);
+            properties["schema_version"]["enum"] = serde_json::json!([1, 2, 3, 4, 5, 6, 7]);
         }
         schema.insert("allOf".into(), serde_json::json!([
             {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}}},
@@ -513,7 +526,8 @@ impl JsonSchema for ExecutionPlan {
             {"if":{"properties":{"schema_version":{"const":4}}},"then":{"required":["source","filter"],"properties":{"source":{"type":"object"},"filter":{"type":"object"}},"not":{"required":["frames"]}}},
             {"if":{"properties":{"schema_version":{"const":5}}},"then":{"required":["fem"],"properties":{"fem":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["thermal"]}]}}},
             {"if":{"properties":{"schema_version":{"const":6}}},"then":{"required":["thermal"],"properties":{"thermal":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]}]}},"else":{"not":{"required":["thermal"]}}},
-            {"if":{"properties":{"schema_version":{"enum":[1,2,3,4]}}},"then":{"required":["case"],"properties":{"case":{"type":"object"}},"not":{"required":["fem"]}}}
+            {"if":{"properties":{"schema_version":{"enum":[1,2,3,4]}}},"then":{"required":["case"],"properties":{"case":{"type":"object"}},"not":{"required":["fem"]}}},
+            {"if":{"properties":{"schema_version":{"const":7}}},"then":{"required":["cad_source"],"properties":{"cad_source":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]}]}},"else":{"not":{"required":["cad_source"]}}}
         ]));
         schema
     }
@@ -525,10 +539,11 @@ impl ExecutionPlan {
             .ok_or_else(|| invalid("fluid/CAD case required for this operation"))
     }
     pub fn science_id(&self) -> Result<String> {
-        match (&self.case, &self.fem, &self.thermal) {
-            (Some(case), None, None) => case.science_id(),
-            (None, Some(fem), None) => digest(fem),
-            (None, None, Some(thermal)) => digest(thermal),
+        match (&self.case, &self.fem, &self.thermal, &self.cad_source) {
+            (Some(case), None, None, None) => case.science_id(),
+            (None, Some(fem), None, None) => digest(fem),
+            (None, None, Some(thermal), None) => digest(thermal),
+            (None, None, None, Some(source)) => digest(source),
             _ => Err(invalid("one scientific recipe required")),
         }
     }
@@ -561,6 +576,7 @@ impl ExecutionPlan {
             filter: Some(request.filter.clone()),
             fem: None,
             thermal: None,
+            cad_source: None,
             stages: vec![
                 Stage {
                     id: "filter".into(),
@@ -628,6 +644,7 @@ impl ExecutionPlan {
             filter: None,
             fem: None,
             thermal: None,
+            cad_source: None,
             stages: vec![
                 Stage {
                     id: "video".into(),
@@ -744,6 +761,7 @@ impl ExecutionPlan {
             filter: None,
             fem: None,
             thermal: None,
+            cad_source: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -783,6 +801,7 @@ impl ExecutionPlan {
             filter: None,
             fem: None,
             thermal: None,
+            cad_source: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -834,6 +853,7 @@ impl ExecutionPlan {
             filter: None,
             fem: None,
             thermal: None,
+            cad_source: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -901,6 +921,7 @@ impl ExecutionPlan {
             filter: None,
             fem: None,
             thermal: None,
+            cad_source: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1002,13 +1023,15 @@ impl ExecutionPlan {
                 &self.case,
                 &self.fem,
                 &self.thermal,
+                &self.cad_source,
             ),
-            (1, None, None, None, Some(_), None, None)
-                | (2, Some(_), None, None, Some(_), None, None)
-                | (3, Some(_), Some(_), None, Some(_), None, None)
-                | (4, Some(_), None, Some(_), Some(_), None, None)
-                | (5, None, None, None, None, Some(_), None)
-                | (6, None, None, None, None, None, Some(_))
+            (1, None, None, None, Some(_), None, None, None)
+                | (2, Some(_), None, None, Some(_), None, None, None)
+                | (3, Some(_), Some(_), None, Some(_), None, None, None)
+                | (4, Some(_), None, Some(_), Some(_), None, None, None)
+                | (5, None, None, None, None, Some(_), None, None)
+                | (6, None, None, None, None, None, Some(_), None)
+                | (7, None, None, None, None, None, None, Some(_))
         ) || self.fleetix_revision != FLEETIX_REV
             || self.fleetix_contract_digest != fleetix_digest()
         {
@@ -1016,6 +1039,28 @@ impl ExecutionPlan {
         }
         if !["ci", "prototype", "production", "research"].contains(&self.policy.as_str()) {
             return Err(invalid("policy"));
+        }
+        if let Some(source) = &self.cad_source {
+            source.validate()?;
+            if self.policy == "ci"
+                || self.stages.len() != 2
+                || self.stages[0].id != "mesh"
+                || !self.stages[0].dependencies.is_empty()
+                || !matches!(self.stages[0].operation, StageOperation::CadMesh)
+                || self.stages[1].id != "bundle"
+                || self.stages[1].dependencies != ["mesh"]
+                || !matches!(self.stages[1].operation, StageOperation::Bundle)
+                || !self.observation.retained_times_s.is_empty()
+                || !self.observation.checkpoint_times_s.is_empty()
+                || !self.observation.preview_times_s.is_empty()
+                || !self.observation.probes.is_empty()
+                || self.observation.preview_may_drop
+                || self.observation.metrics != ["geometry_correspondence"]
+            {
+                return Err(invalid(
+                    "exact independent source-bound imported CAD mesh and bundle DAG required",
+                ));
+            }
         }
         if self.fem.is_some() {
             let operations: Vec<_> = self.stages.iter().map(|s| &s.operation).collect();
@@ -1183,6 +1228,11 @@ impl ExecutionPlan {
         let mut seen = BTreeSet::new();
         let mut operations = BTreeSet::new();
         for stage in &self.stages {
+            if matches!(stage.operation, StageOperation::CadMesh) && self.cad_source.is_none() {
+                return Err(invalid(
+                    "imported CAD mesh requires a source-bound version-7 recipe",
+                ));
+            }
             if matches!(stage.operation, StageOperation::ThermalReference) && self.thermal.is_none()
             {
                 return Err(invalid(
@@ -1465,6 +1515,9 @@ pub enum Operation {
         case: Box<CaseSpec>,
         max_artifact_bytes: u64,
     },
+    PlanCadMesh {
+        request: Box<crate::cad_source::CadMeshRequest>,
+    },
     PlanFemReference {
         spec: Box<crate::fem::FemReferenceSpec>,
     },
@@ -1545,6 +1598,8 @@ pub fn schemas() -> serde_json::Value {
         "FilterRequest": schemars::schema_for!(FilterRequest),
         "JobEvidenceReport": schemars::schema_for!(crate::qualification::JobEvidenceReport),
         "RegionReport": schemars::schema_for!(crate::cad::RegionReport),
+        "CadSource": schemars::schema_for!(crate::cad_source::CadSource),
+        "CadMeshRequest": schemars::schema_for!(crate::cad_source::CadMeshRequest),
         "FemReferenceSpec": schemars::schema_for!(crate::fem::FemReferenceSpec),
         "ThermalReferenceSpec": schemars::schema_for!(crate::thermal::ThermalReferenceSpec),
         "ConservativeTransfer": schemars::schema_for!(crate::transfers::ConservativeTransfer),

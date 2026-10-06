@@ -248,6 +248,7 @@ impl ExecutionPlan {
             case: None,
             fem: None,
             thermal: Some(spec),
+            cad_source: None,
             source: None,
             frames: None,
             filter: None,

@@ -9,6 +9,7 @@
   adapter = pkgs.writeShellScriptBin "harbor-cad-cad-mesh" ''
     exec ${pkgs.python313}/bin/python3 ${bridge} "$@"
   '';
+  closure = pkgs.closureInfo {rootPaths = [adapter];};
 in {
   inherit bridge;
   cad-mesh-cpu = adapter;
@@ -18,5 +19,15 @@ in {
     cad_mesh = "${adapter}/bin/harbor-cad-cad-mesh";
     backend = "cpu";
     qualification = "unqualified";
+  });
+  runtime-cad-mesh-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    cad_mesh = "${adapter}/bin/harbor-cad-cad-mesh";
+    cad_mesh_closure = "${closure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
   });
 }

@@ -62,6 +62,10 @@ def test_schema_parity_and_unknown_input_rejection():
     injected = dict(planned, source=None)
     with pytest.raises(ValidationError):
         Draft202012Validator(schemas["ExecutionPlan"]).validate(injected)
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schemas["ExecutionPlan"]).validate(
+            dict(planned, cad_source=None)
+        )
     injected_filter = dict(planned, filter={"time_s": 0, "field": "velocity"})
     with pytest.raises(ValidationError):
         Draft202012Validator(schemas["ExecutionPlan"]).validate(injected_filter)
@@ -120,6 +124,19 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_openlb_reference" in names
                 assert "cad_plan_inspection" in names
                 assert "cad_regions" in names and "cad_submit" in names
+                assert "cad_plan_mesh" in names and "cad_mesh_submit" in names
+                rejected_mesh = await client.call_tool(
+                    "cad_plan_mesh",
+                    {
+                        "request_spec": {
+                            "source_job": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+                            "region_name": "solid",
+                            "resolution": 4,
+                            "geometry_tolerance_m": 1e-6,
+                        }
+                    },
+                )
+                assert rejected_mesh.is_error
                 assert "cold_restart_validate" in names
                 assert "filter_plan" in names
                 assert "case_plan_fem_reference" in names

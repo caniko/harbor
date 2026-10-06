@@ -58,9 +58,10 @@ complete boundary nodes reuse the established FEM mesh verifier.
 Source versions/hashes/ABI remain those in [FEM references](fem-references.md)
 and [dependency manifest](dependency-manifest.json). The initial allowlist
 rejects curved, multi-solid, ambiguous or mismatched imported geometry.
-Native correspondence qualification and durable imported-FEM planning are
-separate remaining gates; static synthetic and transient packages inherit no
-qualification from this new mesh/importer code.
+Native correspondence passes at the exact repaired package described in
+[imported CAD/FEM evidence](evidence/imported-cad-fem-cpu.json). Durable
+imported-FEM planning remains a separate gate; static synthetic and transient
+packages inherit no qualification from this new mesh/importer code.
 
 The first exact CAD correspondence gate, `cad-mesh-1` at `4e23c6d`, correctly
 rejected the origin box before meshing because generic dilation had changed its
@@ -81,3 +82,34 @@ commands. Wrong bytes/units/gates/bounds/paths, multiple solids and curved
 geometry must fail before publishing a mesh receipt. Fixed negative BREP
 fixtures are created through the same immutable security-patched FreeCAD ABI;
 they are qualification inputs, with synthetic provenance retained.
+
+`cad-mesh-2` passed both placements at resolutions 2/4/8 and all seven negative
+cases. Maximum independently checked relative volume error was
+`9.366066814264428e-13`, below the unchanged `1e-10` gate; the aggregate campaign
+RAM peak was `109367296` bytes under two CPUs, 2 GiB, no swap and 128 tasks.
+
+## Durable source-bound meshing
+
+`harbor-cad --socket SOCKET cad mesh REQUEST.json` and CAD-profile MCP
+`cad_plan_mesh` resolve one registered authorized source job/region. The request
+contains `source_job`, `region_name`, `resolution` and `geometry_tolerance_m`.
+The returned version-7 plan and approval digest can be submitted through
+`job submit` or `cad_mesh_submit`, which returns a durable job ID.
+
+The plan has its own CAD source identity and no fluid/FEM/thermal inputs or
+invented physical times. Prior versions reject injected CAD sources, including
+null fields. Submission reserves source staging capacity and publishes verified
+distinct-inode BREP/manifest/region copies before acknowledgment. Durable
+staging intents preserve incomplete copies if the original authorized source
+has been lost; valid original evidence permits orphan recovery. Source bytes
+are checked before and after the native operation.
+
+`runtime-cad-mesh-worker` mounts only its immutable Gmsh/Python operation closure
+and the selected retained BREP as read-only input. It requires authoritative
+admission, owned systemd services and effective CPU/RAM/task/disk controls.
+Receipts verify package/source/unit/world-placement/mesh identities and ten
+isolation checks. Rust independently checks complete Cartesian nodes, cell
+coverage, all eight C3D8 Gauss Jacobians per cell, conserved volume and all six
+boundary node sets before publishing the stage. Geometric correspondence stays
+distinct from a field solve, convergence study or physical validation. The
+version-7 native worker/export/lifecycle gate is pending its committed package.
