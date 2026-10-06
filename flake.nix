@@ -37,6 +37,7 @@
   in {
     lib.postgresRecoveryReadiness = 1;
     lib.postgresRecoveryPreparation = 1;
+    lib.cutoverPreflight = 3;
     nixosModules.harbor-db = {
       lib,
       pkgs,
@@ -46,12 +47,14 @@
       imports = [
         ./nix/module.nix
         ./nix/postgres-lifecycle.nix
+        ./nix/cutover.nix
         (lib.mkAliasOptionModule ["services" "db-harbor"] ["services" "harbor-db"])
       ];
       services.harbor-db.package = lib.mkDefault self.packages.${pkgs.system}.harbor-db;
     };
     nixosModules.pg-backup = import ./nix/pg-backup.nix;
     nixosModules.postgres-lifecycle = ./nix/postgres-lifecycle.nix;
+    nixosModules.cutover = ./nix/cutover.nix;
     nixosModules.db-harbor = self.nixosModules.harbor-db;
     nixosModules.default = self.nixosModules.harbor-db;
 
@@ -124,6 +127,9 @@
         module = self.nixosModules.default;
       };
       pg-backup-eval = pkgs.callPackage ./nix/pg-backup-eval.nix {};
+      cutover-eval = pkgs.callPackage ./nix/cutover-eval.nix {
+        module = self.nixosModules.default;
+      };
       postgres-lifecycle-eval = pkgs.callPackage ./nix/postgres-lifecycle-eval.nix {
         module = self.nixosModules.default;
         lifecycleModule = self.nixosModules.postgres-lifecycle;
@@ -133,7 +139,7 @@
       postgres-recovery-acceptance = pkgs.callPackage ./nix/test-postgres-recovery.nix {};
       postgres-lifecycle-test =
         pkgs.runCommand "harbor-db-postgres-lifecycle-test" {
-          nativeBuildInputs = [pkgs.python3];
+          nativeBuildInputs = [pkgs.python3 pkgs.gitMinimal];
         } ''
           PYTHONPATH=${./python} python3 -B -m unittest discover -s ${./tests} -p 'test_*.py'
           touch "$out"

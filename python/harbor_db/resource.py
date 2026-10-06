@@ -1,6 +1,7 @@
 """Persistent authority for consumer-selected storage roots and backend binding."""
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -31,7 +32,7 @@ def contract(config):
     state = state_directory(config)
     consumer = {}
     if config.get("consumer_command"):
-        result = subprocess.run(config["consumer_command"], capture_output=True, text=True)
+        result = subprocess.run(config["consumer_command"], capture_output=True, text=True, check=False)
         if result.returncode:
             raise AuthorityError(f"consumer storage validation failed: {result.stderr.strip()}")
         consumer = json.loads(result.stdout)
@@ -98,45 +99,67 @@ def verify(config, expected):
 
 
 def check(config):
+    with inspection(config):
+        pass
+
+
+@contextlib.contextmanager
+def inspection(config):
+    """Retain existing authority while an additional consumer guard inspects it."""
     state = state_directory(config)
     if not (state / "identity.json").exists():
         raise AuthorityError("storage is not adopted; explicit adoption is required")
     with lock(state / "lock", shared=True):
-        verify(config, contract(config))
+        yield verify(config, contract(config))
 
 
-def serve(config, argv):
+def serve(config, argv, *, inspect=None):
     """Exec the consumer with its validated contract and lifetime authority lease."""
     if not argv or not Path(argv[0]).is_absolute():
         raise AuthorityError("consumer executable must be an absolute path")
     with lock(state_directory(config) / "lock", shared=True) as lease:
         verify(config, contract(config))
+        if inspect is not None:
+            inspect()
         os.set_inheritable(lease, True)
         os.execv(argv[0], argv)
 
 
 def adopt(config, identifier):
+    with adoption(config, identifier) as publish:
+        publish()
+
+
+@contextlib.contextmanager
+def adoption(config, identifier):
+    """Keep writers excluded through independent proof and authority publication."""
     if not identifier or len(identifier) > 128:
         raise AuthorityError("a verified nonempty storage identifier is required")
     state = state_directory(config)
     # A registered resource must retain its original lock inode, even if a
     # writer still holds that inode after its pathname has disappeared.
     with lock(state / "lock", create=not (state / "identity.json").exists()):
-        expected = contract(config)
-        if (state / "identity.json").exists():
-            if verify(config, expected)["identity"] != identifier:
-                raise AuthorityError("cannot replace adopted storage identity")
-            return
-        marker = {"resource": config["resource"], "identity": identifier}
-        for directory in expected["directories"]:
-            path = anchor(config, directory)
-            if path.exists() and read_json(path) != marker:
-                raise AuthorityError(f"existing storage identity differs at {directory}")
-        # Publish the authority only after every guarded root has a durable marker.
-        # Retrying interrupted adoption is safe with the same verified identifier.
-        for directory in expected["directories"]:
-            write_json(anchor(config, directory), marker)
-        write_json(state / "identity.json", {**expected, "identity": identifier})
+        yield lambda: publish_adoption(config, identifier)
+
+
+def publish_adoption(config, identifier):
+    """Called only by the publisher yielded under the existing adoption lease."""
+    state = state_directory(config)
+    expected = contract(config)
+    if (state / "identity.json").exists():
+        if verify(config, expected)["identity"] != identifier:
+            raise AuthorityError("cannot replace adopted storage identity")
+        return
+    marker = {"resource": config["resource"], "identity": identifier}
+    for directory in expected["directories"]:
+        path = anchor(config, directory)
+        if path.exists() and read_json(path) != marker:
+            raise AuthorityError(f"existing storage identity differs at {directory}")
+    # Publish the authority only after every guarded root has a durable marker.
+    # Retrying interrupted adoption is safe with the same verified identifier.
+    for directory in expected["directories"]:
+        write_json(anchor(config, directory), marker)
+    write_json(state / "identity.json", {**expected, "identity": identifier})
 
 
 def main():

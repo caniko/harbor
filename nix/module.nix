@@ -495,7 +495,7 @@
           else "generic";
         phase = "schema";
         safety = "automatic";
-        runner = project.runner;
+        inherit (project) runner;
         dependsOn = [];
         credentials = {};
         loadCredentials = [];
@@ -583,7 +583,7 @@
     then runnerCommandSpec name "check" (runner // {command = null;}) runner.checkArgs
     else null;
 
-  grantApplySpec = name: project: {
+  grantApplySpec = _name: project: {
     program = "${project.postgres.package}/bin/psql";
     args = [
       project.postgres.databaseUrl
@@ -623,11 +623,11 @@
 
   operationToPlan = name: operation: {
     id = name;
-    kind = operation.kind;
-    lifecycle = operation.lifecycle;
-    backend = operation.backend;
-    phase = operation.phase;
-    safety = operation.safety;
+    inherit (operation) kind;
+    inherit (operation) lifecycle;
+    inherit (operation) backend;
+    inherit (operation) phase;
+    inherit (operation) safety;
     apply = runnerCommandSpec name "apply" operation.runner operation.runner.args;
     check = runnerCheckSpec name operation.runner;
     depends_on = operation.dependsOn;
@@ -680,7 +680,7 @@
       exec ${command}
     ''}";
 
-  restoreOperationIds = name: project:
+  restoreOperationIds = _name: project:
     lib.attrNames (lib.filterAttrs (_: operation: operation.lifecycle == "restore") (enabledOperations project));
 
   projectRestoreCommand = name: project:
@@ -747,12 +747,12 @@
     }
     // migration.serviceConfig;
 
-  migrationService = name: migration: {
-    description = migration.description;
+  migrationService = _name: migration: {
+    inherit (migration) description;
     inherit (migration) environment path;
-    after = migration.after;
-    requires = migration.requires;
-    wants = migration.wants;
+    inherit (migration) after;
+    inherit (migration) requires;
+    inherit (migration) wants;
     before = migration.beforeUnits;
     requiredBy = migration.requiredByUnits;
     # A migration is a deployment gate, not a one-shot dependency that only
@@ -790,13 +790,13 @@
       };
     };
 
-  checkService = name: migration:
+  checkService = _name: migration:
     mkIf (migration.checkCommand != null) {
       description = "${migration.description} readiness check";
       inherit (migration) environment path;
-      after = migration.after;
-      requires = migration.requires;
-      wants = migration.wants;
+      inherit (migration) after;
+      inherit (migration) requires;
+      inherit (migration) wants;
       serviceConfig =
         serviceConfigFor migration
         // {
@@ -804,12 +804,12 @@
         };
     };
 
-  restoreService = name: migration: {
+  restoreService = _name: migration: {
     description = "${migration.description} on-demand restore";
     inherit (migration) environment path;
-    after = migration.after;
-    requires = migration.requires;
-    wants = migration.wants;
+    inherit (migration) after;
+    inherit (migration) requires;
+    inherit (migration) wants;
     restartIfChanged = true;
     stopIfChanged = true;
     serviceConfig =
@@ -850,6 +850,12 @@ in {
             description = "Absolute path of the data directory.";
           };
 
+          create = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Whether this is new provisionable state. Set false for adopted historical corpus roots; absence then fails activation.";
+          };
+
           user = mkOption {
             type = types.str;
             default = "root";
@@ -886,10 +892,20 @@ in {
       # systemd-tmpfiles runs only at boot, ordered after local-fs.target.
       # The activation script covers live switches, where the dir would
       # otherwise be missing when a unit sets up its mount namespace.
-      systemd.tmpfiles.rules = map (dir: "d ${dir.path} ${dir.mode} ${dir.user} ${dir.group} - -") cfg.dataDirectories;
+      systemd.tmpfiles.rules =
+        map (dir: "${
+          if dir.create
+          then "d"
+          else "z"
+        } ${dir.path} ${dir.mode} ${dir.user} ${dir.group} - -")
+        cfg.dataDirectories;
 
       system.activationScripts.harbor-db-establish-data-directories = lib.stringAfter ["groups" "users"] (
-        lib.concatMapStringsSep "\n" (dir: "install -d -o ${dir.user} -g ${dir.group} -m ${dir.mode} ${dir.path}") cfg.dataDirectories
+        lib.concatMapStringsSep "\n" (dir:
+          if dir.create
+          then "install -d -o ${dir.user} -g ${dir.group} -m ${dir.mode} ${dir.path}"
+          else "test -d ${lib.escapeShellArg dir.path} && test ! -L ${lib.escapeShellArg dir.path} || { echo ${lib.escapeShellArg ("Harbor-DB historical source missing: " + dir.path)} >&2; exit 1; }")
+        cfg.dataDirectories
       );
     })
 
