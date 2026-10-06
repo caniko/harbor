@@ -348,6 +348,9 @@ def read_dat(text):
         line = raw.strip()
         if not line:
             continue
+        if re.fullmatch(r"(?:S T E P|INCREMENT)\s+[1-9][0-9]*", line):
+            current = None
+            continue
         if " for set " in line:
             label, rest = line.split(" for set ", 1)
             if label not in definitions:

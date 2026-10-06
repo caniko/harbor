@@ -14,9 +14,13 @@ def bridge():
     return module
 
 
-def test_ccx_dat_preserves_ids_components_and_physical_times():
+def test_ccx_dat_preserves_ids_components_and_solver_step_parameters():
     parser = bridge().read_dat
     text = """
+                        S T E P       1
+
+                                INCREMENT     1
+
  temperatures for set NALL and time 0.1000000E+01
 
   7 2.931500E+02
@@ -37,6 +41,8 @@ def test_ccx_dat_preserves_ids_components_and_physical_times():
         text.replace("0.1000000E+01", "Inf"),
         text.replace("  42 1 -1.000000E+04", "  42 1 2 -1.000000E+04"),
         text.replace("NALL", "UNRELATED"),
+        text.replace("S T E P       1", "S T E P       0"),
+        text.replace("INCREMENT     1", "UNKNOWN     1"),
     ):
         with pytest.raises(ValueError):
             parser(broken)
