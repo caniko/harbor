@@ -137,6 +137,7 @@
     filters = import ./nix/filters.nix {inherit pkgs;};
     fem = import ./nix/fem.nix {inherit pkgs;};
     thermal = import ./nix/thermal.nix {inherit pkgs fem;};
+    cadMesh = import ./nix/cad-mesh.nix {inherit pkgs fem;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
       projectRootFile = "flake.nix";
       programs.rustfmt = {
@@ -167,6 +168,8 @@
       inherit (filters) kokkos-hip vtk-hip filter-hip;
       inherit (fem) fem-cpu runtime-fem-cpu runtime-fem-worker;
       inherit (thermal) thermal-cpu runtime-thermal-cpu runtime-thermal-worker;
+      inherit (cadMesh) cad-mesh-cpu runtime-cad-mesh-cpu;
+      inherit (native) cad-mesh-fixtures runtime-cad-fixtures runtime-cad-only;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
         cad = null;

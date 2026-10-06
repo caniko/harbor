@@ -1,5 +1,6 @@
 """Exercise the fixed importer script with only the FreeCAD boundary substituted."""
 
+import hashlib
 import json
 import runpy
 import sys
@@ -45,6 +46,22 @@ def inspect(monkeypatch, tmp_path, regions, objects):
     monkeypatch.setenv("HARBOR_CAD_PLAN", str(plan))
     write = Path.write_text
     replace = Path.replace
+    stat = Path.stat
+    read_bytes = Path.read_bytes
+    monkeypatch.setattr(
+        Path,
+        "stat",
+        lambda path, **kwargs: stat(
+            tmp_path / path.name if str(path).startswith("/work/") else path, **kwargs
+        ),
+    )
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda path: read_bytes(
+            tmp_path / path.name if str(path).startswith("/work/") else path
+        ),
+    )
     monkeypatch.setattr(
         Path,
         "write_text",
@@ -68,6 +85,9 @@ def solid(name):
             isNull=lambda: False,
             isValid=lambda: True,
             Solids=[object()],
+            exportBrep=lambda path: Path(path).write_text(
+                "controlled closed native BREP test boundary"
+            ),
             Volume=1000,
             BoundBox=SimpleNamespace(XMin=0, XMax=10, YMin=0, YMax=10, ZMin=0, ZMax=10),
         ),
@@ -92,3 +112,16 @@ def test_inspection_keeps_an_explicit_wall_solid(monkeypatch, tmp_path):
     assert [region["name"] for region in report["regions"]] == ["wall"]
     assert report["regions"][0]["volume_m3"] == pytest.approx(1e-6, rel=1e-14, abs=0)
     assert json.loads((tmp_path / "cad_inspect-receipt.json").read_text())["executed"]
+    brep = json.loads((tmp_path / "brep-manifest.json").read_text())["regions"][0]
+    assert brep["path"] == "wall.brep" and brep["region_name"] == "wall"
+    assert (
+        brep["sha256"]
+        == hashlib.sha256((tmp_path / "wall.brep").read_bytes()).hexdigest()
+    )
+    assert brep["bytes"] == (tmp_path / "wall.brep").stat().st_size
+    assert brep["bounds_m"] == report["regions"][0]["bounds_m"]
+    assert (
+        brep["source_unit"] == "mm"
+        and brep["placement_translation_unit"] == "mm"
+        and brep["scale_to_m"] == 0.001
+    )

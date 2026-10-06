@@ -19,6 +19,7 @@
     exec ${freecad}/bin/FreeCADCmd --safe-mode ${cadBridge}
   '';
   cadClosure = pkgs.closureInfo {rootPaths = [cad];};
+  cadFixtures = adapter "harbor-cad-cad-mesh-fixtures" "${freecad}/bin/FreeCADCmd --safe-mode" ../adapters/qualification_cad_boxes.py;
   # Internal VTK comes from the exact ParaView source archive, avoiding an ABI mix.
   paraview = pkgs.stdenv.mkDerivation {
     pname = "harbor-cad-paraview-egl";
@@ -86,6 +87,22 @@
     });
 in {
   inherit cad visualization media openlb-cpu openlb-cuda openlb-hip;
+  cad-mesh-fixtures = cadFixtures;
+  runtime-cad-only = pkgs.writeText "harbor-cad-cad-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    cad = "${cad}/bin/harbor-cad-import";
+    cad_closure = "${cadClosure}/store-paths";
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+  });
+  runtime-cad-fixtures = pkgs.writeText "harbor-cad-cad-fixture-runtime.json" (builtins.toJSON {
+    schema_version = 1;
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    fixture = "${cadFixtures}/bin/harbor-cad-cad-mesh-fixtures";
+    qualification = "unqualified";
+  });
   runtime-cpu = runtime "cpu" "${openlb-cpu}/bin/harbor-cad-openlb";
   runtime-cuda = runtime "cuda" "${openlb-cuda}/bin/harbor-cad-openlb";
   runtime-hip = runtime "hip" "${openlb-hip}/bin/harbor-cad-openlb";

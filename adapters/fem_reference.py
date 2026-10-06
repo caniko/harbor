@@ -165,7 +165,7 @@ def classify_box_faces(surfaces, bounds, tolerance):
     return result
 
 
-def mesh(spec):
+def mesh(spec, geometry=None):
     # This exact module path is substituted by Nix. It owns its compatible native
     # library; no ambient Python/Qt/loader search-path injection is needed.
     sys.path.insert(0, "@gmsh_module@")
@@ -179,16 +179,63 @@ def mesh(spec):
         gmsh.option.setNumber("Mesh.MaxNumThreads2D", 1)
         gmsh.option.setNumber("Mesh.MaxNumThreads3D", 1)
         gmsh.option.setNumber("Mesh.ElementOrder", 1)
-        gmsh.model.add("synthetic-reference")
+        gmsh.model.add(
+            "synthetic-reference" if geometry is None else "imported-reference"
+        )
         lengths = spec["size_m"]
-        body = gmsh.model.occ.addBox(0, 0, 0, *lengths)
+        if geometry is None:
+            body = gmsh.model.occ.addBox(0, 0, 0, *lengths)
+            bounds = [value for size in lengths for value in (0.0, size)]
+        else:
+            # Gmsh 4.15.2 documented OCC API; no healing or reconstruction.
+            # https://gmsh.info/doc/texinfo/gmsh.html#gmsh_002fmodel_002focc_002fimportShapes
+            bodies = gmsh.model.occ.importShapes(
+                "/inputs/solid.brep", highestDimOnly=True, format="brep"
+            )
+            if len(bodies) != 1 or bodies[0][0] != 3:
+                raise ValueError("imported BREP must contain exactly one closed solid")
+            body = bodies[0][1]
+            scale = geometry["scale_to_m"]
+            gmsh.model.occ.dilate(bodies, 0.0, 0.0, 0.0, scale, scale, scale)
+            bounds = geometry["bounds_m"]
         gmsh.model.occ.synchronize()
-        bounds = [value for size in lengths for value in (0.0, size)]
+        if geometry is not None:
+            box = gmsh.model.getBoundingBox(3, body)
+            world = [box[0], box[3], box[1], box[4], box[2], box[5]]
+            if (
+                any(
+                    abs(a - b) > spec["geometry_tolerance_m"]
+                    for a, b in zip(world, bounds, strict=True)
+                )
+                or len(gmsh.model.getEntities(3)) != 1
+            ):
+                raise ValueError("imported CAD world bounds or solid identity changed")
+            if not math.isclose(
+                gmsh.model.occ.getMass(3, body),
+                geometry["volume_m3"],
+                rel_tol=geometry["volume_relative_tolerance"],
+            ):
+                raise ValueError(
+                    "imported BREP-to-CAD solid volume correspondence failed"
+                )
+            if (
+                len(gmsh.model.getEntities(1)) != 12
+                or len(gmsh.model.getEntities(0)) != 8
+                or any(
+                    gmsh.model.getType(1, tag) != "Line"
+                    for _, tag in gmsh.model.getEntities(1)
+                )
+            ):
+                raise ValueError(
+                    "initial imported reference requires an exact axis-aligned planar box"
+                )
         faces = {}
         for dim, tag in gmsh.model.getBoundary([(3, body)], oriented=False):
             if dim != 2:
                 raise ValueError("surface topology required")
             box = gmsh.model.getBoundingBox(dim, tag)
+            if geometry is not None and gmsh.model.getType(dim, tag) != "Plane":
+                raise ValueError("unsupported curved imported reference face")
             faces[tag] = [box[0], box[3], box[1], box[4], box[2], box[5]]
         names = classify_box_faces(faces, bounds, spec["geometry_tolerance_m"])
         for _, curve in gmsh.model.getEntities(1):
@@ -250,7 +297,7 @@ def mesh(spec):
             "mesh.json",
             {
                 "schema_version": 1,
-                "synthetic": True,
+                "synthetic": True if geometry is None else geometry["synthetic"],
                 "coordinate_unit": "m",
                 "nodes": nodes,
                 "elements": cells,

@@ -4,6 +4,7 @@ Native FreeCAD Python ABI, never imported by MCP. The patched 1.1.4 importer
 is mandatory even with safe-mode and macro preferences disabled.
 """
 
+import hashlib
 import importlib
 import json
 import os
@@ -55,6 +56,7 @@ def main():
     else:
         raise ValueError("allowlisted CAD operation required")
     regions = []
+    breps = []
     required = set(case["regions"])
     if op == "cad_fixture":
         # This procedural channel's walls are implicit fluid-boundary surfaces.
@@ -77,6 +79,20 @@ def main():
         )
         mesh.write(f"/work/{obj.Name}.stl")
         bounds = obj.Shape.BoundBox
+        # Export the approved solid itself, including its placement, through the
+        # pinned TopoShape API. No reconstruction, healing or ordinal faces.
+        # https://github.com/FreeCAD/FreeCAD/blob/4fd3bf320d9566a27e60069fc8387448aaa3a094/src/Mod/Part/App/TopoShapePyImp.cpp#L396
+        brep_path = Path(f"/work/{obj.Name}.brep")
+        partial = brep_path.with_suffix(".brep.partial")
+        obj.Shape.exportBrep(str(partial))
+        if (
+            partial.is_symlink()
+            or not partial.is_file()
+            or not 0 < partial.stat().st_size <= 64 * 1024**2
+        ):
+            raise ValueError("bounded closed BREP geometry required")
+        raw = partial.read_bytes()
+        partial.replace(brep_path)
         regions.append(
             {
                 "name": obj.Name,
@@ -96,6 +112,20 @@ def main():
                 "stl_scale_to_m": 0.001,
             }
         )
+        breps.append(
+            {
+                "region_name": obj.Name,
+                "path": brep_path.name,
+                "bytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "source_unit": "mm",
+                "scale_to_m": 0.001,
+                "bounds_m": regions[-1]["bounds_m"],
+                "volume_m3": regions[-1]["volume_m3"],
+                "source_transform": regions[-1]["transform"],
+                "placement_translation_unit": "mm",
+            }
+        )
     if {r["name"] for r in regions} != required:
         raise ValueError(
             "missing or ambiguous named regions; face numbering is not accepted"
@@ -107,6 +137,15 @@ def main():
             "regions": regions,
             "gap_healing": False,
             "geometry_tolerance": case["geometry_tolerance"],
+        },
+    )
+    atomic_json(
+        "/work/brep-manifest.json",
+        {
+            "schema_version": 1,
+            "synthetic": case["geometry"]["synthetic"],
+            "regions": breps,
+            "gap_healing": False,
         },
     )
     atomic_json(

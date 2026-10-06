@@ -86,10 +86,25 @@
     "cpu_abi": "Python 3.13-compatible Gmsh native module; CalculiX LP64 BLAS/LAPACK/ARPACK and SPOOLES; independent of CAD/MCP/EGL interpreters",
     "source_evidence": "docs/fem-references.md",
     "scope": "constant-property synthetic structured C3D8 box, linear steady temperature/Fourier flux and small-strain uniform free expansion",
-    "build": "pending",
-    "runtime": "unqualified",
-    "numerical": "unqualified",
+    "build": "passed for exact revision 257334b35f02c2d9162e5a3063ec7372d54c1783",
+    "runtime": "native reference and independent CLI/MCP worker lifecycle passed at the recorded package scope",
+    "numerical": "synthetic steady conduction and free expansion at resolutions 2/4/8; unchanged 1e-6 gates passed; docs/evidence/fem-cpu.json",
     "physical_validation": "unqualified"
+  },
+  "thermal_cpu_reference": {
+    "review_date": "2026-10-06",
+    "source_and_abi": "same immutable Gmsh 4.15.2/Python 3.13 and CalculiX 2.23 sources as static FEM; independent package with native NT/TS serialization-only patch",
+    "precision_patch": "nix/patches/calculix-temperature-precision.patch",
+    "scope": "synthetic constant-property structured C3D8 plane wall, prescribed piecewise-linear ambient/heater histories, equal x-normal Robin convection; exact convolution analytical verification and native volume/face energy accounting",
+    "contracts": "independent version-6 plan; explicit solver substeps and independent physical output times, SI provenance/material domain and moisture assessment",
+    "sandbox": "harbor-cad-thermal-cpu-v1; operation closure only, no GPU/network/home/session/socket access, exact read-only descriptor",
+    "numerical_tolerance": 0.02,
+    "energy_tolerance": 0.02,
+    "build": "precision-patched standalone package built; matching worker package realization in progress",
+    "runtime": "qualification in progress; prior failing native attempts retained",
+    "numerical": "qualification in progress; static FEM gates and qualification remain separate",
+    "physical_validation": "unqualified",
+    "evidence": "docs/thermal-history.md"
   },
   "paraview": {
     "version": "6.0.1",
@@ -101,7 +116,7 @@
     "build": "passed ordinary Canix gates with relative GNUInstallDirs; bundled ParaView/VTK and separate Python ABI realized without hardware discovery",
     "egl_runtime": "packaged selected-device EGL surface rendering of retained CPU OpenLB fields passed on Radeon RX 7900 XTX; live display/DRM identity, requested camera, fixed scale and 0/10/20 s labels verified",
     "evidence": "docs/evidence/egl-device.json; docs/evidence/egl-fields.json",
-    "viskores_filter": "unimplemented/unqualified"
+    "viskores_filter": "independent compatible VTK/Viskores/Kokkos-HIP allowlist and worker passed at exact revision 358fd57f7c0a9933aafe64db63af69de7b7c91ce; separate from ParaView EGL; docs/evidence/numerical-filter-hip.json"
   },
   "ffmpeg": {
     "source_definition": "pkgs.ffmpeg from the declared immutable Nixpkgs revision",
@@ -179,6 +194,6 @@
     "execution_evidence": "docs/evidence/job-lifecycle.json",
     "admission_estimates": "docs/resource-estimates.md"
   },
-  "missing_stacks": ["Gmsh/CalculiX/PaStiX", "libRadtran/Mitsuba/Dr.Jit", "Catalyst/Conduit", "qualified VTKHDF"],
+  "missing_stacks": ["hybrid FEM/PaStiX qualification", "libRadtran/Mitsuba/Dr.Jit", "Catalyst/Conduit", "qualified VTKHDF"],
   "evidence": "docs/qualification.md"
 }

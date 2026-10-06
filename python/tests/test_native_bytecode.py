@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 
-@pytest.mark.parametrize("adapter,operation", [("thermal_history", "run")])
+@pytest.mark.parametrize(
+    "adapter,operation", [("thermal_history", "run"), ("cad_mesh", "mesh")]
+)
 def test_native_helper_import_preserves_exact_store_root_before_request_rejection(
     tmp_path, adapter, operation
 ):
