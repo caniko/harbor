@@ -1,0 +1,323 @@
+//! Closed named BREP evidence for imported recipes; no native document opens.
+use crate::{
+    Result,
+    contracts::{ArtifactManifest, digest, invalid, token},
+    qualification::{self, EvidenceRecord},
+    storage::{Store, native_manifest},
+};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+/// Exact standalone Gmsh descriptor, with source CAD and placement units retained.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CadMeshDescriptor {
+    pub schema_version: u32,
+    pub synthetic: bool,
+    pub backend: String,
+    pub formulation: String,
+    pub geometry_provenance: String,
+    pub brep_file: String,
+    pub brep_sha256: String,
+    pub brep_bytes: u64,
+    pub region_name: String,
+    pub bounds_m: [f64; 6],
+    pub volume_m3: f64,
+    pub source_unit: String,
+    pub scale_to_m: f64,
+    pub placement_translation_unit: String,
+    pub source_transform: [f64; 16],
+    pub resolution: u32,
+    pub geometry_tolerance_m: f64,
+    pub volume_relative_tolerance: f64,
+}
+
+fn hash(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+impl CadMeshDescriptor {
+    pub fn lengths_m(&self) -> [f64; 3] {
+        [
+            self.bounds_m[1] - self.bounds_m[0],
+            self.bounds_m[3] - self.bounds_m[2],
+            self.bounds_m[5] - self.bounds_m[4],
+        ]
+    }
+    pub fn validate(&self) -> Result<()> {
+        let sizes = self.lengths_m();
+        let min = sizes.into_iter().fold(f64::INFINITY, f64::min);
+        let max = sizes.into_iter().fold(0., f64::max);
+        let volume = sizes.iter().product::<f64>();
+        if self.schema_version != 1
+            || self.backend != "cpu"
+            || self.formulation != "imported_axis_aligned_box"
+            || self.brep_file != "solid.brep"
+            || !hash(&self.brep_sha256)
+            || !(1..=64 * 1024 * 1024).contains(&self.brep_bytes)
+            || !token(&self.region_name)
+            || self.geometry_provenance.trim().is_empty()
+            || self.geometry_provenance.len() > 4096
+            || self.source_unit != "mm"
+            || self.placement_translation_unit != "mm"
+            || self.scale_to_m != 0.001
+            || !self
+                .bounds_m
+                .iter()
+                .chain(&self.source_transform)
+                .all(|v| v.is_finite())
+            || min <= 0.
+            || max / min > 1000.
+            || !volume.is_finite()
+            || !self.volume_m3.is_finite()
+            || self.volume_m3 <= 0.
+            || !self.volume_relative_tolerance.is_finite()
+            || self.volume_relative_tolerance <= 0.
+            || self.volume_relative_tolerance > 1e-10
+            || (self.volume_m3 - volume).abs()
+                > self.volume_relative_tolerance * volume.abs().max(self.volume_m3.abs())
+            || !(2..=32).contains(&self.resolution)
+            || !self.geometry_tolerance_m.is_finite()
+            || self.geometry_tolerance_m < 1e-10
+            || self.geometry_tolerance_m >= 0.001 * min
+            || self
+                .bounds_m
+                .iter()
+                .any(|v| 10. * (v.abs().next_up() - v.abs()) > self.geometry_tolerance_m)
+            || self.source_transform[12..] != [0., 0., 0., 1.]
+        {
+            return Err(invalid(
+                "bounded imported box, exact BREP, rigid CAD placement and unchanged SI correspondence gates required",
+            ));
+        }
+        let r = &self.source_transform;
+        for i in 0..3 {
+            for j in 0..3 {
+                let dot = (0..3).map(|k| r[4 * i + k] * r[4 * j + k]).sum::<f64>();
+                if (dot - f64::from(i == j)).abs() > 1e-12 {
+                    return Err(invalid("rigid original FreeCAD placement required"));
+                }
+            }
+        }
+        let det = r[0] * (r[5] * r[10] - r[6] * r[9]) - r[1] * (r[4] * r[10] - r[6] * r[8])
+            + r[2] * (r[4] * r[9] - r[5] * r[8]);
+        if (det - 1.).abs() > 1e-12 {
+            return Err(invalid("proper original FreeCAD placement required"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CadSource {
+    pub schema_version: u32,
+    pub job_id: String,
+    pub science_id: String,
+    pub execution_id: String,
+    pub execution_binding_digest: String,
+    pub authorization_digest: String,
+    pub manifest: EvidenceRecord,
+    pub region_evidence: EvidenceRecord,
+    pub brep: ArtifactManifest,
+    pub geometry: CadMeshDescriptor,
+}
+
+impl CadSource {
+    pub fn validate(&self) -> Result<()> {
+        self.geometry.validate()?;
+        if self.schema_version != 1
+            || uuid::Uuid::parse_str(&self.job_id).is_err()
+            || [
+                &self.science_id,
+                &self.execution_id,
+                &self.execution_binding_digest,
+                &self.authorization_digest,
+                &self.manifest.sha256,
+                &self.region_evidence.sha256,
+            ]
+            .iter()
+            .any(|h| !hash(h))
+            || self.manifest.path != "brep-manifest.json"
+            || !(1..=256 * 1024).contains(&self.manifest.bytes)
+            || self.region_evidence.path != "regions.json"
+            || !(1..=256 * 1024).contains(&self.region_evidence.bytes)
+            || self.brep.schema_version != 1
+            || self.brep.path != format!("{}.brep", self.geometry.region_name)
+            || self.brep.format != "brep"
+            || self.brep.sha256 != self.geometry.brep_sha256
+            || self.brep.bytes != self.geometry.brep_bytes
+            || self.brep.units.is_some()
+            || self.brep.time_s.is_some()
+            || self.brep.association.is_some()
+        {
+            return Err(invalid(
+                "immutable authorized named CAD source, descriptors and exact BREP bytes required",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BrepManifest {
+    schema_version: u32,
+    synthetic: bool,
+    regions: Vec<BrepRegion>,
+    gap_healing: bool,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BrepRegion {
+    region_name: String,
+    path: String,
+    bytes: u64,
+    sha256: String,
+    source_unit: String,
+    scale_to_m: f64,
+    bounds_m: [f64; 6],
+    volume_m3: f64,
+    source_transform: [f64; 16],
+    placement_translation_unit: String,
+}
+
+/// Resolve only a completed, originally authorized CAD job and registered solid.
+/// Bounds and placement come from verified importer evidence, never caller overrides.
+pub fn source(
+    store: &Store,
+    id: &str,
+    region: &str,
+    resolution: u32,
+    geometry_tolerance_m: f64,
+) -> Result<(PathBuf, CadSource)> {
+    let job = store.job(id)?;
+    if job.state != "succeeded" || job.exit_code != Some(0) || !token(region) {
+        return Err(invalid("completed committed named CAD source required"));
+    }
+    let plan = store.recorded_plan(id)?;
+    let report = crate::cad::regions(store, id)?;
+    let binding = store.execution_binding(id)?;
+    let authorization = store
+        .execution_authorization(id)?
+        .ok_or_else(|| invalid("original CAD execution authorization required"))?;
+    authorization.verify(&plan, &store.job_profile(id)?, &binding)?;
+    let receipt_path = if plan
+        .stages
+        .iter()
+        .any(|s| matches!(s.operation, crate::contracts::StageOperation::CadInspect))
+    {
+        "cad_inspect-receipt.json"
+    } else {
+        "cad_fixture-receipt.json"
+    };
+    let (_, receipt) = qualification::registered_json(store, id, receipt_path)?
+        .ok_or_else(|| invalid("registered patched CAD importer receipt required"))?;
+    if receipt["security_minimum"] != "1.1.4"
+        || receipt["sandbox_required"] != true
+        || receipt["import_policy"] != crate::sandbox::IMPORT_POLICY
+        || !binding.native_files.contains_key("cad_closure")
+    {
+        return Err(invalid(
+            "original patched importer and closure-specific CAD policy required",
+        ));
+    }
+    let (manifest, value) = qualification::registered_json(store, id, "brep-manifest.json")?
+        .ok_or_else(|| invalid("registered closed BREP manifest required"))?;
+    let decoded: BrepManifest = serde_json::from_value(value)?;
+    if decoded.schema_version != 1
+        || decoded.gap_healing
+        || decoded.synthetic != report.snapshot.synthetic
+        || decoded.regions.len() != report.snapshot.regions.len()
+        || decoded.regions.len() > 256
+    {
+        return Err(invalid("original complete named CAD BREP manifest changed"));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for record in &decoded.regions {
+        let original = report
+            .snapshot
+            .regions
+            .iter()
+            .find(|r| r.name == record.region_name)
+            .ok_or_else(|| invalid("BREP region differs from registered CAD"))?;
+        if !seen.insert(&record.region_name)
+            || record.path != format!("{}.brep", original.name)
+            || record.bounds_m != original.bounds_m
+            || record.volume_m3 != original.volume_m3
+            || record.source_transform != original.transform
+            || record.source_unit != original.source_unit
+            || record.scale_to_m != original.stl_scale_to_m
+            || record.placement_translation_unit != "mm"
+        {
+            return Err(invalid(
+                "BREP manifest changed region, original placement, bounds, volume or units",
+            ));
+        }
+    }
+    let selected = decoded
+        .regions
+        .into_iter()
+        .find(|r| r.region_name == region)
+        .ok_or_else(|| invalid("approved named BREP region missing"))?;
+    let root = store.job_dir(id)?;
+    let brep = store
+        .artifact_record(id, &selected.path)?
+        .ok_or_else(|| invalid("closed registered BREP artifact required"))?;
+    let observed = native_manifest(
+        &root,
+        &selected.path,
+        64 * 1024 * 1024,
+        "CAD source byte verification",
+    )?;
+    if observed.sha256 != brep.sha256
+        || observed.bytes != brep.bytes
+        || selected.sha256 != brep.sha256
+        || selected.bytes != brep.bytes
+    {
+        return Err(invalid(
+            "imported CAD BREP bytes differ from original registered evidence",
+        ));
+    }
+    let geometry = CadMeshDescriptor {
+        schema_version: 1,
+        synthetic: decoded.synthetic,
+        backend: "cpu".into(),
+        formulation: "imported_axis_aligned_box".into(),
+        geometry_provenance: format!(
+            "authorized CAD job {id}, named region {region}; {}",
+            plan.channel_case()?.geometry.source
+        ),
+        brep_file: "solid.brep".into(),
+        brep_sha256: brep.sha256.clone(),
+        brep_bytes: brep.bytes,
+        region_name: region.into(),
+        bounds_m: selected.bounds_m,
+        volume_m3: selected.volume_m3,
+        source_unit: selected.source_unit,
+        scale_to_m: selected.scale_to_m,
+        placement_translation_unit: selected.placement_translation_unit,
+        source_transform: selected.source_transform,
+        resolution,
+        geometry_tolerance_m,
+        volume_relative_tolerance: 1e-10,
+    };
+    let bound = CadSource {
+        schema_version: 1,
+        job_id: id.into(),
+        science_id: plan.science_id()?,
+        execution_id: plan.id()?,
+        execution_binding_digest: digest(&binding)?,
+        authorization_digest: digest(&authorization)?,
+        manifest,
+        region_evidence: report.evidence,
+        brep,
+        geometry,
+    };
+    bound.validate()?;
+    Ok((root, bound))
+}
