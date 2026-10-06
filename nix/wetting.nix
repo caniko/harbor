@@ -14,6 +14,7 @@
       old.preBuild
       + ''
         cp ${../adapters/openlb_wetting.cpp} harbor-driver/harbor-cad-openlb.cpp
+        cp ${../adapters/wetting_output.hpp} harbor-driver/wetting_output.hpp
       '';
     installPhase = ''
       mkdir -p $out/bin $out/share/licenses/openlb

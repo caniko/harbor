@@ -315,10 +315,13 @@ def main():
             env={"HOME": "/home/worker", "LC_ALL": "C"},
             check=False,
         )
+    if process.returncode:
+        raise ValueError(
+            "native wetting solve failed; original process.log and any fields retained"
+        )
     receipt = fem.strict_json(fem.read_regular("wetting-receipt.json", 65536))
     if (
-        process.returncode
-        or receipt["request"] != spec
+        receipt["request"] != spec
         or receipt["executed"] is not True
         or receipt["source_revision"] != "145cd54810b468f4b6fd3ed86b10644264841578"
         or receipt["backend"] != "cpu"

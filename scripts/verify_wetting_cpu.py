@@ -77,10 +77,12 @@ def main():
     ):
         raise ValueError("exact distinct operation closure paths required")
 
-    def run(key, descriptor):
+    def run(key, descriptor, worker_layout=False):
         inputs, output = root / f"inputs-{key}", root / key
         inputs.mkdir(mode=0o700)
         output.mkdir(mode=0o700)
+        if worker_layout:
+            (output / "wetting.log").touch(exist_ok=False)
         request_path = inputs / "request.json"
         request_path.write_text(json.dumps(descriptor, allow_nan=False, indent=2))
         argv = [
@@ -145,7 +147,7 @@ def main():
             descriptor = request(angle, n)
             bridge.validate(descriptor)
             process, output, argv, log, request_path = run(
-                f"angle{angle}-n{n}", descriptor
+                f"angle{angle}-n{n}", descriptor, worker_layout=angle == 100
             )
             if process.returncode:
                 raise RuntimeError(
@@ -193,6 +195,9 @@ def main():
             results.append(
                 {
                     "angle": angle,
+                    "initial_layout": "worker_empty_regular_log"
+                    if angle == 100
+                    else "standalone_empty",
                     "resolution": n,
                     "request": descriptor,
                     "argv": argv,

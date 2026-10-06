@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <set>
 #include <stdexcept>
+#include "wetting_output.hpp"
 
 using Json = nlohmann::json;
 
@@ -82,7 +83,7 @@ int main(int argc, char** argv) {
     for (const auto* key : {"material_provenance","boundary_provenance"}) if (!spec.at(key).is_string() || spec.at(key).get<std::string>().empty() || spec.at(key).get<std::string>().size()>4096) throw std::runtime_error("explicit synthetic material/boundary provenance required");
     auto retained=spec.at("observation_steps").get<std::vector<std::size_t>>();
     if (retained.size()<2 || retained.size()>32 || retained.front()!=0 || retained.back()!=steps || !std::is_sorted(retained.begin(),retained.end()) || std::adjacent_find(retained.begin(),retained.end())!=retained.end()) throw std::runtime_error("ordered distinct initial/final bounded native observations required");
-    for (const auto& entry : std::filesystem::directory_iterator(".")) if (entry.path().filename()!="process.log") throw std::runtime_error("empty isolated wetting output directory required");
+    verify_wetting_output_directory(".");
     initialize(&argc,&argv); singleton::directories().setOutputDir("./tmp/");
     MyCase::ParametersD params;
     using namespace olb::parameters;
