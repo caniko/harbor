@@ -31,7 +31,12 @@ at resolutions 2/4/8 for origin and translated solids. It independently checks
 mesh/world correspondence and rechecks all native nodal/integration-point fields
 against the prescribed reference. Eight pre-output rejections cover changed
 geometry/refinement/source bytes, missing provenance, unsupported backends,
-weakened numerical acceptance and contact injection. Exact package qualification is pending.
+weakened numerical acceptance and contact injection. `fem-imported-1` passed all
+12 solves and eight rejections using build 21, with maximum normalized field
+error `4.685717e-12` under the unchanged `1e-6` gate. Its independently captured
+aggregate campaign RAM peak was `142311424` bytes under two CPUs, 2 GiB,
+no swap and 128 tasks. [Exact evidence](evidence/imported-cad-fem-cpu.json)
+binds the package, CAD prerequisite, raw report and separate failure provenance.
 This initial allowlist supports controlled synthetic axis-aligned boxes; it
 does not qualify contact, preload, seals, production materials or imported
 whole-device environmental conclusions.

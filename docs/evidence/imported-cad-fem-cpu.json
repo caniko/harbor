@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "candidate_revision": "13406167754441a72aac4cfe626888546be0f706",
+  "build_attempt": 21,
+  "cad_correspondence": {
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/cad-mesh-2/verification.json",
+    "report_sha256": "83b6500e012feccbba14dcf57a2724a398276123d694758309930255a9a88542",
+    "runtime": "/nix/store/x91fx0knb1hclz21ji9yfxvyidlh1jqh-harbor-cad-cad-mesh-runtime.json",
+    "runtime_sha256": "0996c641363845621010e12a876cc1ba4dff7b9ad9878d917eab2449ee50b0a7",
+    "passed_cases": 6,
+    "passed_rejections": 7,
+    "placements_mm": [[0, 0, 0], [100, -20, 300]],
+    "resolutions": [2, 4, 8],
+    "maximum_independent_relative_volume_error": 9.366066814264428e-13,
+    "volume_tolerance": 1e-10,
+    "aggregate_memory_peak_bytes": 109367296,
+    "cpu_max": "200000 100000",
+    "source": "controlled security-patched Part::Feature FCStd imports; original BREP bytes and source millimetre/world-placement provenance retained"
+  },
+  "imported_static_fem": {
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/fem-imported-1/verification.json",
+    "report_sha256": "4c9ea399411a62968c038caa72eb85b91bf1cb124999fdb16cd571fa1b5ed352",
+    "runtime": "/nix/store/5hj5jfkd88f36cy2bwbcphz33im8dyfi-harbor-cad-fem-imported-runtime.json",
+    "runtime_sha256": "f53fa022801830200c2ab5b20070749dd0527d0cca3961894ef30e7c608550a4",
+    "cad_reference_sha256": "83b6500e012feccbba14dcf57a2724a398276123d694758309930255a9a88542",
+    "passed_cases": 12,
+    "passed_rejections": 8,
+    "formulations": ["steady conduction and Fourier flux", "uniform free expansion and zero stress"],
+    "maximum_normalized_errors": {
+      "temperature": 4.831690603168681e-13,
+      "heat_flux": 4.685717e-12,
+      "displacement": 5.693649592324999e-13,
+      "stress": 4.137669166666667e-12
+    },
+    "numerical_tolerance": 1e-6,
+    "aggregate_memory_peak_bytes": 142311424,
+    "cpu_max": "200000 100000",
+    "scope": "isolated standalone synthetic imported-box CPU references at both placements and all refinements; no durable imported FEM job or contact qualification"
+  },
+  "failed_attempt": {
+    "name": "cad-mesh-1",
+    "candidate_revision": "4e23c6dfad137a899ce53d92c6dd8973a4881b6d",
+    "process_log": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/cad-mesh-1/mesh-origin-n2/process.log",
+    "failure": "generic occ.dilate changed imported analytic lines/planes to trimmed curves/B-spline surfaces; strict allowlist rejected before mesh publication",
+    "diagnosis": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/cad-scale-diagnosis-1/diagnosis.json",
+    "repair": "uniform Geometry.OCCScaling at import; all five repair/construction flags zero; unchanged world bounds, source bytes and correspondence gates"
+  },
+  "physical_validation": "unqualified",
+  "other_packages_or_hosts": "not assessed"
+}
