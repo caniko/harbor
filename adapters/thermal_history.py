@@ -348,6 +348,16 @@ def integration_step(spec):
     return spec["max_step_s"] / spec["integration_substeps"]
 
 
+def heat_transfer_time_card(spec):
+    # heattransfers.f reads each numeric textpart using a fixed (f20.0)
+    # field. Full .17g text can truncate an exponent outside those 20 columns.
+    step = integration_step(spec)
+    fields = [f"{v:.13e}" for v in (step, spec["duration_s"], step * 1e-4, step)]
+    if any(len(v) > 20 for v in fields):
+        raise ValueError("thermal time values exceed the native CCX numeric card width")
+    return ",".join(fields)
+
+
 def deck(spec, fem, nodes, cells, sets):
     lines = fem.mesh_deck(nodes, cells, sets)
     lines += [
@@ -373,11 +383,10 @@ def deck(spec, fem, nodes, cells, sets):
     lines += [
         ",".join(f"{t:.17g}" for t in times[i : i + 8]) for i in range(0, len(times), 8)
     ]
-    step = integration_step(spec)
     lines += [
         "*STEP,INC=131072",
         "*HEAT TRANSFER,SOLVER=SPOOLES",
-        f"{step:.17g},{spec['duration_s']:.17g},{step * 1e-4:.17g},{step:.17g}",
+        heat_transfer_time_card(spec),
         "*DFLUX,AMPLITUDE=HEATER",
         f"EALL,BF,{1.0 / math.prod(spec['size_m']):.17g}",
     ]

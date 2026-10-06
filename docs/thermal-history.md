@@ -80,6 +80,10 @@ native integration, leaving its energy-output times and physical histories
 unchanged. The native receipt records both schedules. This resolves the first
 native attempt's insufficient first-order time integration without changing
 the temperature or energy acceptance gates; that failed run remains retained.
+The next native attempt reproduced a fixed-width CalculiX input-card rejection:
+`heattransfers.f` uses `(f20.0)` fields, so a full Float64 `.17g` exponent can
+exceed the numeric field width. Time cards now use bounded 14-significant-digit
+scientific text within those 20 columns, with exact input descriptors retained.
 
 `scripts/verify_thermal_cpu.py` exercises adiabatic heating and cold/heater/
 Robin histories at three refinements, plus separate fixed-mesh temporal and

@@ -214,3 +214,11 @@ def test_solver_substeps_preserve_energy_observation_times_and_physical_historie
         bridge.integration_step({**request, "integration_substeps": 32}) == 1.0 / 32.0
     )
     assert bridge.history_energy(request["heater_history"], 120.0) == 30.0
+
+
+def test_ccx_time_card_respects_native_twenty_character_numeric_fields():
+    bridge = module()
+    values = [0.03125, 120.0, 0.03125 * 1e-4, 0.03125]
+    card = bridge.heat_transfer_time_card({**fixture(), "max_step_s": 2.0})
+    assert all(len(field) <= 20 for field in card.split(","))
+    assert list(map(float, card.split(","))) == pytest.approx(values, rel=1e-13)
