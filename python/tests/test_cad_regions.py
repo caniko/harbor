@@ -81,6 +81,8 @@ def solid(name):
     return SimpleNamespace(
         Name=name,
         Label=name,
+        isDerivedFrom=lambda name: name == "Part::Feature",
+        getParentGeoFeatureGroup=lambda: None,
         Shape=SimpleNamespace(
             isNull=lambda: False,
             isValid=lambda: True,
@@ -125,3 +127,21 @@ def test_inspection_keeps_an_explicit_wall_solid(monkeypatch, tmp_path):
         and brep["placement_translation_unit"] == "mm"
         and brep["scale_to_m"] == 0.001
     )
+
+
+@pytest.mark.parametrize("unsupported", ["parent-assembly", "link"])
+def test_local_assembly_or_link_coordinates_cannot_be_reported_as_world_geometry(
+    monkeypatch, tmp_path, unsupported
+):
+    shape = solid("solid")
+    if unsupported == "parent-assembly":
+        shape.getParentGeoFeatureGroup = lambda: SimpleNamespace(
+            Name="TranslatedAssembly"
+        )
+    else:
+        shape.isDerivedFrom = lambda _: False
+    with pytest.raises(ValueError, match="assembly/link world transforms"):
+        inspect(monkeypatch, tmp_path, ["solid"], [shape])
+    assert not (tmp_path / "solid.brep").exists()
+    assert not (tmp_path / "regions.json").exists()
+    assert not (tmp_path / "cad_inspect-receipt.json").exists()

@@ -1,5 +1,12 @@
 # Imported CAD mesh correspondence
 
+The initial BREP importer allowlist requires top-level native `Part::Feature`
+solids. Links and solids inside geometric groups reject before exports, because
+their local placement/bounds need a separately verified world-transform
+traversal. FreeCAD's pinned
+[`DocumentObjectPyImp.cpp` getParentGeoFeatureGroup implementation](https://github.com/FreeCAD/FreeCAD/blob/4fd3bf320d9566a27e60069fc8387448aaa3a094/src/App/DocumentObjectPyImp.cpp#L801)
+returns the enclosing group or `None`; this is the exact API used for the gate.
+
 The patched sandbox importer now exports each approved named solid as a closed
 BREP plus a byte/hash/unit/placement manifest. The original FCStd remains
 read-only. The original named-region JSON schema is preserved; BREP metadata is

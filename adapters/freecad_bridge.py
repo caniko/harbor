@@ -64,6 +64,17 @@ def main():
     for obj in doc.Objects:
         if obj.Name not in required:
             continue
+        # Initial BREP/world-coordinate scope: top-level native Part geometry.
+        # Assembly/link transforms need a verified traversal; local bounds must
+        # never be relabelled as world bounds. Pinned DocumentObjectPyImp.cpp
+        # defines getParentGeoFeatureGroup() as enclosing group or None.
+        if (
+            not obj.isDerivedFrom("Part::Feature")
+            or obj.getParentGeoFeatureGroup() is not None
+        ):
+            raise ValueError(
+                "top-level native Part solid required; assembly/link world transforms are not qualified"
+            )
         if not hasattr(obj, "Shape") or obj.Shape.isNull() or not obj.Shape.isValid():
             raise ValueError("named region lacks valid geometry")
         if len(obj.Shape.Solids) != 1:
