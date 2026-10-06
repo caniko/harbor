@@ -165,6 +165,28 @@ def classify_box_faces(surfaces, bounds, tolerance):
     return result
 
 
+def import_brep(gmsh, geometry):
+    # OCC import's uniform gp_Trsf scaling preserves analytic lines/planes.
+    # Generic occ.dilate uses gp_GTrsf and converts them to NURBS instead.
+    # Gmsh 4.15.2 GModelIO_OCC.cpp: importShapes -> _healShape scaling, then
+    # early return when all repair options are disabled. No healing/rebuild.
+    for name in (
+        "FixDegenerated",
+        "FixSmallEdges",
+        "FixSmallFaces",
+        "SewFaces",
+        "MakeSolids",
+    ):
+        gmsh.option.setNumber("Geometry.OCC" + name, 0)
+    gmsh.option.setNumber("Geometry.OCCScaling", geometry["scale_to_m"])
+    bodies = gmsh.model.occ.importShapes(
+        "/inputs/solid.brep", highestDimOnly=True, format="brep"
+    )
+    if len(bodies) != 1 or bodies[0][0] != 3:
+        raise ValueError("imported BREP must contain exactly one closed solid")
+    return bodies[0][1]
+
+
 def mesh(spec, geometry=None):
     # This exact module path is substituted by Nix. It owns its compatible native
     # library; no ambient Python/Qt/loader search-path injection is needed.
@@ -189,14 +211,7 @@ def mesh(spec, geometry=None):
         else:
             # Gmsh 4.15.2 documented OCC API; no healing or reconstruction.
             # https://gmsh.info/doc/texinfo/gmsh.html#gmsh_002fmodel_002focc_002fimportShapes
-            bodies = gmsh.model.occ.importShapes(
-                "/inputs/solid.brep", highestDimOnly=True, format="brep"
-            )
-            if len(bodies) != 1 or bodies[0][0] != 3:
-                raise ValueError("imported BREP must contain exactly one closed solid")
-            body = bodies[0][1]
-            scale = geometry["scale_to_m"]
-            gmsh.model.occ.dilate(bodies, 0.0, 0.0, 0.0, scale, scale, scale)
+            body = import_brep(gmsh, geometry)
             bounds = geometry["bounds_m"]
         gmsh.model.occ.synchronize()
         if geometry is not None:

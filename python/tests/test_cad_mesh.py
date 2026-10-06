@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -107,3 +108,37 @@ def test_mesh_correspondence_rejects_ambiguous_geometry_implicit_units_or_weak_g
     ]:
         with pytest.raises((ValueError, TypeError)):
             bridge.validate({**fixture(), key: value})
+
+
+def test_brep_import_scales_before_occ_binding_without_healing_or_generic_dilation():
+    path = Path(__file__).resolve().parents[2] / "adapters/fem_reference.py"
+    source = importlib.util.spec_from_file_location("fem_brep", path)
+    fem = importlib.util.module_from_spec(source)
+    source.loader.exec_module(fem)
+    options, calls = {}, []
+
+    def import_shapes(path, **kwargs):
+        assert options["Geometry.OCCScaling"] == 0.001
+        assert all(
+            options["Geometry.OCC" + name] == 0
+            for name in (
+                "FixDegenerated",
+                "FixSmallEdges",
+                "FixSmallFaces",
+                "SewFaces",
+                "MakeSolids",
+            )
+        )
+        calls.append((path, kwargs))
+        return [(3, 19)]
+
+    gmsh = SimpleNamespace(
+        option=SimpleNamespace(setNumber=options.__setitem__),
+        model=SimpleNamespace(occ=SimpleNamespace(importShapes=import_shapes)),
+    )
+    assert fem.import_brep(gmsh, fixture()) == 19
+    assert calls == [("/inputs/solid.brep", {"highestDimOnly": True, "format": "brep"})]
+    for unsupported in ([], [(2, 19)], [(3, 19), (3, 20)]):
+        gmsh.model.occ.importShapes = lambda *args, result=unsupported, **kwargs: result
+        with pytest.raises(ValueError, match="exactly one closed solid"):
+            fem.import_brep(gmsh, fixture())
