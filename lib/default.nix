@@ -1,6 +1,7 @@
 {
   harbor-meta,
   harbor-rs,
+  solana-source,
 }: rec {
   timezone = harbor-meta.lib.timezone;
   rustOverlay = import harbor-rs.inputs.rust-overlay;
@@ -8,16 +9,21 @@
   mkCargoBuildSbf = {
     pkgs,
     solana ? pkgs.solana-cli,
+    solanaSource ? solana-source,
   }: let
     toolchain = harbor-rs.lib.mkToolchain {inherit pkgs;};
-    src = solana.src + "/platform-tools-sdk";
+    # A locked non-flake input makes manifests available without realizing a
+    # fetcher derivation during evaluation.
+    src = solanaSource + "/platform-tools-sdk";
+    cargoTomlContents = builtins.readFile (src + "/Cargo.toml");
+    sourceVersion = (builtins.fromTOML cargoTomlContents).workspace.package.version;
     commonArgs = {
       inherit src;
       cargoLock = src + "/Cargo.lock";
       pname = "cargo-build-sbf";
       version = solana.version;
       cargoExtraArgs = "-p solana-cargo-build-sbf";
-      rsHarborCargoTomlContents = builtins.readFile (src + "/Cargo.toml");
+      rsHarborCargoTomlContents = cargoTomlContents;
       doCheck = false;
       strictDeps = true;
       nativeBuildInputs = [pkgs.pkg-config];
@@ -25,7 +31,9 @@
     };
     cargoArtifacts = toolchain.craneLib.buildDepsOnly commonArgs;
   in
-    toolchain.craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
+    assert pkgs.lib.assertMsg (sourceVersion == solana.version)
+    "harbor-sol: solanaSource must match the selected solana-cli version";
+      toolchain.craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
 
   mkSolanaToolchain = {
     pkgs,

@@ -406,6 +406,7 @@
         "harbor-meta": "harbor-meta",
         "harbor-rs": "harbor-rs",
         "nixpkgs": "nixpkgs",
+        "solana-source": "solana-source",
         "treefmt-nix": "treefmt-nix_4"
       }
     },
@@ -448,6 +449,23 @@
       "original": {
         "owner": "oxalica",
         "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "solana-source": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1781616971,
+        "narHash": "sha256-lbkuywAuLeTIoe/5zbKmxCbnNcEx96BiX6ftNJHutZE=",
+        "owner": "anza-xyz",
+        "repo": "agave",
+        "rev": "14786d96e9b635fd5d57e503f3fa0397a8ef9a6d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "anza-xyz",
+        "ref": "v4.0.3",
+        "repo": "agave",
         "type": "github"
       }
     },

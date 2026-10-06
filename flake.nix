@@ -3,6 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    solana-source = {
+      url = "github:anza-xyz/agave/v4.0.3";
+      flake = false;
+    };
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -21,6 +25,7 @@
   outputs = {
     self,
     nixpkgs,
+    solana-source,
     harbor-meta,
     harbor-rs,
     treefmt-nix,
@@ -33,7 +38,7 @@
           inherit system;
           overlays = [self.lib.rustOverlay];
         }));
-    lib = import ./lib {inherit harbor-meta harbor-rs;};
+    lib = import ./lib {inherit harbor-meta harbor-rs solana-source;};
   in {
     inherit lib;
 
