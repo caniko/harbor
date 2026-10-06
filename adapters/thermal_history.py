@@ -646,6 +646,8 @@ def main():
             "calculix_version": "@ccx_version@",
             "gmsh_version": "@gmsh_version@",
             "calculix_source_sha256": "9c88385c10fb04f5dc6c4e98027a51bebdd8aee3920e05190d6c1dd08357d6e7",
+            "temperature_serialization": "E23.15; 16 significant decimal digits from native real*8",
+            "temperature_serialization_patch_sha256": "@temperature_patch_sha256@",
             "nodes": len(nodes),
             "elements": len(cells),
             "physical_times_s": spec["observation_times_s"],

@@ -84,6 +84,13 @@ The next native attempt reproduced a fixed-width CalculiX input-card rejection:
 `heattransfers.f` uses `(f20.0)` fields, so a full Float64 `.17g` exponent can
 exceed the numeric field width. Time cards now use bounded 14-significant-digit
 scientific text within those 20 columns, with exact input descriptors retained.
+The following attempt passed the temperature gate, but exposed seven-digit
+stock nodal serialization as insufficient for early heater-energy differences.
+The thermal package now carries an owned two-line `printoutnode.f` patch:
+only NT/TS scalar `.dat` formatting changes from `E13.6` to `E23.15`, retaining
+16 significant digits of native `real*8` temperature. Its receipt records the
+patch SHA-256, separately from the unchanged upstream source hash. Static FEM
+and other output fields continue using their independent original packages.
 
 `scripts/verify_thermal_cpu.py` exercises adiabatic heating and cold/heater/
 Robin histories at three refinements, plus separate fixed-mesh temporal and

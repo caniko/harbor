@@ -222,3 +222,39 @@ def test_ccx_time_card_respects_native_twenty_character_numeric_fields():
     card = bridge.heat_transfer_time_card({**fixture(), "max_step_s": 2.0})
     assert all(len(field) <= 20 for field in card.split(","))
     assert list(map(float, card.split(","))) == pytest.approx(values, rel=1e-13)
+
+
+def test_stock_temperature_serialization_cannot_qualify_small_heater_energy():
+    bridge = module()
+    spec = {
+        **fixture(),
+        "resolution": 1,
+        "convection_w_m2_k": 0.0,
+        "initial_temperature_k": 253.15,
+    }
+    positions = [
+        (0, 0, 0),
+        (0.02, 0, 0),
+        (0.02, 0.01, 0),
+        (0, 0.01, 0),
+        (0, 0, 0.01),
+        (0.02, 0, 0.01),
+        (0.02, 0.01, 0.01),
+        (0, 0.01, 0.01),
+    ]
+    nodes = dict(enumerate(positions, 1))
+    cells = {53: list(nodes)}
+    for precision in (6, 15):
+        fields = {"temperature": []}
+        for t in bridge.output_times(spec):
+            exact = 253.15 + bridge.history_energy(spec["heater_history"], t) / 7.8
+            printed = float(f"{exact:.{precision}e}")
+            fields["temperature"].append(
+                {"time": t, "values": {(n,): [printed] for n in nodes}}
+            )
+        if precision == 6:
+            with pytest.raises(ValueError, match="energy gate failed"):
+                bridge.verify(spec, nodes, cells, fields)
+        else:
+            checks, _, _ = bridge.verify(spec, nodes, cells, fields)
+            assert checks["energy"]["maximum_relative_balance_error"] < 1e-8

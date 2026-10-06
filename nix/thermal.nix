@@ -2,10 +2,16 @@
   pkgs,
   fem,
 }: let
+  # Nodal temperature serialization only; equations and source pin unchanged.
+  # The previously qualified static FEM package remains independent.
+  calculix = fem.calculix.overrideAttrs (old: {
+    patches = (old.patches or []) ++ [./patches/calculix-temperature-precision.patch];
+  });
   bridge = pkgs.replaceVars ../adapters/thermal_history.py {
     fem_bridge = "${fem.bridge}";
-    calculix = "${fem.calculix}/bin/ccx";
-    ccx_version = fem.calculix.version;
+    calculix = "${calculix}/bin/ccx";
+    ccx_version = calculix.version;
+    temperature_patch_sha256 = builtins.hashFile "sha256" ./patches/calculix-temperature-precision.patch;
     gmsh_version = fem.gmsh.version;
   };
   adapter = pkgs.writeShellScriptBin "harbor-cad-thermal" ''
