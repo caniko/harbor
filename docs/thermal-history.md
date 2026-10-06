@@ -122,6 +122,15 @@ Regression tests reproduce immutable top-level helper loading and verify that
 an invalid request still rejects before output without adding sibling caches.
 The failed run and its precise diagnosis remain retained; no mount is broadened.
 
+`thermal-native-5` passed eight solves, nine pre-output rejections and both
+separate refinement assessments at its exact recorded adapter. Its maximum
+temperature/energy errors were `0.007558324480261552` and
+`0.015384615389630334` under the unchanged independent `0.02` gates. The
+aggregate service memory peak was `314224640 bytes` with a 2-GiB/no-swap limit.
+Exact revisions, report/runtime hashes and failed-attempt provenance are in
+[thermal evidence](evidence/thermal-cpu.json). The bytecode-repaired worker
+package is a distinct runtime and requires its own native/lifecycle gate.
+
 Bounded native time/output counts and explicit mesh refinement are checked
 before execution. The opt-in qualifier runs under the guarded Canix runtime
 lease and a bounded 2-GiB/no-swap/two-CPU service. Worker integration and its

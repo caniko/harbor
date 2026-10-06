@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "qualification_date": "2026-10-06",
+  "scope": "synthetic constant-property C3D8 plane wall, prescribed physical ambient/heater histories, equal Robin x-normal faces; exact packages and recorded formulation only",
+  "physical_validation": "unqualified",
+  "standalone": {
+    "build_revision": "d4ebd7a9ce4bb446a5e22e5380d103caa4763e39",
+    "qualifier_revision": "404d787a81b50a9822784a164e91022bc7e54bb4",
+    "identity": "qualifier changed only time-refinement assessment; native adapter, FEM helper, Nix thermal recipe and precision patch were byte-identical at both revisions",
+    "identity_record": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/thermal-native-gate-5-identity.json",
+    "identity_record_sha256": "bff33818c0b23aec617a0141bb0c424c337723b069d77b0566371469c38cf29f",
+    "runtime": "/nix/store/2m6ff1aj0n37fr544qv51vpik5cnpmi5-harbor-cad-thermal-runtime.json",
+    "runtime_sha256": "c3d2f71ea505b1ff802ce350250423cbb2c0e05527ce69be74e6407d83aa355d",
+    "adapter": "/nix/store/sm8fv8581mg4qkmcl1zrszh8dm2r3b1i-harbor-cad-thermal/bin/harbor-cad-thermal",
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/thermal-native-5/verification.json",
+    "report_sha256": "1c870fc6a64ea193cc769829efff0a24c780e5c2051435985b3ae9b5eb1d76e8",
+    "build": "passed",
+    "runtime_execution": "passed; eight native solves",
+    "numerical_verification": "passed; independent analytical temperatures and native volume/face cumulative energy",
+    "temperature_tolerance": 0.02,
+    "energy_tolerance": 0.02,
+    "maximum_temperature_error": 0.007558324480261552,
+    "maximum_energy_error": 0.015384615389630334,
+    "spatial_errors_n2_n4_n8": [0.007558324480261552, 0.0019255569183769708, 0.0004858082789169774],
+    "temporal_convergence": {
+      "scope": "successive temporal solution differences on one fixed mesh; independent continuum and energy acceptance remains required on every solve",
+      "native_steps_s": [0.03125, 0.015625, 0.0078125],
+      "maximum_successive_temperature_differences_k": [0.001858940129864095, 0.0009295318611748371],
+      "observed_order": 0.9999040849481661
+    },
+    "pre_output_rejections": 9,
+    "kernel_resources": {"memory_max_bytes": 2147483648, "memory_swap_max_bytes": 0, "memory_peak_bytes": 314224640, "cpu_usage_microseconds": 499865057, "cpu_max": "200000 100000", "pids_max": 128}
+  },
+  "worker": {
+    "build_revision": "d4ebd7a9ce4bb446a5e22e5380d103caa4763e39",
+    "runtime": "/nix/store/hbyxvaqrl6cshmi5nn8q8naq70jas142-harbor-cad-native-runtime.json",
+    "runtime_sha256": "66875d95e807a33c9ea7dc38e816a169417bedf6cb5909a11e148be6064f1e0c",
+    "attempt": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/thermal-worker-1",
+    "job_id": "d252f94d-f100-484c-9033-daf8a82822f2",
+    "status": "failed before solving; exact operation-closure protection rejected an unapproved bytecode cache",
+    "log": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/thermal-worker-gate-1.log",
+    "log_sha256": "eda01a83110f05b272fca8a053b5b6525681bdb3ec666d4e34b116c65eccbef3",
+    "diagnosis": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/thermal-worker-1-closure-diagnosis.json",
+    "diagnosis_sha256": "46b6fecf014f93672d4122889c0150d44f790ce5292f2a2e78a242d842dcd83f",
+    "reproduction": "CPython creates /nix/store/__pycache__ on top-level dynamic helper import; -B removes the unexpected entry while all 53 declared closure entries remain",
+    "repair_revision": "c1a58dc3444b7a09ee99745d7b83a14aa340367e",
+    "repair": "disable bytecode generation before native helper imports; exact operation-closure check retained",
+    "post_failure_observation": "zero canonical reservations and no remaining failed-worker retention intents/roots",
+    "repaired_package_qualification": "pending; no lifecycle/export qualification inherited"
+  },
+  "failed_attempts_preserved": [
+    {"attempt": "thermal-native-1", "cause": "right-endpoint heater ramp integrated 31 J instead of exact prescribed 30 J; both unchanged gates failed"},
+    {"attempt": "thermal-native-2", "cause": "native fixed-width time-card truncation rejected the deck"},
+    {"attempt": "thermal-native-3", "cause": "E13.6 native nodal-temperature serialization lost precision required by the early energy balance"},
+    {"attempt": "thermal-native-4", "cause": "all numerical gates passed but fixed-mesh continuum error cancellation invalidated the original temporal-refinement check", "diagnosis_sha256": "a4b78f9095ae429e61034f3a5ec35e95549b6372cfc9655f381ef1c9da38bfb7"},
+    {"attempt": "runtime-thermal-cpu-14", "cause": "precision patch targeted the wrong native archive-root path; corrected patch verified with zero fuzz"}
+  ],
+  "limitations": ["synthetic prescribed inputs only", "constant properties within the approved material domain", "explicit missing/inapplicable moisture entry; no condensate mass", "no flow-to-convection conversion", "no contact, preload, seals or electronic boot reliability", "no hybrid/CUDA qualification", "a changed adapter/closure needs its own recorded qualification"]
+}
