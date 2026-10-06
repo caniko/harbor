@@ -347,7 +347,9 @@ def main():
     certifying.add_argument("--identity", required=True)
     args = parser.parse_args()
     try:
-        manifest = validate_manifest(read_json(args.contract.resolve()), args.host)
+        # Nix bundles and /etc expose manifest symlinks; pin their regular target for every worker.
+        args.contract = args.contract.resolve(strict=True)
+        manifest = validate_manifest(read_json(args.contract), args.host)
         if args.command == "serve":
             config = manifest["resources"][args.resource]
             argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
