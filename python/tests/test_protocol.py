@@ -118,6 +118,24 @@ def test_wetting_si_descriptor_uses_generated_rust_schema_with_explicit_provenan
     schemas = json.loads(subprocess.check_output([binary(), "schema"]))
     spec = request()
     Draft202012Validator(schemas["WettingReferenceSpec"]).validate(spec)
+    plan = json.loads(
+        subprocess.check_output(
+            [binary(), "case", "plan-wetting-reference", "/dev/stdin"],
+            input=json.dumps(spec).encode(),
+        )
+    )["plan"]
+    Draft202012Validator(schemas["ExecutionPlan"]).validate(plan)
+    assert plan["schema_version"] == 9
+    for injected in (spec, None):
+        old = json.loads(
+            subprocess.check_output(
+                [binary(), "case", "plan", "/dev/stdin"],
+                input=subprocess.check_output([binary(), "case", "init"]),
+            )
+        )
+        old["wetting"] = injected
+        with pytest.raises(ValidationError):
+            Draft202012Validator(schemas["ExecutionPlan"]).validate(old)
     for changed in (
         {**spec, "evaporation": True},
         {**spec, "material_provenance": None},

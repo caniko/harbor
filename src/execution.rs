@@ -19,9 +19,12 @@ pub const FEM_SANDBOX_POLICY: &str = "harbor-cad-fem-cpu-v1";
 pub const THERMAL_SANDBOX_POLICY: &str = "harbor-cad-thermal-cpu-v1";
 pub const CAD_MESH_SANDBOX_POLICY: &str = "harbor-cad-cad-mesh-cpu-v1";
 pub const FEM_IMPORTED_SANDBOX_POLICY: &str = "harbor-cad-fem-imported-cpu-v1";
+pub const WETTING_SANDBOX_POLICY: &str = "harbor-cad-wetting-cpu-v1";
 
 fn sandbox_policy(plan: &ExecutionPlan) -> &'static str {
-    if plan.imported_fem.is_some() {
+    if plan.wetting.is_some() {
+        WETTING_SANDBOX_POLICY
+    } else if plan.imported_fem.is_some() {
         FEM_IMPORTED_SANDBOX_POLICY
     } else if plan.cad_source.is_some() {
         CAD_MESH_SANDBOX_POLICY

@@ -246,9 +246,10 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::ThermalReference => {
                 ("stages/thermal/thermal-receipt.json", Some("CalculiX"))
             }
-            StageOperation::WettingReference => {
-                ("stages/wetting/wetting-receipt.json", Some("OpenLB"))
-            }
+            StageOperation::WettingReference => (
+                "stages/wetting/verified-wetting-receipt.json",
+                Some("OpenLB"),
+            ),
             StageOperation::Bundle => continue,
         };
         let loaded = registered_json(store, id, path)?;
@@ -420,6 +421,43 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     capability.numerical_verification = EvidenceState::ReportedPass;
                     capability.convergence =
                         "geometric correspondence; no field solve or convergence claim".into();
+                } else if matches!(stage.operation, StageOperation::WettingReference) {
+                    let fields = value["independent_fields"]
+                        .as_array()
+                        .ok_or_else(|| invalid("registered native wetting fields required"))?;
+                    let prefix = "stages/wetting";
+                    for field in fields {
+                        let name = field["path"]
+                            .as_str()
+                            .ok_or_else(|| invalid("native wetting path required"))?;
+                        let path = format!("{prefix}/{name}");
+                        let record = store
+                            .artifact_record(id, &path)?
+                            .ok_or_else(|| invalid("registered wetting field absent"))?;
+                        if record.path != path
+                            || record.bytes == 0
+                            || record.bytes > 16 * 1024 * 1024
+                            || record.format != "csv"
+                        {
+                            return Err(invalid("registered bounded wetting CSV required"));
+                        }
+                        let observed = crate::storage::native_manifest(
+                            &store.job_dir(id)?,
+                            &path,
+                            16 * 1024 * 1024,
+                            "verify historical original wetting field",
+                        )?;
+                        if observed.bytes != record.bytes
+                            || observed.sha256 != record.sha256
+                            || field["sha256"] != record.sha256
+                        {
+                            return Err(invalid("registered native wetting identity changed"));
+                        }
+                    }
+                    let root = safe_path(&store.job_dir(id)?, prefix)?;
+                    capability.numerical_evidence =
+                        Some(crate::wetting::verify_receipt(&plan, &root, &value)?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
                 } else {
                     (
                         capability.numerical_verification,

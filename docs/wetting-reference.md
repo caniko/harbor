@@ -22,8 +22,7 @@ The native source patch changes only the upstream initializer's center from
 `dx/2` above the wall, changing the initial physical geometry and phase area
 across refinements; the failed native-4 campaign retains those original bytes.
 Rust owns the strict `WettingReferenceSpec` schema and matching SI/bounds checks;
-Python parity tests cover the same native descriptor. Durable worker planning
-and lifecycle remain a separate integration gate.
+Python parity tests cover the same native descriptor.
 
 For `dx = diameter / resolution`, the pinned converter gives
 `dt = (tau - 0.5) dx² / (3 nu)`. Surface tension in lattice units is
@@ -45,6 +44,20 @@ no GPU nodes/sysfs/host home/session bus/worker socket/network access and a
 read-only descriptor. The native library owns collision, streaming and wetting
 coupling; the bridge only verifies inputs, launch identity and retained outputs.
 
+Version-9 `case plan-wetting-reference INPUT.json` and simulation-profile MCP
+`case_plan_wetting_reference` return a digest-bound wetting→bundle plan. Explicit
+`job submit --approve DIGEST` uses the persistent worker and
+`runtime-wetting-worker`, the same immutable adapter/closure as the standalone
+reference, authority-backed shared RAM/disk admission and an owned systemd tree.
+Old plans reject injected wetting capabilities, including null fields.
+
+Before registering success, Rust re-parses every bounded native CSV, verifies
+the exact step/physical-time mapping and recorded field hashes, independently
+reconstructs complete Cartesian/material coverage, phase area and the whole
+contour, and rechecks the unchanged mass/contact-angle gates. Historical
+`qualify --job JOB_ID` binds registered original CSV bytes. One job's numerical
+checks do not establish settling, refinement or physical validation.
+
 Independent checks require complete unique Cartesian coordinates, the two
 semantic wall planes, a finite bounded phase field and a single isolated
 near-circular symmetric droplet. A centered least-squares contour fit produces
@@ -63,7 +76,7 @@ must pass mass and angle gates; late angle change must be at most 0.2°, and
 angle error must decrease across mesh refinements. Unsupported inputs must
 reject with empty scientific output directories.
 
-Build/native qualification is pending. This static reference supplies part of
+Exact worker lifecycle and native refinement qualification are pending. This static reference supplies part of
 the A1 feasibility foundation. Inlet spray momentum/drop sizes, 3D wetting,
 seal/pore ingress, vapor flux, evaporation, transient Stefan verification and
 physical validation retain their separate acceptance gates.

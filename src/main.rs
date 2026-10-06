@@ -103,6 +103,12 @@ enum Case {
         #[arg(long, default_value = "research")]
         policy: String,
     },
+    /// Plan a synthetic wall-centered planar wetting reference with explicit SI properties.
+    PlanWettingReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     /// Plan a static synthetic Gmsh/CalculiX CPU reference with explicit SI inputs.
     PlanFemReference {
         file: PathBuf,
@@ -290,6 +296,10 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Case { command } => match command {
             Case::PlanThermalReference { file, policy } => {
                 let plan = ExecutionPlan::thermal_reference(read(&file)?, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Case::PlanWettingReference { file, policy } => {
+                let plan = ExecutionPlan::wetting_reference(read(&file)?, policy)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
             }
             Case::PlanFemReference { file, policy } => {

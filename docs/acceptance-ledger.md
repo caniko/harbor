@@ -112,7 +112,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
-| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v8 plans and original approval compatibility tested; broader recipe-specific contracts pending |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v9 plans and original approval compatibility tested; broader recipe-specific contracts pending |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
 | §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; native contact/optical execution pending |
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |

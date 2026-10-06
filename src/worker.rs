@@ -173,6 +173,7 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
                 stage.operation,
                 StageOperation::FemReference
                     | StageOperation::ThermalReference
+                    | StageOperation::WettingReference
                     | StageOperation::CadMesh
                     | StageOperation::FemImported
             ) {
@@ -459,6 +460,10 @@ fn dispatch(
             let plan = ExecutionPlan::thermal_reference(*spec, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::PlanWettingReference { spec } => {
+            let plan = ExecutionPlan::wetting_reference(*spec, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
             ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
         )?),
@@ -584,11 +589,14 @@ fn dispatch(
                             stage.operation,
                             StageOperation::FemReference
                                 | StageOperation::ThermalReference
+                                | StageOperation::WettingReference
                                 | StageOperation::CadMesh
                                 | StageOperation::FemImported
                         ) {
                             files.insert(
-                                if plan.imported_fem.is_some() {
+                                if plan.wetting.is_some() {
+                                    "wetting_closure"
+                                } else if plan.imported_fem.is_some() {
                                     "fem_imported_closure"
                                 } else if plan.cad_source.is_some() {
                                     "cad_mesh_closure"
@@ -890,6 +898,7 @@ pub fn backends() -> serde_json::Value {
         {"adapter":"calculix_thermal","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["plane_wall_robin"],"factorization":"SPOOLES","plan_schema_version":6,"scope":"synthetic prescribed physical histories; constant properties; independent temperature/energy gates; exact job qualification required","reference_evidence":"docs/thermal-history.md"},
         {"adapter":"gmsh_cad_mesh","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["imported_axis_aligned_box"],"plan_schema_version":7,"scope":"named BREP/source-unit/world-placement correspondence; approved retained-source worker; no solver or contact conclusion; exact job qualification required","reference_evidence":"docs/cad-mesh.md"},
         {"adapter":"calculix_imported","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["thermal_boundary","free_expansion"],"factorization":"SPOOLES","plan_schema_version":8,"scope":"controlled synthetic imported box with explicit world-origin analytical reference; approved retained-source worker; exact job qualification required","reference_evidence":"docs/fem-imported.md"},
+        {"adapter":"openlb_wetting","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"well_balanced_contact_angle_2d","plan_schema_version":9,"scope":"synthetic equal-property wall-centered initial half-circle; retained original phase/velocity fields; separate mass, angle, settling and refinement gates","reference_evidence":"docs/wetting-reference.md"},
         {"adapter":"paraview","backend":"egl","runtime":"unqualified"},
         {"adapter":"ffmpeg","backend":"vaapi","runtime":"unqualified"}
     ])
@@ -927,6 +936,10 @@ struct NativeRuntime {
     #[serde(default)]
     thermal_closure: Option<String>,
     #[serde(default)]
+    wetting: Option<String>,
+    #[serde(default)]
+    wetting_closure: Option<String>,
+    #[serde(default)]
     cad_mesh: Option<String>,
     #[serde(default)]
     cad_mesh_closure: Option<String>,
@@ -940,6 +953,7 @@ impl NativeRuntime {
         let selected = match operation {
             StageOperation::FemReference => &self.fem_closure,
             StageOperation::ThermalReference => &self.thermal_closure,
+            StageOperation::WettingReference => &self.wetting_closure,
             StageOperation::CadMesh => &self.cad_mesh_closure,
             StageOperation::FemImported => &self.fem_imported_closure,
             _ => return Err(invalid("fixed CPU solver operation required for closure")),
@@ -987,6 +1001,9 @@ impl NativeRuntime {
             })?,
             StageOperation::ThermalReference => self.thermal.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU thermal adapter absent from selected runtime".into())
+            })?,
+            StageOperation::WettingReference => self.wetting.as_deref().ok_or_else(|| {
+                Error::Unqualified("CPU wetting adapter absent from selected runtime".into())
             })?,
             StageOperation::CadMesh => self.cad_mesh.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU CAD mesh adapter absent from selected runtime".into())
@@ -1094,6 +1111,7 @@ fn native_stage(
         stage.operation,
         StageOperation::FemReference
             | StageOperation::ThermalReference
+            | StageOperation::WettingReference
             | StageOperation::CadMesh
             | StageOperation::FemImported
     ) {
@@ -1107,6 +1125,11 @@ fn native_stage(
                 "/thermal-runtime-closure.txt",
                 "HARBOR_CAD_THERMAL_POLICY",
                 crate::execution::THERMAL_SANDBOX_POLICY,
+            ),
+            StageOperation::WettingReference => (
+                "/wetting-runtime-closure.txt",
+                "HARBOR_CAD_WETTING_POLICY",
+                crate::execution::WETTING_SANDBOX_POLICY,
             ),
             StageOperation::CadMesh => (
                 "/cad-mesh-runtime-closure.txt",
@@ -1271,6 +1294,8 @@ fn native_stage(
             "fem-reference-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::ThermalReference) {
             "thermal-receipt.json".into()
+        } else if matches!(stage.operation, StageOperation::WettingReference) {
+            "verified-wetting-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::CadMesh) {
             "cad-mesh-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::FemImported) {
@@ -1294,6 +1319,8 @@ fn native_stage(
                 "native-fem-request.json"
             } else if matches!(stage.operation, StageOperation::ThermalReference) {
                 "native-thermal-request.json"
+            } else if matches!(stage.operation, StageOperation::WettingReference) {
+                "native-wetting-request.json"
             } else if matches!(stage.operation, StageOperation::CadMesh) {
                 "native-cad-mesh-request.json"
             } else if matches!(stage.operation, StageOperation::FemImported) {
@@ -1309,7 +1336,9 @@ fn native_stage(
         .arg(
             if matches!(
                 stage.operation,
-                StageOperation::FemReference | StageOperation::FemImported
+                StageOperation::FemReference
+                    | StageOperation::FemImported
+                    | StageOperation::WettingReference
             ) {
                 "reference"
             } else if matches!(stage.operation, StageOperation::ThermalReference) {
@@ -1373,6 +1402,9 @@ fn native_stage(
     }
     if matches!(stage.operation, StageOperation::ThermalReference) {
         crate::thermal::verify_receipt(plan, &evidence)?;
+    }
+    if matches!(stage.operation, StageOperation::WettingReference) {
+        crate::wetting::verify_receipt(plan, dir, &evidence)?;
     }
     if matches!(stage.operation, StageOperation::CadMesh) {
         crate::cad_source::registered(store, id, plan)?;
@@ -1866,6 +1898,15 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         .as_ref()
                         .ok_or_else(|| invalid("thermal recipe required"))?;
                     store.add_artifact(id,&commit_artifact(&dir,"native-thermal-request.json",&serde_json::to_vec(spec)?,"json","exact SI prescribed thermal history; explicit native substeps and independent energy/retained output schedules")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if matches!(stage.operation, StageOperation::WettingReference) {
+                    let working = native_work.join("stages/wetting");
+                    private_dir(&working)?;
+                    let spec = plan
+                        .wetting
+                        .as_ref()
+                        .ok_or_else(|| invalid("wetting recipe required"))?;
+                    store.add_artifact(id,&commit_artifact(&dir,"native-wetting-request.json",&serde_json::to_vec(spec)?,"json","exact SI synthetic planar wetting descriptor; fixed physical initial half-circle and interface width; native retained steps")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if matches!(stage.operation, StageOperation::FemImported) {
                     let working = native_work.join("stages/fem-imported");

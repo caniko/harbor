@@ -1655,6 +1655,9 @@ pub enum Operation {
     PlanThermalReference {
         spec: Box<crate::thermal::ThermalReferenceSpec>,
     },
+    PlanWettingReference {
+        spec: Box<crate::wetting::WettingReferenceSpec>,
+    },
     PlanB1 {
         case: Box<CaseSpec>,
         selections: B1Selections,
