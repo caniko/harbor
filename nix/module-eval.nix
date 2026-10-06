@@ -7,7 +7,7 @@
   secretFile = pkgs.writeText "harbor-db-module-eval-secret" secretValue;
   rawCommand = pkgs.writeShellScript "harbor-db-module-eval-raw" "exit 0";
   runner = pkgs.writeShellScriptBin "module-eval-runner" "exit 0";
-  eval = import "${pkgs.path}/nixos/lib/eval-config.nix" {
+  eval = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = pkgs.system;
     modules = [
       module
