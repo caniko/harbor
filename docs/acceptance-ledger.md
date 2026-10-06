@@ -103,21 +103,21 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
 | §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |
-| §1 selected native stacks; no extra mandatory framework | `nix/native.nix`, `nix/openlb.nix` | FreeCAD/OpenLB/ParaView/FFmpeg packaged; Gmsh/FEM/spectral integration pending |
+| §1 selected native stacks; no extra mandatory framework | `nix/native.nix`, `nix/openlb.nix`, `nix/fem.nix` | FreeCAD/OpenLB/ParaView/FFmpeg and isolated Gmsh/CalculiX packaged and scoped native gates passed; spectral integration pending |
 | §2 Harbor and Fleetix merged PR #3 | `flake.nix`, `Cargo.toml`, `build.rs` | pinned signatures/contracts; source and digest drift tests |
 | §2 packages, modules, clean-runtime discovery | `flake.nix`, `nix/modules.nix`, `tests/worker.rs` | lightweight CLI/MCP and native packages built; remaining backend packages pending |
-| §2 independent interpreters and immutable ABIs | `nix/native.nix`, `docs/dependency-manifest.json` | importer/MCP/EGL executed outside development shell; FEM/spectral ABI sets pending |
-| §2 locks, native patches, GPU architecture | lock files, `patches/`, `nix/openlb.nix` | immutable pins and `gfx1100`; compatible filter/FEM/Dr.Jit sets pending |
+| §2 independent interpreters and immutable ABIs | `nix/native.nix`, `docs/dependency-manifest.json` | importer/MCP/EGL and isolated Gmsh/CalculiX worker executed; spectral ABI sets pending |
+| §2 locks, native patches, GPU architecture | lock files, `nix/patches/`, `nix/openlb.nix` | immutable pins, `gfx1100`, isolated CPU FEM and compatible HIP filter verified; Dr.Jit set pending |
 | §2 unfree, driver boundary, caches and closure retention | `flake.nix`, `src/retention.rs` | scoped policy, no host activation; active roots/recovery qualified |
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
-| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1/v2/v3/v4 plans and original approval compatibility tested; broader recipe-specific contracts pending |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v8 plans and original approval compatibility tested; broader recipe-specific contracts pending |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
 | §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; native contact/optical execution pending |
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
 | §4 allocated solver resources, unresolved paths | `src/estimates.rs`, `adapters/openlb_channel.cpp` | channel allocation/Mach/model gates; other formulations and local-gap resolution gates pending |
-| §5 cold start and expansion/contact | recipe contracts and native FEM adapters | transient history, heater energy, contact data, conservative temperature transfer pending |
+| §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy and static free expansion pass native and CLI/MCP gates; contact data and conservative temperature transfer pending |
 | §5 airflow/wetting/snow/freezing | OpenLB recipe drivers | synthetic single-phase flow qualified; local wetting, prescribed coverage, freezing conservation/refinement pending |
 | §5 solar/UV, angular inputs and dose | atmospheric/spectral adapters | orientation/occlusion/reflection/unit/temporal tests and GPU transport pending |
 | §5 typed one-way transfers and convection | `TransferSpec` | typed conservative transfers pending; velocity-to-convection inference rejected by scope |
@@ -128,10 +128,10 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §7 independent observations and congestion | `ObservationPlan`, native channel output | fixed retained times and fail-on-budget; bounded configurable probes/reductions pending |
 | §7 arrays and format round trips | `src/fields.rs`, retained-field verifiers | Float64 image graph preserved; broad topology/ghost/node-cell round trips pending |
 | §7 atomic committed data/exports and sole-source safety | `src/storage.rs`, `src/presentation.rs` | distinct verified source copies, staging intents, atomic bundle/checksum tests |
-| §7 compute filters vs presentation | `adapters/paraview_bridge.py`, `adapters/video_bridge.py` | EGL/VAAPI recorded; actual qualified numerical filter pending |
+| §7 compute filters vs presentation | `adapters/paraview_bridge.py`, `adapters/video_bridge.py`, `adapters/filters/` | independent EGL/VAAPI and scoped HIP numerical-gradient native/worker gates recorded; broader filters pending |
 | §7 portable provenance and retained re-render | immutable snapshot, source-bound v2/v3 plans | packaged standalone CLI/MCP rendering and independent video qualified at the recorded revision |
 | §7 Catalyst/Conduit | optional optimization | deferred until measured baseline justifies it |
-| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render/video/filter surfaces; CAD regions/export/variant and sample/compare pending |
+| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render/video/filter and CAD regions/export/mesh/imported-FEM surfaces implemented and scoped worker gates passed; CAD variants and sample/compare pending |
 | §9 CI and negative tests | `scripts/check_cpu.py`, generated workflow, tests | local gate green; hardware gates remain opt-in and scoped |
 
 ## Ordered runnable slices
@@ -141,9 +141,9 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |
 | P1a | explicit presentation approval; atomic retained-source copies; render/optional video CLI/MCP | complete at the recorded package/hardware scope; packaged mutation/lifecycle/exports pass |
 | P1b | independent registered-frame video plans, lifecycle and source mutation rejection | complete at the recorded package/hardware scope; CLI/MCP frame mutation, restart/retry and release pass |
-| P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation and independent v5 static FEM implemented; exact CLI/MCP native mesh/fields and operation-specific isolation qualified; closed BREP, imported-box Gmsh and origin-aware standalone static FEM native gates pass at build 21; v7 retained-source mesh CLI/MCP/export/lifecycle passes at build 22; v8 imported static FEM worker implemented, exact qualification and broader recipes pending |
+| P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation and independent v5 static FEM implemented; exact CLI/MCP native mesh/fields and operation-specific isolation qualified; closed BREP/imported-box correspondence and origin-aware FEM native gates pass; v7 mesh worker passes at build 22; v8 imported static FEM CLI/MCP/exports/lifecycle passes with matching native prerequisite at build 23; broader geometries/recipes remain pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | scoped v4 native/CLI/MCP analytical, CPU-HIP, byte/topology, source/lifecycle and aggregate RAM/CPU gates pass at the recorded revision; instruction trace, whole-card VRAM and broader filters pending |
-| P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | synthetic steady conduction/free expansion at 2/4/8 and CLI/MCP lifecycle pass; imported origin/translated BREP correspondence and static FEM pass native gates; airflow separately scoped; wetting pending |
+| P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | synthetic steady conduction/free expansion at 2/4/8 and CLI/MCP lifecycle pass; imported origin/translated BREP correspondence and static FEM pass native/worker gates; airflow separately scoped; pinned synthetic planar wetting implementation and analytical/units/rejection tests pass, native qualification pending |
 | P5 / C | native thermal/contact/moisture/coupling slice | independent synthetic prescribed transient CLI/MCP recipe and closure-only CPU policy implemented; scoped native numerical/spatial/time and repaired exact CLI/MCP worker/export/lifecycle gates passed; contact/moisture/coupling pending |
 | P6 / D | native local water, prescribed snow and retained-water freezing | pending |
 | P7 / E | native atmosphere/spectral irradiance/dose slice | pending |

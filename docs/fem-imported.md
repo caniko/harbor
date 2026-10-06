@@ -62,4 +62,17 @@ and one retained read-only BREP; ten checks bind isolation. Native receipts bind
 mesh/raw field bytes and approved original world origin. Rust checks the native
 mesh independently, including every C3D8 Gauss-point orientation and volume,
 then enforces the unchanged static numerical gates. The exact packaged worker
-CLI/MCP/export/lifecycle gate remains pending.
+CLI/MCP/export/lifecycle gate passed at build 23 as `fem-imported-worker-1`,
+after the matching standalone `fem-imported-2` repeated all 12 solves and eight
+rejections at the changed sandbox envelope. The maximum normalized native
+field error remained `4.685717e-12` under the unchanged `1e-6` gate.
+CLI conduction and MCP translated free expansion each exported 29 artifacts;
+service-tree RAM peaks were `166412288` and `42340352` bytes under explicit
+2-GiB/no-swap/two-CPU/128-task controls.
+
+[Exact worker evidence](evidence/fem-imported-worker-cpu.json) binds package,
+runtime, qualifier, native/worker report and source identities. Approval/source
+mutations, distinct-inode retention, raw world-origin field checks, worker
+restart/idempotency, forced complete-tree death, cancellation and final
+reservation/root release all passed. Broader imported geometry, contact and
+physical validation retain their separate gates.
