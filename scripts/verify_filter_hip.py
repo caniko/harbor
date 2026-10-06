@@ -223,7 +223,13 @@ def execute_probe(args, selection, runtime_path, executable, bwrap, resources):
     for quadratic in (False, True):
         name = "quadratic" if quadratic else "linear"
         expected[name] = synthetic_image(inputs / f"{name}.vti", quadratic)
-    for label in ("ghost", "float32", "cell_only", "multiple_piece"):
+    for label in (
+        "ghost",
+        "float32",
+        "cell_only",
+        "multiple_piece",
+        "rotated_direction",
+    ):
         document = ET.parse(inputs / "linear.vti")
         piece = document.find("ImageData/Piece")
         velocity = piece.find("PointData/DataArray[@Name='physVelocity']")
@@ -270,10 +276,12 @@ def execute_probe(args, selection, runtime_path, executable, bwrap, resources):
                 base64.b64encode(struct.pack("<I", len(payload))).decode()
                 + base64.b64encode(payload).decode()
             )
-        else:
+        elif label == "multiple_piece":
             ET.SubElement(
                 document.find("ImageData"), "Piece", Extent=piece.attrib["Extent"]
             )
+        else:
+            document.find("ImageData").set("Direction", "0 -1 0 1 0 0 0 0 1")
         document.write(inputs / f"{label}.vti", encoding="utf-8", xml_declaration=True)
     retained_root = args.retained_fields.resolve(strict=True)
     snapshot_data = (retained_root / "snapshot.json").read_bytes()
@@ -559,6 +567,7 @@ def execute_probe(args, selection, runtime_path, executable, bwrap, resources):
         ("float32", "Float64 point field"),
         ("cell_only", "Float64 point field"),
         ("multiple_piece", "single full image piece"),
+        ("rotated_direction", "axis-aligned identity image direction"),
     ]:
         directory, process, _ = invoke(f"reject-{label}", request(label))
         if (

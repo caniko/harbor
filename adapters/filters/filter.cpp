@@ -92,6 +92,19 @@ static void image_header(const std::string& xml, uint64_t maximum) {
   require(root && root->Attribute("type", "ImageData"), "image-data topology required");
   auto* image = root->FirstChildElement("ImageData");
   require(image && image->Attribute("WholeExtent"), "image extent required");
+  // This pinned VTK/Viskores converter creates uniform axis-aligned coordinates
+  // from origin/spacing/extents and ignores vtkImageData's direction matrix.
+  // Reject an unsupported physical transform before selecting a HIP device.
+  if (const auto* direction = image->Attribute("Direction")) {
+    std::istringstream matrix(direction);
+    for (int i = 0; i < 9; ++i) {
+      double value;
+      require(bool(matrix >> value) && std::isfinite(value) && value == (i % 4 == 0 ? 1. : 0.),
+        "axis-aligned identity image direction required by pinned Viskores converter");
+    }
+    std::string extra;
+    require(!(matrix >> extra), "exact image direction matrix required");
+  }
   std::istringstream extent(image->Attribute("WholeExtent"));
   int64_t bounds[6];
   uint64_t points = 1;

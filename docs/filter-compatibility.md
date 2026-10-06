@@ -98,6 +98,13 @@ while sibling accelerator directories cannot see its ordinary compiler variable.
 The candidate makes the same pinned ROCm compiler visible through a CMake cache
 entry; it retains the compiler existence check and native HIP language.
 
+The exact VTK source's
+`Accelerators/Vtkm/DataModel/vtkmlib/ImageDataConverter.cxx` constructs uniform
+coordinates from extents/origin/spacing and does not read `GetDirectionMatrix`.
+The initial native allowlist therefore rejects non-identity image direction
+matrices before HIP selection; the qualifier includes a rotated-image negative
+case. No transformed-coordinate numerical qualification is inferred.
+
 The separately packaged `filter-hip` adapter candidate supports one registered
 Float64 image-data shard and a point-gradient of `physVelocity` or `physPressure`.
 It verifies input hashes and point/allocation bounds, forces both

@@ -21,7 +21,9 @@ The initial request is intentionally bounded:
 ```
 
 Supported field choices are `velocity` and `pressure`, from one retained time
-and one registered Float64 image-data shard. The source is a completed authorized
+and one registered axis-aligned Float64 image-data shard. An explicit direction
+matrix must be the identity: the pinned converter ignores non-identity image
+directions, so those inputs reject before HIP selection. The source is a completed authorized
 OpenLB job with immutable scientific fields and units. A filter job binds the
 source plan, execution, authorization, snapshot and bytes. It receives distinct
 verified retained-source inodes before acknowledgment, with the same filesystem
