@@ -68,3 +68,23 @@ or physical validity. Linear/quadratic references, CPU/HIP comparisons,
 instruction-level traces, filter sandbox/lifecycle tests and measured whole-card
 memory remain independent B2 acceptance work. Ghost arrays, broad topology,
 cell-field averaging and general filter graphs remain outside this allowlist.
+
+## Opt-in qualification gates
+
+`scripts/verify_filter_hip.py` runs within an independently bounded 2 GiB,
+no-swap/two-CPU user service and uses the established physical-card anchor.
+It checks scalar/vector linear gradients at every point and quadratic gradients
+at interior points on an anisotropic image with signed extents. CPU/HIP
+comparisons include boundaries and retained OpenLB velocity/pressure. Precision,
+association, ghost arrays, unsupported topology, device/source mismatch,
+architecture spoofing and CPU-as-HIP rejection have explicit negative cases.
+The unchanged maximum absolute comparison/analytical gate is `1e-10`.
+
+`scripts/verify_filter_worker.py` consumes that exact native-reference runtime
+and a fork of a closed authorized solver fixture. It exercises packaged CLI/MCP
+filter approvals, distinct copied inodes, original science/units/time, native
+reference parity, source mutations, restart/idempotency, complete-tree
+cancellation, runtime retention/admission release and checksummed export.
+Neither script establishes physical validation, instruction-level traces,
+whole-card VRAM measurement, or unsupported-filter qualification. The scripts
+remain unexecuted until the exact native build succeeds.
