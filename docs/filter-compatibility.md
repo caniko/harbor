@@ -82,9 +82,14 @@ The VTK candidate uses the exact existing ParaView archive, verifies the bundled
 wrapper/filter source file hashes, and enables accelerator filters plus XML I/O.
 It is a separate numerical library build with no EGL, Qt, MPI or Python; the
 Float64 wrapper change is scoped to this compute package. Builds do not discover
-devices. Package evaluation/build is currently blocked by another process owning
-the host evaluation guard. These outputs remain `unqualified`; no native filter
-runtime or B2 result is claimed by the declaration.
+devices. Guarded evaluation succeeded; the first native build stopped because
+Kokkos's default HIP configuration requires rocThrust. Its exact
+[TPL finder](https://github.com/kokkos/kokkos/blob/6ecdf605e0f7639adec599d25cf0e206d7b8f9f5/cmake/Modules/FindTPLROCTHRUST.cmake)
+also exports rocThrust to consumers, so the corrected package propagates the
+locked ROCm dependency. Build logs are retained in
+`/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/`.
+These outputs remain `unqualified`; no native filter runtime or B2 result is
+claimed by the declaration.
 
 The separately packaged `filter-hip` adapter candidate supports one registered
 Float64 image-data shard and a point-gradient of `physVelocity` or `physPressure`.
@@ -109,4 +114,6 @@ bytes and image topology/coordinates, then writes and reads back the VTI to chec
 the same invariants. Original physical units and derivative units are explicit.
 Ghost arrays are rejected pending their own qualification. This is candidate
 implementation: it needs the guarded native build, analytical/CPU comparison,
-sandbox and worker integration gates before being exposed as a runnable job.
+sandbox and worker integration gates before being reported as qualified.
+The image preallocation check permits bounded signed extents: the retained
+OpenLB B1 image uses `-1 16 -1 10 -1 8`, which is a valid image index range.

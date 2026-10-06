@@ -23,6 +23,8 @@
     };
     nativeBuildInputs = [pkgs.cmake pkgs.ninja];
     buildInputs = [rocm.clr rocm.rocm-runtime];
+    # HIP enables and exports the rocThrust TPL in this pinned Kokkos release.
+    propagatedBuildInputs = [rocm.rocthrust];
     cmakeFlags =
       compilerFlags
       ++ [

@@ -95,7 +95,7 @@ static void image_header(const std::string& xml, uint64_t maximum) {
   std::istringstream extent(image->Attribute("WholeExtent"));
   int64_t bounds[6];
   uint64_t points = 1;
-  for (auto& bound : bounds) require(bool(extent >> bound) && bound >= 0 && bound <= INT32_MAX, "bounded image extent required");
+  for (auto& bound : bounds) require(bool(extent >> bound) && bound >= INT32_MIN && bound <= INT32_MAX, "bounded signed image extent required");
   std::string extra;
   require(!(extent >> extra), "six-dimensional extent descriptor required");
   for (int i = 0; i < 3; ++i) {
