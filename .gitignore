@@ -4,3 +4,6 @@ node_modules/
 graphify-out/
 .direnv/
 .nix-results/
+__pycache__/
+*.egg-info/
+build/

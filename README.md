@@ -85,6 +85,26 @@ independent authenticated loopback MCP service, and packed exports without
 installed harness dependencies. Consumers qualify their actual delivery paths
 separately.
 
+### Python consumers
+
+The root `pyproject.toml` builds the `harbor-llm` Python distribution. Pin its
+full Git revision as for the ESM package. `harbor_llm.mcp_admission` exposes
+`bind_mcp_servers_to_run`, `require_mcp_run_binding`,
+`parse_mcp_admission_policy`, `require_mcp_credential_endpoint`, and
+`is_mcp_admission_identifier`. Bindings use read-only mappings; exceptions carry
+the same finite `reason` and content-free `runtime_mcp_admission_blocked` code.
+It has no transport, harness, or third-party runtime dependency.
+
+Packaged assets come from the canonical `contracts/` directory. Both languages
+run its vectors and a differential test covering malformed host lists, policy
+booleans, and URL parsing. Exact endpoints require explicit authorities and
+portable host spelling: encoded hostnames and repaired abbreviated/numeric IPv4
+forms are rejected. Consumer-owned alias normalization runs only after raw URL
+validation. This is a tightened syntax check, not physical-host attestation.
+
+Run Python checks with `python3 -I test/test_mcp_admission.py`; the Node suite
+also runs the differential check (`HARBOR_TEST_PYTHON` selects an interpreter).
+
 ## Project environment contract
 
 - No agent command is accepted or executed by the environment backend.

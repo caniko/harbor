@@ -49,6 +49,8 @@ export function requireMcpCredentialEndpoint(value) {
   let url;
   try { url = new URL(value); } catch { throw new McpAdmissionError("unsafe_endpoint"); }
   const authority = value.slice(value.indexOf("//") + 2).split("/")[0];
+  const portableHost = /^(\[[0-9a-f:.]+\]|[a-z0-9_.-]+)(?::[0-9]+)?$/i.exec(authority)?.[1];
+  if (!portableHost || (/^\d+\.\d+\.\d+\.\d+$/.test(url.hostname) && portableHost !== url.hostname)) throw new McpAdmissionError("unsafe_endpoint");
   if (!url.hostname || authority.includes("@") || url.username || url.password
     || (url.protocol !== "https:" && !(url.protocol === "http:"
       && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))) throw new McpAdmissionError("unsafe_endpoint");
