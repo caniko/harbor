@@ -296,6 +296,10 @@ enum Results {
     RetainWetting {
         request: PathBuf,
     },
+    /// Prepare source-bound native direct/diffuse angular midpoint transfer, without executing transport.
+    TransferAtmosphere {
+        request: PathBuf,
+    },
 }
 #[derive(Subcommand)]
 enum Artifact {
@@ -573,6 +577,9 @@ fn run(cli: Cli) -> Result<()> {
                 request: Box::new(read(&request)?),
             },
             Results::RetainWetting { request } => Operation::ResultsRetainWetting {
+                request: Box::new(read(&request)?),
+            },
+            Results::TransferAtmosphere { request } => Operation::ResultsTransferAtmosphere {
                 request: Box::new(read(&request)?),
             },
         },

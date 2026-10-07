@@ -2116,6 +2116,9 @@ pub enum Operation {
     ResultsRetainWetting {
         request: Box<crate::wetting_retention::WettingRetentionRequest>,
     },
+    ResultsTransferAtmosphere {
+        request: Box<crate::atmosphere_transfer::AtmosphericTransferRequest>,
+    },
     QualificationReport {
         job_id: String,
     },
@@ -2188,6 +2191,12 @@ pub fn schemas() -> serde_json::Value {
     ));
     schemas["RetainedWettingReport"] = serde_json::json!(schemars::schema_for!(
         crate::wetting_retention::RetainedWettingReport
+    ));
+    schemas["AtmosphericTransferRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::atmosphere_transfer::AtmosphericTransferRequest
+    ));
+    schemas["AtmosphericTransferReport"] = serde_json::json!(schemars::schema_for!(
+        crate::atmosphere_transfer::AtmosphericTransferReport
     ));
     schemas["SnowReferenceSpec"] =
         serde_json::json!(schemars::schema_for!(crate::snow::SnowReferenceSpec));

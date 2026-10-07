@@ -5,6 +5,7 @@ import asyncio
 import copy
 import importlib.util
 import json
+import math
 import subprocess
 from pathlib import Path
 
@@ -296,6 +297,118 @@ def main():
                         == "not_assessed"
                         and historical["physical_validation"] == "unqualified"
                     )
+                    receiver = json.loads(
+                        (repo / "examples/spectral-reference.json").read_text()
+                    )
+                    receiver.update(
+                        wavelengths=spec["wavelengths"],
+                        absorptivity=[0.5] * len(spec["wavelengths"]),
+                        ageing_action=[0.25] * len(spec["wavelengths"]),
+                    )
+                    receiver["source"] = {
+                        "kind": "directional",
+                        "propagation_direction": normalized["propagation_direction"],
+                        "irradiance": spec["toa_irradiance"],
+                    }
+                    receiver["source_provenance"] = (
+                        "unchanged prescribed original native atmospheric TOA source; ground attenuation/radiance only from registered originals"
+                    )
+                    transfers = []
+                    for normal in ([0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0]):
+                        receiver["sensor_normal"] = normal
+                        transfer_request = {
+                            "schema_version": 1,
+                            "source_job": job["id"],
+                            "receiver": receiver,
+                            "angular_mapping": "native_midpoint_solid_angle_quadrature",
+                            "maximum_relative_conservation_error": 1e-10,
+                        }
+                        transfer_file = (
+                            root / f"transfer-{interface}-{len(transfers)}.json"
+                        )
+                        transfer_file.write_text(json.dumps(transfer_request))
+                        transfer = campaign.command(
+                            "--socket",
+                            campaign.endpoint,
+                            "results",
+                            "transfer-atmosphere",
+                            transfer_file,
+                        )["data"]
+                        assert transfer == await mcp_call(
+                            client,
+                            "results_transfer_atmosphere",
+                            request_spec=transfer_request,
+                        )
+                        assert (
+                            transfer["executed"] is False
+                            and transfer["native_transport"] == "not_executed"
+                            and transfer["preserved_original_distribution"] is True
+                        )
+                        assert (
+                            transfer["original_field"]["sha256"] == checksum(original)
+                            and transfer["transfer_relative_conservation_error"]
+                            <= 1e-10
+                        )
+                        towards_direct = max(
+                            0.0,
+                            -math.fsum(
+                                a * b
+                                for a, b in zip(
+                                    normal,
+                                    normalized["propagation_direction"],
+                                    strict=True,
+                                )
+                            ),
+                        )
+                        expected = []
+                        for direct, rad in zip(
+                            decoded["direct_normal_w_m2_nm"],
+                            decoded["radiance_w_m2_sr_nm"],
+                            strict=True,
+                        ):
+                            diffuse = []
+                            for i, mu in enumerate(normalized["umu"]):
+                                for j, phi in enumerate(normalized["phi_deg"]):
+                                    direction = [
+                                        math.sqrt(1 - mu * mu)
+                                        * math.sin(math.radians(phi)),
+                                        math.sqrt(1 - mu * mu)
+                                        * math.cos(math.radians(phi)),
+                                        mu,
+                                    ]
+                                    diffuse.append(
+                                        rad[i * len(normalized["phi_deg"]) + j]
+                                        * normalized["angular_cell_solid_angle_sr"]
+                                        * max(
+                                            0.0,
+                                            -math.fsum(
+                                                a * b
+                                                for a, b in zip(
+                                                    normal, direction, strict=True
+                                                )
+                                            ),
+                                        )
+                                    )
+                            expected.append(
+                                direct * towards_direct + math.fsum(diffuse)
+                            )
+                        assert all(
+                            math.isclose(a, b, rel_tol=1e-11, abs_tol=1e-14)
+                            for a, b in zip(
+                                transfer["reference"]["incident_w_m2_nm"],
+                                expected,
+                                strict=True,
+                            )
+                        )
+                        assert (
+                            transfer["reference"]["absorbed_irradiance_w_m2"]
+                            == 0.5 * transfer["reference"]["incident_irradiance_w_m2"]
+                        )
+                        assert (
+                            transfer["reference"]["ageing_weighted_irradiance_w_m2"]
+                            == 0.25 * transfer["reference"]["incident_irradiance_w_m2"]
+                        )
+                        transfers.append(transfer)
                     controls = json.loads((bundle / "service-owner.json").read_text())[
                         "kernel_resources"
                     ]
@@ -327,6 +440,11 @@ def main():
                                 "qualification_report", {"job_id": job["id"]}
                             )
                             assert rejected.is_error
+                            rejected = await client.call_tool(
+                                "results_transfer_atmosphere",
+                                {"request_spec": transfer_request},
+                            )
+                            assert rejected.is_error
                         finally:
                             retained.write_bytes(raw)
                     assert (
@@ -348,6 +466,7 @@ def main():
                             "manifest_sha256": checksum(bundle / "manifest.json"),
                             "original_sha256": checksum(original),
                             "controls": controls,
+                            "anisotropic_original_transfers": transfers,
                         }
                     )
                 for key, value in (

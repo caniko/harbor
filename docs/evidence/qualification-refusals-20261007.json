@@ -28,9 +28,25 @@
       {"name": "build-46", "revision": "98690d4d1a291c2f9491ec20148e6846eba6b65b", "available_gib": 9, "command_sha256": "52f8f64263fd10a9e7f8f70b7d91c9e4e0420f67e8b7a95a70ad04024f809d1c", "stdout_sha256": "b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96", "exit_code": 1},
       {"name": "build-47", "revision": "3ad8dbc0cd13c5d94d9d1e3dcfc76d439334b662", "available_gib": 10, "command_sha256": "70e1d758e31a2b88ad98281cfd674167f075f5bba026f144c6f397d03de800e7", "stdout_sha256": "bed0262b421c75e059c3e6d08aca721444d46d80763109f8d1cdae64cfbfc053", "exit_code": 1},
       {"name":"build-48","revision":"b305bf97fb78df6c7f66a263ed269ac1d8e26c5a","available_gib":9,"command_sha256":"23db5dc11d14d786b10bf8a3a64fa180426eeeb647f0cb168e87f268961078a3","stdout_sha256":"b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96","exit_code":1},
-      {"name":"build-49","revision":"2cace0564fd5a10c779c97b8169bff0c5d69ab30","available_gib":8,"command_sha256":"a366b4ea493831ee6eb0f34899307723e0162b474664a0965d0b2a81e207aa6e","stdout_sha256":"f08aca422e69660ec05ba710ac89afdbe18e3ce29c75ab7aa59fb375323b882f","exit_code":1}
+      {"name":"build-49","revision":"2cace0564fd5a10c779c97b8169bff0c5d69ab30","available_gib":8,"command_sha256":"a366b4ea493831ee6eb0f34899307723e0162b474664a0965d0b2a81e207aa6e","stdout_sha256":"f08aca422e69660ec05ba710ac89afdbe18e3ce29c75ab7aa59fb375323b882f","exit_code":1},
+      {"name":"build-50","revision":"5b41b483d4b90d997db5e0bea9447d779b6b01e5","available_gib":9,"command_sha256":"d0aa30ea2990d341dbb517f2a70aead6b589d63d076e2e35df2a50647e6fc5fc","stdout_sha256":"b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96","exit_code":1}
     ],
     "file_convention": "NAME/evaluation-command.json, evaluation-stdout.json, evaluation-stderr.log, evaluation-exit.txt, revision.txt; no derivation realization started"
+  },
+  "renewed_runtime_lease": {
+    "owner_pid": 944486,
+    "operation_kind": "chaosbox-full-snapshot-sync",
+    "host": "atlas",
+    "started_at": "2026-10-07T13:27:03.034649177+00:00",
+    "source_revision": "3db7b66cc30ef9a069bbd0dfe3c8665e5328f6c9",
+    "refusal_log_sha256": "c4515a5ce19fea4e08d1e32453fdd0cdb34b6b16d5886baec7f7a40729946afa",
+    "refusal_log_bytes": 734,
+    "wait_seconds": 300,
+    "attempts": [
+      {"name":"retained-phase-3","revision":"5b41b483d4b90d997db5e0bea9447d779b6b01e5","command_sha256":"446b4112194c5ef8355e8ae42a03430742610494cff2317e5c6c67b3462b15e7","exit_code":1},
+      {"name":"spectral-native-diagnostic-2","revision":"5b41b483d4b90d997db5e0bea9447d779b6b01e5","command_sha256":"b9664a7dacbbdb41bdb5441fad99e3987d63fba1df2595f13f9468033e7017cd","exit_code":1}
+    ],
+    "file_convention": "NAME-command.json, NAME.log, NAME-exit.txt; no native execution started"
   },
   "qualification": "unqualified",
   "physical_validation": "unqualified"

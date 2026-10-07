@@ -832,6 +832,9 @@ fn dispatch(
         Operation::ResultsRetainWetting { request } => Ok(serde_json::to_value(
             crate::wetting_retention::prepare(store, &request)?,
         )?),
+        Operation::ResultsTransferAtmosphere { request } => Ok(serde_json::to_value(
+            crate::atmosphere_transfer::prepare(store, &request)?,
+        )?),
         Operation::Describe { job_id } => {
             let plan = store.plan(&job_id)?;
             let binding = match store.execution_binding(&job_id) {

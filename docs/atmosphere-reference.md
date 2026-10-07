@@ -128,3 +128,32 @@ and reservation/runtime-root release. Four plan/envelope/approval rejections are
 checked. The shared lifecycle API/signature regression covers this entrypoint.
 This worker campaign remains unexecuted until exact realization and the guarded
 Atlas execution lease are available.
+
+## Original anisotropic source handoff
+
+`results transfer-atmosphere REQUEST.json` and the results-profile MCP tool
+`results_transfer_atmosphere` prepare the same source-bound one-way descriptor.
+`examples/atmosphere-transfer.json` needs an actual qualified source job ID. The
+worker requires its succeeded native atmospheric exit, immutable execution
+binding, reported numerical verification and unchanged registered originals.
+Manufactured or unexecuted sources cannot supply a transfer.
+
+The receiver's directional source binds the original prescribed **TOA** spectrum
+and solar direction. The proposed ground illumination comes solely from original
+`edir` and `uu`: direct normal irradiance is `edir/cos(sza)`; each diffuse original
+midpoint contributes `uu*dOmega` normal irradiance along
+`(sqrt(1-umu²)*sin(phi), sqrt(1-umu²)*cos(phi), umu)` in East/North/Up coordinates.
+This convention follows the original native sensor-position azimuth semantics.
+Both hemispheres and every original wavelength are retained, without isotropic,
+RGB, clipping, flux-rescaling or angular-interpolation substitutions. Every
+proposed emitter amount is back-reconstructed into original units under the
+explicit transfer gate (at most `1e-10`); native angular integration and future
+transport/sampling accuracy have separate gates.
+
+The bounded report includes original field/receipt identities and an unobstructed
+planar midpoint-quadrature reference at the explicit receiver normal. Exact
+original-knot integration separately computes incident, absorption-weighted and
+ageing-weighted irradiance, area-dependent power and prescribed-history dose.
+Radiance arrays stay in the authoritative artifact. The report is a transfer
+preparation (`executed=false`, `native_transport=not_executed`), with native
+Mitsuba transport and physical qualification remaining separate work.

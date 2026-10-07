@@ -1,6 +1,7 @@
 """Prescribed snow parity through the same real Rust worker and MCP client."""
 
 import asyncio
+import copy
 import json
 import os
 import subprocess
@@ -199,6 +200,66 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
                     },
                 )
                 assert rejected.is_error and "unqualified" in str(rejected.content)
+                receiver = copy.deepcopy(spectral)
+                receiver.update(
+                    wavelengths=atmosphere["wavelengths"],
+                    absorptivity=[0.5] * 3,
+                    ageing_action=[0.25] * 3,
+                )
+                receiver["source"] = {
+                    "kind": "directional",
+                    "propagation_direction": atmosphere_reference[
+                        "propagation_direction"
+                    ],
+                    "irradiance": atmosphere["toa_irradiance"],
+                }
+                transfer = {
+                    "schema_version": 1,
+                    "source_job": "00000000-0000-0000-0000-000000000001",
+                    "receiver": receiver,
+                    "angular_mapping": "native_midpoint_solid_angle_quadrature",
+                    "maximum_relative_conservation_error": 1e-10,
+                }
+                Draft202012Validator(schemas["AtmosphericTransferRequest"]).validate(
+                    transfer
+                )
+                invalid = {**transfer, "maximum_relative_conservation_error": 0.01}
+                cli = await asyncio.to_thread(
+                    subprocess.run,
+                    [
+                        binary,
+                        "--socket",
+                        str(socket),
+                        "results",
+                        "transfer-atmosphere",
+                        "/dev/stdin",
+                    ],
+                    input=json.dumps(invalid).encode(),
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                assert (
+                    cli.returncode != 0
+                    and json.loads(cli.stdout)["error"]["code"] == "invalid_input"
+                )
+                results_parameters = StdioServerParameters(
+                    command=parameters.command,
+                    args=["-m", "harbor_cad_mcp.server", "--profile", "results"],
+                    env=dict(os.environ),
+                )
+                async with Client(results_parameters) as results_client:
+                    rejected = await results_client.call_tool(
+                        "results_transfer_atmosphere", {"request_spec": invalid}
+                    )
+                    assert rejected.is_error and "invalid_input" in str(
+                        rejected.content
+                    )
+                for field in ("radiance", "physical_time_s", "temperature_k"):
+                    with pytest.raises(ValidationError):
+                        Draft202012Validator(
+                            schemas["AtmosphericTransferRequest"]
+                        ).validate({**transfer, field: None})
                 for field, value in [
                     ("diffuse_isotropic", True),
                     ("backend", "hip"),

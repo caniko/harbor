@@ -326,6 +326,13 @@ def build_server(profile: str) -> MCPServer:
             return await request("results_retain_wetting", request=request_spec)
 
         @server.tool()
+        async def results_transfer_atmosphere(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Prepare registered native anisotropic original midpoint transfer and distinct optical dose; no transport execution or isotropic replacement."""
+            return await request("results_transfer_atmosphere", request=request_spec)
+
+        @server.tool()
         async def results_compare_freezing(
             request_spec: dict[str, Any],
         ) -> dict[str, Any]:

@@ -375,6 +375,27 @@ a real clean-environment child import verifies the SDK ABI. All 133 Python tests
 lint/format checks and thermal Nix syntax pass. These source repairs require
 corrected package/campaign execution before qualification.
 
+Registered native atmospheric originals now support a strict read-only
+anisotropic transfer preparation through Rust CLI and the results MCP profile.
+The descriptor preserves the native direct/diffuse split and full-sphere angular
+midpoints, original source/receipt/execution identities and explicit receiver
+orientation. Original-to-emitter values are back-reconstructed under `1e-10`;
+area-dependent power, absorption and ageing-weighted prescribed dose stay
+distinct. Isotropic/orientation/SI conversion and unexecuted-source rejection
+tests pass. Exact original worker qualification is wired to independently check
+four receiver normals and mutation refusal; native Mitsuba transport remains
+pending and the preparation reports `executed=false`.
+The full CPU gate passes with 49 Rust unit tests, all integration suites including
+four transfer references, strict Clippy, locked build, formatting/lints and 134
+Python tests; pinned Simit drift is clean. A real results MCP regression also
+verifies the repaired CLI/worker typed rejection of unknown fields, including
+null. Failed retained-phase attempt 4 is preserved as a failure.
+
+After bounded lease waits, retained-phase attempt 3 and spectral diagnostic 2
+refused behind Atlas lease PID 944486. Build 50 refused before evaluation at
+9 GiB combined headroom. Their immutable commands/logs remain in
+[prerequisite evidence](evidence/qualification-refusals-20261007.json).
+
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.
