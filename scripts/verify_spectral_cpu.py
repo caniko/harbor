@@ -20,6 +20,26 @@ def checksum(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def verify_rejection(native, cli, work):
+    try:
+        reply = json.loads(cli.stdout)
+    except (ValueError, UnicodeDecodeError):
+        raise ValueError("structured CLI refusal evidence required") from None
+    if (
+        native.returncode == 0
+        or cli.returncode == 0
+        or any(work.iterdir())
+        or b"ValueError" not in native.stderr
+        or not isinstance(reply, dict)
+        or reply.get("ok") is not False
+        or not isinstance(reply.get("error"), dict)
+        or reply["error"].get("code") != "invalid_input"
+    ):
+        raise ValueError(
+            "strict native/CLI applicability rejection must precede native output and preserve typed errors"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("executable", "output"):
@@ -448,16 +468,9 @@ def main():
             timeout=30,
             check=False,
         )
-        if (
-            result.returncode == 0
-            or cli.returncode == 0
-            or any(invalid_work.iterdir())
-            or b"ValueError" not in result.stderr
-            or b"invalid_input" not in cli.stderr
-        ):
-            raise ValueError(
-                "strict native/CLI applicability rejection must precede native output and preserve typed errors"
-            )
+        (root / f"reject-{name}-cli.json").write_bytes(cli.stdout)
+        (root / f"reject-{name}-cli.log").write_bytes(cli.stderr)
+        verify_rejection(result, cli, invalid_work)
         rejections.append(
             {
                 "case": name,
@@ -466,6 +479,7 @@ def main():
                 "cli_exit_code": cli.returncode,
                 "request_sha256": checksum(invalid_request),
                 "log_sha256": checksum(root / f"reject-{name}.log"),
+                "cli_reply_sha256": checksum(root / f"reject-{name}-cli.json"),
                 "native_output_files": 0,
             }
         )
