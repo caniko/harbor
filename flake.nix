@@ -141,8 +141,7 @@
         pkgs.runCommand "harbor-db-postgres-lifecycle-test" {
           nativeBuildInputs = [pkgs.python3 pkgs.gitMinimal];
         } ''
-          PYTHONPATH=${./python} python3 -B -m unittest discover -s ${./tests} -p 'test_*.py'
-          touch "$out"
+          PYTHONPATH=${./python} python3 -B ${./qualify-tests.py} ${./tests} "$out"
         '';
       harbor-db = self.packages.${pkgs.stdenv.hostPlatform.system}.harbor-db;
       cargo-fmt = craneLib.cargoFmt {

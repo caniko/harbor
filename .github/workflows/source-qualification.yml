@@ -1,0 +1,221 @@
+# Hand-authored exact-head qualification; the generated companion stays separate.
+name: Exact-head Harbor-DB qualification
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: harbor-source-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        installable:
+          - ".#packages.x86_64-linux.storage-lifecycle"
+          - ".#checks.x86_64-linux.postgres-lifecycle-test"
+          - ".#checks.x86_64-linux.cutover-eval"
+          - ".#packages.x86_64-linux.harbor-db-cached"
+          - ".#checks.x86_64-linux.postgres-lifecycle-eval"
+          - ".#checks.x86_64-linux.postgres-crash-rollback"
+          - ".#checks.x86_64-linux.postgres-interrupted-upgrade"
+          - ".#checks.x86_64-linux.postgres-recovery-acceptance"
+          - ".#checks.x86_64-linux.pg-backup-eval"
+          - ".#checks.x86_64-linux.module-eval"
+          - ".#checks.x86_64-linux.module-smoke"
+          - ".#checks.x86_64-linux.harbor-db"
+          - ".#checks.x86_64-linux.cargo-fmt"
+          - ".#checks.x86_64-linux.cargo-test"
+          - ".#checks.x86_64-linux.cargo-doc"
+          - ".#checks.x86_64-linux.cargo-clippy"
+    env:
+      NIX_CONFIG: "experimental-features = nix-command flakes"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Prepare Nix build evidence
+        env:
+          INSTALLABLE: ${{ matrix.installable }}
+        run: |
+          SIMIT_NIX_BUILD_RESULTS="$RUNNER_TEMP/simit-nix-build-${{ strategy.job-index }}"
+          printf '%s\n' "SIMIT_NIX_BUILD_RESULTS=$SIMIT_NIX_BUILD_RESULTS" >> "$GITHUB_ENV"
+          mkdir -p "$SIMIT_NIX_BUILD_RESULTS"
+          git rev-parse HEAD > "$SIMIT_NIX_BUILD_RESULTS/revision"
+          printf '%s\n' "$INSTALLABLE" > "$SIMIT_NIX_BUILD_RESULTS/installable"
+          python3 qualification-evidence.py initialize "$SIMIT_NIX_BUILD_RESULTS"
+      - name: Install Nix
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+
+      - name: Configure GitHub input transport
+        run: |
+          git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
+          git config --global --add url.https://github.com/.insteadOf git@github.com:
+
+      - name: Enable hosted KVM
+        run: |
+          test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Project setup
+        run: |
+          test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+          sudo install -d -m 1777 -o root -g root /var/cache/sccache
+          test ! -L /var/cache/sccache
+          test "$(stat -c '%u:%a' /var/cache/sccache)" = 0:1777
+          printf '%s\n' 'extra-sandbox-paths = /var/cache/sccache' 'log-lines = 250' | sudo tee -a /etc/nix/nix.conf
+          sudo systemctl restart nix-daemon.service
+          nix config show sandbox-paths | grep -F /var/cache/sccache
+
+      - name: Build ${{ matrix.installable }}
+        env:
+          INSTALLABLE: ${{ matrix.installable }}
+        run: |
+          set -euo pipefail
+          exec 3> >(tee "$SIMIT_NIX_BUILD_RESULTS/build.log" >&2)
+          log_pid=$!
+          status=0
+          nix build --no-link --no-update-lock-file --max-jobs 1 --cores 2 --json "$INSTALLABLE" 2>&3 | tee "$SIMIT_NIX_BUILD_RESULTS/result.json" || status=$?
+          exec 3>&-
+          wait "$log_pid"
+          exit "$status"
+      - name: Bind mandatory result to this exact source
+        run: |
+          python3 - <<'PY'
+          import json, os, re, shutil
+          from pathlib import Path
+          root = Path(os.environ['SIMIT_NIX_BUILD_RESULTS'])
+          results = json.loads((root / 'result.json').read_text())
+          assert len(results) == 1 and results[0]['outputs'], 'Missing build output'
+          for path in results[0]['outputs'].values():
+              assert re.fullmatch(r'/nix/store/[a-z0-9]{32}-[^/]+', path)
+          if (root / 'installable').read_text().strip() == '.#checks.x86_64-linux.postgres-lifecycle-test':
+              report = Path(results[0]['outputs']['out']) / 'tests.json'
+              receipt = json.loads(report.read_text())
+              assert receipt['cases'] >= 175
+              assert all(receipt[name] == 0 for name in ['failures', 'errors', 'skips', 'expected_failures', 'unexpected_successes', 'retries'])
+              shutil.copyfile(report, root / 'tests.json')
+          PY
+      - name: Seal raw source and original build outcome
+        if: always()
+        run: python3 qualification-evidence.py seal "$SIMIT_NIX_BUILD_RESULTS" '${{ job.status }}'
+      - name: Upload Nix build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+
+        with:
+          name: harbor-proof-${{ strategy.job-index }}-${{ github.event.pull_request.head.sha }}
+          retention-days: 31
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/simit-nix-build-${{ strategy.job-index }}
+
+  runner_readiness:
+    name: High memory / supported runner readiness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      label: ${{ steps.ready.outputs.label }}
+    env:
+      GH_TOKEN: ${{ secrets.HOSTED_RUNNER_READ_TOKEN || github.token }}
+      QUALIFICATION_LARGER_RUNNER: ${{ vars.QUALIFICATION_LARGER_RUNNER }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - id: ready
+        run: python3 runner-readiness.py --memory-gb 64 --destination runner-readiness.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: harbor-proof-readiness-${{ github.event.pull_request.head.sha }}
+          path: runner-readiness.json
+          retention-days: 31
+          if-no-files-found: error
+
+  high_memory:
+    name: Exact head / high-memory complete native checks
+    needs: runner_readiness
+    runs-on: ${{ needs.runner_readiness.outputs.label }}
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NIX_CONFIG: "experimental-features = nix-command flakes"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Bind source and actual hosted capacity
+        run: |
+          mkdir -p "$RUNNER_TEMP/high-memory"
+          python3 qualification-evidence.py initialize "$RUNNER_TEMP/high-memory"
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = x86_64
+          awk '/MemTotal/ {exit !($2 >= 64*1024*1024)}' /proc/meminfo
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      - name: Check all native host installables once
+        run: |
+          set -euo pipefail
+          sudo install -d -m 1777 -o root -g root /var/cache/sccache
+          test ! -L /var/cache/sccache
+          test "$(stat -c '%u:%a' /var/cache/sccache)" = 0:1777
+          printf '%s\n' 'extra-sandbox-paths = /var/cache/sccache' 'log-lines = 250' | sudo tee -a /etc/nix/nix.conf
+          sudo systemctl restart nix-daemon.service
+          nix flake check --no-update-lock-file --max-jobs 1 --cores 2 --show-trace 2>&1 | tee "$RUNNER_TEMP/high-memory/check.log"
+      - name: Seal original high-memory outcome
+        if: always()
+        run: python3 qualification-evidence.py seal "$RUNNER_TEMP/high-memory" '${{ job.status }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: harbor-proof-high-memory-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/high-memory/
+          retention-days: 31
+          if-no-files-found: error
+
+  retention:
+    name: Exact head / mandatory result and actual retention
+    needs: [build, runner_readiness, high_memory]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - run: python3 qualification-evidence.py artifacts harbor-proof- 18 retention.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: harbor-retention-${{ github.event.pull_request.head.sha }}
+          path: retention.json
+          retention-days: 31
+          if-no-files-found: error
+      - name: Require complete GREEN and retained audit
+        run: |
+          test '${{ needs.build.result }}' = success
+          test '${{ needs.runner_readiness.result }}' = success
+          test '${{ needs.high_memory.result }}' = success
+          python3 qualification-evidence.py artifacts harbor-retention- 1 retention-audit.json

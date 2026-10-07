@@ -33,7 +33,7 @@ max_jobs = 1
 cores = 2
 kvm = true
 capture_results = true
-artifact_retention_days = 14
+artifact_retention_days = 31
 extra_setup = ['''
 test "${RUNNER_ENVIRONMENT:-}" = github-hosted
 sudo install -d -m 1777 -o root -g root /var/cache/sccache
