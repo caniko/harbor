@@ -62,6 +62,24 @@ failure yields a content-free `McpAdmissionError` with
 exception cause. Limits cover eight servers per run, 64 execution hosts per
 server, 128-character identities, 2048-character endpoints and 64 KiB policies.
 
+Policy version is the JSON number equal to `1` (`1.0` is equivalent); booleans
+and strings are rejected. Every policy endpoint, including unused entries, is a
+bounded ASCII string, so character limits have identical meaning in both
+languages. Credential delivery additionally requires printable ASCII and the
+transport syntax above. The policy byte limit measures the compact UTF-8 JSON
+of the validated copy with version normalized to `1`, including JSON escapes.
+An empty delivery means an actual empty server array; malformed containers and
+entries yield finite errors. Alias callbacks must return two nonempty primitive
+strings. Invalid results and callback failures are content-free binding errors.
+Both binding creation and consumer recheck return read-only snapshots of validated
+metadata (a frozen ESM object or a Python mapping over a fresh dictionary), never
+the caller's original proxy or mutable mapping. Python dictionary/proxy read
+failures are redacted, and endpoint/identity comparisons require primitive strings.
+The ESM native-object boundary requires own data properties; accessors are
+rejected without invoking getters and descriptor-read failures are redacted. Inherited
+identities, endpoints, recipient aliases and JSON serializers cannot supply
+admission fields or participate in policy size accounting.
+
 Portable assets are exported under `harbor-llm/contracts/`:
 
 - `mcp-admission-policy.v1.schema.json`
@@ -96,11 +114,14 @@ the same finite `reason` and content-free `runtime_mcp_admission_blocked` code.
 It has no transport, harness, or third-party runtime dependency.
 
 Packaged assets come from the canonical `contracts/` directory. Both languages
-run its vectors and a differential test covering malformed host lists, policy
-booleans, and URL parsing. Exact endpoints require explicit authorities and
+run its vectors and differential checks across policy parsing, binding,
+consumer rechecks, identifiers and endpoint parsing, including exact byte limits,
+JSON numeric spellings, Unicode exclusions, malformed lists and callback results.
+Exact endpoints require explicit authorities and
 portable host spelling: encoded hostnames and repaired abbreviated/numeric IPv4
 forms are rejected. Consumer-owned alias normalization runs only after raw URL
-validation. This is a tightened syntax check, not physical-host attestation.
+validation. Multiple trailing hostname dots are rejected in both languages.
+This is a tightened syntax check, not physical-host attestation.
 
 Run Python checks with `python3 -I test/test_mcp_admission.py`; the Node suite
 also runs the differential check (`HARBOR_TEST_PYTHON` selects an interpreter).

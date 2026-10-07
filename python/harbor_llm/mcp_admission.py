@@ -58,8 +58,28 @@ def _record(value):
     return type(value) in (dict, MappingProxyType)
 
 
-def _keys_are(value, required, optional=()):
-    return _record(value) and set(required) <= set(value) <= set(required) | set(optional)
+def _data_record(value, reason, required=(), optional=(), *, extensions=False):
+    """Snapshot dictionary/proxy reads; never retain caller-owned mappings."""
+    failed, result = False, {}
+    try:
+        if not _record(value):
+            raise ValueError()
+        for key in value:
+            if type(key) is not str:
+                raise ValueError()
+            result[key] = value[key]
+        if not set(required) <= set(result) or (not extensions and not set(result) <= set(required) | set(optional)):
+            raise ValueError()
+    except Exception:
+        failed = True
+    if failed:
+        raise McpAdmissionError(reason)
+    return result
+
+
+def _endpoint_string(value):
+    return (type(value) is str and 0 < len(value) <= MCP_ADMISSION_LIMITS["endpointCharacters"]
+            and value.isascii())
 
 
 def _safe_endpoint(value):
@@ -69,15 +89,20 @@ def _safe_endpoint(value):
     authority = re.fullmatch(r"https?://(\[[0-9a-f:.]+\]|[a-z0-9_.-]+)(?::[0-9]+)?(?:/[^?#\\]*)?", value, re.I)
     if authority is None:
         return False
+    if authority[1].endswith(".."):
+        return False
     try:
         url = urlsplit(value)
         _ = url.port
         if (url.scheme not in ("https", "http") or not url.hostname or url.username is not None
                 or url.password is not None or url.query or url.fragment or "\\" in value):
             return False
-        last_label = url.hostname.rstrip(".").rsplit(".", 1)[-1]
-        if re.fullmatch(r"[0-9]+|0x[0-9a-f]+", last_label, re.I):
-            ipaddress.IPv4Address(url.hostname)
+        if authority[1].startswith("["):
+            ipaddress.IPv6Address(url.hostname)
+        else:
+            last_label = url.hostname.removesuffix(".").rsplit(".", 1)[-1]
+            if re.fullmatch(r"[0-9]+|0x[0-9a-f]*", last_label, re.I):
+                ipaddress.IPv4Address(url.hostname)
         if url.scheme == "https":
             return True
         return (url.hostname in ("localhost", "127.0.0.1")
@@ -93,29 +118,27 @@ def require_mcp_credential_endpoint(value):
 
 
 def parse_mcp_admission_policy(policy):
-    if (not _keys_are(policy, ("version", "servers")) or type(policy["version"]) is not int
-            or policy["version"] != 1 or not _record(policy["servers"])):
-        raise McpAdmissionError("invalid_policy")
-    invalid = False
-    try:
-        invalid = len(json.dumps(policy, ensure_ascii=False, separators=(",", ":")).encode()) > MCP_ADMISSION_LIMITS["policyBytes"]
-    except (TypeError, ValueError, UnicodeError, RecursionError):
-        invalid = True
-    if invalid:
+    policy = _data_record(policy, "invalid_policy", ("version", "servers"))
+    if type(policy["version"]) not in (int, float) or policy["version"] != 1:
         raise McpAdmissionError("invalid_policy")
     servers = {}
-    for identifier, entry in policy["servers"].items():
+    entries = _data_record(policy["servers"], "invalid_policy", extensions=True)
+    for identifier, value in entries.items():
+        entry = _data_record(value, "invalid_policy", ("url", "gatewayUrl", "serverHostId", "executionHostIds"))
         if (not is_mcp_admission_identifier(identifier)
-                or not _keys_are(entry, ("url", "gatewayUrl", "serverHostId", "executionHostIds"))
-                or any(type(entry[key]) is not str or not 0 < len(entry[key]) <= MCP_ADMISSION_LIMITS["endpointCharacters"]
-                       for key in ("url", "gatewayUrl"))
+                or not all(_endpoint_string(entry[key]) for key in ("url", "gatewayUrl"))
                 or not is_mcp_admission_identifier(entry["serverHostId"])
                 or type(entry["executionHostIds"]) is not list
                 or not 1 <= len(entry["executionHostIds"]) <= MCP_ADMISSION_LIMITS["executionHostsPerServer"]
                 or not all(is_mcp_admission_identifier(host) for host in entry["executionHostIds"])):
             raise McpAdmissionError("invalid_policy")
-        servers[identifier] = {**entry, "executionHostIds": list(entry["executionHostIds"])}
-    return {"version": 1, "servers": servers}
+        servers[identifier] = {"url": entry["url"], "gatewayUrl": entry["gatewayUrl"],
+                               "serverHostId": entry["serverHostId"], "executionHostIds": list(entry["executionHostIds"])}
+    parsed = {"version": 1, "servers": servers}
+    # All validated values are ASCII. Compact JSON escaping matches ESM exactly.
+    if len(json.dumps(parsed, ensure_ascii=False, separators=(",", ":")).encode()) > MCP_ADMISSION_LIMITS["policyBytes"]:
+        raise McpAdmissionError("invalid_policy")
+    return parsed
 
 
 def bind_mcp_servers_to_run(*, servers, run_id, execution_host_id=None, policy=None):
@@ -123,14 +146,15 @@ def bind_mcp_servers_to_run(*, servers, run_id, execution_host_id=None, policy=N
         raise McpAdmissionError("invalid_policy")
     if not servers:
         return []
-    if not is_mcp_admission_identifier(run_id) or not is_mcp_admission_identifier(execution_host_id):
-        raise McpAdmissionError("invalid_identity")
     if len(servers) > MCP_ADMISSION_LIMITS["serversPerRun"]:
         raise McpAdmissionError("too_many_servers")
+    if not is_mcp_admission_identifier(run_id) or not is_mcp_admission_identifier(execution_host_id):
+        raise McpAdmissionError("invalid_identity")
     approved = parse_mcp_admission_policy(policy)["servers"]
     result, seen = [], set()
-    for server in servers:
-        if not _record(server) or not is_mcp_admission_identifier(server.get("connectionId")):
+    for value in servers:
+        server = _data_record(value, "invalid_identity", extensions=True)
+        if not is_mcp_admission_identifier(server.get("connectionId")):
             raise McpAdmissionError("invalid_identity")
         identifier = server["connectionId"]
         if identifier in seen:
@@ -139,7 +163,7 @@ def bind_mcp_servers_to_run(*, servers, run_id, execution_host_id=None, policy=N
         if identifier not in approved:
             raise McpAdmissionError("server_not_authorized")
         entry = approved[identifier]
-        if entry["url"] != server.get("url"):
+        if type(server.get("url")) is not str or entry["url"] != server["url"]:
             raise McpAdmissionError("endpoint_mismatch")
         if execution_host_id not in entry["executionHostIds"]:
             raise McpAdmissionError("execution_host_not_authorized")
@@ -154,7 +178,8 @@ def bind_mcp_servers_to_run(*, servers, run_id, execution_host_id=None, policy=N
 
 
 def require_mcp_run_binding(binding, *, run_id, execution_host_id, gateway_url, normalize_recipient=None):
-    if (not _keys_are(binding, ("runId", "executionHostId", "serverHostId", "gatewayUrl"), ("authorizedCrossHost",))
+    binding = _data_record(binding, "binding_mismatch", ("runId", "executionHostId", "serverHostId", "gatewayUrl"), ("authorizedCrossHost",))
+    if (not all(is_mcp_admission_identifier(value) for value in (run_id, execution_host_id))
             or not all(is_mcp_admission_identifier(binding[key]) for key in ("runId", "executionHostId", "serverHostId"))
             or binding["runId"] != run_id or binding["executionHostId"] != execution_host_id
             or ("authorizedCrossHost" in binding and type(binding["authorizedCrossHost"]) is not bool)
@@ -168,6 +193,7 @@ def require_mcp_run_binding(binding, *, run_id, execution_host_id, gateway_url, 
         except Exception:
             failed = True
     # Raise outside the except suite so callback text is absent even from __context__.
-    if failed or type(approved) is not str or not approved or approved != actual:
+    if (failed or type(approved) is not str or type(actual) is not str
+            or not approved or not actual or approved != actual):
         raise McpAdmissionError("binding_mismatch")
-    return binding
+    return MappingProxyType(binding)

@@ -8,7 +8,7 @@
     "runId": { "type": "string", "pattern": "^[\\u0021-\\u007e]{1,128}(?![\\s\\S])" },
     "executionHostId": { "type": "string", "pattern": "^[\\u0021-\\u007e]{1,128}(?![\\s\\S])" },
     "serverHostId": { "type": "string", "pattern": "^[\\u0021-\\u007e]{1,128}(?![\\s\\S])" },
-    "gatewayUrl": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "gatewayUrl": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^[\\u0000-\\u007f]+(?![\\s\\S])" },
     "authorizedCrossHost": { "type": "boolean" }
   }
 }

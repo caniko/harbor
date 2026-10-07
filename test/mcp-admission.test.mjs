@@ -5,7 +5,7 @@ import policySchema from "harbor-llm/contracts/mcp-admission-policy.v1.schema.js
 import bindingSchema from "harbor-llm/contracts/mcp-run-binding.v1.schema.json" with { type: "json" };
 import {
   bindMcpServersToRun, McpAdmissionError, requireMcpRunBinding,
-  mcpAdmissionPolicySchema, mcpRunBindingSchema, MCP_ADMISSION_LIMITS,
+  mcpAdmissionPolicySchema, mcpRunBindingSchema, MCP_ADMISSION_LIMITS, parseMcpAdmissionPolicy,
 } from "harbor-llm/mcp-admission";
 
 const server = {
@@ -114,6 +114,25 @@ test("requires no policy for an empty delivery", () => {
   assert.deepEqual(bindMcpServersToRun({ servers: [], runId: "", policy: null }), []);
 });
 
+test("malformed delivery containers and entries have finite errors", () => {
+  for (const servers of [null, {}, "", { length: 0 }]) {
+    assert.throws(() => bindMcpServersToRun({ ...input, servers }), blocked("invalid_policy"));
+  }
+  for (const servers of [[null], [1], [[]], new Array(1)]) {
+    assert.throws(() => bindMcpServersToRun({ ...input, servers }), blocked("invalid_identity"));
+  }
+  assert.throws(() => bindMcpServersToRun(null), blocked("invalid_policy"));
+});
+
+test("every policy endpoint uses bounded ASCII, including unused rules", () => {
+  const rule = policy.servers[server.connectionId];
+  for (const url of ["\ud800", "😀".repeat(1025), "https://unused.example/é"]) {
+    assert.throws(() => parseMcpAdmissionPolicy({ ...policy, servers: { ...policy.servers,
+      unused: { ...rule, url } } }), blocked("invalid_policy"));
+  }
+  assert.equal(parseMcpAdmissionPolicy(JSON.parse('{"version":1.0,"servers":{}}')).version, 1);
+});
+
 test("replaces stale metadata without mutating the input", () => {
   const stale = { ...server, runBinding: { runId: "old-run" } };
   assert.equal(bindMcpServersToRun({ ...input, servers: [stale], runId: "new-run" })[0].runBinding.runId, "new-run");
@@ -123,7 +142,10 @@ test("replaces stale metadata without mutating the input", () => {
 test("rechecks run, execution identity and recipient at the consumer boundary", () => {
   const [bound] = bindMcpServersToRun(input);
   const expected = { runId: "run-a", executionHostId: "worker", gatewayUrl: bound.runBinding.gatewayUrl };
-  assert.equal(requireMcpRunBinding(bound.runBinding, expected), bound.runBinding);
+  const checked = requireMcpRunBinding(bound.runBinding, expected);
+  assert.deepEqual(checked, bound.runBinding);
+  assert.notEqual(checked, bound.runBinding);
+  assert.equal(Object.isFrozen(checked), true);
   for (const override of [
     { runId: "run-b" }, { executionHostId: "remote" }, { gatewayUrl: "https://replacement.example/" },
   ]) assert.throws(() => requireMcpRunBinding(bound.runBinding, { ...expected, ...override }), blocked("binding_mismatch"));
@@ -145,6 +167,72 @@ test("requires an own cross-host approval under prototype pollution", () => {
   }
 });
 
+test("consumer recheck returns the frozen metadata it actually validated", () => {
+  const [bound] = bindMcpServersToRun(input);
+  const backing = { ...bound.runBinding };
+  const trapped = new Proxy(backing, { get(_target, key) {
+    return key === "runId" ? "different-run" : "http://external.example/?private";
+  } });
+  const checked = requireMcpRunBinding(trapped, bound.runBinding);
+  assert.notEqual(checked, trapped);
+  assert.deepEqual(checked, bound.runBinding);
+  assert.equal(Object.isFrozen(checked), true);
+  backing.runId = "replacement";
+  assert.equal(checked.runId, "run-a");
+});
+
+test("inherited identities, endpoints and normalizers grant no authority", () => {
+  const [bound] = bindMcpServersToRun(input);
+  const properties = { normalizeRecipient: () => "inherited-alias", executionHostId: "worker",
+    runId: "run-a", gatewayUrl: bound.runBinding.gatewayUrl, url: server.url };
+  const previous = Object.fromEntries(Object.keys(properties).map(key => [key, Object.getOwnPropertyDescriptor(Object.prototype, key)]));
+  try {
+    for (const [key, value] of Object.entries(properties)) Object.defineProperty(Object.prototype, key,
+      { value, configurable: true });
+    assert.throws(() => requireMcpRunBinding(bound.runBinding, { runId: "run-a", executionHostId: "worker",
+      gatewayUrl: "https://different.example/api" }), blocked("binding_mismatch"));
+    assert.throws(() => requireMcpRunBinding(bound.runBinding, {}), blocked("binding_mismatch"));
+    const { executionHostId, ...missingHost } = input;
+    assert.throws(() => bindMcpServersToRun(missingHost), blocked("invalid_identity"));
+    const { url, ...missingUrl } = server;
+    assert.throws(() => bindMcpServersToRun({ ...input, servers: [missingUrl] }), blocked("endpoint_mismatch"));
+  } finally {
+    for (const key of Object.keys(properties)) {
+      if (previous[key]) Object.defineProperty(Object.prototype, key, previous[key]);
+      else Reflect.deleteProperty(Object.prototype, key);
+    }
+  }
+});
+
+test("policy accessors and descriptor traps never escape validation or redaction", () => {
+  const rule = policy.servers[server.connectionId];
+  for (const secondValue of ["non-ascii-é", { toJSON() { throw new Error("private-getter-marker"); } }]) {
+    let reads = 0;
+    const accessor = { ...rule, get url() { return ++reads === 1 ? rule.url : secondValue; } };
+    assert.throws(() => parseMcpAdmissionPolicy({ ...policy, servers: { [server.connectionId]: accessor } }), blocked("invalid_policy"));
+  }
+  const trapped = new Proxy(policy, { ownKeys() { throw new Error("private-descriptor-marker"); } });
+  assert.throws(() => parseMcpAdmissionPolicy(trapped), error => {
+    blocked("invalid_policy")(error);
+    assert.equal(String(error).includes("private"), false);
+    return true;
+  });
+});
+
+test("policy size accounting never executes inherited JSON serializers", () => {
+  const previous = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON");
+  let calls = 0;
+  try {
+    Object.defineProperty(Object.prototype, "toJSON", { configurable: true,
+      value() { calls++; throw new Error("private-serializer-marker"); } });
+    assert.deepEqual(parseMcpAdmissionPolicy(policy), policy);
+    assert.equal(calls, 0);
+  } finally {
+    if (previous) Object.defineProperty(Object.prototype, "toJSON", previous);
+    else Reflect.deleteProperty(Object.prototype, "toJSON");
+  }
+});
+
 for (const throwOnCall of [1, 2]) test(`normalizer exception on call ${throwOnCall} stays content-free`, () => {
   const [bound] = bindMcpServersToRun(input);
   let calls = 0;
@@ -158,6 +246,19 @@ for (const throwOnCall of [1, 2]) test(`normalizer exception on call ${throwOnCa
     assert.equal(Object.hasOwn(error, "cause"), false);
     return true;
   });
+});
+
+test("normalization requires two nonempty primitive strings", () => {
+  const [bound] = bindMcpServersToRun(input);
+  for (const result of [1, true, null, "", new String("same"), { toString() { throw new Error("private"); } }]) {
+    assert.throws(() => requireMcpRunBinding(bound.runBinding, { ...bound.runBinding,
+      normalizeRecipient: () => result }), blocked("binding_mismatch"));
+  }
+  for (const invalidCall of [1, 2]) {
+    let calls = 0;
+    assert.throws(() => requireMcpRunBinding(bound.runBinding, { ...bound.runBinding,
+      normalizeRecipient: () => ++calls === invalidCall ? 1 : "same" }), blocked("binding_mismatch"));
+  }
 });
 
 test("generic errors omit endpoints and caller credentials", () => {
