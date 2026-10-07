@@ -1,0 +1,89 @@
+use harbor_cad::freezing::FreezingReferenceSpec;
+
+fn fixture() -> FreezingReferenceSpec {
+    serde_json::from_value(serde_json::json!({
+        "schema_version":1,"synthetic":true,"backend":"cpu",
+        "formulation":"conduction_stefan_solidification_2d",
+        "size_m":[0.001,0.000125,0.001],"resolution":32,
+        "density_kg_m3":1000.,"specific_heat_j_kg_k":1000.,
+        "conductivity_w_m_k":1.,"latent_heat_j_kg":100000.,
+        "melting_temperature_k":273.15,"initial_temperature_k":273.15,
+        "cold_wall_temperature_k":263.15,"material_temperature_domain_k":[253.15,283.15],
+        "steps":1024,"observation_steps":[0,512,1024],
+        "front_tolerance":0.02,"temperature_tolerance":0.02,
+        "mass_tolerance":1e-10,"energy_tolerance":1e-10,
+        "material_provenance":"synthetic equal-phase constant properties; no expansion",
+        "boundary_provenance":"prescribed cold xmin; insulated xmax; periodic y; zero velocity",
+        "geometry_provenance":"synthetic fixed-volume planar reference",
+        "moisture_risk":{"assessment":"missing","reason":"humidity unavailable"}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn explicit_solidification_scale_preserves_si_energy_and_diffusive_time_refinement() {
+    let spec = fixture();
+    let scale = spec.scale().unwrap();
+    assert_eq!(scale.stefan_number, 0.1);
+    assert_eq!(scale.spacing_m, 0.001 / 32.);
+    assert!((scale.physical_step_s - 0.00016276041666666666).abs() < 1e-18);
+    assert_eq!(scale.initial_specific_enthalpy_j_kg, 110000.);
+    assert!((scale.duration_s - 1. / 6.).abs() < 1e-15);
+    let mut finer = spec.clone();
+    finer.resolution = 64;
+    finer.steps *= 4;
+    finer.observation_steps = finer.observation_steps.iter().map(|n| n * 4).collect();
+    let refined = finer.scale().unwrap();
+    assert_eq!(refined.duration_s, scale.duration_s);
+    assert_eq!(refined.physical_step_s * 4., scale.physical_step_s);
+    assert_eq!(refined.spacing_m * 2., scale.spacing_m);
+}
+
+#[test]
+fn freezing_contract_rejects_missing_physics_nonconduction_and_weakened_acceptance() {
+    let original = serde_json::to_value(fixture()).unwrap();
+    for (name, value) in [
+        ("backend", serde_json::json!("hip")),
+        ("synthetic", serde_json::json!(false)),
+        ("latent_heat_j_kg", serde_json::json!(0.)),
+        ("cold_wall_temperature_k", serde_json::json!(283.15)),
+        ("initial_temperature_k", serde_json::json!(274.15)),
+        ("resolution", serde_json::json!(16)),
+        ("observation_steps", serde_json::json!([0, 512, 512, 1024])),
+        ("size_m", serde_json::json!([0.001, 0.00025, 0.001])),
+        ("energy_tolerance", serde_json::json!(0.02)),
+        ("mass_tolerance", serde_json::json!(0.001)),
+        ("front_tolerance", serde_json::json!(0.03)),
+        (
+            "material_temperature_domain_k",
+            serde_json::json!([270., 283.15]),
+        ),
+        ("geometry_provenance", serde_json::json!("")),
+    ] {
+        let mut changed = original.clone();
+        changed[name] = value;
+        assert!(
+            serde_json::from_value::<FreezingReferenceSpec>(changed)
+                .unwrap()
+                .scale()
+                .is_err(),
+            "{name}"
+        );
+    }
+    for key in [
+        "pressure_pa",
+        "solid_density_kg_m3",
+        "retained_water_job_id",
+        "inlet_velocity_m_s",
+    ] {
+        let mut changed = original.clone();
+        changed[key] = serde_json::json!(1.);
+        assert!(
+            serde_json::from_value::<FreezingReferenceSpec>(changed).is_err(),
+            "{key}"
+        );
+    }
+    let mut changed = fixture();
+    changed.conductivity_w_m_k = f64::INFINITY;
+    assert!(changed.scale().is_err());
+}

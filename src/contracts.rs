@@ -1813,6 +1813,9 @@ pub enum Operation {
     PlanThermalContact {
         spec: Box<crate::thermal_contact::ThermalContactSpec>,
     },
+    ValidateFreezingReference {
+        spec: Box<crate::freezing::FreezingReferenceSpec>,
+    },
     PlanB1 {
         case: Box<CaseSpec>,
         selections: B1Selections,
@@ -1948,5 +1951,10 @@ pub fn schemas() -> serde_json::Value {
     schemas["ThermalProjectionReport"] = serde_json::json!(schemars::schema_for!(
         crate::thermal_transfer::ThermalProjectionReport
     ));
+    schemas["FreezingReferenceSpec"] = serde_json::json!(schemars::schema_for!(
+        crate::freezing::FreezingReferenceSpec
+    ));
+    schemas["FreezingScale"] =
+        serde_json::json!(schemars::schema_for!(crate::freezing::FreezingScale));
     schemas
 }

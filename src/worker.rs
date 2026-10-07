@@ -475,6 +475,7 @@ fn dispatch(
             let plan = ExecutionPlan::thermal_contact(*spec, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::ValidateFreezingReference { spec } => spec.inspect(),
         Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
             ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
         )?),
@@ -934,6 +935,7 @@ pub fn backends() -> serde_json::Value {
         {"adapter":"calculix_imported","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["thermal_boundary","free_expansion"],"factorization":"SPOOLES","plan_schema_version":8,"scope":"controlled synthetic imported box with explicit world-origin analytical reference; approved retained-source worker; exact job qualification required","reference_evidence":"docs/fem-imported.md"},
         {"adapter":"openlb_wetting","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"well_balanced_contact_angle_2d","plan_schema_version":9,"scope":"synthetic equal-property wall-centered initial half-circle; retained original phase/velocity fields; separate mass, angle, settling and refinement gates","reference_evidence":"docs/wetting-reference.md"},
         {"adapter":"calculix_contact","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"planar_linear_penalty_contact","plan_schema_version":10,"scope":"synthetic zero-Poisson two-block preload and uniform thermal expansion/opening; independent original DAT force/stress/displacement and gap checks","reference_evidence":"docs/contact-reference.md"},
+        {"adapter":"thermal_contact","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"one_way_native_capacitance_projection_to_planar_contact","plan_schema_version":11,"scope":"independent native thermal histories; complete C3D8 capacitance projection with explicit pointwise loss; derived uniform contact temperatures and original six-surface moisture; exact job qualification required","reference_evidence":"docs/contact-reference.md"},
         {"adapter":"paraview","backend":"egl","runtime":"unqualified"},
         {"adapter":"ffmpeg","backend":"vaapi","runtime":"unqualified"}
     ])

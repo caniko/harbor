@@ -237,6 +237,23 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 input=json.dumps(cold_inputs()).encode(),
             )
         )
+        freezing = json.loads(
+            (Path(__file__).parents[2] / "examples/freezing-reference.json").read_text()
+        )
+        Draft202012Validator(schemas["FreezingReferenceSpec"]).validate(freezing)
+        expected_freezing = json.loads(
+            subprocess.check_output(
+                [binary(), "case", "validate-freezing-reference", "/dev/stdin"],
+                input=json.dumps(freezing).encode(),
+            )
+        )
+        Draft202012Validator(schemas["FreezingScale"]).validate(
+            expected_freezing["scale"]
+        )
+        assert (
+            not expected_freezing["executed"]
+            and expected_freezing["moisture_risk"]["status"] == "missing_inputs"
+        )
 
         async def check():
             params = StdioServerParameters(
@@ -287,6 +304,20 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_thermal_reference" in names
                 assert "case_plan_contact_reference" in names
                 assert "case_plan_thermal_contact" in names
+                assert "freezing_reference_validate" in names
+                frozen = await client.call_tool(
+                    "freezing_reference_validate", {"spec": freezing}
+                )
+                assert (
+                    not frozen.is_error
+                    and frozen.structured_content == expected_freezing
+                )
+                rejected_freezing = await client.call_tool(
+                    "freezing_reference_validate",
+                    {"spec": {**freezing, "energy_tolerance": 0.02}},
+                )
+                assert rejected_freezing.is_error
+                assert "invalid_input" in str(rejected_freezing.content)
                 from test_thermal_contact import fixture as coupling_fixture
 
                 coupling = await client.call_tool(

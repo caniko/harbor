@@ -14,6 +14,7 @@ pub mod fem_imported;
 pub mod fields;
 pub mod filters;
 pub mod frames;
+pub mod freezing;
 pub mod lifecycle;
 pub mod materials;
 mod measurements;

@@ -97,6 +97,10 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Validate SI conduction solidification inputs; no native execution or retained-water transfer.
+    ValidateFreezingReference {
+        file: PathBuf,
+    },
     /// Plan two native thermal histories, conservative projection and static contact.
     PlanThermalContact {
         file: PathBuf,
@@ -369,6 +373,10 @@ fn run(cli: Cli) -> Result<()> {
                 return print(&serde_json::json!({"valid":true,"executed":false,
                     "science_id":digest(&spec)?,"preload":spec.reference(1)?,
                     "final":spec.reference(2)?,"physical_validation":"unqualified"}));
+            }
+            Case::ValidateFreezingReference { file } => {
+                let spec: harbor_cad::freezing::FreezingReferenceSpec = read(&file)?;
+                return print(&spec.inspect()?);
             }
             Case::PlanContactReference { file, policy } => {
                 let plan = ExecutionPlan::contact_reference(read(&file)?, policy)?;

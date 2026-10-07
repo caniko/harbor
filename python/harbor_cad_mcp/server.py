@@ -128,6 +128,11 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"simulation", "all"}:
 
         @server.tool()
+        async def freezing_reference_validate(spec: dict[str, Any]) -> dict[str, Any]:
+            """Validate explicit synthetic fixed-volume Stefan inputs and SI conversion; no native solve or retained-water transfer."""
+            return await request("validate_freezing_reference", spec=spec)
+
+        @server.tool()
         async def case_plan_fem_reference(spec: dict[str, Any]) -> dict[str, Any]:
             """Plan an explicit static synthetic CPU FEM job; no native imports or solve."""
             return await request("plan_fem_reference", spec=spec)

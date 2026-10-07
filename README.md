@@ -123,6 +123,16 @@ wall-centered planar OpenLB reference. Its original Float64 phase/velocity
 fields, SI conversion and separate mass, angle, settling and refinement gates
 are described in [wetting references](docs/wetting-reference.md).
 
+`case plan-contact-reference REQUEST.json` plans the independent synthetic
+two-block planar preload/contact reference. `case plan-thermal-contact
+examples/thermal-contact.json` plans two native thermal histories, conservative
+capacitance projection, derived static contact and an original-field bundle.
+The simulation/all MCP profiles expose matching planning tools and use ordinary
+explicitly approved `job_submit`. The version-11 coupling uses
+`runtime-thermal-contact-worker`; historical `qualify --job` rechecks registered
+thermal sources and the projection. See [contact and coupling](docs/contact-reference.md)
+for the supported one-way approximation and pending exact-package qualification.
+
 Patched CAD inspection also exports checksummed named BREP solids with original
 units and placement. The independent [imported CAD mesh](docs/cad-mesh.md) and
 [origin-aware FEM references](docs/fem-imported.md) retain world coordinates
