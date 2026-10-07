@@ -243,6 +243,26 @@ CLI/MCP packages recorded in recovery evidence; they do not qualify the new
 v11 package or repaired typed MCP errors. Guarded build-42/build-43 were refused
 at 21 GiB headroom; both attempt logs are retained.
 
+## Freezing queries and prescribed snow continuation
+
+Source commits `b769b3e` and `b0894b3` complete bounded exact-time original
+freezing samples/comparisons through CLI/MCP and preserve the JSON fixture in
+filtered Cargo packaging. Registered-byte substitution and unexecuted-fixture
+rejections pass with complete historical science verification. The Rust
+development replay accepts the same six attempt-10 native cases as the Python
+verifier; its receipt/sandbox fields are explicit fixture scaffolding and do not
+qualify a runtime, worker or sandbox. Exact production gates remain pending.
+
+The prescribed dry-snow planning slice uses the supported native plane-wall
+thermal solver with an approval-bound series resistance, explicit omitted-storage
+screens and conservative subzero applicability. Full CPU verification passes
+all Rust tests, strict Clippy, locked build and 112 Python tests, including real
+CLI/MCP approval/error parity. Treefmt, Nix syntax, Simit drift and whitespace
+checks pass. The [snow reference](snow-reference.md) defines its limited scope
+and dedicated native campaign; exact native/worker and physical qualification
+remain pending. D also requires separate blocked-opening geometry and broader
+environmental comparisons.
+
 ## External qualification prerequisites
 
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched

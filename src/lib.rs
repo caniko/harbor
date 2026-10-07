@@ -29,6 +29,7 @@ pub mod results;
 pub mod retention;
 pub mod sandbox;
 pub mod science;
+pub mod snow;
 pub mod storage;
 pub mod thermal;
 pub mod thermal_contact;

@@ -235,6 +235,7 @@ impl ThermalReferenceSpec {
                 ));
             }
         }
+        crate::snow::verify_binding(self)?;
         Ok(())
     }
 }
@@ -427,6 +428,15 @@ pub(crate) fn verify_spec(
             "{key}: {reference}; error={error}, approved tolerance={tolerance}"
         ));
     }
-    Ok(crate::qualification::NumericalEvidence{reference:references.join("; "),scope:"synthetic transient constant-property plane wall; separate temperature and cumulative energy gates".into(),
-        error_kind:"maximum_approved_gate_fraction".into(),error:utilization,tolerance:1.})
+    let mut scope = "synthetic transient constant-property plane wall; separate temperature and cumulative energy gates".to_string();
+    if let Some(boundary) = crate::snow::verify_binding(spec)? {
+        scope.push_str(&format!("; prescribed full-face dry snow series resistance {}; omitted snow heat capacity ratio={}, diffusion/forcing ratio={}; no deposition, melting or blocked-opening flow", boundary.preparation_id, boundary.omitted_capacity_ratio, boundary.diffusion_timescale_ratio));
+    }
+    Ok(crate::qualification::NumericalEvidence {
+        reference: references.join("; "),
+        scope,
+        error_kind: "maximum_approved_gate_fraction".into(),
+        error: utilization,
+        tolerance: 1.,
+    })
 }

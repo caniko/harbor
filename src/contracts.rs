@@ -1870,6 +1870,12 @@ pub enum Operation {
     PlanThermalReference {
         spec: Box<crate::thermal::ThermalReferenceSpec>,
     },
+    ValidateSnowReference {
+        spec: Box<crate::snow::SnowReferenceSpec>,
+    },
+    PlanSnowReference {
+        spec: Box<crate::snow::SnowReferenceSpec>,
+    },
     PlanWettingReference {
         spec: Box<crate::wetting::WettingReferenceSpec>,
     },
@@ -2000,6 +2006,10 @@ pub fn schemas() -> serde_json::Value {
         "ColdRestartSpec": schemars::schema_for!(crate::recipes::ColdRestartSpec),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)});
     // Keep individual expansions below the macro recursion bound as contracts grow.
+    schemas["SnowReferenceSpec"] =
+        serde_json::json!(schemars::schema_for!(crate::snow::SnowReferenceSpec));
+    schemas["PreparedSnowBoundary"] =
+        serde_json::json!(schemars::schema_for!(crate::snow::PreparedSnowBoundary));
     schemas["FreezingSampleRequest"] = serde_json::json!(schemars::schema_for!(
         crate::freezing_results::FreezingSampleRequest
     ));

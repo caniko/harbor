@@ -97,6 +97,16 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Validate prescribed full-face dry snow insulation and quasi-steady applicability; no native execution.
+    ValidateSnowReference {
+        file: PathBuf,
+    },
+    /// Plan native transient device conduction with an approval-bound prescribed snow resistance.
+    PlanSnowReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     /// Validate SI conduction solidification inputs; no native execution or retained-water transfer.
     ValidateFreezingReference {
         file: PathBuf,
@@ -395,6 +405,14 @@ fn run(cli: Cli) -> Result<()> {
             Case::ValidateFreezingReference { file } => {
                 let spec: harbor_cad::freezing::FreezingReferenceSpec = read(&file)?;
                 return print(&spec.inspect()?);
+            }
+            Case::ValidateSnowReference { file } => {
+                let spec: harbor_cad::snow::SnowReferenceSpec = read(&file)?;
+                return print(&spec.prepare()?);
+            }
+            Case::PlanSnowReference { file, policy } => {
+                let spec: harbor_cad::snow::SnowReferenceSpec = read(&file)?;
+                return print(&spec.plan(policy)?);
             }
             Case::PlanContactReference { file, policy } => {
                 let plan = ExecutionPlan::contact_reference(read(&file)?, policy)?;

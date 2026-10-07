@@ -153,6 +153,16 @@ def build_server(profile: str) -> MCPServer:
             return await request("plan_thermal_reference", spec=spec)
 
         @server.tool()
+        async def snow_reference_validate(spec: dict[str, Any]) -> dict[str, Any]:
+            """Check prescribed dry snow resistance and explicit storage/melting applicability; execution remains false."""
+            return await request("validate_snow_reference", spec=spec)
+
+        @server.tool()
+        async def case_plan_snow_reference(spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan native plane-wall heat transfer with approval-bound full-face prescribed snow; no deposition or opening-flow inference."""
+            return await request("plan_snow_reference", spec=spec)
+
+        @server.tool()
         async def case_plan_wetting_reference(spec: dict[str, Any]) -> dict[str, Any]:
             """Plan synthetic equal-property planar CPU wetting with original phase/velocity observations; explicit approval required."""
             return await request("plan_wetting_reference", spec=spec)

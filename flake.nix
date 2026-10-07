@@ -100,6 +100,7 @@
         || pkgs.lib.hasInfix "/profiles/" path
         || pkgs.lib.hasSuffix "/examples/thermal-contact.json" path
         || pkgs.lib.hasSuffix "/examples/freezing-reference.json" path
+        || pkgs.lib.hasSuffix "/examples/snow-reference.json" path
         || pkgs.lib.hasSuffix "/nix/patches/calculix-temperature-precision.patch" path;
     };
     common = {
