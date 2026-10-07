@@ -81,3 +81,11 @@ snow with the bare reference, and retains unsupported-input rejections. An
 explicit `--development-planner` flag labels source-built planner diagnostics
 as package-unqualified. Exact packaged native and worker qualification remain
 pending normal build headroom; full CPU tests do not establish them.
+
+`--worker-runtime THERMAL_WORKER_RUNTIME` explicitly selects an already realized
+operation-only CPU thermal worker descriptor instead of `--runtime`. It must
+retain the exact thermal adapter/closure and have no other active operations.
+The descriptor kind and closure checksum are recorded. This uses the same native
+thermal executable, independent original-field checks and closure-only sandbox;
+it does not qualify worker execution or a development planner. An older
+standalone descriptor lacking its closure still refuses before output creation.

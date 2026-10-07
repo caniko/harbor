@@ -15,17 +15,46 @@ from verify_thermal_cpu import temporal_self_convergence
 from verify_wetting_cpu import checksum
 
 
+def thermal_runtime_descriptor(native, *, worker_runtime):
+    if worker_runtime:
+        if native.get("openlb_backend") != "cpu" or any(
+            value is not None
+            for key, value in native.items()
+            if key not in ("bwrap", "thermal", "thermal_closure", "openlb_backend")
+        ):
+            raise ValueError("exact operation-only CPU thermal worker runtime required")
+    elif native.get("schema_version") != 1 or native.get("backend") != "cpu":
+        raise ValueError("exact CPU thermal reference required")
+    if not native.get("thermal_closure"):
+        raise ValueError(
+            "native thermal reference descriptor lacks its operation-specific closure; realize the current runtime-thermal-cpu package"
+        )
+    return native
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("executable", "runtime", "output"):
+    for name in ("executable", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
+    descriptor = parser.add_mutually_exclusive_group(required=True)
+    descriptor.add_argument(
+        "--runtime", type=Path, help="Exact standalone thermal reference descriptor"
+    )
+    descriptor.add_argument(
+        "--worker-runtime",
+        type=Path,
+        help="Exact existing operation-only thermal worker descriptor and its native closure",
+    )
     parser.add_argument(
         "--development-planner",
         action="store_true",
         help="Retain an explicitly unqualified source-built planner diagnostic",
     )
     args = parser.parse_args()
-    binary, runtime = (p.resolve(strict=True) for p in (args.executable, args.runtime))
+    binary, runtime = (
+        p.resolve(strict=True)
+        for p in (args.executable, args.runtime or args.worker_runtime)
+    )
     if (
         not runtime.is_relative_to("/nix/store")
         or not runtime.is_file()
@@ -36,13 +65,9 @@ def main():
         )
     if not args.development_planner and not binary.is_relative_to("/nix/store"):
         raise ValueError("exact immutable production planner required")
-    native = json.loads(runtime.read_text())
-    if native["schema_version"] != 1 or native["backend"] != "cpu":
-        raise ValueError("exact CPU thermal reference required")
-    if not native.get("thermal_closure"):
-        raise ValueError(
-            "native thermal reference descriptor lacks its operation-specific closure; realize the current runtime-thermal-cpu package"
-        )
+    native = thermal_runtime_descriptor(
+        json.loads(runtime.read_text()), worker_runtime=args.worker_runtime is not None
+    )
     closure = Path(native["thermal_closure"]).resolve(strict=True)
     paths = closure.read_text().splitlines()
     if (
@@ -294,6 +319,11 @@ def main():
         else "exact immutable package",
         "runtime": str(runtime),
         "runtime_sha256": checksum(runtime),
+        "runtime_descriptor_kind": "explicit operation-only thermal worker"
+        if args.worker_runtime
+        else "standalone thermal reference",
+        "thermal_closure": str(closure),
+        "thermal_closure_sha256": checksum(closure),
         "adapter": native["thermal"],
         "source_verifier_sha256": checksum(repo / "adapters/thermal_history.py"),
         "results": results,
