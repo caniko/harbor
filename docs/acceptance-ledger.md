@@ -263,6 +263,16 @@ and dedicated native campaign; exact native/worker and physical qualification
 remain pending. D also requires separate blocked-opening geometry and broader
 environmental comparisons.
 
+Source-bound `results retain-wetting` and matching result-profile MCP now retain
+complete original phase/velocity distributions through an explicit translated
+nodal extrusion, with original byte identities, signed overshoot accounting and
+an independent `1e-10` mass conservation gate. Missing native temperature and
+downstream cooling prerequisites stay explicit. The full CPU gate passes all
+Rust tests, strict Clippy, locked build, Ruff and 112 Python tests, plus Treefmt,
+Simit drift and whitespace checks. See [retained wetting](retained-wetting.md).
+Exact-package queries and downstream native retained-distribution cooling
+remain pending independent qualification.
+
 ## External qualification prerequisites
 
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched

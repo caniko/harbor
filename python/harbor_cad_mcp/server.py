@@ -290,6 +290,13 @@ def build_server(profile: str) -> MCPServer:
             return await request("results_sample_freezing", request=request_spec)
 
         @server.tool()
+        async def results_retain_wetting(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Retain complete source-bound phase/velocity by conservative explicit nodal extrusion; report missing thermal state and phase overshoots."""
+            return await request("results_retain_wetting", request=request_spec)
+
+        @server.tool()
         async def results_compare_freezing(
             request_spec: dict[str, Any],
         ) -> dict[str, Any]:

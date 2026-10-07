@@ -307,6 +307,34 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                         rejected.content
                     )
                 assert "results_moisture" in names
+                assert "results_retain_wetting" in names
+                retention = {
+                    "schema_version": 1,
+                    "source_job": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+                    "physical_time_s": 0.0,
+                    "extrusion": {"value": 1.0, "unit": "mm"},
+                    "extrusion_provenance": "explicit synthetic reference depth",
+                    "destination_region": "retained_phase",
+                    "destination_origin_m": [0.0, 0.0, 0.0],
+                    "maximum_relative_conservation_error": 1e-10,
+                }
+                Draft202012Validator(schemas["WettingRetentionRequest"]).validate(
+                    retention
+                )
+                with pytest.raises(ValidationError):
+                    Draft202012Validator(schemas["WettingRetentionRequest"]).validate(
+                        {**retention, "temperature_k": 273.15}
+                    )
+                rejected = await client.call_tool(
+                    "results_retain_wetting",
+                    {
+                        "request_spec": {
+                            **retention,
+                            "extrusion": {"value": 0.0, "unit": "m"},
+                        }
+                    },
+                )
+                assert rejected.is_error and "invalid_input" in str(rejected.content)
                 rejected_sample = await client.call_tool(
                     "results_sample_thermal",
                     {
@@ -449,6 +477,12 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 ).structured_content
                 assert "velocity_m_s" not in json.dumps(description)
                 assert len(description["artifacts"]["items"]) == 5
+                rejected = await client.call_tool(
+                    "results_retain_wetting",
+                    {"request_spec": {**retention, "source_job": job["id"]}},
+                )
+                assert rejected.is_error and "unqualified" in str(rejected.content)
+                assert "native wetting source" in str(rejected.content)
                 sampling = {
                     "schema_version": 1,
                     "job_id": job["id"],
@@ -513,6 +547,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_contact_reference" not in names
                 assert "case_plan_thermal_contact" not in names
                 assert "results_transfer_temperature" in names
+                assert "results_retain_wetting" in names
                 assert {"render_plan", "video_plan", "presentation_submit"}.issubset(
                     names
                 )

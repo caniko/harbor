@@ -366,10 +366,10 @@ pub(crate) fn annotate_fields(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
-    fn fixture() -> (tempfile::TempDir, ExecutionPlan, serde_json::Value, Vec<u8>) {
+    pub(crate) fn fixture() -> (tempfile::TempDir, ExecutionPlan, serde_json::Value, Vec<u8>) {
         let spec:WettingReferenceSpec=serde_json::from_value(serde_json::json!({"schema_version":1,"synthetic":true,"backend":"cpu","formulation":"well_balanced_contact_angle_2d","diameter_m":48e-6,"initial_center_above_wall_m":0.,"resolution":96,"interface_width_m":6e-6,"density_liquid_kg_m3":1000.,"density_vapor_kg_m3":1000.,"viscosity_liquid_m2_s":1e-6,"viscosity_vapor_m2_s":1e-6,"surface_tension_n_m":1e-4,"contact_angle_deg":90.,"phase_relaxation_time":1.,"steps":100,"observation_steps":[0,50,100],"mass_tolerance":1e-3,"angle_tolerance_deg":5.,"material_provenance":"synthetic analytical cap fixture","boundary_provenance":"planar uniform wall"})).unwrap();
         let mut text = "x_m,y_m,material,phi,u_lattice,v_lattice\n".to_string();
         let n = spec.resolution as usize;

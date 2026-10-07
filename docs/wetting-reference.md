@@ -1,5 +1,8 @@
 # Planar wetting reference
 
+Original source-bound phase/velocity retention with explicit conservative
+extrusion is described in [retained wetting distribution](retained-wetting.md).
+
 The standalone CPU reference uses OpenLB 1.9.0 at
 `145cd54810b468f4b6fd3ed86b10644264841578`, with its two D2Q9 lattices,
 well-balanced Cahn–Hilliard coupling and interpolated wetting walls from

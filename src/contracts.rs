@@ -1957,6 +1957,9 @@ pub enum Operation {
     ResultsTransferTemperature {
         request: Box<crate::thermal_transfer::ThermalProjectionRequest>,
     },
+    ResultsRetainWetting {
+        request: Box<crate::wetting_retention::WettingRetentionRequest>,
+    },
     QualificationReport {
         job_id: String,
     },
@@ -2006,6 +2009,12 @@ pub fn schemas() -> serde_json::Value {
         "ColdRestartSpec": schemars::schema_for!(crate::recipes::ColdRestartSpec),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)});
     // Keep individual expansions below the macro recursion bound as contracts grow.
+    schemas["WettingRetentionRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::wetting_retention::WettingRetentionRequest
+    ));
+    schemas["RetainedWettingReport"] = serde_json::json!(schemars::schema_for!(
+        crate::wetting_retention::RetainedWettingReport
+    ));
     schemas["SnowReferenceSpec"] =
         serde_json::json!(schemars::schema_for!(crate::snow::SnowReferenceSpec));
     schemas["PreparedSnowBoundary"] =

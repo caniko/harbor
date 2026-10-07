@@ -268,6 +268,10 @@ enum Results {
     TransferTemperature {
         request: PathBuf,
     },
+    /// Retain original native wetting phase/velocity through explicit conservative nodal extrusion.
+    RetainWetting {
+        request: PathBuf,
+    },
 }
 #[derive(Subcommand)]
 enum Artifact {
@@ -514,6 +518,9 @@ fn run(cli: Cli) -> Result<()> {
                 request: Box::new(read(&request)?),
             },
             Results::TransferTemperature { request } => Operation::ResultsTransferTemperature {
+                request: Box::new(read(&request)?),
+            },
+            Results::RetainWetting { request } => Operation::ResultsRetainWetting {
                 request: Box::new(read(&request)?),
             },
         },
