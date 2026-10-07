@@ -53,11 +53,33 @@
     exec ${environment}/bin/python3 -B ${bridge} "$@"
   '';
   closure = pkgs.closureInfo {rootPaths = [adapter];};
+  atmosphericBridges = pkgs.runCommand "harbor-cad-atmospheric-spectral-bridges" {} ''
+    mkdir -p "$out"
+    cp ${bridge} "$out/spectral_reference.py"
+    cp ${femBridge} "$out/fem_reference.py"
+    cp ${../adapters/atmosphere_reference.py} "$out/atmosphere_reference.py"
+    cp ${../adapters/atmospheric_spectral.py} "$out/atmospheric_spectral.py"
+  '';
+  atmosphericAdapter = pkgs.writeShellScriptBin "harbor-cad-atmospheric-spectral" ''
+    exec ${environment}/bin/python3 -B ${atmosphericBridges}/atmospheric_spectral.py "$@"
+  '';
+  atmosphericClosure = pkgs.closureInfo {rootPaths = [atmosphericAdapter];};
 in {
   spectral-environment-cpu = environment;
   spectral-mitsuba = mitsuba;
   spectral-drjit = drjit;
   spectral-reference-cpu = adapter;
+  atmospheric-spectral-reference-cpu = atmosphericAdapter;
+  runtime-atmospheric-spectral-reference-cpu = pkgs.writeText "harbor-cad-atmospheric-spectral-reference-runtime.json" (builtins.toJSON {
+    schema_version = 1;
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    atmospheric_spectral = "${atmosphericAdapter}/bin/harbor-cad-atmospheric-spectral";
+    spectral_closure = "${atmosphericClosure}/store-paths";
+    backend = "cpu";
+    precision = "Float32";
+    policy = "harbor-cad-atmospheric-spectral-cpu-v1";
+    qualification = "unqualified";
+  });
   runtime-spectral-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
     bwrap = "${pkgs.bubblewrap}/bin/bwrap";
     spectral = "${adapter}/bin/harbor-cad-spectral";

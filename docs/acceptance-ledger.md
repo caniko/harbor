@@ -408,3 +408,31 @@ refused behind Atlas lease PID 944486. Build 50 refused before evaluation at
   reference implementation can progress; missing physical inputs stay explicit.
 - Paperclip revised-attempt-2 audit remains independent. Its recorded exit 1 and
   failed tests/build do not establish full application qualification.
+
+## Original-midpoint native spectral transport continuation
+
+The separate atmospheric-spectral adapter and operation-only package outputs now
+preserve every original direct/diffuse midpoint, native emitter identity, source
+PDF and four-wavelength Float32 packet. Independent reconstruction requires both
+canonical component artifacts, the actual rectangular sensor footprint and the
+source-derived emitter PMF. Eight review reproductions failed before repair and
+pass afterward, including empty/missing/duplicated originals, renamed artifacts,
+extra reported components, compensated PDF/weight substitution and off-rectangle
+points. The campaign now has nine manufactured-source native cases, including
+positive direct illumination, empty diffuse scenes, mixed illumination and six
+varying spectral knots with separate optical curves. These source checks do not
+qualify native renderer execution or registered atmospheric sources.
+
+The complete bounded CPU gate passes all Rust tests, strict Clippy, locked build,
+Treefmt, Ruff and 153 Python tests; pinned Simit drift and both touched Nix files
+pass. Original commands/logs are retained at
+`harbor-cad-resume-20261007/source-verification-1`. Additional entrypoint checks
+cover checksum/duplicate-field/isolation/read-only refusal before native outputs.
+Exact package realization, guarded native API execution and the independent
+version-15 registered-source transport approval remain pending.
+
+Build 51 and the three later lease refusals (`retained-phase-5`,
+`spectral-native-diagnostic-3`, `cpu-remainder-1`) are now consolidated in the
+[prerequisite evidence](evidence/qualification-refusals-20261007.json). All exited
+1 before evaluation or native execution; the 3600-second remainder wait did not
+start a systemd service. Their originals remain independent from future retries.

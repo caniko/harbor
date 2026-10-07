@@ -185,6 +185,7 @@
       inherit (contact) contact-reference-cpu runtime-contact-reference-cpu runtime-contact-worker;
       inherit (freezing) freezing-native-cpu freezing-reference-cpu runtime-freezing-reference-cpu runtime-freezing-worker;
       inherit (spectral) spectral-environment-cpu spectral-mitsuba spectral-drjit spectral-reference-cpu runtime-spectral-reference-cpu runtime-spectral-worker;
+      inherit (spectral) atmospheric-spectral-reference-cpu runtime-atmospheric-spectral-reference-cpu;
       inherit (atmosphere) atmosphere-native-cpu atmosphere-reference-cpu runtime-atmosphere-reference-cpu runtime-atmosphere-worker;
       runtime-thermal-contact-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";

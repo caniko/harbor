@@ -157,3 +157,55 @@ ageing-weighted irradiance, area-dependent power and prescribed-history dose.
 Radiance arrays stay in the authoritative artifact. The report is a transfer
 preparation (`executed=false`, `native_transport=not_executed`), with native
 Mitsuba transport and physical qualification remaining separate work.
+
+## Native original-midpoint transport reference
+
+`adapters/atmospheric_spectral.py` maps every original angular cell into a
+Mitsuba 3.9.1 directional emitter, using the isolated Dr.Jit 1.5.0/Python 3.13
+ABI. Direct and diffuse illumination use separate native scenes. Original
+zero cells remain in the source manifest; only completely zero emitters are
+omitted from sampling. No angular interpolation or isotropic replacement occurs.
+
+The pinned upstream [`directional.cpp`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/emitters/directional.cpp)
+defines irradiance normal to propagation and returns the opposite, source-facing
+sample direction. [`scene.cpp`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/render/scene.cpp)
+selects emitters with source-only importance weights, multiplies their direction
+PDF by the emitter PMF and divides the returned spectral weight by that PMF.
+Its empty-emitter branch returns a zero direction record and spectrum.
+[`distr_1d.h`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/include/mitsuba/core/distr_1d.h)
+accumulates scalar-distribution weights in double precision before storing the
+Float32 normalization. These APIs permit multiple directional sources without
+turning them into an environment map.
+
+Native observations retain four-wavelength packets with source-facing direction,
+surface position, cosine, emitter identity, PDF and original Float32 weights.
+Every original knot is evaluated, including repeated padding in the final packet.
+Compensated Float64 reduction and exact original-knot optical-product quadrature
+keep incident, absorption-weighted and ageing-weighted irradiance separate from
+area-dependent power and prescribed-history exposure/energy. Native shape area
+must preserve the explicit SI dimensions within the `5e-6` Float32 allowance;
+the original-to-emitter conservation limit remains `1e-10`.
+
+`nix/spectral.nix` exports `atmospheric-spectral-reference-cpu` and
+`runtime-atmospheric-spectral-reference-cpu`. The executable requires
+`harbor-cad-atmospheric-spectral-cpu-v1`, its operation-only immutable closure,
+a read-only request and checksum-bound read-only atmospheric originals at
+`/inputs/atmosphere-original.txt`. Nine measured sandbox canaries are required.
+Its receipt does not authorize atmospheric source execution or a worker job.
+
+`scripts/verify_atmospheric_spectral_cpu.py --runtime RUNTIME --output NEW`
+implements nine manufactured-source native cases: diffuse opposing normals,
+azimuth sectors, reflected upwelling, positive direct incidence, inclined
+receivers, mixed direct/diffuse illumination, empty diffuse scenes and a varying
+six-knot spectrum with separate optical curves and zero knots. Each seed must
+have exactly one canonical direct and diffuse original packet artifact.
+The verifier independently checks both receiver-local rectangle coordinates,
+source-derived PMFs, packet coverage, original directions and spectral weights,
+then combines reconstructed component values. An empty originals list, duplicated
+component, renamed artifact or compensated PDF/weight substitution rejects.
+
+`--development-site SITE` explicitly selects an extracted-wheel native API
+diagnostic. Neither manufactured source fields nor such a diagnostic qualify
+libRadtran execution, exact production packaging, registered-source worker
+transport, convergence, GPU transport or physical validation. Exact packaged
+execution and a source-bound durable transport approval remain separate gates.
