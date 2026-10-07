@@ -47,6 +47,63 @@ fn fixture() -> SpectralReferenceSpec {
 }
 
 #[test]
+fn directional_worker_plan_binds_seed_originals_dose_and_an_independent_strict_envelope() {
+    use harbor_cad::contracts::*;
+    let spec = fixture();
+    let plan = ExecutionPlan::spectral_reference(spec.clone(), "research".into()).unwrap();
+    assert_eq!(plan.schema_version, 13);
+    assert_eq!(plan.stages[0].operation, StageOperation::SpectralReference);
+    assert_eq!(plan.stages[1].dependencies, ["spectral"]);
+    assert!(plan.observation.retained_times_s.is_empty()); // seeds are not physical times
+    assert!(plan.peak_ram() >= 512 * 1024 * 1024);
+    assert!(plan.observation.max_artifact_bytes >= 3 * u64::from(spec.samples) * 256);
+    assert_eq!(plan.science_id().unwrap(), digest(&spec).unwrap());
+    let encoded = serde_json::to_value(&plan).unwrap();
+    assert_eq!(
+        serde_json::from_value::<ExecutionPlan>(encoded.clone())
+            .unwrap()
+            .id()
+            .unwrap(),
+        plan.id().unwrap()
+    );
+    for field in [
+        "case",
+        "freezing",
+        "wetting",
+        "thermal",
+        "contact",
+        "thermal_contact",
+    ] {
+        let mut injected = encoded.clone();
+        injected[field] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<ExecutionPlan>(injected).is_err());
+    }
+    let legacy = ExecutionPlan::reference(CaseSpec::reference()).unwrap();
+    for value in [
+        serde_json::to_value(&spec).unwrap(),
+        serde_json::Value::Null,
+    ] {
+        let mut old = serde_json::to_value(&legacy).unwrap();
+        old["spectral"] = value;
+        assert!(serde_json::from_value::<ExecutionPlan>(old).is_err());
+    }
+    let mut drift = plan.clone();
+    drift.stages[0].gpu = GpuRequirement::Required;
+    assert!(drift.validate().is_err());
+    let mut drift = plan.clone();
+    drift.observation.retained_times_s = vec![0.];
+    assert!(drift.validate().is_err());
+    let mut drift = plan.clone();
+    drift.stages[0].ram_bytes = 1;
+    assert!(drift.validate().is_err());
+    let mut diffuse = spec;
+    diffuse.source = SpectralSource::Isotropic {
+        radiance: vec![quantity(1., "W/(m2*sr*nm)"), quantity(3., "W/(m2*sr*nm)")],
+    };
+    assert!(ExecutionPlan::spectral_reference(diffuse, "research".into()).is_err());
+}
+
+#[test]
 fn uv_spectral_units_and_exact_linear_products_preserve_dose_absorption_and_sensor_area_semantics()
 {
     let spec = fixture();

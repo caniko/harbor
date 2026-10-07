@@ -97,6 +97,12 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Plan immutable native directional UV observations and prescribed exposure.
+    PlanSpectralReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     /// Prepare a synthetic UV Lambertian reflection reference with independently bounded sensor model error.
     ValidateSpectralReflectionReference {
         file: PathBuf,
@@ -425,6 +431,11 @@ fn run(cli: Cli) -> Result<()> {
             Case::ValidateSpectralReference { file } => {
                 let spec: harbor_cad::radiation::SpectralReferenceSpec = read(&file)?;
                 return print(&spec.prepare()?);
+            }
+            Case::PlanSpectralReference { file, policy } => {
+                let spec: harbor_cad::radiation::SpectralReferenceSpec = read(&file)?;
+                let plan = ExecutionPlan::spectral_reference(spec, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
             }
             Case::ValidateSpectralReflectionReference { file } => {
                 let spec: harbor_cad::radiation::SpectralReflectionSpec = read(&file)?;

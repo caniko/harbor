@@ -199,6 +199,22 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 add(512 * MIB, multiply(cells, 4096)?)?
             }
             StageOperation::Bundle => 16 * MIB,
+            StageOperation::SpectralReference => {
+                let spec = plan
+                    .spectral
+                    .as_ref()
+                    .ok_or_else(|| invalid("spectral resource recipe required"))?;
+                spec.prepare()?;
+                // Three seeds retain every native sample/position/cosine and
+                // spectral knot. Reserve decimal expansion, independent parsing
+                // and complete native/receipt copies.
+                let shard = multiply(
+                    u64::from(spec.samples),
+                    add(256, multiply(spec.wavelengths.len() as u64, 32)?)?,
+                )?;
+                output = add(output, multiply(shard, 3)?)?;
+                add(512 * MIB, multiply(shard, 2)?)?
+            }
             StageOperation::FreezingReference => {
                 let spec = plan
                     .freezing

@@ -163,3 +163,33 @@ The native reflection follows pinned upstream
 (unit disk at the origin transformed by the prescribed radius and height) and
 the spectral irradiance-meter/film APIs above. It makes no atmospheric, imported
 material or physical-lifetime claim.
+
+## Immutable directional worker slice
+
+`case plan-spectral-reference examples/spectral-reference.json` and MCP
+`spectral_reference_plan` produce an independent version-13 plan containing
+`spectral → bundle`. Approve its exact digest and use ordinary `job submit` /
+MCP `job_submit`; these share the durable Rust worker, returning a job ID.
+Native submission requires systemd and the canonical shared admission authority.
+The immutable `runtime-spectral-worker` selects only the isolated CPU adapter
+and its operation-specific closure. The binding retains those store objects and
+the original runner; restart/cancellation and resource controls use the existing
+worker lifecycle.
+
+Each of three seeds retains every native surface sample, position, cosine and UV
+emitter knot. Rust independently reopens the closed CSV, checks byte identity,
+ordered coverage, the explicit physical sensor frame/rectangle, native Float32
+roundoff, visibility and the unchanged analytical tolerance. Compensated Float64
+reductions and exact optical-product integrals reconstruct incident, absorbed,
+and ageing channels plus prescribed dose. Registered originals include complete
+units and `native_surface_sample` association; seeds are never physical times.
+Historical `qualify --job ID` rechecks the original registered bytes and receipt,
+and reports execution, numerical evidence and physical validation separately.
+
+The version-13 worker is explicitly directional. Hemispherical/reflected EXRs
+retain the standalone native campaign and require separate original-reader
+worker integration. Manufactured numerical fixtures exercise corruption,
+metadata/approval drift and non-promotion; they supply no native-execution
+qualification. Exact packaged worker execution remains pending normal build and
+runtime availability. Build 46 refused before evaluation at 9 GiB combined
+headroom against the unchanged 24 GiB start gate.

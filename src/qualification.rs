@@ -259,6 +259,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::FreezingReference => {
                 ("stages/freezing/freezing-receipt.json", Some("OpenLB"))
             }
+            StageOperation::SpectralReference => {
+                ("stages/spectral/spectral-receipt.json", Some("Mitsuba"))
+            }
             StageOperation::ContactReference => {
                 ("stages/contact/contact-receipt.json", Some("CalculiX"))
             }
@@ -276,7 +279,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if let Some(spec) = &plan.thermal_contact {
+            formulation: if plan.spectral.is_some() {
+                "directional_planar_uv_irradiance_and_prescribed_dose".into()
+            } else if let Some(spec) = &plan.thermal_contact {
                 match stage.operation {
                     StageOperation::ThermalReference => {
                         spec.thermal_stage(&stage.id)?.formulation.clone()
@@ -319,7 +324,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     .map_or(3, |c| c.applicability.dimensionality)
             },
             precision: None,
-            refinement: if let Some(spec) = &plan.thermal_contact {
+            refinement: if let Some(spec) = &plan.spectral {
+                spec.samples
+            } else if let Some(spec) = &plan.thermal_contact {
                 if stage.operation == StageOperation::ThermalReference {
                     spec.thermal_stage(&stage.id)?.resolution
                 } else {
@@ -373,6 +380,8 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                 "kokkos_revision",
                 "gmsh_source_sha256",
                 "calculix_source_sha256",
+                "mitsuba_version",
+                "drjit_version",
             ] {
                 if let Some(text) = optional_text(&value, key)? {
                     capability
@@ -569,6 +578,12 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     )?);
                     capability.numerical_verification = EvidenceState::ReportedPass;
                     capability.convergence = "one declared grid; equal-physical-time native spatial refinement assessed separately".into();
+                } else if stage.operation == StageOperation::SpectralReference {
+                    capability.numerical_evidence = Some(crate::radiation::verify_registered(
+                        store, id, &plan, &value,
+                    )?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                    capability.convergence="three retained directional seeds; exact original-knot quadrature; hemispherical sampling refinement assessed separately".into();
                 } else {
                     (
                         capability.numerical_verification,

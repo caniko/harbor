@@ -31,6 +31,7 @@ pub mod retention;
 pub mod sandbox;
 pub mod science;
 pub mod snow;
+mod spectral_fields;
 pub mod storage;
 pub mod thermal;
 pub mod thermal_contact;

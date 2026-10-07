@@ -7,7 +7,8 @@ import subprocess
 import time
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+import pytest
+from jsonschema import Draft202012Validator, ValidationError
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
@@ -49,6 +50,22 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
     )
     assert not spectral_reference["executed"]
     assert abs(spectral_reference["absorbed_irradiance_w_m2"] - 132.0) < 1e-10
+    spectral_plan = json.loads(
+        subprocess.check_output(
+            [binary, "case", "plan-spectral-reference", "/dev/stdin"],
+            input=json.dumps(spectral).encode(),
+        )
+    )
+    Draft202012Validator(schemas["ExecutionPlan"]).validate(spectral_plan["plan"])
+    assert (
+        spectral_plan["plan"]["schema_version"] == 13
+        and spectral_plan["plan"]["observation"]["retained_times_s"] == []
+    )
+    for old_field in ("freezing", "wetting", "case", "thermal_contact"):
+        with pytest.raises(ValidationError):
+            Draft202012Validator(schemas["ExecutionPlan"]).validate(
+                {**spectral_plan["plan"], old_field: None}
+            )
     reflection = json.loads(
         (repo / "examples/spectral-reflection-reference.json").read_text()
     )
@@ -108,6 +125,21 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
                     not actual.is_error
                     and actual.structured_content == spectral_reference
                 )
+                actual = await client.call_tool(
+                    "spectral_reference_plan", {"spec": spectral}
+                )
+                assert (
+                    not actual.is_error and actual.structured_content == spectral_plan
+                )
+                rejected = await client.call_tool(
+                    "job_submit",
+                    {
+                        "plan": spectral_plan["plan"],
+                        "approved_digest": spectral_plan["approval_digest"],
+                        "idempotency_key": "no-authority-spectral",
+                    },
+                )
+                assert rejected.is_error and "unqualified" in str(rejected.content)
                 actual = await client.call_tool(
                     "spectral_reflection_reference_validate", {"spec": reflection}
                 )

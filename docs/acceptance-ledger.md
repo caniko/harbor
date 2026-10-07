@@ -112,7 +112,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
-| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v11 plans and original approval compatibility tested; broader recipe-specific contracts pending |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v13 plans and original approval compatibility tested; broader recipe-specific contracts pending |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
 | §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; native contact/optical execution pending |
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
@@ -296,6 +296,27 @@ start gate, before realization. Snow-native-2 and retained-phase-1 both timed ou
 without execution behind the Atlas lease held by PID 3337737,
 `chaosbox-full-snapshot-sync`, on `/run/lock/canix/switch.lock`. Native qualification
 remains pending normal lease release/headroom; all refusal logs are retained.
+
+Protocol repair `e51c02a` preserves valid request IDs on nested schema failures,
+duplicate-field rejection and strict empty operations; the real MCP regression
+passes. Reflection commit `98690d4` retains uncovered sky and explicit UV disk
+reflectance, separately bounding finite sensor footprint and illumination
+shadow. The full CPU gate passed with 124 Python cases.
+
+The independent version-13 directional spectral worker slice binds approved
+angular source, geometry, optical curves, three seeds and complete prescribed
+dose history through `spectral → bundle`. CLI/MCP plan/approval parity, canonical
+authority rejection, immutable resource minima and native closure retention are
+implemented. Rust independently verifies every original CSV sample/knot and
+registered identity, reconstructs optical products/dose and prevents manufactured
+receipt promotion. The full CPU gate passed with 47 Rust unit tests plus all
+integration suites, strict Clippy and 126 Python tests; pinned Simit drift and
+both touched Nix files parse. Review exposed ordinary native sum drift at 65536
+samples; compensated Float64 reduction preserves original Float32 knots and the
+existing scientific gate. Its red/green regression and binding-policy check pass.
+Exact packaged standalone/worker execution remains pending.
+Build 46 refused before evaluation at 9 GiB combined headroom against 24 GiB;
+spectral ABI attempt 2 refused before execution behind the same Atlas lease.
 
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.

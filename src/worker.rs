@@ -187,6 +187,7 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
                     | StageOperation::ThermalReference
                     | StageOperation::WettingReference
                     | StageOperation::FreezingReference
+                    | StageOperation::SpectralReference
                     | StageOperation::ContactReference
                     | StageOperation::CadMesh
                     | StageOperation::FemImported
@@ -476,6 +477,10 @@ fn dispatch(
         }
         Operation::ValidateSnowReference { spec } => Ok(serde_json::to_value(spec.prepare()?)?),
         Operation::ValidateSpectralReference { spec } => Ok(serde_json::to_value(spec.prepare()?)?),
+        Operation::PlanSpectralReference { spec } => {
+            let plan = ExecutionPlan::spectral_reference(*spec, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::ValidateSpectralReflectionReference { spec } => {
             Ok(serde_json::to_value(spec.prepare()?)?)
         }
@@ -575,6 +580,7 @@ fn dispatch(
                 || plan.cad_source.is_some()
                 || plan.wetting.is_some()
                 || plan.freezing.is_some()
+                || plan.spectral.is_some()
                 || plan.thermal_contact.is_some()
                 || plan.contact.is_some())
                 && authority.is_none()
@@ -633,6 +639,7 @@ fn dispatch(
                                 | StageOperation::ThermalReference
                                 | StageOperation::WettingReference
                                 | StageOperation::FreezingReference
+                                | StageOperation::SpectralReference
                                 | StageOperation::ContactReference
                                 | StageOperation::CadMesh
                                 | StageOperation::FemImported
@@ -644,6 +651,8 @@ fn dispatch(
                                     "wetting_closure"
                                 } else if stage.operation == StageOperation::FreezingReference {
                                     "freezing_closure"
+                                } else if stage.operation == StageOperation::SpectralReference {
+                                    "spectral_closure"
                                 } else if stage.operation == StageOperation::FemImported {
                                     "fem_imported_closure"
                                 } else if stage.operation == StageOperation::CadMesh {
@@ -1029,6 +1038,10 @@ struct NativeRuntime {
     #[serde(default)]
     freezing_closure: Option<String>,
     #[serde(default)]
+    spectral: Option<String>,
+    #[serde(default)]
+    spectral_closure: Option<String>,
+    #[serde(default)]
     contact: Option<String>,
     #[serde(default)]
     contact_closure: Option<String>,
@@ -1048,6 +1061,7 @@ impl NativeRuntime {
             StageOperation::ThermalReference => &self.thermal_closure,
             StageOperation::WettingReference => &self.wetting_closure,
             StageOperation::FreezingReference => &self.freezing_closure,
+            StageOperation::SpectralReference => &self.spectral_closure,
             StageOperation::ContactReference => &self.contact_closure,
             StageOperation::CadMesh => &self.cad_mesh_closure,
             StageOperation::FemImported => &self.fem_imported_closure,
@@ -1102,6 +1116,9 @@ impl NativeRuntime {
             })?,
             StageOperation::FreezingReference => self.freezing.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU solidification adapter absent from selected runtime".into())
+            })?,
+            StageOperation::SpectralReference => self.spectral.as_deref().ok_or_else(|| {
+                Error::Unqualified("isolated native spectral CPU adapter unavailable".into())
             })?,
             StageOperation::ContactReference => self.contact.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU contact adapter absent from selected runtime".into())
@@ -1214,6 +1231,7 @@ fn native_stage(
             | StageOperation::ThermalReference
             | StageOperation::WettingReference
             | StageOperation::FreezingReference
+            | StageOperation::SpectralReference
             | StageOperation::ContactReference
             | StageOperation::CadMesh
             | StageOperation::FemImported
@@ -1238,6 +1256,11 @@ fn native_stage(
                 "/freezing-runtime-closure.txt",
                 "HARBOR_CAD_FREEZING_POLICY",
                 crate::freezing::SANDBOX_POLICY,
+            ),
+            StageOperation::SpectralReference => (
+                "/spectral-runtime-closure.txt",
+                "HARBOR_CAD_SPECTRAL_POLICY",
+                crate::radiation::SANDBOX_POLICY,
             ),
             StageOperation::ContactReference => (
                 "/contact-runtime-closure.txt",
@@ -1411,6 +1434,8 @@ fn native_stage(
             "verified-wetting-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::FreezingReference) {
             "freezing-receipt.json".into()
+        } else if matches!(stage.operation, StageOperation::SpectralReference) {
+            "spectral-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::ContactReference) {
             "contact-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::CadMesh) {
@@ -1444,6 +1469,8 @@ fn native_stage(
                 "native-wetting-request.json".into()
             } else if matches!(stage.operation, StageOperation::FreezingReference) {
                 "native-freezing-request.json".into()
+            } else if matches!(stage.operation, StageOperation::SpectralReference) {
+                "native-spectral-request.json".into()
             } else if matches!(stage.operation, StageOperation::ContactReference) {
                 "native-contact-request.json".into()
             } else if matches!(stage.operation, StageOperation::CadMesh) {
@@ -1465,6 +1492,7 @@ fn native_stage(
                     | StageOperation::FemImported
                     | StageOperation::WettingReference
                     | StageOperation::FreezingReference
+                    | StageOperation::SpectralReference
                     | StageOperation::ContactReference
             ) {
                 "reference"
@@ -1521,6 +1549,15 @@ fn native_stage(
     }
     let evidence = read_native_receipt(&receipt)?;
     validate_native_receipt(stage, &evidence)?;
+    if stage.operation == StageOperation::SpectralReference {
+        crate::spectral_fields::verify(
+            plan.spectral
+                .as_ref()
+                .ok_or_else(|| invalid("approved spectral recipe required"))?,
+            dir,
+            &evidence,
+        )?;
+    }
     if matches!(stage.operation, StageOperation::NumericalFilter) {
         crate::filters::verify_receipt(store, id, plan, dir, &evidence)?;
     }
@@ -1650,6 +1687,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::ThermalReference => "CalculiX",
         StageOperation::WettingReference => "OpenLB",
         StageOperation::FreezingReference => "OpenLB",
+        StageOperation::SpectralReference => "Mitsuba",
         StageOperation::ContactReference => "CalculiX",
         StageOperation::CadMesh => "Gmsh",
         StageOperation::FemImported => "CalculiX",
@@ -1998,6 +2036,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     )?;
                     crate::wetting::annotate_fields(&plan, &mut artifacts)?;
                     crate::freezing::annotate_fields(&plan, &mut artifacts)?;
+                    crate::radiation::annotate_fields(&plan, &mut artifacts)?;
                     crate::contact::annotate_fields(&plan, &mut artifacts);
                     for artifact in artifacts {
                         store.add_artifact(id, &artifact)?;
@@ -2139,6 +2178,15 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     store.add_artifact(id, &commit_artifact(&dir, "native-freezing-request.json",
                         &serde_json::to_vec(spec)?, "json", "exact synthetic SI total-enthalpy solidification inputs, nodal control volumes and retained physical times")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if stage.operation == StageOperation::SpectralReference {
+                    let working = native_work.join("stages/spectral");
+                    private_dir(&working)?;
+                    let spec = plan
+                        .spectral
+                        .as_ref()
+                        .ok_or_else(|| invalid("approved directional spectral recipe required"))?;
+                    store.add_artifact(id,&commit_artifact(&dir,"native-spectral-request.json",&serde_json::to_vec(spec)?,"json","exact approved angular UV source, SI sensor, spectral optical weights, retained seeds and complete prescribed dose history")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if matches!(stage.operation, StageOperation::FemImported) {
                     let working = native_work.join("stages/fem-imported");
                     private_dir(&working)?;
@@ -2193,6 +2241,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
             ingest_native_tree(&native_work, &dir, plan.observation.max_artifact_bytes)?;
         crate::wetting::annotate_fields(&plan, &mut artifacts)?;
         crate::freezing::annotate_fields(&plan, &mut artifacts)?;
+        crate::radiation::annotate_fields(&plan, &mut artifacts)?;
         crate::contact::annotate_fields(&plan, &mut artifacts);
         for artifact in artifacts {
             store.add_artifact(id, &artifact)?;

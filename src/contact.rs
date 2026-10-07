@@ -159,6 +159,7 @@ impl crate::contracts::ExecutionPlan {
             contact: Some(spec),
             thermal_contact: None,
             freezing: None,
+            spectral: None,
             source: None,
             frames: None,
             filter: None,

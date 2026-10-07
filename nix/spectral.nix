@@ -58,6 +58,16 @@ in {
   spectral-mitsuba = mitsuba;
   spectral-drjit = drjit;
   spectral-reference-cpu = adapter;
+  runtime-spectral-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    spectral = "${adapter}/bin/harbor-cad-spectral";
+    spectral_closure = "${closure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+  });
   runtime-spectral-reference-cpu = pkgs.writeText "harbor-cad-spectral-reference-runtime.json" (builtins.toJSON {
     schema_version = 1;
     bwrap = "${pkgs.bubblewrap}/bin/bwrap";

@@ -1,10 +1,12 @@
 """Independent native input and spectral-product checks without importing renderer."""
 
 import copy
+import csv
 import importlib.util
 import json
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +25,23 @@ def fixture():
     return json.loads(
         (Path(__file__).parents[2] / "examples/spectral-reference.json").read_text()
     )
+
+
+def test_native_directory_accepts_worker_capture_log_but_never_reuses_scientific_output(
+    tmp_path,
+):
+    native = adapter()
+    native.require_new_work(tmp_path)
+    (tmp_path / "spectral.log").write_text("owned worker launch diagnostics\n")
+    native.require_new_work(tmp_path)
+    (tmp_path / "directional-1.csv").write_text("old native field\n")
+    with pytest.raises(ValueError):
+        native.require_new_work(tmp_path)
+    (tmp_path / "directional-1.csv").unlink()
+    (tmp_path / "spectral.log").unlink()
+    (tmp_path / "spectral.log").symlink_to(tmp_path / "absent")
+    with pytest.raises(ValueError):
+        native.require_new_work(tmp_path)
 
 
 def test_independent_uv_quadrature_preserves_absorbed_power_dose_and_original_si_units():
@@ -65,6 +84,49 @@ def test_independent_uv_quadrature_preserves_absorbed_power_dose_and_original_si
     assert math.isclose(
         native.normalize(raw)["reference"]["absorbed"], 132 * math.pi, rel_tol=1e-14
     )
+
+
+def test_directional_reduction_matches_fsum_of_retained_float32_knots_at_maximum_budget(
+    tmp_path,
+):
+    # ABI-free observation scaffolding, not native execution evidence. Its
+    # non-dyadic Float32 product exposes accumulated ordinary-sum roundoff.
+    native = adapter()
+    spec = fixture()
+    spec["samples"] = 65536
+    normalized = native.normalize(spec)
+    cosine = 0.800000011920929
+    weights = [0.10000000149011612, 0.30000001192092896]
+    position = SimpleNamespace(p=[0.0, 0.0, 0.0], n=[0.0, 0.0, 1.0])
+    shape = SimpleNamespace(sensor=lambda: True, sample_position=lambda *_: position)
+    scene = SimpleNamespace(
+        shapes=lambda: [shape],
+        sample_emitter_direction=lambda *_: (
+            SimpleNamespace(d=[0, 0, 1]),
+            weights + weights,
+        ),
+    )
+    mi = SimpleNamespace(
+        SurfaceInteraction3f=SimpleNamespace, Frame3f=lambda n: n, Spectrum=lambda v: v
+    )
+    dr = SimpleNamespace(dot=lambda *_: cosine)
+    path = tmp_path / "scaffold.csv"
+    measured = native.measure_directional(scene, spec, normalized, 1, path, mi, dr)
+    with path.open() as handle:
+        rows = list(csv.DictReader(handle))
+    means = [
+        math.fsum(
+            float(row[f"emitter_weight_w_m2_nm_{i}"]) * float(row["native_cosine"])
+            for row in rows
+        )
+        / len(rows)
+        for i in range(2)
+    ]
+    for channel, optical_weights in normalized["weights"].items():
+        expected = native.product_integral(
+            normalized["wavelengths_nm"], means, optical_weights
+        )
+        assert math.isclose(measured[channel], expected, rel_tol=2e-15)
 
 
 @pytest.mark.parametrize(

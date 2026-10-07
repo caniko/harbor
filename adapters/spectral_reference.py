@@ -484,6 +484,7 @@ def measure_directional(scene, spec, normalized, seed, path, mi, dr):
     rng = random.Random(seed)
     wavelengths = normalized["wavelengths_nm"]
     totals = [0.0] * len(wavelengths)
+    corrections = [0.0] * len(wavelengths)
     header = [
         "sample",
         "x_m",
@@ -517,7 +518,12 @@ def measure_directional(scene, spec, normalized, seed, path, mi, dr):
                     "finite nonnegative native directional spectral weights required"
                 )
             for index, value in enumerate(values):
-                totals[index] += value
+                # Streaming compensated Float64 reduction preserves agreement
+                # with independent fsum reconstruction at the maximum budget.
+                adjusted = value - corrections[index]
+                updated = totals[index] + adjusted
+                corrections[index] = (updated - totals[index]) - adjusted
+                totals[index] = updated
             writer.writerow([sample, *list(position.p), cosine, *original_weights])
     means = [value / spec["samples"] for value in totals]
     # Native direction/intersection/visibility evaluates every original knot;
@@ -612,6 +618,20 @@ def execute(spec, root):
     }
 
 
+def require_new_work(root):
+    # The worker opens its stage capture before spawning the native adapter.
+    # Only that regular log may already exist; scientific observations/receipts
+    # are create-new and a failed diagnostic tree can never be reused.
+    entries = list(root.iterdir())
+    if any(
+        path.name != "spectral.log" or path.is_symlink() or not path.is_file()
+        for path in entries
+    ):
+        raise ValueError(
+            "new bounded native reference work directory with at most the owned capture log required"
+        )
+
+
 def main():
     if len(sys.argv) != 3 or sys.argv[1] not in ("reference", "inspect-exr"):
         raise ValueError(
@@ -660,8 +680,7 @@ def main():
     spec = json.loads(raw)
     root = Path.cwd()
     # A failed attempt owns its diagnostic tree and is never overwritten.
-    if any(root.iterdir()):
-        raise ValueError("new empty bounded native reference work directory required")
+    require_new_work(root)
     sandbox = None
     if os.environ.get("HARBOR_CAD_SPECTRAL_POLICY"):
         bridge = importlib.util.spec_from_file_location(

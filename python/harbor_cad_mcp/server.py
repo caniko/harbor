@@ -163,6 +163,11 @@ def build_server(profile: str) -> MCPServer:
             return await request("validate_spectral_reference", spec=spec)
 
         @server.tool()
+        async def spectral_reference_plan(spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan immutable native directional UV observations, optical weights and prescribed dose; approve and submit through the same worker."""
+            return await request("plan_spectral_reference", spec=spec)
+
+        @server.tool()
         async def spectral_reflection_reference_validate(
             spec: dict[str, Any],
         ) -> dict[str, Any]:

@@ -101,6 +101,7 @@
         || pkgs.lib.hasSuffix "/examples/thermal-contact.json" path
         || pkgs.lib.hasSuffix "/examples/freezing-reference.json" path
         || pkgs.lib.hasSuffix "/examples/snow-reference.json" path
+        || pkgs.lib.hasSuffix "/examples/spectral-reference.json" path
         || pkgs.lib.hasSuffix "/nix/patches/calculix-temperature-precision.patch" path;
     };
     common = {
@@ -181,7 +182,7 @@
       inherit (wetting) wetting-reference-cpu runtime-wetting-reference-cpu runtime-wetting-worker;
       inherit (contact) contact-reference-cpu runtime-contact-reference-cpu runtime-contact-worker;
       inherit (freezing) freezing-native-cpu freezing-reference-cpu runtime-freezing-reference-cpu runtime-freezing-worker;
-      inherit (spectral) spectral-environment-cpu spectral-mitsuba spectral-drjit spectral-reference-cpu runtime-spectral-reference-cpu;
+      inherit (spectral) spectral-environment-cpu spectral-mitsuba spectral-drjit spectral-reference-cpu runtime-spectral-reference-cpu runtime-spectral-worker;
       runtime-thermal-contact-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
         thermal = "${thermal.thermal-cpu}/bin/harbor-cad-thermal";

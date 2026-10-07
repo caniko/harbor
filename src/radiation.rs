@@ -8,6 +8,152 @@ use crate::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub const SANDBOX_POLICY: &str = "harbor-cad-spectral-cpu-v1";
+
+fn field_units(spec: &SpectralReferenceSpec) -> String {
+    format!(
+        "sample:1,x_m:m,y_m:m,z_m:m,native_cosine:1,{}",
+        (0..spec.wavelengths.len())
+            .map(|i| format!("emitter_weight_w_m2_nm_{i}:W/(m2*nm)"))
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
+pub(crate) fn annotate_fields(
+    plan: &crate::contracts::ExecutionPlan,
+    artifacts: &mut [crate::contracts::ArtifactManifest],
+) -> Result<()> {
+    let Some(spec) = &plan.spectral else {
+        return Ok(());
+    };
+    let units = field_units(spec);
+    for seed in spec.seeds {
+        let path = format!("stages/spectral/directional-{seed}.csv");
+        let mut records = artifacts.iter_mut().filter(|a| a.path == path);
+        let record = records
+            .next()
+            .ok_or_else(|| invalid("complete retained native spectral seed originals required"))?;
+        if records.next().is_some() || record.format != "csv" || record.bytes == 0 {
+            return Err(invalid(
+                "unique complete native directional CSV per seed required",
+            ));
+        }
+        record.units = Some(units.clone());
+        record.time_s = None;
+        record.association = Some("native_surface_sample".into());
+        record.provenance = format!(
+            "authoritative scalar_spectral Float32 directional emitter knots/position/cosine at native seed {seed}; Float64 optical/dose reductions; seeds are not physical times"
+        );
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_registered(
+    store: &crate::storage::Store,
+    id: &str,
+    plan: &crate::contracts::ExecutionPlan,
+    value: &serde_json::Value,
+) -> Result<crate::qualification::NumericalEvidence> {
+    let spec = plan
+        .spectral
+        .as_ref()
+        .ok_or_else(|| invalid("approved spectral worker recipe required"))?;
+    let originals = value["observations"]
+        .as_array()
+        .filter(|v| v.len() == spec.seeds.len())
+        .ok_or_else(|| invalid("complete registered spectral observations required"))?;
+    for observation in originals {
+        let seed = observation["seed"]
+            .as_u64()
+            .filter(|v| spec.seeds.iter().any(|s| u64::from(*s) == *v))
+            .ok_or_else(|| invalid("approved spectral seed required"))?;
+        let path = format!("stages/spectral/directional-{seed}.csv");
+        let record = store
+            .artifact_record(id, &path)?
+            .ok_or_else(|| invalid("registered original native directional spectral CSV absent"))?;
+        let actual = crate::storage::native_manifest(
+            &store.job_dir(id)?,
+            &path,
+            u64::from(spec.samples) * (256 + 32 * spec.wavelengths.len() as u64),
+            "verify immutable spectral originals",
+        )?;
+        if record.format != "csv"
+            || record.sha256 != actual.sha256
+            || record.bytes != actual.bytes
+            || record.time_s.is_some()
+            || record.association.as_deref() != Some("native_surface_sample")
+            || record.units.as_deref() != Some(field_units(spec).as_str())
+            || observation["sha256"] != record.sha256
+            || observation["bytes"].as_u64() != Some(record.bytes)
+        {
+            return Err(invalid(
+                "native spectral originals differ from committed registered identities",
+            ));
+        }
+    }
+    crate::spectral_fields::verify(spec, &store.job_dir(id)?.join("stages/spectral"), value)
+}
+
+impl crate::contracts::ExecutionPlan {
+    pub fn spectral_reference(spec: SpectralReferenceSpec, policy: String) -> Result<Self> {
+        use crate::contracts::*;
+        let mut plan = Self {
+            schema_version: 13,
+            case: None,
+            source: None,
+            frames: None,
+            filter: None,
+            fem: None,
+            thermal: None,
+            cad_source: None,
+            imported_fem: None,
+            wetting: None,
+            contact: None,
+            thermal_contact: None,
+            freezing: None,
+            spectral: Some(spec),
+            stages: vec![
+                Stage {
+                    id: "spectral".into(),
+                    dependencies: vec![],
+                    operation: StageOperation::SpectralReference,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 1,
+                    vram_bytes: 0,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec!["spectral".into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 16 * 1024 * 1024,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec![],
+                probes: vec![],
+                retained_times_s: vec![],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 0,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SpectralSource {
@@ -202,7 +348,7 @@ impl SpectralReflectionSpec {
 }
 // Exact product integral for two piecewise-linear functions on one shared grid.
 // Endpoint-product trapezoids are not exact when optical weights vary.
-fn product_integral(x: &[f64], a: &[f64], b: &[f64]) -> f64 {
+pub(crate) fn product_integral(x: &[f64], a: &[f64], b: &[f64]) -> f64 {
     x.windows(2)
         .enumerate()
         .map(|(i, x)| {
@@ -213,6 +359,34 @@ fn product_integral(x: &[f64], a: &[f64], b: &[f64]) -> f64 {
         .sum()
 }
 impl SpectralReferenceSpec {
+    pub(crate) fn validate_plan(&self, plan: &crate::contracts::ExecutionPlan) -> Result<()> {
+        use crate::contracts::StageOperation;
+        self.prepare()?;
+        if !matches!(self.source, SpectralSource::Directional { .. }) {
+            return Err(crate::Error::Unqualified("version-13 directional worker retains native CSV knots; hemispherical/reflected EXR requires separate original-reader worker qualification".into()));
+        }
+        if plan.policy == "ci"
+            || plan.stages.len() != 2
+            || plan.stages[0].id != "spectral"
+            || plan.stages[0].operation != StageOperation::SpectralReference
+            || !plan.stages[0].dependencies.is_empty()
+            || plan.stages[1].id != "bundle"
+            || plan.stages[1].operation != StageOperation::Bundle
+            || plan.stages[1].dependencies != ["spectral"]
+            || !plan.transfers.is_empty()
+            || !plan.observation.metrics.is_empty()
+            || !plan.observation.probes.is_empty()
+            || !plan.observation.retained_times_s.is_empty()
+            || !plan.observation.preview_times_s.is_empty()
+            || !plan.observation.checkpoint_times_s.is_empty()
+            || plan.observation.preview_may_drop
+        {
+            return Err(invalid(
+                "exact independent native directional UV and bundle DAG with retained seeds, complete original knots and prescribed dose required",
+            ));
+        }
+        Ok(())
+    }
     pub fn prepare(&self) -> Result<PreparedSpectralReference> {
         let n = self.wavelengths.len();
         if self.schema_version != 1
