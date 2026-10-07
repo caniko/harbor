@@ -168,6 +168,13 @@ def build_server(profile: str) -> MCPServer:
             return await request("plan_spectral_reference", spec=spec)
 
         @server.tool()
+        async def atmospheric_reference_validate(
+            spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Prepare pinned molecular UV atmosphere and full ordered angular observations; no isotropic substitution or execution qualification."""
+            return await request("validate_atmospheric_reference", spec=spec)
+
+        @server.tool()
         async def spectral_reflection_reference_validate(
             spec: dict[str, Any],
         ) -> dict[str, Any]:

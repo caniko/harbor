@@ -83,6 +83,20 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
         not reflection_reference["executed"]
         and reflection_reference["model_relative_error_bound"] < 1e-5
     )
+    atmosphere = json.loads((repo / "examples/atmosphere-reference.json").read_text())
+    Draft202012Validator(schemas["AtmosphericReferenceSpec"]).validate(atmosphere)
+    atmosphere_reference = json.loads(
+        subprocess.check_output(
+            [binary, "case", "validate-atmospheric-reference", "/dev/stdin"],
+            input=json.dumps(atmosphere).encode(),
+        )
+    )
+    Draft202012Validator(schemas["PreparedAtmosphericReference"]).validate(
+        atmosphere_reference
+    )
+    assert (
+        not atmosphere_reference["executed"] and len(atmosphere_reference["umu"]) == 64
+    )
     profile = json.loads((repo / "profiles/ci.json").read_text())
     profile.update(
         policy="research", service_mode="systemd", allowed_input_root=str(tmp_path)
@@ -147,6 +161,26 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
                     not actual.is_error
                     and actual.structured_content == reflection_reference
                 )
+                actual = await client.call_tool(
+                    "atmospheric_reference_validate", {"spec": atmosphere}
+                )
+                assert (
+                    not actual.is_error
+                    and actual.structured_content == atmosphere_reference
+                )
+                for field, value in [
+                    ("diffuse_isotropic", True),
+                    ("backend", "hip"),
+                    ("relative_tolerance", 0.1),
+                    ("profile", "../../credentials"),
+                ]:
+                    rejected = await client.call_tool(
+                        "atmospheric_reference_validate",
+                        {"spec": {**atmosphere, field: value}},
+                    )
+                    assert rejected.is_error and "invalid_input" in str(
+                        rejected.content
+                    )
                 for field, value in (
                     ("reflectance", 1.1),
                     ("maximum_model_error", 0.02),

@@ -323,6 +323,22 @@ angular/reflection/refinement prerequisite. Build 47, at committed worker source
 `3ad8dbc`, refused before evaluation at 10 GiB headroom. Consolidated original
 command/log hashes are in [prerequisite refusal evidence](evidence/qualification-refusals-20261007.json).
 
+The source-built spectral native diagnostic also refused before execution after
+its bounded 1800-second Atlas lease wait; its original refusal identity is now
+retained in the same evidence file. Independent source work has established the
+official content pin and inspected public CPU DISORT APIs for libRadtran 2.0.6.
+The [molecular UV reference](atmosphere-reference.md) retains full original
+anisotropic angular radiances, explicit source/profile/solar units and provenance,
+native Float32/text resolution and independent diffuse-flux/cosine-law gates.
+Strict Rust CLI/MCP validation and isolated native packaging are implemented;
+exact native execution, separate convergence and angular transport integration
+remain unqualified.
+Full CPU verification passes with 129 Python tests, the new Rust atmospheric
+contract and all existing Rust suites, strict Clippy, locked build, pinned Simit
+drift, Nix syntax and whitespace. The official archive and all twelve selected
+source/data hashes match retained originals. Native decimal-wavelength resolution
+and source-energy rejection tests were observed red before the focused fixes.
+
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.

@@ -1951,6 +1951,9 @@ pub enum Operation {
     PlanSpectralReference {
         spec: Box<crate::radiation::SpectralReferenceSpec>,
     },
+    ValidateAtmosphericReference {
+        spec: Box<crate::atmosphere::AtmosphericReferenceSpec>,
+    },
     ValidateSpectralReflectionReference {
         spec: Box<crate::radiation::SpectralReflectionSpec>,
     },
@@ -2090,6 +2093,12 @@ pub fn schemas() -> serde_json::Value {
         "ColdRestartSpec": schemars::schema_for!(crate::recipes::ColdRestartSpec),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)});
     // Keep individual expansions below the macro recursion bound as contracts grow.
+    schemas["AtmosphericReferenceSpec"] = serde_json::json!(schemars::schema_for!(
+        crate::atmosphere::AtmosphericReferenceSpec
+    ));
+    schemas["PreparedAtmosphericReference"] = serde_json::json!(schemars::schema_for!(
+        crate::atmosphere::PreparedAtmosphericReference
+    ));
     schemas["SpectralReflectionSpec"] = serde_json::json!(schemars::schema_for!(
         crate::radiation::SpectralReflectionSpec
     ));

@@ -97,6 +97,10 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Prepare explicit pinned UV atmospheric angular observations, without executing.
+    ValidateAtmosphericReference {
+        file: PathBuf,
+    },
     /// Plan immutable native directional UV observations and prescribed exposure.
     PlanSpectralReference {
         file: PathBuf,
@@ -436,6 +440,10 @@ fn run(cli: Cli) -> Result<()> {
                 let spec: harbor_cad::radiation::SpectralReferenceSpec = read(&file)?;
                 let plan = ExecutionPlan::spectral_reference(spec, policy)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Case::ValidateAtmosphericReference { file } => {
+                let spec: harbor_cad::atmosphere::AtmosphericReferenceSpec = read(&file)?;
+                return print(&spec.prepare()?);
             }
             Case::ValidateSpectralReflectionReference { file } => {
                 let spec: harbor_cad::radiation::SpectralReflectionSpec = read(&file)?;

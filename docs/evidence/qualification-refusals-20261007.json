@@ -15,7 +15,8 @@
       {"name": "snow-native-1", "command_sha256": "dc24eaa1ecefd95268e21f46d83ab23162685f64d3d93a7235a7759ad09ed1dc", "exit_code": 1},
       {"name": "snow-native-2", "command_sha256": "81988d9d6370ca9fc82bc9db37803013046c960c06c46bc33b73a20d5663c57c", "exit_code": 1},
       {"name": "retained-phase-1", "command_sha256": "2dc2a6ba5b2f6d0e2793e85f3d656644ed4e5d8e68a666083e2308ebe5ce8d43", "exit_code": 1},
-      {"name": "spectral-abi-2", "command_sha256": "eb62dac2e5af28888c8f178f43558f45a622da33776de28f204b10dd1660cfc9", "exit_code": 1}
+      {"name": "spectral-abi-2", "command_sha256": "eb62dac2e5af28888c8f178f43558f45a622da33776de28f204b10dd1660cfc9", "exit_code": 1},
+      {"name": "spectral-native-diagnostic-1", "command_sha256": "d0dcf9a15225009f912e1ae5ef2e913267a89986310371501b913088a6a9ea0a", "exit_code": 1}
     ],
     "file_convention": "NAME-command.json, NAME.log, NAME-exit.txt; originals retained independently"
   },

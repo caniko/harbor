@@ -15,6 +15,20 @@
     "msrv": "1.88.0, matching the project contract",
     "qualification": "full local CPU gate passed, including legacy approvals, lifecycle/restart and concurrent shared admission; packaged qualification remains tied to the realized source revision"
   },
+  "libradtran": {
+    "review_date": "2026-10-07",
+    "version": "2.0.6",
+    "archive_url": "https://www.libradtran.org/download/libRadtran-2.0.6.tar.gz",
+    "archive_sha256": "64930cc40b6e4a37aa220520974d330fc1563796f466a649b2238131f2d69840",
+    "archive_bytes": 154147176,
+    "license": "GPL-2.0-or-later",
+    "abi": "public CPU C DISORT with locked C/Fortran/NetCDF dependencies; native retained Float32 spectral arrays and unchanged native decimal output; isolated pure Python 3.13 reductions",
+    "scope": "explicit synthetic AFGL sea-level molecular UV 280–400 nm at 1 AU, Lambertian ground boundary, full anisotropic angular original radiance; transparent cosine-law reference separate",
+    "build": "unqualified; package and native transparent smoke gate defined, guarded realization pending",
+    "runtime": "unqualified",
+    "physical_validation": "unqualified",
+    "evidence": "docs/atmosphere-reference.md; docs/evidence/atmosphere-source-20261007.json"
+  },
   "fleetix": {
     "revision": "2230d9ee804a66d94424a91919182e4fcca13ab2",
     "cargo_nix_source_identity": "aligned",

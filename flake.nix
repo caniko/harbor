@@ -102,6 +102,7 @@
         || pkgs.lib.hasSuffix "/examples/freezing-reference.json" path
         || pkgs.lib.hasSuffix "/examples/snow-reference.json" path
         || pkgs.lib.hasSuffix "/examples/spectral-reference.json" path
+        || pkgs.lib.hasSuffix "/examples/atmosphere-reference.json" path
         || pkgs.lib.hasSuffix "/nix/patches/calculix-temperature-precision.patch" path;
     };
     common = {
@@ -147,6 +148,7 @@
     contact = import ./nix/contact.nix {inherit pkgs fem;};
     freezing = import ./nix/freezing.nix {inherit pkgs inputs cudaPkgs;};
     spectral = import ./nix/spectral.nix {inherit pkgs;};
+    atmosphere = import ./nix/atmosphere.nix {inherit pkgs;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
       projectRootFile = "flake.nix";
       programs.rustfmt = {
@@ -183,6 +185,7 @@
       inherit (contact) contact-reference-cpu runtime-contact-reference-cpu runtime-contact-worker;
       inherit (freezing) freezing-native-cpu freezing-reference-cpu runtime-freezing-reference-cpu runtime-freezing-worker;
       inherit (spectral) spectral-environment-cpu spectral-mitsuba spectral-drjit spectral-reference-cpu runtime-spectral-reference-cpu runtime-spectral-worker;
+      inherit (atmosphere) atmosphere-native-cpu atmosphere-reference-cpu runtime-atmosphere-reference-cpu;
       runtime-thermal-contact-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
         thermal = "${thermal.thermal-cpu}/bin/harbor-cad-thermal";

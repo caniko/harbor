@@ -481,6 +481,9 @@ fn dispatch(
             let plan = ExecutionPlan::spectral_reference(*spec, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::ValidateAtmosphericReference { spec } => {
+            Ok(serde_json::to_value(spec.prepare()?)?)
+        }
         Operation::ValidateSpectralReflectionReference { spec } => {
             Ok(serde_json::to_value(spec.prepare()?)?)
         }
