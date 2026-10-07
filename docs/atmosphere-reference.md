@@ -60,6 +60,9 @@ flux within the explicit gate, at most 0.02. Direct irradiation must not exceed
 its prescribed input; zero-source rows remain zero. Original upward diffuse flux
 must equal `albedo*(edir+edn)`. Transparent direct flux must match the analytic
 cosine reference and original diffuse flux/radiance must be zero.
+Net surface power `edir+edn-eup` must not exceed prescribed TOA horizontal
+irradiance. This separately rejects internally consistent diffuse fields that
+create energy, while permitting the downward enhancement from multiple reflection.
 
 Angular integration consistency is numerical verification. It does not establish
 stream, angular-shape or wavelength convergence. Complete original radiances

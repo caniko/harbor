@@ -209,6 +209,13 @@ def parse_original(text, spec, prepared):
             raise ValueError(
                 "native Lambertian boundary reflected-flux conservation failed"
             )
+        # Elastic molecular scattering redistributes the incident UV energy.
+        # Internal ground/atmosphere reflections may raise downward irradiance,
+        # but cannot raise net power delivered to a passive ground above TOA.
+        if math.fsum((values[1], values[2], -values[3])) > expected_direct * (
+            1 + spec["relative_tolerance"]
+        ):
+            raise ValueError("native net surface power exceeds prescribed TOA energy")
         for sign, flux in ((-1, values[2]), (1, values[3])):
             reconstructed = math.fsum(
                 value * abs(mu) * prepared["angular_cell_solid_angle_sr"]

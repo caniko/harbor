@@ -52,6 +52,8 @@ def test_atmosphere_preserves_explicit_unit_angular_transport_and_transparent_re
 def test_complete_angular_fields_reconstruct_native_flux_without_an_isotropic_source_substitution():
     module = adapter()
     spec = fixture()
+    for q in spec["toa_irradiance"]:
+        q["value"] *= 100
     prepared = module.normalize(spec)
     # Independent manufactured radiance varies with propagation cosine. The
     # midpoint sum integrates its polynomial exactly to its discretized reference.
@@ -67,7 +69,7 @@ def test_complete_angular_fields_reconstruct_native_flux_without_an_isotropic_so
                 str,
                 [
                     wl,
-                    toa * math.cos(math.pi / 6),
+                    toa * math.cos(math.pi / 6) * 0.5,
                     diffuse,
                     0,
                     *[
@@ -119,5 +121,34 @@ def test_native_decimal_wavelength_resolution_and_direct_energy_bounds_are_not_w
             prepared["wavelengths_nm"], prepared["toa_irradiance_w_m2_nm"]
         )
     ]
+    with pytest.raises(ValueError):
+        module.parse_original("\n".join(rows), spec, prepared)
+
+
+def test_molecular_atmosphere_cannot_create_surface_power_from_diffuse_redistribution():
+    module = adapter()
+    spec = fixture()
+    prepared = module.normalize(spec)
+    rows = [
+        " ".join(
+            map(
+                str,
+                [
+                    wl,
+                    0,
+                    10 * math.pi,
+                    0,
+                    *[
+                        10 if mu < 0 else 0
+                        for mu in prepared["umu"]
+                        for _ in prepared["phi_deg"]
+                    ],
+                ],
+            )
+        )
+        for wl in prepared["wavelengths_nm"]
+    ]
+    # Its angular quadrature and black boundary are internally self-consistent;
+    # the excess net flux must still reject against the prescribed TOA energy.
     with pytest.raises(ValueError):
         module.parse_original("\n".join(rows), spec, prepared)
