@@ -33,6 +33,16 @@ pub struct Response {
     pub data: Option<serde_json::Value>,
     pub error: Option<serde_json::Value>,
 }
+/// Validate the bounded envelope before the operation so schema rejections can
+/// retain their request identity. Raw JSON preserves duplicate-field rejection.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IncomingEnvelope<'a> {
+    protocol_version: u32,
+    request_id: String,
+    #[serde(borrow)]
+    request: &'a serde_json::value::RawValue,
+}
 fn reply(request_id: String, result: Result<serde_json::Value>) -> Response {
     match result {
         Ok(data) => Response {
@@ -447,8 +457,8 @@ fn dispatch(
     op: Operation,
 ) -> Result<serde_json::Value> {
     match op {
-        Operation::Doctor => doctor(),
-        Operation::BackendList => Ok(backends()),
+        Operation::Doctor {} => doctor(),
+        Operation::BackendList {} => Ok(backends()),
         Operation::Validate { case } => {
             case.validate()?;
             Ok(
@@ -875,16 +885,29 @@ pub fn serve_authorized(
                     .read_until(b'\n', &mut bytes);
                 let response = match result {
                     Ok(_) if bytes.len() as u64 <= MAX_MESSAGE && bytes.last() == Some(&b'\n') => {
-                        match serde_json::from_slice::<WorkerRequest>(&bytes) {
+                        match serde_json::from_slice::<IncomingEnvelope<'_>>(&bytes) {
                             Ok(request) => {
-                                let result = if request.protocol_version != PROTOCOL_VERSION
-                                    || !token(&request.request_id)
-                                {
-                                    Err(invalid("protocol version/request ID"))
+                                if !token(&request.request_id) {
+                                    reply("invalid".into(), Err(invalid("protocol request ID")))
                                 } else {
-                                    dispatch(&store, &profile, authority.as_ref(), request.request)
-                                };
-                                reply(request.request_id, result)
+                                    let result = if request.protocol_version != PROTOCOL_VERSION {
+                                        Err(invalid("protocol version"))
+                                    } else {
+                                        serde_json::from_str::<Operation>(request.request.get())
+                                            .map_err(|error| {
+                                                invalid(format!("operation schema: {error}"))
+                                            })
+                                            .and_then(|operation| {
+                                                dispatch(
+                                                    &store,
+                                                    &profile,
+                                                    authority.as_ref(),
+                                                    operation,
+                                                )
+                                            })
+                                    };
+                                    reply(request.request_id, result)
+                                }
                             }
                             Err(e) => reply("invalid".into(), Err(e.into())),
                         }

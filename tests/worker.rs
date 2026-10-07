@@ -205,6 +205,54 @@ fn worker_rejects_approval_drift_unknown_operations_and_gpu_fallback() {
 }
 
 #[test]
+fn invalid_operation_inputs_keep_the_valid_protocol_identity_and_never_dispatch() {
+    use std::io::{BufRead, Write};
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("state");
+    let _worker = start(&root);
+    let socket = root.join("worker.sock");
+    for body in [
+        r#"{"operation":"doctor","unexpected":null}"#,
+        r#"{"operation":"unknown"}"#,
+        r#"{"operation":"doctor","operation":"doctor"}"#,
+        r#"{"operation":"validate","case":null}"#,
+    ] {
+        let payload = format!(
+            "{{\"protocol_version\":1,\"request_id\":\"schema-rejection\",\"request\":{body}}}\n"
+        );
+        let mut stream = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+        stream.write_all(payload.as_bytes()).unwrap();
+        let mut reply = String::new();
+        std::io::BufReader::new(stream)
+            .read_line(&mut reply)
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_str(&reply).unwrap();
+        assert_eq!(response["request_id"], "schema-rejection", "{response}");
+        assert_eq!(response["protocol_version"], 1);
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "invalid_input");
+    }
+    // Ambiguous/malformed envelopes cannot supply an authenticated request identity.
+    for payload in [
+        r#"{"protocol_version":1,"request_id":"a","request_id":"b","request":{"operation":"doctor"}}"#,
+        r#"{"protocol_version":1,"request_id":"not/a/token","request":{"operation":"doctor"}}"#,
+        r#"{"protocol_version":1,"request_id":"x","extra":null,"request":{"operation":"doctor"}}"#,
+    ] {
+        let mut stream = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+        stream.write_all(format!("{payload}\n").as_bytes()).unwrap();
+        let mut reply = String::new();
+        std::io::BufReader::new(stream)
+            .read_line(&mut reply)
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_str(&reply).unwrap();
+        assert_eq!(response["request_id"], "invalid");
+        assert_eq!(response["ok"], false);
+    }
+    assert!(Store::open(&root).unwrap().active().unwrap().is_empty());
+    assert!(request(&socket, Operation::Doctor {}).unwrap().ok);
+}
+
+#[test]
 fn artifact_pages_fit_transport_and_retain_every_shard() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("state");

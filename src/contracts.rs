@@ -1843,8 +1843,8 @@ pub struct HostExecutionProfile {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
-    Doctor,
-    BackendList,
+    Doctor {},
+    BackendList {},
     Validate {
         case: Box<CaseSpec>,
     },

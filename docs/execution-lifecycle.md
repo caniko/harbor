@@ -1,5 +1,14 @@
 # Job execution identity and retention
 
+## Strict request envelopes
+
+The worker validates the bounded protocol envelope before decoding the typed
+operation. A nested schema rejection retains the valid request ID and returns
+`invalid_input`, so CLI/MCP clients can correlate it without losing the actual
+reason. Raw operation JSON preserves duplicate-field detection. Empty
+`doctor`/`backend_list` operations reject extra fields as well. Ambiguous or
+malformed outer envelopes and invalid IDs never dispatch an operation.
+
 ## Version compatibility
 
 The existing `CaseSpec`, `ExecutionPlan`, and `HostExecutionProfile` version-1
