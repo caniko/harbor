@@ -64,6 +64,34 @@ fn hip_binding_cannot_reuse_the_historical_generic_native_policy() {
 }
 
 #[test]
+fn freezing_binding_cannot_reuse_wetting_or_generic_native_sandbox_policy() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runner = temporary.path().join("runner");
+    fs::write(&runner, b"binding-only fixture; never executed").unwrap();
+    let plan = ExecutionPlan::freezing_reference(
+        serde_json::from_str(include_str!("../examples/freezing-reference.json")).unwrap(),
+        "research".into(),
+    )
+    .unwrap();
+    let approved = plan.id().unwrap();
+    let mut profile = profile();
+    profile.policy = "research".into();
+    let binding = ExecutionBinding::capture(&plan, &profile, &runner, BTreeMap::new()).unwrap();
+    assert_eq!(binding.sandbox_policy, harbor_cad::freezing::SANDBOX_POLICY);
+    binding.verify(&plan, &profile).unwrap();
+    for foreign in [
+        SANDBOX_POLICY,
+        WETTING_SANDBOX_POLICY,
+        THERMAL_SANDBOX_POLICY,
+    ] {
+        let mut changed = binding.clone();
+        changed.sandbox_policy = foreign.into();
+        assert!(changed.verify(&plan, &profile).is_err());
+    }
+    assert_eq!(plan.id().unwrap(), approved);
+}
+
+#[test]
 fn legacy_plan_profile_and_export_keep_exact_identities_without_inventing_execution_binding() {
     let temporary = tempfile::tempdir().unwrap();
     let store = Store::open(&temporary.path().join("state")).unwrap();

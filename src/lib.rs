@@ -15,6 +15,7 @@ pub mod fields;
 pub mod filters;
 pub mod frames;
 pub mod freezing;
+mod freezing_fields;
 pub mod lifecycle;
 pub mod materials;
 mod measurements;

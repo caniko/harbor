@@ -1,3 +1,4 @@
+use harbor_cad::contracts::{CaseSpec, ExecutionPlan, StageOperation};
 use harbor_cad::freezing::FreezingReferenceSpec;
 
 fn fixture() -> FreezingReferenceSpec {
@@ -94,4 +95,82 @@ fn freezing_contract_rejects_missing_physics_nonconduction_and_weakened_acceptan
     changed = fixture();
     changed.density_kg_m3 = f64::MIN_POSITIVE / 1000.;
     assert!(changed.scale().is_err());
+}
+
+#[test]
+fn version_twelve_freezing_plan_binds_native_times_geometry_and_conservative_allocated_resources() {
+    let spec = fixture();
+    let plan = ExecutionPlan::freezing_reference(spec.clone(), "research".into()).unwrap();
+    assert_eq!(plan.schema_version, 12);
+    assert_eq!(plan.stages[0].operation, StageOperation::FreezingReference);
+    assert_eq!(plan.observation.retained_times_s, spec.times_s().unwrap());
+    assert!(plan.stages[0].ram_bytes >= 512 * 1024 * 1024);
+    assert_eq!(plan.stages[0].vram_bytes, 0);
+    let wire = serde_json::to_value(&plan).unwrap();
+    assert!(wire.get("case").is_none());
+    assert_eq!(
+        serde_json::from_value::<ExecutionPlan>(wire.clone())
+            .unwrap()
+            .id()
+            .unwrap(),
+        plan.id().unwrap()
+    );
+    for key in [
+        "case",
+        "thermal",
+        "wetting",
+        "contact",
+        "thermal_contact",
+        "source",
+        "frames",
+        "cad_source",
+        "imported_fem",
+        "filter",
+        "fem",
+    ] {
+        let mut changed = wire.clone();
+        changed[key] = serde_json::Value::Null;
+        assert!(
+            serde_json::from_value::<ExecutionPlan>(changed).is_err(),
+            "{key}"
+        );
+    }
+    let mut larger = spec.clone();
+    larger.resolution *= 2;
+    larger.steps *= 4;
+    larger.observation_steps = larger.observation_steps.iter().map(|n| n * 4).collect();
+    let mut changed = plan.clone();
+    changed.freezing = Some(larger.clone());
+    assert!(
+        changed.validate().is_err(),
+        "original geometry estimates must not authorize refinement"
+    );
+    let finer = ExecutionPlan::freezing_reference(larger, "research".into()).unwrap();
+    assert_eq!(
+        finer.observation.retained_times_s,
+        plan.observation.retained_times_s
+    );
+    assert!(finer.observation.max_artifact_bytes > plan.observation.max_artifact_bytes);
+    assert!(finer.stages[0].ram_bytes > plan.stages[0].ram_bytes);
+    assert_ne!(finer.science_id().unwrap(), plan.science_id().unwrap());
+    for mutate in 0..4 {
+        let mut changed = plan.clone();
+        match mutate {
+            0 => changed.observation.retained_times_s[1] *= 0.5,
+            1 => changed.stages[0].ram_bytes = 1,
+            2 => changed.stages[1].dependencies.clear(),
+            _ => changed.observation.checkpoint_times_s = vec![0.],
+        }
+        assert!(changed.validate().is_err());
+    }
+    let mut old = ExecutionPlan::reference(CaseSpec::reference()).unwrap();
+    let original_id = old.id().unwrap();
+    let mut injected = serde_json::to_value(&old).unwrap();
+    injected["freezing"] = serde_json::to_value(&spec).unwrap();
+    assert!(serde_json::from_value::<ExecutionPlan>(injected).is_err());
+    old.freezing = Some(spec);
+    assert!(old.validate().is_err());
+    assert!(old.science_id().is_err());
+    old.freezing = None;
+    assert_eq!(old.id().unwrap(), original_id);
 }

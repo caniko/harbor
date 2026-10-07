@@ -133,6 +133,11 @@ def build_server(profile: str) -> MCPServer:
             return await request("validate_freezing_reference", spec=spec)
 
         @server.tool()
+        async def case_plan_freezing_reference(spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan immutable CPU conduction solidification with bounded originals; no implicit retained-water transfer."""
+            return await request("plan_freezing_reference", spec=spec)
+
+        @server.tool()
         async def case_plan_fem_reference(spec: dict[str, Any]) -> dict[str, Any]:
             """Plan an explicit static synthetic CPU FEM job; no native imports or solve."""
             return await request("plan_fem_reference", spec=spec)

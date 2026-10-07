@@ -158,6 +158,7 @@ impl crate::contracts::ExecutionPlan {
             wetting: None,
             contact: Some(spec),
             thermal_contact: None,
+            freezing: None,
             source: None,
             frames: None,
             filter: None,

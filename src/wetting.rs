@@ -43,6 +43,7 @@ impl ExecutionPlan {
             wetting: Some(spec),
             contact: None,
             thermal_contact: None,
+            freezing: None,
             source: None,
             frames: None,
             filter: None,

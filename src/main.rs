@@ -101,6 +101,12 @@ enum Case {
     ValidateFreezingReference {
         file: PathBuf,
     },
+    /// Plan immutable native CPU solidification, independent of retained-water transfer.
+    PlanFreezingReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     /// Plan two native thermal histories, conservative projection and static contact.
     PlanThermalContact {
         file: PathBuf,
@@ -332,6 +338,10 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Case { command } => match command {
             Case::PlanThermalReference { file, policy } => {
                 let plan = ExecutionPlan::thermal_reference(read(&file)?, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Case::PlanFreezingReference { file, policy } => {
+                let plan = ExecutionPlan::freezing_reference(read(&file)?, policy)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
             }
             Case::PlanWettingReference { file, policy } => {

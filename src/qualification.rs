@@ -256,6 +256,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                 "stages/wetting/verified-wetting-receipt.json",
                 Some("OpenLB"),
             ),
+            StageOperation::FreezingReference => {
+                ("stages/freezing/freezing-receipt.json", Some("OpenLB"))
+            }
             StageOperation::ContactReference => {
                 ("stages/contact/contact-receipt.json", Some("CalculiX"))
             }
@@ -288,6 +291,8 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                 spec.formulation.clone()
             } else if let Some(spec) = &plan.wetting {
                 spec.formulation.clone()
+            } else if let Some(spec) = &plan.freezing {
+                spec.formulation.clone()
             } else if let Some(spec) = &plan.imported_fem {
                 spec.formulation()
             } else if let Some(source) = &plan.cad_source {
@@ -306,7 +311,7 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     |t| Ok(t.formulation.clone()),
                 )?
             },
-            dimensions: if plan.wetting.is_some() {
+            dimensions: if plan.wetting.is_some() || plan.freezing.is_some() {
                 2
             } else {
                 plan.case
@@ -323,6 +328,8 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             } else if let Some(spec) = &plan.contact {
                 spec.resolution
             } else if let Some(spec) = &plan.wetting {
+                spec.resolution
+            } else if let Some(spec) = &plan.freezing {
                 spec.resolution
             } else if let Some(source) = &plan.cad_source {
                 source.geometry.resolution
@@ -556,6 +563,12 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     capability.numerical_evidence =
                         Some(crate::wetting::verify_receipt(&plan, &root, &value)?);
                     capability.numerical_verification = EvidenceState::ReportedPass;
+                } else if stage.operation == StageOperation::FreezingReference {
+                    capability.numerical_evidence = Some(crate::freezing::verify_registered(
+                        store, id, &plan, &value,
+                    )?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                    capability.convergence = "one declared grid; equal-physical-time native spatial refinement assessed separately".into();
                 } else {
                     (
                         capability.numerical_verification,

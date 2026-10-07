@@ -4,6 +4,164 @@ use crate::{Result, contracts::invalid, moisture_results::NativeMoistureAssessme
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub const SANDBOX_POLICY: &str = "harbor-cad-freezing-cpu-v1";
+const FIELD_UNITS: &str =
+    "i:1,j:1,x_m:m,y_m:m,material:1,specific_enthalpy_j_kg:J/kg,temperature_k:K,liquid_fraction:1";
+
+pub(crate) fn annotate_fields(
+    plan: &crate::contracts::ExecutionPlan,
+    artifacts: &mut [crate::contracts::ArtifactManifest],
+) -> Result<()> {
+    let Some(spec) = &plan.freezing else {
+        return Ok(());
+    };
+    let scale = spec.scale()?;
+    for step in &spec.observation_steps {
+        for extension in ["csv", "vti"] {
+            let path = format!("stages/freezing/freezing-{step}.{extension}");
+            let records = artifacts
+                .iter_mut()
+                .filter(|a| a.path == path)
+                .collect::<Vec<_>>();
+            if records.len() != 1 {
+                return Err(invalid(
+                    "each approved freezing CSV/VTK observation must be registered exactly once",
+                ));
+            }
+            for record in records {
+                if record.format != extension
+                    || record.bytes == 0
+                    || record.bytes > 16 * 1024 * 1024
+                {
+                    return Err(invalid("bounded freezing field artifact required"));
+                }
+                record.time_s = Some(*step as f64 * scale.physical_step_s);
+                record.association = Some("native_lattice_point".into());
+                record.units = Some(FIELD_UNITS.into());
+                record.provenance = format!(
+                    "complete original OpenLB Float64 enthalpy/temperature/phase fields at native step {step}; CSV is authoritative and VTK preserves all point values; boundary nodes have zero mass; interior control volume dx^2*extrusion from native-freezing-request.json; synthetic conduction reference"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_registered(
+    store: &crate::storage::Store,
+    id: &str,
+    plan: &crate::contracts::ExecutionPlan,
+    value: &serde_json::Value,
+) -> Result<crate::qualification::NumericalEvidence> {
+    let spec = plan
+        .freezing
+        .as_ref()
+        .ok_or_else(|| invalid("approved freezing recipe required"))?;
+    let hashes = value["original_files_sha256"]
+        .as_object()
+        .ok_or_else(|| invalid("original freezing/export hashes required"))?;
+    let root = store.job_dir(id)?;
+    let mut records = Vec::new();
+    for (name, hash) in hashes {
+        let path = format!("stages/freezing/{name}");
+        let record = store
+            .artifact_record(id, &path)?
+            .ok_or_else(|| invalid("registered original freezing artifact absent"))?;
+        let observed = crate::storage::native_manifest(
+            &root,
+            &path,
+            32 * 1024 * 1024,
+            "verify registered original freezing bytes",
+        )?;
+        if record.path != path
+            || record.bytes == 0
+            || record.bytes != observed.bytes
+            || record.sha256 != observed.sha256
+            || *hash != record.sha256
+        {
+            return Err(invalid(
+                "registered freezing originals or export bytes changed",
+            ));
+        }
+        records.push(record);
+    }
+    let recorded = records.clone();
+    annotate_fields(plan, &mut records)?;
+    if recorded
+        .iter()
+        .zip(&records)
+        .any(|(a, b)| a.time_s != b.time_s || a.association != b.association || a.units != b.units)
+    {
+        return Err(invalid(
+            "registered freezing field time, units or association changed",
+        ));
+    }
+    crate::freezing_fields::verify(
+        spec,
+        &crate::storage::safe_path(&root, "stages/freezing")?,
+        value,
+    )
+}
+
+impl crate::contracts::ExecutionPlan {
+    pub fn freezing_reference(spec: FreezingReferenceSpec, policy: String) -> Result<Self> {
+        use crate::contracts::*;
+        spec.scale()?;
+        let mut plan = Self {
+            schema_version: 12,
+            case: None,
+            source: None,
+            frames: None,
+            filter: None,
+            fem: None,
+            thermal: None,
+            cad_source: None,
+            imported_fem: None,
+            wetting: None,
+            contact: None,
+            thermal_contact: None,
+            observation: ObservationPlan {
+                retained_times_s: spec.times_s()?,
+                metrics: vec![],
+                probes: vec![],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 0,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            freezing: Some(spec),
+            stages: vec![
+                Stage {
+                    id: "freezing".into(),
+                    dependencies: vec![],
+                    operation: StageOperation::FreezingReference,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 0,
+                    vram_bytes: 0,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec!["freezing".into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 0,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            fleetix_revision: FLEETIX_REV.into(),
+            fleetix_contract_digest: fleetix_digest(),
+            policy,
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FreezingReferenceSpec {
@@ -51,6 +209,39 @@ pub struct FreezingScale {
 }
 
 impl FreezingReferenceSpec {
+    pub fn times_s(&self) -> Result<Vec<f64>> {
+        let scale = self.scale()?;
+        Ok(self
+            .observation_steps
+            .iter()
+            .map(|step| *step as f64 * scale.physical_step_s)
+            .collect())
+    }
+    pub(crate) fn validate_plan(&self, plan: &crate::contracts::ExecutionPlan) -> Result<()> {
+        use crate::contracts::StageOperation;
+        self.scale()?;
+        if plan.policy == "ci"
+            || plan.stages.len() != 2
+            || plan.stages[0].id != "freezing"
+            || plan.stages[1].id != "bundle"
+            || plan.stages[0].operation != StageOperation::FreezingReference
+            || plan.stages[1].operation != StageOperation::Bundle
+            || !plan.stages[0].dependencies.is_empty()
+            || plan.stages[1].dependencies != ["freezing"]
+            || !plan.transfers.is_empty()
+            || !plan.observation.metrics.is_empty()
+            || !plan.observation.probes.is_empty()
+            || plan.observation.retained_times_s != self.times_s()?
+            || !plan.observation.checkpoint_times_s.is_empty()
+            || !plan.observation.preview_times_s.is_empty()
+            || plan.observation.preview_may_drop
+        {
+            return Err(invalid(
+                "exact independent version-12 CPU solidification DAG and native physical observations required",
+            ));
+        }
+        Ok(())
+    }
     pub fn inspect(&self) -> Result<serde_json::Value> {
         let scale = self.scale()?;
         Ok(serde_json::json!({"valid":true,"executed":false,

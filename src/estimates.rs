@@ -199,6 +199,25 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 add(512 * MIB, multiply(cells, 4096)?)?
             }
             StageOperation::Bundle => 16 * MIB,
+            StageOperation::FreezingReference => {
+                let spec = plan
+                    .freezing
+                    .as_ref()
+                    .ok_or_else(|| invalid("freezing resource recipe required"))?;
+                spec.scale()?;
+                let n = u64::from(spec.resolution);
+                let cells = multiply(add(n, 5)?, add(n / 8, 4)?)?;
+                // D2Q5 enthalpy and frozen D2Q9 phase-coupling lattice, both
+                // Float64, complete halos/fields and independent CSV/XML copies.
+                output = add(
+                    output,
+                    add(
+                        multiply(spec.steps, 128)?,
+                        multiply(multiply(cells, 512)?, snapshots)?,
+                    )?,
+                )?;
+                add(512 * MIB, multiply(cells, 4096)?)?
+            }
         };
         stages.push(StageMinimum {
             ram_bytes: ram,

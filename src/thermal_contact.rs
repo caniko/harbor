@@ -246,6 +246,7 @@ impl ExecutionPlan {
                 preview_may_drop: false,
             },
             thermal_contact: Some(spec),
+            freezing: None,
             fleetix_revision: FLEETIX_REV.into(),
             fleetix_contract_digest: fleetix_digest(),
             policy,

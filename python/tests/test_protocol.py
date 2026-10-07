@@ -305,6 +305,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_contact_reference" in names
                 assert "case_plan_thermal_contact" in names
                 assert "freezing_reference_validate" in names
+                assert "case_plan_freezing_reference" in names
                 frozen = await client.call_tool(
                     "freezing_reference_validate", {"spec": freezing}
                 )
@@ -318,6 +319,11 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 )
                 assert rejected_freezing.is_error
                 assert "invalid_input" in str(rejected_freezing.content)
+                rejected_native_plan = await client.call_tool(
+                    "case_plan_freezing_reference", {"spec": freezing}
+                )
+                assert rejected_native_plan.is_error
+                assert "invalid_input" in str(rejected_native_plan.content)
                 from test_thermal_contact import fixture as coupling_fixture
 
                 coupling = await client.call_tool(

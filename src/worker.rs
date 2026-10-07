@@ -176,6 +176,7 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
                 StageOperation::FemReference
                     | StageOperation::ThermalReference
                     | StageOperation::WettingReference
+                    | StageOperation::FreezingReference
                     | StageOperation::ContactReference
                     | StageOperation::CadMesh
                     | StageOperation::FemImported
@@ -476,6 +477,10 @@ fn dispatch(
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
         Operation::ValidateFreezingReference { spec } => spec.inspect(),
+        Operation::PlanFreezingReference { spec } => {
+            let plan = ExecutionPlan::freezing_reference(*spec, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
             ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
         )?),
@@ -553,6 +558,7 @@ fn dispatch(
                 || plan.thermal.is_some()
                 || plan.cad_source.is_some()
                 || plan.wetting.is_some()
+                || plan.freezing.is_some()
                 || plan.thermal_contact.is_some()
                 || plan.contact.is_some())
                 && authority.is_none()
@@ -610,6 +616,7 @@ fn dispatch(
                             StageOperation::FemReference
                                 | StageOperation::ThermalReference
                                 | StageOperation::WettingReference
+                                | StageOperation::FreezingReference
                                 | StageOperation::ContactReference
                                 | StageOperation::CadMesh
                                 | StageOperation::FemImported
@@ -619,6 +626,8 @@ fn dispatch(
                                     "contact_closure"
                                 } else if stage.operation == StageOperation::WettingReference {
                                     "wetting_closure"
+                                } else if stage.operation == StageOperation::FreezingReference {
+                                    "freezing_closure"
                                 } else if stage.operation == StageOperation::FemImported {
                                     "fem_imported_closure"
                                 } else if stage.operation == StageOperation::CadMesh {
@@ -934,6 +943,7 @@ pub fn backends() -> serde_json::Value {
         {"adapter":"gmsh_cad_mesh","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["imported_axis_aligned_box"],"plan_schema_version":7,"scope":"named BREP/source-unit/world-placement correspondence; approved retained-source worker; no solver or contact conclusion; exact job qualification required","reference_evidence":"docs/cad-mesh.md"},
         {"adapter":"calculix_imported","backend":"cpu","runtime":"unqualified","precision":"float64","formulations":["thermal_boundary","free_expansion"],"factorization":"SPOOLES","plan_schema_version":8,"scope":"controlled synthetic imported box with explicit world-origin analytical reference; approved retained-source worker; exact job qualification required","reference_evidence":"docs/fem-imported.md"},
         {"adapter":"openlb_wetting","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"well_balanced_contact_angle_2d","plan_schema_version":9,"scope":"synthetic equal-property wall-centered initial half-circle; retained original phase/velocity fields; separate mass, angle, settling and refinement gates","reference_evidence":"docs/wetting-reference.md"},
+        {"adapter":"openlb_freezing","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"conduction_stefan_solidification_2d","plan_schema_version":12,"scope":"synthetic equal-phase fixed-volume conduction; complete original enthalpy/temperature/phase fields and boundary-energy ledger; no expansion or retained-water transfer","reference_evidence":"docs/freezing-reference.md"},
         {"adapter":"calculix_contact","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"planar_linear_penalty_contact","plan_schema_version":10,"scope":"synthetic zero-Poisson two-block preload and uniform thermal expansion/opening; independent original DAT force/stress/displacement and gap checks","reference_evidence":"docs/contact-reference.md"},
         {"adapter":"thermal_contact","backend":"cpu","runtime":"unqualified","precision":"float64","formulation":"one_way_native_capacitance_projection_to_planar_contact","plan_schema_version":11,"scope":"independent native thermal histories; complete C3D8 capacitance projection with explicit pointwise loss; derived uniform contact temperatures and original six-surface moisture; exact job qualification required","reference_evidence":"docs/contact-reference.md"},
         {"adapter":"paraview","backend":"egl","runtime":"unqualified"},
@@ -977,6 +987,10 @@ struct NativeRuntime {
     #[serde(default)]
     wetting_closure: Option<String>,
     #[serde(default)]
+    freezing: Option<String>,
+    #[serde(default)]
+    freezing_closure: Option<String>,
+    #[serde(default)]
     contact: Option<String>,
     #[serde(default)]
     contact_closure: Option<String>,
@@ -995,6 +1009,7 @@ impl NativeRuntime {
             StageOperation::FemReference => &self.fem_closure,
             StageOperation::ThermalReference => &self.thermal_closure,
             StageOperation::WettingReference => &self.wetting_closure,
+            StageOperation::FreezingReference => &self.freezing_closure,
             StageOperation::ContactReference => &self.contact_closure,
             StageOperation::CadMesh => &self.cad_mesh_closure,
             StageOperation::FemImported => &self.fem_imported_closure,
@@ -1046,6 +1061,9 @@ impl NativeRuntime {
             })?,
             StageOperation::WettingReference => self.wetting.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU wetting adapter absent from selected runtime".into())
+            })?,
+            StageOperation::FreezingReference => self.freezing.as_deref().ok_or_else(|| {
+                Error::Unqualified("CPU solidification adapter absent from selected runtime".into())
             })?,
             StageOperation::ContactReference => self.contact.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU contact adapter absent from selected runtime".into())
@@ -1157,6 +1175,7 @@ fn native_stage(
         StageOperation::FemReference
             | StageOperation::ThermalReference
             | StageOperation::WettingReference
+            | StageOperation::FreezingReference
             | StageOperation::ContactReference
             | StageOperation::CadMesh
             | StageOperation::FemImported
@@ -1176,6 +1195,11 @@ fn native_stage(
                 "/wetting-runtime-closure.txt",
                 "HARBOR_CAD_WETTING_POLICY",
                 crate::execution::WETTING_SANDBOX_POLICY,
+            ),
+            StageOperation::FreezingReference => (
+                "/freezing-runtime-closure.txt",
+                "HARBOR_CAD_FREEZING_POLICY",
+                crate::freezing::SANDBOX_POLICY,
             ),
             StageOperation::ContactReference => (
                 "/contact-runtime-closure.txt",
@@ -1347,6 +1371,8 @@ fn native_stage(
             "thermal-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::WettingReference) {
             "verified-wetting-receipt.json".into()
+        } else if matches!(stage.operation, StageOperation::FreezingReference) {
+            "freezing-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::ContactReference) {
             "contact-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::CadMesh) {
@@ -1378,6 +1404,8 @@ fn native_stage(
                 "native-thermal-request.json".into()
             } else if matches!(stage.operation, StageOperation::WettingReference) {
                 "native-wetting-request.json".into()
+            } else if matches!(stage.operation, StageOperation::FreezingReference) {
+                "native-freezing-request.json".into()
             } else if matches!(stage.operation, StageOperation::ContactReference) {
                 "native-contact-request.json".into()
             } else if matches!(stage.operation, StageOperation::CadMesh) {
@@ -1398,6 +1426,7 @@ fn native_stage(
                 StageOperation::FemReference
                     | StageOperation::FemImported
                     | StageOperation::WettingReference
+                    | StageOperation::FreezingReference
                     | StageOperation::ContactReference
             ) {
                 "reference"
@@ -1469,6 +1498,15 @@ fn native_stage(
     }
     if matches!(stage.operation, StageOperation::WettingReference) {
         crate::wetting::verify_receipt(plan, dir, &evidence)?;
+    }
+    if stage.operation == StageOperation::FreezingReference {
+        crate::freezing_fields::verify(
+            plan.freezing
+                .as_ref()
+                .ok_or_else(|| invalid("approved solidification recipe required"))?,
+            dir,
+            &evidence,
+        )?;
     }
     if matches!(stage.operation, StageOperation::ContactReference) {
         let coupled = if let Some(spec) = &plan.thermal_contact {
@@ -1573,6 +1611,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::FemReference => "CalculiX",
         StageOperation::ThermalReference => "CalculiX",
         StageOperation::WettingReference => "OpenLB",
+        StageOperation::FreezingReference => "OpenLB",
         StageOperation::ContactReference => "CalculiX",
         StageOperation::CadMesh => "Gmsh",
         StageOperation::FemImported => "CalculiX",
@@ -1920,6 +1959,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         plan.observation.max_artifact_bytes,
                     )?;
                     crate::wetting::annotate_fields(&plan, &mut artifacts)?;
+                    crate::freezing::annotate_fields(&plan, &mut artifacts)?;
                     crate::contact::annotate_fields(&plan, &mut artifacts);
                     for artifact in artifacts {
                         store.add_artifact(id, &artifact)?;
@@ -2051,6 +2091,16 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         .ok_or_else(|| invalid("contact recipe required"))?;
                     store.add_artifact(id, &commit_artifact(&dir,"native-contact-request.json",&serde_json::to_vec(spec)?,"json","exact approved synthetic SI planar contact/preload/temperature inputs; two static parameters without inferred physical time")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if stage.operation == StageOperation::FreezingReference {
+                    let working = native_work.join("stages/freezing");
+                    private_dir(&working)?;
+                    let spec = plan
+                        .freezing
+                        .as_ref()
+                        .ok_or_else(|| invalid("approved solidification recipe required"))?;
+                    store.add_artifact(id, &commit_artifact(&dir, "native-freezing-request.json",
+                        &serde_json::to_vec(spec)?, "json", "exact synthetic SI total-enthalpy solidification inputs, nodal control volumes and retained physical times")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if matches!(stage.operation, StageOperation::FemImported) {
                     let working = native_work.join("stages/fem-imported");
                     private_dir(&working)?;
@@ -2104,6 +2154,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         let mut artifacts =
             ingest_native_tree(&native_work, &dir, plan.observation.max_artifact_bytes)?;
         crate::wetting::annotate_fields(&plan, &mut artifacts)?;
+        crate::freezing::annotate_fields(&plan, &mut artifacts)?;
         crate::contact::annotate_fields(&plan, &mut artifacts);
         for artifact in artifacts {
             store.add_artifact(id, &artifact)?;
@@ -2175,7 +2226,7 @@ mod tests {
     }
 
     #[test]
-    fn wetting_and_coupling_require_shared_authority_before_runtime_resolution() {
+    fn wetting_freezing_and_coupling_require_shared_authority_before_runtime_resolution() {
         let spec=serde_json::from_value(serde_json::json!({"schema_version":1,"synthetic":true,"backend":"cpu","formulation":"well_balanced_contact_angle_2d","diameter_m":48e-6,"initial_center_above_wall_m":0.,"resolution":24,"interface_width_m":6e-6,"density_liquid_kg_m3":1000.,"density_vapor_kg_m3":1000.,"viscosity_liquid_m2_s":1e-6,"viscosity_vapor_m2_s":1e-6,"surface_tension_n_m":1e-4,"contact_angle_deg":90.,"phase_relaxation_time":1.,"steps":100,"observation_steps":[0,100],"mass_tolerance":1e-3,"angle_tolerance_deg":5.,"material_provenance":"synthetic","boundary_provenance":"planar"})).unwrap();
         let plan = ExecutionPlan::wetting_reference(spec, "research".into()).unwrap();
         let root = tempfile::tempdir().unwrap();
@@ -2196,7 +2247,12 @@ mod tests {
             "research".into(),
         )
         .unwrap();
-        for plan in [plan, coupling] {
+        let freezing = ExecutionPlan::freezing_reference(
+            serde_json::from_str(include_str!("../examples/freezing-reference.json")).unwrap(),
+            "research".into(),
+        )
+        .unwrap();
+        for plan in [plan, coupling, freezing] {
             let request = crate::contracts::Operation::Submit {
                 approved_digest: plan.id().unwrap(),
                 plan: Box::new(plan),
