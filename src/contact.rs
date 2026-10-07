@@ -157,6 +157,7 @@ impl crate::contracts::ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: Some(spec),
+            thermal_contact: None,
             source: None,
             frames: None,
             filter: None,
@@ -329,7 +330,7 @@ pub(crate) fn annotate_fields(
     plan: &crate::contracts::ExecutionPlan,
     artifacts: &mut [crate::contracts::ArtifactManifest],
 ) {
-    if plan.contact.is_none() {
+    if plan.contact.is_none() && plan.thermal_contact.is_none() {
         return;
     }
     for artifact in artifacts {

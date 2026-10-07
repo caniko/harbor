@@ -9,6 +9,10 @@ from pathlib import Path
 MAX_MESSAGE = 65536
 
 
+class WorkerError(ValueError):
+    """An anticipated typed rejection returned by the local Rust worker."""
+
+
 async def request(operation: str, **payload: object) -> dict:
     path = os.environ.get("HARBOR_CAD_SOCKET")
     if not path:
@@ -46,7 +50,7 @@ async def request(operation: str, **payload: object) -> dict:
             raise ValueError("worker response identity/version mismatch")
         if not response.get("ok"):
             error = response.get("error", {})
-            raise ValueError(
+            raise WorkerError(
                 f"{error.get('code', 'worker_error')}: {error.get('message', '')}"
             )
         return response["data"]

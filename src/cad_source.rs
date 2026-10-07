@@ -32,6 +32,7 @@ impl ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: None,
+            thermal_contact: None,
             source: None,
             frames: None,
             filter: None,

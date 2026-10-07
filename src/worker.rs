@@ -137,7 +137,9 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
         }
         if !matches!(
             stage.operation,
-            StageOperation::ChannelReference | StageOperation::Bundle
+            StageOperation::ChannelReference
+                | StageOperation::Bundle
+                | StageOperation::ThermalProjection
         ) {
             if profile.service_mode != "systemd" {
                 return Err(Error::Unqualified(
@@ -469,6 +471,10 @@ fn dispatch(
             let plan = ExecutionPlan::contact_reference(*spec, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::PlanThermalContact { spec } => {
+            let plan = ExecutionPlan::thermal_contact(*spec, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
             ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
         )?),
@@ -546,6 +552,7 @@ fn dispatch(
                 || plan.thermal.is_some()
                 || plan.cad_source.is_some()
                 || plan.wetting.is_some()
+                || plan.thermal_contact.is_some()
                 || plan.contact.is_some())
                 && authority.is_none()
             {
@@ -576,7 +583,9 @@ fn dispatch(
                 for stage in &plan.stages {
                     if !matches!(
                         stage.operation,
-                        StageOperation::Bundle | StageOperation::ChannelReference
+                        StageOperation::Bundle
+                            | StageOperation::ChannelReference
+                            | StageOperation::ThermalProjection
                     ) {
                         files.insert(
                             serde_json::to_string(&stage.operation)?,
@@ -605,15 +614,15 @@ fn dispatch(
                                 | StageOperation::FemImported
                         ) {
                             files.insert(
-                                if plan.contact.is_some() {
+                                if stage.operation == StageOperation::ContactReference {
                                     "contact_closure"
-                                } else if plan.wetting.is_some() {
+                                } else if stage.operation == StageOperation::WettingReference {
                                     "wetting_closure"
-                                } else if plan.imported_fem.is_some() {
+                                } else if stage.operation == StageOperation::FemImported {
                                     "fem_imported_closure"
-                                } else if plan.cad_source.is_some() {
+                                } else if stage.operation == StageOperation::CadMesh {
                                     "cad_mesh_closure"
-                                } else if plan.thermal.is_some() {
+                                } else if stage.operation == StageOperation::ThermalReference {
                                     "thermal_closure"
                                 } else {
                                     "fem_closure"
@@ -1355,22 +1364,26 @@ fn native_stage(
         .args(["--ro-bind"])
         .arg(safe_path(
             &store.job_dir(id)?,
-            if matches!(stage.operation, StageOperation::NumericalFilter) {
-                "native-filter-request.json"
+            &if stage.operation == StageOperation::ThermalReference
+                && plan.thermal_contact.is_some()
+            {
+                format!("native-{}-request.json", stage.id)
+            } else if matches!(stage.operation, StageOperation::NumericalFilter) {
+                "native-filter-request.json".into()
             } else if matches!(stage.operation, StageOperation::FemReference) {
-                "native-fem-request.json"
+                "native-fem-request.json".into()
             } else if matches!(stage.operation, StageOperation::ThermalReference) {
-                "native-thermal-request.json"
+                "native-thermal-request.json".into()
             } else if matches!(stage.operation, StageOperation::WettingReference) {
-                "native-wetting-request.json"
+                "native-wetting-request.json".into()
             } else if matches!(stage.operation, StageOperation::ContactReference) {
-                "native-contact-request.json"
+                "native-contact-request.json".into()
             } else if matches!(stage.operation, StageOperation::CadMesh) {
-                "native-cad-mesh-request.json"
+                "native-cad-mesh-request.json".into()
             } else if matches!(stage.operation, StageOperation::FemImported) {
-                "native-fem-imported-request.json"
+                "native-fem-imported-request.json".into()
             } else {
-                "native-plan.json"
+                "native-plan.json".into()
             },
         )?)
         .arg("/plan.json");
@@ -1446,15 +1459,34 @@ fn native_stage(
         crate::fem::verify_receipt(plan, &evidence)?;
     }
     if matches!(stage.operation, StageOperation::ThermalReference) {
-        crate::thermal::verify_receipt(plan, &evidence)?;
+        if let Some(spec) = &plan.thermal_contact {
+            crate::thermal::verify_spec(spec.thermal_stage(&stage.id)?, &evidence)?;
+        } else {
+            crate::thermal::verify_receipt(plan, &evidence)?;
+        }
     }
     if matches!(stage.operation, StageOperation::WettingReference) {
         crate::wetting::verify_receipt(plan, dir, &evidence)?;
     }
     if matches!(stage.operation, StageOperation::ContactReference) {
+        let coupled = if let Some(spec) = &plan.thermal_contact {
+            Some(
+                crate::thermal_contact::derive(
+                    spec,
+                    id,
+                    dir.parent()
+                        .and_then(Path::parent)
+                        .ok_or_else(|| invalid("coupling native root"))?,
+                )?
+                .0,
+            )
+        } else {
+            None
+        };
         crate::contact::verify_native_outputs(
-            plan.contact
+            coupled
                 .as_ref()
+                .or(plan.contact.as_ref())
                 .ok_or_else(|| invalid("native contact recipe required"))?,
             dir,
             &evidence,
@@ -1862,6 +1894,22 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     )?,
                 )?;
             }
+            StageOperation::ThermalProjection => {
+                let spec = plan
+                    .thermal_contact
+                    .as_ref()
+                    .ok_or_else(|| invalid("approved native coupling required"))?;
+                let (_, report) = crate::thermal_contact::derive(spec, id, &native_work)?;
+                let working = native_work.join("stages/projection");
+                private_dir(&working)?;
+                commit_artifact(
+                    &working,
+                    "projection-receipt.json",
+                    &serde_json::to_vec_pretty(&report)?,
+                    "json",
+                    "source-bound complete native capacitance projection and original six-surface moisture assessments",
+                )?;
+            }
             StageOperation::Bundle => {
                 if native_pending {
                     let mut artifacts = ingest_native_tree(
@@ -1951,13 +1999,21 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     store.add_artifact(id,&commit_artifact(&dir,"native-fem-request.json",&serde_json::to_vec(spec)?,"json","exact SI native FEM descriptor; static solver parameter is not physical time")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if matches!(stage.operation, StageOperation::ThermalReference) {
-                    let working = native_work.join("stages/thermal");
+                    let name = if plan.thermal_contact.is_some() {
+                        stage.id.as_str()
+                    } else {
+                        "thermal"
+                    };
+                    let working = native_work.join(format!("stages/{name}"));
                     private_dir(&working)?;
-                    let spec = plan
-                        .thermal
-                        .as_ref()
-                        .ok_or_else(|| invalid("thermal recipe required"))?;
-                    store.add_artifact(id,&commit_artifact(&dir,"native-thermal-request.json",&serde_json::to_vec(spec)?,"json","exact SI prescribed thermal history; explicit native substeps and independent energy/retained output schedules")?)?;
+                    let spec = if let Some(coupling) = &plan.thermal_contact {
+                        coupling.thermal_stage(&stage.id)?
+                    } else {
+                        plan.thermal
+                            .as_ref()
+                            .ok_or_else(|| invalid("thermal recipe required"))?
+                    };
+                    store.add_artifact(id,&commit_artifact(&dir,&format!("native-{name}-request.json"),&serde_json::to_vec(spec)?,"json","exact SI prescribed thermal history; explicit native substeps and independent energy/retained output schedules")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if matches!(stage.operation, StageOperation::WettingReference) {
                     let working = native_work.join("stages/wetting");
@@ -1971,9 +2027,25 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                 } else if matches!(stage.operation, StageOperation::ContactReference) {
                     let working = native_work.join("stages/contact");
                     private_dir(&working)?;
-                    let spec = plan
-                        .contact
+                    let coupled = if let Some(spec) = &plan.thermal_contact {
+                        let (contact, report) =
+                            crate::thermal_contact::derive(spec, id, &native_work)?;
+                        let recorded: serde_json::Value = serde_json::from_slice(&read_bounded(
+                            &safe_path(&native_work, "stages/projection/projection-receipt.json")?,
+                            MAX_MESSAGE,
+                        )?)?;
+                        if recorded != report {
+                            return Err(invalid(
+                                "native sources or approved coupling projection changed before contact",
+                            ));
+                        }
+                        Some(contact)
+                    } else {
+                        None
+                    };
+                    let spec = coupled
                         .as_ref()
+                        .or(plan.contact.as_ref())
                         .ok_or_else(|| invalid("contact recipe required"))?;
                     store.add_artifact(id, &commit_artifact(&dir,"native-contact-request.json",&serde_json::to_vec(spec)?,"json","exact approved synthetic SI planar contact/preload/temperature inputs; two static parameters without inferred physical time")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
@@ -2101,7 +2173,7 @@ mod tests {
     }
 
     #[test]
-    fn wetting_submission_requires_shared_authority_before_runtime_resolution() {
+    fn wetting_and_coupling_require_shared_authority_before_runtime_resolution() {
         let spec=serde_json::from_value(serde_json::json!({"schema_version":1,"synthetic":true,"backend":"cpu","formulation":"well_balanced_contact_angle_2d","diameter_m":48e-6,"initial_center_above_wall_m":0.,"resolution":24,"interface_width_m":6e-6,"density_liquid_kg_m3":1000.,"density_vapor_kg_m3":1000.,"viscosity_liquid_m2_s":1e-6,"viscosity_vapor_m2_s":1e-6,"surface_tension_n_m":1e-4,"contact_angle_deg":90.,"phase_relaxation_time":1.,"steps":100,"observation_steps":[0,100],"mass_tolerance":1e-3,"angle_tolerance_deg":5.,"material_provenance":"synthetic","boundary_provenance":"planar"})).unwrap();
         let plan = ExecutionPlan::wetting_reference(spec, "research".into()).unwrap();
         let root = tempfile::tempdir().unwrap();
@@ -2117,18 +2189,25 @@ mod tests {
             native_runtime: None,
             service_mode: "systemd".into(),
         };
-        let request = crate::contracts::Operation::Submit {
-            approved_digest: plan.id().unwrap(),
-            plan: Box::new(plan),
-            idempotency_key: "no-authority".into(),
-        };
-        let error = super::dispatch(&store, &profile, None, request).unwrap_err();
-        assert!(
-            matches!(error, crate::Error::Unqualified(_))
-                && error.to_string().contains("authoritative"),
-            "{error}"
-        );
-        assert!(store.active().unwrap().is_empty());
+        let coupling = ExecutionPlan::thermal_contact(
+            serde_json::from_str(include_str!("../examples/thermal-contact.json")).unwrap(),
+            "research".into(),
+        )
+        .unwrap();
+        for plan in [plan, coupling] {
+            let request = crate::contracts::Operation::Submit {
+                approved_digest: plan.id().unwrap(),
+                plan: Box::new(plan),
+                idempotency_key: "no-authority".into(),
+            };
+            let error = super::dispatch(&store, &profile, None, request).unwrap_err();
+            assert!(
+                matches!(error, crate::Error::Unqualified(_))
+                    && error.to_string().contains("authoritative"),
+                "{error}"
+            );
+            assert!(store.active().unwrap().is_empty());
+        }
     }
 
     #[test]

@@ -7,8 +7,19 @@ import argparse
 from typing import Any
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
-from .client import request
+from .client import WorkerError
+from .client import request as worker_request
+
+
+async def request(operation: str, **payload: object) -> dict:
+    try:
+        return await worker_request(operation, **payload)
+    except WorkerError as error:
+        # The pinned SDK deliberately hides unexpected exceptions. Rust's
+        # bounded typed validation/admission failures are expected tool errors.
+        raise ToolError(str(error)) from error
 
 
 def build_server(profile: str) -> MCPServer:
@@ -140,6 +151,11 @@ def build_server(profile: str) -> MCPServer:
         async def case_plan_contact_reference(spec: dict[str, Any]) -> dict[str, Any]:
             """Plan synthetic planar CPU preload/thermal opening with explicit SI inputs and two static states; requires approval."""
             return await request("plan_contact_reference", spec=spec)
+
+        @server.tool()
+        async def case_plan_thermal_contact(spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan one-way native thermal, conservative projection and contact; submission requires explicit approval."""
+            return await request("plan_thermal_contact", spec=spec)
 
         @server.tool()
         async def filter_plan(request_spec: dict[str, Any]) -> dict[str, Any]:

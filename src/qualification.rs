@@ -224,6 +224,7 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         .transpose()?;
     let mut capabilities = Vec::new();
     for stage in &plan.stages {
+        let thermal_path = format!("stages/{}/thermal-receipt.json", stage.id);
         let (path, adapter) = match stage.operation {
             StageOperation::ChannelReference => ("validation.json", None),
             StageOperation::CadFixture => ("cad_fixture-receipt.json", Some("FreeCAD")),
@@ -243,15 +244,23 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::FemReference => {
                 ("stages/fem/fem-reference-receipt.json", Some("CalculiX"))
             }
-            StageOperation::ThermalReference => {
-                ("stages/thermal/thermal-receipt.json", Some("CalculiX"))
-            }
+            StageOperation::ThermalReference => (
+                if plan.thermal_contact.is_some() {
+                    thermal_path.as_str()
+                } else {
+                    "stages/thermal/thermal-receipt.json"
+                },
+                Some("CalculiX"),
+            ),
             StageOperation::WettingReference => (
                 "stages/wetting/verified-wetting-receipt.json",
                 Some("OpenLB"),
             ),
             StageOperation::ContactReference => {
                 ("stages/contact/contact-receipt.json", Some("CalculiX"))
+            }
+            StageOperation::ThermalProjection => {
+                ("stages/projection/projection-receipt.json", None)
             }
             StageOperation::Bundle => continue,
         };
@@ -264,7 +273,18 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if let Some(spec) = &plan.contact {
+            formulation: if let Some(spec) = &plan.thermal_contact {
+                match stage.operation {
+                    StageOperation::ThermalReference => {
+                        spec.thermal_stage(&stage.id)?.formulation.clone()
+                    }
+                    StageOperation::ContactReference => "planar_linear_penalty_contact".into(),
+                    StageOperation::ThermalProjection => {
+                        "congruent_constant_capacitance_box_projection".into()
+                    }
+                    _ => return Err(invalid("approved coupling stage required")),
+                }
+            } else if let Some(spec) = &plan.contact {
                 spec.formulation.clone()
             } else if let Some(spec) = &plan.wetting {
                 spec.formulation.clone()
@@ -294,7 +314,13 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     .map_or(3, |c| c.applicability.dimensionality)
             },
             precision: None,
-            refinement: if let Some(spec) = &plan.contact {
+            refinement: if let Some(spec) = &plan.thermal_contact {
+                if stage.operation == StageOperation::ThermalReference {
+                    spec.thermal_stage(&stage.id)?.resolution
+                } else {
+                    spec.mechanical.resolution
+                }
+            } else if let Some(spec) = &plan.contact {
                 spec.resolution
             } else if let Some(spec) = &plan.wetting {
                 spec.resolution
@@ -455,15 +481,36 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                             return Err(invalid("registered original contact bytes changed"));
                         }
                     }
+                    let coupled = if plan.thermal_contact.is_some() {
+                        Some(crate::thermal_contact::verify_registered(store, id, &plan)?.0)
+                    } else {
+                        None
+                    };
                     capability.numerical_evidence = Some(crate::contact::verify_native_outputs(
-                        plan.contact
+                        coupled
                             .as_ref()
+                            .or(plan.contact.as_ref())
                             .ok_or_else(|| invalid("native contact recipe required"))?,
                         &root,
                         &value,
                     )?);
                     capability.numerical_verification = EvidenceState::ReportedPass;
                     capability.convergence="one declared mesh; native planar spatial-reference campaign assessed separately".into();
+                } else if stage.operation == StageOperation::ThermalProjection {
+                    capability.numerical_evidence =
+                        Some(crate::thermal_contact::verify_registered(store, id, &plan)?.1);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                } else if stage.operation == StageOperation::ThermalReference
+                    && plan.thermal_contact.is_some()
+                {
+                    capability.numerical_evidence = Some(crate::thermal::verify_spec(
+                        plan.thermal_contact
+                            .as_ref()
+                            .ok_or_else(|| invalid("native coupling"))?
+                            .thermal_stage(&stage.id)?,
+                        &value,
+                    )?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
                 } else if matches!(stage.operation, StageOperation::WettingReference) {
                     let fields = value["independent_fields"]
                         .as_array()

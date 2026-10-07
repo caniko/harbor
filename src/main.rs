@@ -97,6 +97,12 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Plan two native thermal histories, conservative projection and static contact.
+    PlanThermalContact {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     /// Plan a native synthetic planar CPU contact/preload and thermal opening reference.
     PlanContactReference {
         file: PathBuf,
@@ -366,6 +372,10 @@ fn run(cli: Cli) -> Result<()> {
             }
             Case::PlanContactReference { file, policy } => {
                 let plan = ExecutionPlan::contact_reference(read(&file)?, policy)?;
+                return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
+            }
+            Case::PlanThermalContact { file, policy } => {
+                let plan = ExecutionPlan::thermal_contact(read(&file)?, policy)?;
                 return print(&serde_json::json!({"approval_digest":plan.id()?,"plan":plan}));
             }
             Case::PlanOpenlbReference { file, policy } => {

@@ -185,6 +185,45 @@ pub(crate) struct VerifiedThermalSample {
     pub fields: serde_json::Value,
 }
 
+/// Verify an in-flight coupling source with the same complete native schedule
+/// and DAT/JSON coverage used by read-only registered thermal queries.
+pub(crate) fn verify_native_state(
+    spec: &crate::thermal::ThermalReferenceSpec,
+    job_id: &str,
+    time_s: f64,
+    mesh: &serde_json::Value,
+    fields: &serde_json::Value,
+    native: &str,
+) -> Result<f64> {
+    if fields["initial_condition"]["time_s"].as_f64() != Some(0.)
+        || fields["initial_condition"]["temperature_k"].as_f64() != Some(spec.initial_temperature_k)
+    {
+        return Err(invalid(
+            "native coupling source initial condition differs from approved history",
+        ));
+    }
+    let request = ThermalSampleRequest {
+        schema_version: 1,
+        job_id: job_id.into(),
+        field: ThermalField::Temperature,
+        physical_time_s: time_s,
+        locations: vec![SampleLocation::Node { node_id: 1 }],
+    };
+    let (_, _, time) = verified_snapshot(
+        &request,
+        mesh,
+        fields,
+        native,
+        spec.resolution,
+        ThermalSchedule {
+            native: &spec.output_times(),
+            retained: &spec.observation_times_s,
+            duration: spec.duration_s,
+        },
+    )?;
+    Ok(time)
+}
+
 pub fn sample(store: &Store, request: &ThermalSampleRequest) -> Result<ThermalSampleReport> {
     Ok(verified_sample(store, request)?.report)
 }

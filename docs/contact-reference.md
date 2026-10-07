@@ -131,7 +131,27 @@ small-strain material range. Each projection has an explicit pointwise loss
 limit of at most 1 K and a positive conservation tolerance of at most `1e-10`.
 The combined moisture branch is explicit and uses source surface temperatures.
 
-This contract has CPU validation/rejection coverage. Its worker DAG and exact
-native coupling qualification are pending. Independent thermal histories and
-uniform projected contact temperatures define a one-way approximation; contact
-pressure does not supply thermal interface conductance or feedback.
+`case plan-thermal-contact examples/thermal-contact.json` and the simulation/all
+MCP tool `case_plan_thermal_contact` produce a strict version-11 plan. The plan
+contains `thermal-lower`, `thermal-upper`, `projection`, `contact` and `bundle`
+stages. Submit it through the same `job submit`/`job_submit` explicit approval
+surface as other native jobs. `runtime-thermal-contact-worker` combines the
+exact thermal and contact adapters with their separately mounted CPU closures.
+
+The worker independently checks the complete original thermal DAT/JSON schedules,
+positive affine C3D8 geometry, capacitance weights, loss and conservation before
+launching contact. Its derived contact descriptor and projection report bind the
+approved histories, native file hashes and exact physical/native times. All six
+native surfaces retain explicit missing/inapplicable/dew-point assessments;
+subzero surfaces retain the unsupported frost-screening status. Static contact
+parameters remain separate from thermal physical time. Export retains original
+thermal/contact fields, meshes, decks and derived receipts. Historical `qualify
+--job` reconstructs the same projection from registered originals and rejects
+changed source or report bytes.
+
+CPU tests include nonuniform fields with independently calculated capacitance
+weights, source replacement, schema/profile rejection and real MCP planning.
+Exact native coupling qualification remains pending. Independent thermal
+histories and uniform projected contact temperatures define a one-way
+approximation; contact pressure does not supply thermal interface conductance
+or feedback.

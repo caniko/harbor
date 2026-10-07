@@ -1,3 +1,4 @@
+use harbor_cad::contracts::{CaseSpec, ExecutionPlan};
 use harbor_cad::thermal_contact::{ContactMechanics, ThermalContactSpec};
 use serde_json::{Value, json};
 
@@ -86,4 +87,96 @@ fn mechanical_contract_rejects_supplied_final_temperatures_and_foreign_physics()
     let mechanical: ContactMechanics = serde_json::from_value(value["mechanical"].clone()).unwrap();
     assert!(mechanical.reference([f64::NAN, 293.15]).is_err());
     assert!(mechanical.reference([500., 293.15]).is_err());
+}
+
+#[test]
+fn version_eleven_coupling_binds_stage_sources_transfers_and_retained_times() {
+    let spec: ThermalContactSpec = serde_json::from_value(fixture()).unwrap();
+    let plan = ExecutionPlan::thermal_contact(spec, "research".into()).unwrap();
+    let value = serde_json::to_value(&plan).unwrap();
+    assert_eq!(value["schema_version"], 11);
+    assert_eq!(
+        plan.stages
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "thermal-lower",
+            "thermal-upper",
+            "projection",
+            "contact",
+            "bundle"
+        ]
+    );
+    assert_eq!(plan.transfers.len(), 2);
+    assert_eq!(plan.observation.retained_times_s, [10., 60., 120.]);
+    assert_eq!(plan.peak_ram(), 2 * 1024u64.pow(3));
+    assert!(plan.observation.max_artifact_bytes >= 640 * 1024u64.pow(2));
+    let decoded: ExecutionPlan = serde_json::from_value(value.clone()).unwrap();
+    decoded.validate().unwrap();
+    assert_eq!(plan.id().unwrap(), decoded.id().unwrap());
+    assert!(
+        ExecutionPlan::thermal_contact(serde_json::from_value(fixture()).unwrap(), "ci".into())
+            .is_err()
+    );
+    for changed in [
+        {
+            let mut v = value.clone();
+            v["stages"][2]["dependencies"] = json!(["thermal-lower"]);
+            v
+        },
+        {
+            let mut v = value.clone();
+            v["stages"][3]["dependencies"] = json!(["thermal-upper"]);
+            v
+        },
+        {
+            let mut v = value.clone();
+            v["stages"][1]["id"] = json!("thermal");
+            v
+        },
+        {
+            let mut v = value.clone();
+            v["transfers"][0]["destination_region"] = json!("upper");
+            v
+        },
+        {
+            let mut v = value.clone();
+            v["transfers"][0]["maximum_relative_conservation_error"] = json!(1e-6);
+            v
+        },
+        {
+            let mut v = value.clone();
+            v["observation"]["retained_times_s"] = json!([120.]);
+            v
+        },
+        {
+            let mut v = value.clone();
+            v["stages"][0]["ram_bytes"] = json!(1);
+            v
+        },
+    ] {
+        assert!(
+            serde_json::from_value::<ExecutionPlan>(changed)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+    }
+    let old =
+        serde_json::to_value(ExecutionPlan::reference(CaseSpec::reference()).unwrap()).unwrap();
+    for inserted in [value["thermal_contact"].clone(), Value::Null] {
+        let mut injected = old.clone();
+        injected["thermal_contact"] = inserted;
+        assert!(serde_json::from_value::<ExecutionPlan>(injected).is_err());
+    }
+    let mut changed = value.clone();
+    changed["thermal_contact"]["coupling_provenance"] = json!("a different approved mapping");
+    assert_ne!(
+        plan.science_id().unwrap(),
+        serde_json::from_value::<ExecutionPlan>(changed)
+            .unwrap()
+            .science_id()
+            .unwrap()
+    );
 }

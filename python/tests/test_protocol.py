@@ -286,6 +286,13 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_fem_reference" in names
                 assert "case_plan_thermal_reference" in names
                 assert "case_plan_contact_reference" in names
+                assert "case_plan_thermal_contact" in names
+                from test_thermal_contact import fixture as coupling_fixture
+
+                coupling = await client.call_tool(
+                    "case_plan_thermal_contact", {"spec": coupling_fixture()}
+                )
+                assert coupling.is_error
                 from test_contact_reference import request as contact_fixture
                 from test_thermal_history import fixture
 
@@ -429,6 +436,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_fem_reference" not in names
                 assert "case_plan_thermal_reference" not in names
                 assert "case_plan_contact_reference" not in names
+                assert "case_plan_thermal_contact" not in names
                 assert "results_transfer_temperature" in names
                 assert {"render_plan", "video_plan", "presentation_submit"}.issubset(
                     names
@@ -450,6 +458,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_fem_reference" not in names
                 assert "case_plan_thermal_reference" not in names
                 assert "case_plan_contact_reference" not in names
+                assert "case_plan_thermal_contact" not in names
                 rejected = await client.call_tool("cad_regions", {"job_id": job["id"]})
                 assert rejected.is_error
                 rejected = await client.call_tool(

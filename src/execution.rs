@@ -23,7 +23,9 @@ pub const WETTING_SANDBOX_POLICY: &str = "harbor-cad-wetting-cpu-v1";
 pub const CONTACT_SANDBOX_POLICY: &str = crate::contact::SANDBOX_POLICY;
 
 fn sandbox_policy(plan: &ExecutionPlan) -> &'static str {
-    if plan.contact.is_some() {
+    if plan.thermal_contact.is_some() {
+        "harbor-cad-thermal-contact-cpu-v1"
+    } else if plan.contact.is_some() {
         CONTACT_SANDBOX_POLICY
     } else if plan.wetting.is_some() {
         WETTING_SANDBOX_POLICY

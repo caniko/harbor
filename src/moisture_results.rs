@@ -99,7 +99,7 @@ pub struct NativeMoistureReport {
     pub physical_validation: String,
 }
 
-fn surface_minimum(
+pub(crate) fn surface_minimum(
     mesh: &serde_json::Value,
     temperatures: &serde_json::Value,
     region: &str,

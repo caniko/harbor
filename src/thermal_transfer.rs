@@ -203,16 +203,16 @@ pub fn project(
     Ok(report)
 }
 
-struct Projection {
-    temperatures: Vec<f64>,
-    capacitances: Vec<f64>,
-    mean_k: f64,
-    capacitance_j_k: f64,
-    source_integral_j: f64,
-    maximum_error_k: f64,
+pub(crate) struct Projection {
+    pub(crate) temperatures: Vec<f64>,
+    pub(crate) capacitances: Vec<f64>,
+    pub(crate) mean_k: f64,
+    pub(crate) capacitance_j_k: f64,
+    pub(crate) source_integral_j: f64,
+    pub(crate) maximum_error_k: f64,
 }
 
-fn project_box(
+pub(crate) fn project_box(
     mesh: &serde_json::Value,
     field: &serde_json::Value,
     size: [f64; 3],

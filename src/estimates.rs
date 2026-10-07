@@ -128,16 +128,17 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 2048 * MIB
             }
             StageOperation::ContactReference => {
-                let spec = plan
-                    .contact
-                    .as_ref()
-                    .ok_or_else(|| invalid("contact resource recipe required"))?;
+                let resolution = if let Some(spec) = &plan.thermal_contact {
+                    spec.mechanical.resolution
+                } else {
+                    plan.contact
+                        .as_ref()
+                        .ok_or_else(|| invalid("contact resource recipe required"))?
+                        .resolution
+                };
                 output = add(
                     output,
-                    add(
-                        128 * MIB,
-                        multiply(u64::from(spec.resolution).pow(3), 16384)?,
-                    )?,
+                    add(128 * MIB, multiply(u64::from(resolution).pow(3), 16384)?)?,
                 )?;
                 2048 * MIB
             }
@@ -166,12 +167,23 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 add(1024 * MIB, multiply(nodes, 65536)?)?
             }
             StageOperation::ThermalReference => {
-                plan.thermal
-                    .as_ref()
-                    .ok_or_else(|| invalid("thermal recipe required for resource estimate"))?
-                    .validate()?;
+                let spec = if let Some(coupling) = &plan.thermal_contact {
+                    coupling.thermal_stage(&stage.id)?
+                } else {
+                    plan.thermal
+                        .as_ref()
+                        .ok_or_else(|| invalid("thermal recipe required for resource estimate"))?
+                };
+                spec.validate()?;
                 output = add(output, 256 * MIB)?;
                 2048 * MIB
+            }
+            StageOperation::ThermalProjection => {
+                if plan.thermal_contact.is_none() {
+                    return Err(invalid("native coupling projection recipe required"));
+                }
+                output = add(output, 16 * MIB)?;
+                512 * MIB
             }
             StageOperation::WettingReference => {
                 let spec = plan

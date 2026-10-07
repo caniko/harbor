@@ -252,6 +252,7 @@ impl ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: None,
+            thermal_contact: None,
             source: None,
             frames: None,
             filter: None,
@@ -314,6 +315,13 @@ pub fn verify_receipt(
         .thermal
         .as_ref()
         .ok_or_else(|| invalid("approved thermal recipe required"))?;
+    verify_spec(spec, value)
+}
+
+pub(crate) fn verify_spec(
+    spec: &ThermalReferenceSpec,
+    value: &serde_json::Value,
+) -> Result<crate::qualification::NumericalEvidence> {
     spec.validate()?;
     let n = u64::from(spec.resolution);
     if value["schema_version"] != 1

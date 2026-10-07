@@ -98,6 +98,7 @@
       filter = path: type:
         craneLib.filterCargoSources path type
         || pkgs.lib.hasInfix "/profiles/" path
+        || pkgs.lib.hasSuffix "/examples/thermal-contact.json" path
         || pkgs.lib.hasSuffix "/nix/patches/calculix-temperature-precision.patch" path;
     };
     common = {
@@ -175,6 +176,19 @@
       inherit (femImported) fem-imported-cpu runtime-fem-imported-cpu runtime-fem-imported-worker;
       inherit (wetting) wetting-reference-cpu runtime-wetting-reference-cpu runtime-wetting-worker;
       inherit (contact) contact-reference-cpu runtime-contact-reference-cpu runtime-contact-worker;
+      runtime-thermal-contact-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+        bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+        thermal = "${thermal.thermal-cpu}/bin/harbor-cad-thermal";
+        thermal_closure = "${pkgs.closureInfo {rootPaths = [thermal.thermal-cpu];}}/store-paths";
+        contact = "${contact.contact-reference-cpu}/bin/harbor-cad-contact";
+        contact_closure = "${pkgs.closureInfo {rootPaths = [contact.contact-reference-cpu];}}/store-paths";
+        cad = null;
+        openlb = null;
+        openlb_backend = "cpu";
+        render = null;
+        video = null;
+        filter = null;
+      });
       inherit (native) cad-mesh-fixtures runtime-cad-fixtures runtime-cad-only;
       runtime-filter-hip = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
@@ -220,6 +234,7 @@
         cp -r ${self}/profiles ./profiles
         cp -r ${self}/adapters ./adapters
         cp -r ${self}/scripts ./scripts
+        cp -r ${self}/examples ./examples
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
       '';

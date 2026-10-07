@@ -112,7 +112,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
-| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v10 plans and original approval compatibility tested; broader recipe-specific contracts pending |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v11 plans and original approval compatibility tested; broader recipe-specific contracts pending |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
 | §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; native contact/optical execution pending |
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
@@ -120,7 +120,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy and static free expansion pass native and CLI/MCP gates; synthetic planar contact-native-2 passes 15 solves/8 rejections/five mesh checks; packaged contact worker and source-bound conservative projection qualification pending |
 | §5 airflow/wetting/snow/freezing | OpenLB recipe drivers | synthetic single-phase flow and planar wetting native campaign qualified at recorded identities; wetting worker launch repair in requalification; prescribed coverage and freezing conservation/refinement pending |
 | §5 solar/UV, angular inputs and dose | atmospheric/spectral adapters | orientation/occlusion/reflection/unit/temporal tests and GPU transport pending |
-| §5 typed one-way transfers and convection | `src/transfers.rs`, `src/thermal_transfer.rs` | typed conservative maps and complete native C3D8 capacitance projection implemented; two closed thermal-source diagnostics pass, packaged qualification and coupled contact assembly pending; velocity-to-convection inference rejected by scope |
+| §5 typed one-way transfers and convection | `src/transfers.rs`, `src/thermal_transfer.rs`, `src/thermal_contact.rs` | typed conservative maps, complete native C3D8 capacitance projection and strict v11 thermal→projection→contact worker DAG implemented; CPU source/mapping/schema/MCP checks pass, packaged qualification pending; velocity-to-convection inference rejected by scope |
 | §5 moisture-risk entry | `src/moisture_results.rs`, thermal source fields | all six native planar thermal surfaces and explicit screening/missing/inapplicable branches pass packaged CLI/MCP moisture-results-1; combined recipe assembly pending |
 | §6 durable lifecycle/idempotency/services | `src/lifecycle.rs`, `src/worker.rs`, `src/storage.rs` | restart/disconnect/owned tree/cancel/partial output qualified; logout/reboot/resume pending |
 | §6 patched importer and operation policies | `src/sandbox.rs`, `adapters/import_policy.py`, device sandbox | importer and selected single-KFD HIP scope qualified; broader solver/JIT/filter policies pending |
@@ -194,6 +194,26 @@ thermal capacitance, retains independent pointwise approximation loss and binds
 the exact registered mesh/field/DAT/time identities. Both original closed thermal
 sources pass the development diagnostic; its new exact packaged CLI/MCP,
 mutation, source-immutability and conservation gate is pending at build 39.
+
+## Continuation — 2026-10-07
+
+The approved Canix parent environment executes project subprocesses again.
+Local commit `305458a` retains the verified thermal-contact input contract.
+Version 11 now binds separate lower/upper native thermal histories, explicit
+capacitance projection and pointwise loss limits, derived static contact inputs,
+native six-surface moisture entries and a final original-field bundle. CPU tests
+cover nonuniform capacitance weighting, exact schedules, source/report mutation,
+older-schema capability rejection, immutable plan identities and real CLI/MCP
+planning. Exact-package native coupling qualification is pending.
+
+The earlier launcher directory, original native reports and most worker state
+files under the recorded scratch paths are absent. Historical committed hashes
+remain historical evidence; missing artifacts cannot support fresh rechecks.
+New campaigns use protected `harbor-cad-resume-20261007` source captures and
+fresh output names. The repaired wetting native campaign and follow-on CPU
+requalification are running through the normal bounded host lease. New package
+evaluation has been refused twice by the host memory-headroom guard (15/18 GiB
+available, 24 GiB required); exact guarded packaging remains pending.
 
 ## External qualification prerequisites
 

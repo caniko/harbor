@@ -284,6 +284,7 @@ pub enum StageOperation {
     NumericalFilter,
     FemReference,
     ThermalReference,
+    ThermalProjection,
     WettingReference,
     ContactReference,
     Render,
@@ -418,6 +419,8 @@ pub struct ExecutionPlan {
     pub wetting: Option<crate::wetting::WettingReferenceSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contact: Option<crate::contact::ContactReferenceSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thermal_contact: Option<crate::thermal_contact::ThermalContactSpec>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -452,6 +455,14 @@ struct ExecutionPlanRecord {
     wetting: Option<crate::wetting::WettingReferenceSpec>,
     #[serde(default, deserialize_with = "contact_spec")]
     contact: Option<crate::contact::ContactReferenceSpec>,
+    #[serde(default, deserialize_with = "thermal_contact_spec")]
+    thermal_contact: Option<crate::thermal_contact::ThermalContactSpec>,
+}
+
+fn thermal_contact_spec<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<crate::thermal_contact::ThermalContactSpec>, D::Error> {
+    crate::thermal_contact::ThermalContactSpec::deserialize(decoder).map(Some)
 }
 
 fn wetting_spec<'de, D: serde::Deserializer<'de>>(
@@ -515,6 +526,14 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> std::result::Result<Self, D::Error> {
         use serde::de::Error;
         let plan = ExecutionPlanRecord::deserialize(decoder)?;
+        if plan.thermal_contact.is_some() {
+            if !plan.thermal_contact_envelope() {
+                return Err(D::Error::custom(
+                    "strict independent version-11 thermal contact recipe required",
+                ));
+            }
+            return Ok(plan);
+        }
         if plan.contact.is_some() {
             if !plan.contact_envelope() {
                 return Err(D::Error::custom(
@@ -568,7 +587,7 @@ impl JsonSchema for ExecutionPlan {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
             properties["schema_version"]["enum"] =
-                serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+                serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
         }
         schema.insert("allOf".into(), serde_json::json!([
             {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}}},
@@ -581,14 +600,30 @@ impl JsonSchema for ExecutionPlan {
             {"if":{"properties":{"schema_version":{"enum":[7,8]}}},"then":{"required":["cad_source"],"properties":{"cad_source":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]}]}},"else":{"not":{"required":["cad_source"]}}},
             {"if":{"properties":{"schema_version":{"const":8}}},"then":{"required":["imported_fem"],"properties":{"imported_fem":{"type":"object"}}},"else":{"not":{"required":["imported_fem"]}}},
             {"if":{"properties":{"schema_version":{"const":9}}},"then":{"required":["wetting"],"properties":{"wetting":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]},{"required":["cad_source"]},{"required":["imported_fem"]},{"required":["contact"]}]}},"else":{"not":{"required":["wetting"]}}},
-            {"if":{"properties":{"schema_version":{"const":10}}},"then":{"required":["contact"],"properties":{"contact":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]},{"required":["cad_source"]},{"required":["imported_fem"]},{"required":["wetting"]}]}},"else":{"not":{"required":["contact"]}}}
+            {"if":{"properties":{"schema_version":{"const":10}}},"then":{"required":["contact"],"properties":{"contact":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]},{"required":["cad_source"]},{"required":["imported_fem"]},{"required":["wetting"]}]}},"else":{"not":{"required":["contact"]}}},
+            {"if":{"properties":{"schema_version":{"const":11}}},"then":{"required":["thermal_contact"],"properties":{"thermal_contact":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]},{"required":["cad_source"]},{"required":["imported_fem"]},{"required":["wetting"]},{"required":["contact"]}]}},"else":{"not":{"required":["thermal_contact"]}}}
         ]));
         schema
     }
 }
 impl ExecutionPlan {
+    fn thermal_contact_envelope(&self) -> bool {
+        self.schema_version == 11
+            && self.thermal_contact.is_some()
+            && self.contact.is_none()
+            && self.wetting.is_none()
+            && self.case.is_none()
+            && self.fem.is_none()
+            && self.thermal.is_none()
+            && self.source.is_none()
+            && self.frames.is_none()
+            && self.filter.is_none()
+            && self.cad_source.is_none()
+            && self.imported_fem.is_none()
+    }
     fn contact_envelope(&self) -> bool {
         self.schema_version == 10
+            && self.thermal_contact.is_none()
             && self.contact.is_some()
             && self.wetting.is_none()
             && self.case.is_none()
@@ -602,6 +637,7 @@ impl ExecutionPlan {
     }
     fn wetting_envelope(&self) -> bool {
         self.schema_version == 9
+            && self.thermal_contact.is_none()
             && self.contact.is_none()
             && self.wetting.is_some()
             && self.case.is_none()
@@ -619,6 +655,12 @@ impl ExecutionPlan {
             .ok_or_else(|| invalid("fluid/CAD case required for this operation"))
     }
     pub fn science_id(&self) -> Result<String> {
+        if let Some(spec) = &self.thermal_contact {
+            if !self.thermal_contact_envelope() {
+                return Err(invalid("one independent scientific recipe required"));
+            }
+            return digest(spec);
+        }
         if let Some(contact) = &self.contact {
             if !self.contact_envelope() {
                 return Err(invalid("one independent scientific recipe required"));
@@ -679,6 +721,7 @@ impl ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: None,
+            thermal_contact: None,
             stages: vec![
                 Stage {
                     id: "filter".into(),
@@ -750,6 +793,7 @@ impl ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: None,
+            thermal_contact: None,
             stages: vec![
                 Stage {
                     id: "video".into(),
@@ -870,6 +914,7 @@ impl ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: None,
+            thermal_contact: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -913,6 +958,7 @@ impl ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: None,
+            thermal_contact: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -968,6 +1014,7 @@ impl ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: None,
+            thermal_contact: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -1039,6 +1086,7 @@ impl ExecutionPlan {
             imported_fem: None,
             wetting: None,
             contact: None,
+            thermal_contact: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1131,9 +1179,11 @@ impl ExecutionPlan {
         if let Some(fem) = &self.fem {
             fem.validate()?;
         }
-        if !(self.contact_envelope()
+        if !(self.thermal_contact_envelope()
+            || self.contact_envelope()
             || self.wetting_envelope()
-            || (self.contact.is_none()
+            || (self.thermal_contact.is_none()
+                && self.contact.is_none()
                 && self.wetting.is_none()
                 && matches!(
                     (
@@ -1163,6 +1213,9 @@ impl ExecutionPlan {
         }
         if !["ci", "prototype", "production", "research"].contains(&self.policy.as_str()) {
             return Err(invalid("policy"));
+        }
+        if let Some(spec) = &self.thermal_contact {
+            spec.validate_plan(self)?;
         }
         if let Some(source) = &self.cad_source {
             source.validate()?;
@@ -1421,7 +1474,9 @@ impl ExecutionPlan {
                     "imported CAD mesh requires a source-bound version-7 recipe",
                 ));
             }
-            if matches!(stage.operation, StageOperation::ThermalReference) && self.thermal.is_none()
+            if matches!(stage.operation, StageOperation::ThermalReference)
+                && self.thermal.is_none()
+                && self.thermal_contact.is_none()
             {
                 return Err(invalid(
                     "thermal operation requires an independent version-6 recipe",
@@ -1433,7 +1488,9 @@ impl ExecutionPlan {
                     "wetting operation requires an independent version-9 recipe",
                 ));
             }
-            if matches!(stage.operation, StageOperation::ContactReference) && self.contact.is_none()
+            if matches!(stage.operation, StageOperation::ContactReference)
+                && self.contact.is_none()
+                && self.thermal_contact.is_none()
             {
                 return Err(invalid(
                     "contact operation requires an independent version-10 recipe",
@@ -1442,13 +1499,23 @@ impl ExecutionPlan {
             if matches!(stage.operation, StageOperation::FemReference) && self.fem.is_none() {
                 return Err(invalid("FEM operation requires a version-5 recipe"));
             }
+            if stage.operation == StageOperation::ThermalProjection
+                && self.thermal_contact.is_none()
+            {
+                return Err(invalid(
+                    "temperature projection stage requires exact version-11 coupling",
+                ));
+            }
             if matches!(stage.operation, StageOperation::NumericalFilter) && self.filter.is_none() {
                 return Err(invalid(
                     "numerical compute stage requires a source-bound version-4 filter specification",
                 ));
             }
             let op_name = serde_json::to_string(&stage.operation)?;
-            if !operations.insert(op_name) {
+            if !operations.insert(op_name)
+                && !(self.thermal_contact.is_some()
+                    && stage.operation == StageOperation::ThermalReference)
+            {
                 return Err(invalid(
                     "one stage per fixed-output adapter operation required",
                 ));
@@ -1531,7 +1598,7 @@ impl ExecutionPlan {
         {
             return Err(invalid("bundle must be the final stage"));
         }
-        if !self.transfers.is_empty() {
+        if !self.transfers.is_empty() && self.thermal_contact.is_none() {
             return Err(Error::Unqualified(
                 "coupled transfers require model-specific conservation qualification".into(),
             ));
@@ -1568,6 +1635,11 @@ impl ExecutionPlan {
                             .thermal
                             .as_ref()
                             .map(|s| s.duration_s)
+                            .or_else(|| {
+                                self.thermal_contact.as_ref().map(|s| {
+                                    s.thermal.iter().map(|t| t.duration_s).fold(0., f64::max)
+                                })
+                            })
                             .or_else(|| {
                                 self.wetting
                                     .as_ref()
@@ -1737,6 +1809,9 @@ pub enum Operation {
     },
     PlanContactReference {
         spec: Box<crate::contact::ContactReferenceSpec>,
+    },
+    PlanThermalContact {
+        spec: Box<crate::thermal_contact::ThermalContactSpec>,
     },
     PlanB1 {
         case: Box<CaseSpec>,
