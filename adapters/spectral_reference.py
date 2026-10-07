@@ -387,6 +387,16 @@ def verify_channels(normalized, values, tolerance):
 
 
 def native_spectrum(wavelengths, values):
+    # The pinned irregular plugin builds a sampling distribution and rejects an
+    # identically zero spectrum. UniformSpectrum evaluates exact zero without
+    # requiring positive probability mass; retain the explicit original band.
+    if all(value == 0.0 for value in values):
+        return {
+            "type": "uniform",
+            "value": 0.0,
+            "wavelength_min": wavelengths[0],
+            "wavelength_max": wavelengths[-1],
+        }
     return {
         "type": "irregular",
         "wavelengths": ", ".join(map(str, wavelengths)),

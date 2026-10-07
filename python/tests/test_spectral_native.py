@@ -281,3 +281,39 @@ def test_exr_roundtrip_matches_named_float32_channels_without_positional_reinter
             native.verify_exr_roundtrip(original, bitmap, mi)
     else:
         assert native.verify_exr_roundtrip(original, bitmap, mi) == original
+
+
+def test_native_black_reflector_and_zero_optical_channels_preserve_exact_zero_without_empty_irregular_pdf():
+    native = adapter()
+    spec = reflection_fixture()
+    spec["reflectance"] = 0.0
+    spec["disk_radius"]["value"] = 1.0
+    for dimension in ("sensor_width", "sensor_height"):
+        spec["incident"][dimension] = {"value": 1e-5, "unit": "m"}
+    spec["incident"]["absorptivity"] = [0.0, 0.0]
+    normalized = native.normalize(spec)
+
+    class Transform:
+        def look_at(self, **kwargs):
+            return self
+
+        def scale(self, *args):
+            return self
+
+        def translate(self, *args):
+            return self
+
+    mi = SimpleNamespace(
+        ScalarVector3f=lambda value: value, ScalarTransform4f=Transform
+    )
+    scene = native.scene_definition(spec["incident"], normalized, mi)
+    for zero in (
+        scene["disk"]["bsdf"]["reflectance"],
+        scene["meter"]["sensor"]["film"]["absorbed"],
+    ):
+        assert zero["type"] == "uniform"
+        assert zero["value"] == 0.0
+        assert [zero["wavelength_min"], zero["wavelength_max"]] == [280.0, 400.0]
+    assert normalized["reference"]["absorbed"] == 0.0
+    assert normalized["reference"]["incident"] > 0.0
+    assert scene["source"]["radiance"]["values"] == "1.0, 3.0"
