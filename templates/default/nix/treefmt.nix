@@ -1,24 +1,9 @@
-{pkgs, ...}: {
+{harbor-js}: {...}: {
+  imports = [
+    harbor-js.inputs.harbor-meta.treefmtModules.nix
+    harbor-js.inputs.harbor-meta.treefmtModules.toml
+    harbor-js.treefmtModules.javascript
+  ];
   projectRootFile = "flake.nix";
-
-  programs.alejandra.enable = true;
-
-  programs.taplo.enable = true;
-
-  programs.prettier = {
-    enable = true;
-    package = pkgs.prettier;
-    excludes = [
-      ".crow/**"
-    ];
-    includes = [
-      "*.js"
-      "*.jsx"
-      "*.mjs"
-      "*.cjs"
-      "*.ts"
-      "*.tsx"
-      "*.json"
-    ];
-  };
+  settings.global.excludes = [".crow/**"];
 }

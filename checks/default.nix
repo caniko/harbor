@@ -12,7 +12,8 @@
   templateRoot = ../templates/default;
   templateFlake = builtins.readFile (templateRoot + "/flake.nix");
   templateSimit = builtins.fromTOML (builtins.readFile (templateRoot + "/simit.toml"));
-  templateTreefmt = builtins.readFile (templateRoot + "/nix/treefmt.nix");
+  templateTreefmt = (treefmt-nix.lib.evalModule pkgs (import (templateRoot + "/nix/treefmt.nix") {harbor-js = self;})).config;
+  languageTreefmt = (treefmt-nix.lib.evalModule pkgs {imports = [self.treefmtModules.javascript];}).config;
   templateHooks = builtins.readFile (templateRoot + "/nix/pre-commit.nix");
 in
   assert templateSimit.flake
@@ -25,8 +26,10 @@ in
   assert pkgs.lib.hasInfix "git-hooks.follows" templateFlake;
   assert pkgs.lib.hasInfix "treefmtEval.config.build.check self" templateFlake;
   assert pkgs.lib.hasInfix "pre-commit-check.shellHook" templateFlake;
-  assert pkgs.lib.hasInfix "\"*.ts\"" templateTreefmt;
-  assert pkgs.lib.hasInfix "\"*.json\"" templateTreefmt;
+  assert builtins.elem "*.ts" templateTreefmt.programs.prettier.includes;
+  assert builtins.elem "*.json" templateTreefmt.programs.prettier.includes;
+  assert builtins.elem ".crow/**" templateTreefmt.settings.global.excludes;
+  assert builtins.attrNames languageTreefmt.settings.formatter == ["prettier"];
   assert pkgs.lib.hasInfix "treefmt =" templateHooks;
   assert pkgs.lib.hasInfix "nix-flake-check" templateHooks;
     {
@@ -70,6 +73,7 @@ in
         inherit (meta) devShellTests;
       };
     }
+    // import ./node.nix {inherit pkgs lib meta;}
     // pkgs.lib.optionalAttrs pkgs.stdenvNoCC.hostPlatform.isLinux {
       bun-compile-smoke = let
         targetBySystem = {

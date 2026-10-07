@@ -13,7 +13,6 @@
       url = "git+https://github.com/caniko/harbor-meta.git?ref=trunk";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    meta-harbor.follows = "harbor-meta";
 
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
@@ -47,10 +46,15 @@
         };
       in {
         inherit lib;
+        treefmtModules.javascript = ./nix/treefmt/javascript.nix;
 
         templates.default = {
           path = ./templates/default;
           description = "Bun project with harbor-js";
+        };
+        templates.node = {
+          path = ./templates/node;
+          description = "Node and pnpm project with harbor-js";
         };
       };
 
@@ -68,7 +72,14 @@
           version = "1.3.14";
           baseline = true;
         };
+        treefmt = inputs.treefmt-nix.lib.evalModule pkgs {
+          imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml self.treefmtModules.javascript];
+          projectRootFile = "flake.nix";
+          settings.global.excludes = [".crow/**"];
+        };
       in {
+        devShells.default = self.lib.node.mkNodeDevShell {inherit pkgs;};
+        devShells.node = self.lib.node.mkNodeDevShell {inherit pkgs;};
         packages =
           {
             inherit bun_1_3_14;
@@ -80,13 +91,13 @@
 
         checks = import ./checks {
           inherit pkgs system self;
-          lib = self.lib;
+          inherit (self) lib;
           inherit bun_1_3_14 nixpkgs;
           inherit (inputs) treefmt-nix git-hooks;
           meta = harbor-meta.lib;
         };
 
-        formatter = pkgs.alejandra;
+        formatter = treefmt.config.build.wrapper;
       };
     };
 }
