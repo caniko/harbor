@@ -29,7 +29,7 @@ For D2Q5 with fixed relaxation time 1, native diffusivity is 1/6, so
 `dt = dx² / (6 * k / (rho * cp))`. Refining the grid by two and the step count
 by four preserves every physical property and the final physical time.
 
-Selected Stefan numbers are 0.05–0.2. Resolutions 32–128 are multiples of eight,
+Selected Stefan numbers are 0.05–0.2. Resolutions 32–256 are multiples of eight,
 the periodic width is one eighth of the longitudinal extent, and the final
 step count is between `n²/2` and `n²`. Original-field observations include the
 initial state and final state; other observations are within that late-time
@@ -46,8 +46,57 @@ these from closed original fields and population-boundary exchange, with an
 equal-physical-time decreasing-error refinement sequence. Native execution,
 refinement and physical validation are separate states.
 
-The thin OpenLB diagnostic builds within a 2 GiB compile scope. Its native
-energy/front campaign is queued through the normal host lease. Exact-package,
-worker and source-bound retained-water-transfer qualification remain pending.
-Neither pressure, volume expansion, fracture nor freeze–thaw lifetime follows
-from this reference.
+## Native implementation and observations
+
+`adapters/openlb_freezing.cpp` implements the bounded reference with OpenLB's
+native collision, streaming, temperature boundary and phase-change coupling.
+The insulated shell starts with the total-enthalpy equilibrium: latent energy
+in the rest population, sensible temperature in the moving populations.
+The per-cell PSM relaxation field is set independently of collision parameters.
+Both requirements are verified against the pinned dynamics/example source;
+failed initial diagnostic attempts remain retained.
+
+The grid contains `n+1` longitudinal points and exactly `n/8` periodic rows at
+cell-centered y positions. Boundary nodes have zero mass. Every active interior
+node has control volume `dx² * extrusion`; its total active volume is therefore
+`(n-1) * (n/8) * dx² * extrusion`. Active control bounds are
+`[dx/2, L-dx/2] × [0, L/8] × [0, extrusion]`, explicitly recorded for each
+resolution. This nodal-control-volume convention must be retained during
+comparison or transfer; it is not the entire nominal box volume.
+
+Closed CSV snapshots retain every native temperature, specific enthalpy, liquid
+fraction, material and grid identity at each approved observation. A separate
+per-step ledger records the actual population-boundary heat exchange in joules.
+The Python adapter independently reconstructs the phase/enthalpy relation,
+front position, similarity temperature, active mass and energy balance. It
+checks every original field, including intermediate approved times, and rejects
+incomplete grids, converter/source drift or a failed unchanged numerical gate.
+Native summaries are checked against original fields, not treated as authority.
+
+Verified snapshots also produce canonical Float64 VTK XML point grids and a PVD
+collection with explicit physical times, SI coordinates, field units and native
+IDs. These derived files are byte-verified against complete originals. Scientific
+CSV, heat exchange, native receipt and portable exports have independent hashes.
+
+Development protocol attempt 9 solved nine Stefan/grid combinations under the
+normal bounded host lease. Independent replay passes all four gates for Stefan
+0.1 at n64/128/256, Stefan 0.2 at n128/256 and Stefan 0.05 at n256. The other
+three runs fail the fixed 0.02 temperature gate and remain retained. The Stefan
+0.1 maximum temperature errors are 0.01894585756434697,
+0.015456667961909809 and 0.010499081289470857 over both retained nonzero times;
+front errors also decrease. Energy balance remains below `1e-10`.
+
+Production outputs `freezing-native-cpu`, `freezing-reference-cpu` and
+`runtime-freezing-reference-cpu` are wired through `nix/freezing.nix`, using the
+existing pinned OpenLB/Harbor stack. The operation-specific CPU policy mounts
+only its exact closure, read-only inputs and bounded scratch. The packaged gate
+is `scripts/verify_freezing_cpu.py --runtime RUNTIME --output NEW_DIRECTORY`:
+six accepted solves, three unresolved-temperature failures, twelve pre-launch
+science rejections, both initial log layouts and decreasing equal-time errors.
+This packaged campaign remains pending: the host evaluation guard currently
+refuses its required memory headroom. Development compilation and numerical
+replay are separate from exact-package/sandbox and worker qualification.
+
+Worker execution and source-bound retained-water transfer remain separate
+pending slices. Pressure, volume expansion, fracture and freeze–thaw lifetime
+remain outside this reference's applicability.

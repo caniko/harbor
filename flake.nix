@@ -142,6 +142,7 @@
     femImported = import ./nix/fem-imported.nix {inherit pkgs fem cadMesh;};
     wetting = import ./nix/wetting.nix {inherit pkgs inputs cudaPkgs;};
     contact = import ./nix/contact.nix {inherit pkgs fem;};
+    freezing = import ./nix/freezing.nix {inherit pkgs inputs cudaPkgs;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
       projectRootFile = "flake.nix";
       programs.rustfmt = {
@@ -176,6 +177,7 @@
       inherit (femImported) fem-imported-cpu runtime-fem-imported-cpu runtime-fem-imported-worker;
       inherit (wetting) wetting-reference-cpu runtime-wetting-reference-cpu runtime-wetting-worker;
       inherit (contact) contact-reference-cpu runtime-contact-reference-cpu runtime-contact-worker;
+      inherit (freezing) freezing-native-cpu freezing-reference-cpu runtime-freezing-reference-cpu;
       runtime-thermal-contact-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
         bwrap = "${pkgs.bubblewrap}/bin/bwrap";
         thermal = "${thermal.thermal-cpu}/bin/harbor-cad-thermal";
