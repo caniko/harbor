@@ -24,6 +24,7 @@ in {
     schema_version = 1;
     bwrap = "${pkgs.bubblewrap}/bin/bwrap";
     thermal = "${adapter}/bin/harbor-cad-thermal";
+    thermal_closure = "${closure}/store-paths";
     backend = "cpu";
     qualification = "unqualified";
   });

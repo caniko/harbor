@@ -39,6 +39,10 @@ def main():
     native = json.loads(runtime.read_text())
     if native["schema_version"] != 1 or native["backend"] != "cpu":
         raise ValueError("exact CPU thermal reference required")
+    if not native.get("thermal_closure"):
+        raise ValueError(
+            "native thermal reference descriptor lacks its operation-specific closure; realize the current runtime-thermal-cpu package"
+        )
     closure = Path(native["thermal_closure"]).resolve(strict=True)
     paths = closure.read_text().splitlines()
     if (

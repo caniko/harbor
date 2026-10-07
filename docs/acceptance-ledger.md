@@ -366,6 +366,15 @@ before output creation. Guarded build 49 binds `2cace05` and refused before Nix
 evaluation at 8 GiB combined headroom against the 24 GiB start minimum. The
 standalone and worker atmospheric campaigns remain unexecuted.
 
+Atlas released its lease before snow attempt 3 and retained-phase attempt 2.
+Both launched under the normal lease/resource controls and exposed campaign
+prerequisite defects, preserved in [launch-repair evidence](evidence/campaign-launch-repairs-20261007.json).
+The standalone thermal runtime now supplies the closure needed by the snow
+sandbox. Development retained-phase MCP keeps its virtualenv interpreter path;
+a real clean-environment child import verifies the SDK ABI. All 133 Python tests,
+lint/format checks and thermal Nix syntax pass. These source repairs require
+corrected package/campaign execution before qualification.
+
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.

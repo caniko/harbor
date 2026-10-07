@@ -18,6 +18,15 @@ from verify_results import tree_identity
 from verify_wetting_cpu import checksum
 
 
+def mcp_executable(path, *, development):
+    # Python discovers pyvenv.cfg relative to the invoked virtualenv launcher.
+    # Resolving that symlink selects the store interpreter without its SDK ABI.
+    executable = path.absolute() if development else path.resolve(strict=True)
+    if not executable.is_file():
+        raise ValueError("regular isolated MCP executable required")
+    return executable
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("binary", "mcp", "source", "output"):
@@ -28,9 +37,8 @@ def main():
         help="Explicitly unqualified source-built CLI and Python-module MCP diagnostic",
     )
     args = parser.parse_args()
-    binary, mcp, source = (
-        p.resolve(strict=True) for p in (args.binary, args.mcp, args.source)
-    )
+    binary, source = (p.resolve(strict=True) for p in (args.binary, args.source))
+    mcp = mcp_executable(args.mcp, development=args.development)
     if not args.development and not all(
         p.is_relative_to("/nix/store") for p in (binary, mcp)
     ):
