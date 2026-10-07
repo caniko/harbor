@@ -119,3 +119,19 @@ recomputes force balance, stress, displacement and opening gates before success.
 Historical job qualification also verifies the registered original bytes.
 CLI/MCP native execution/export/restart/death/cancellation/release qualification
 remains pending at the changed packaged worker identity.
+
+## One-way thermal coupling contract
+
+`ThermalContactSpec` defines two independent prescribed native thermal histories
+and mechanical-only contact inputs. Final contact temperatures must be derived
+from the complete original C3D8 fields at an exactly retained coupling time.
+Both thermal boxes must match the contact dimensions and geometry tolerance,
+start at the stress-free mechanical reference temperature, and remain within the
+small-strain material range. Each projection has an explicit pointwise loss
+limit of at most 1 K and a positive conservation tolerance of at most `1e-10`.
+The combined moisture branch is explicit and uses source surface temperatures.
+
+This contract has CPU validation/rejection coverage. Its worker DAG and exact
+native coupling qualification are pending. Independent thermal histories and
+uniform projected contact temperatures define a one-way approximation; contact
+pressure does not supply thermal interface conductance or feedback.

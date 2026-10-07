@@ -51,7 +51,7 @@ pub enum NativeMoistureAssessment {
     },
 }
 impl NativeMoistureAssessment {
-    fn inspect(&self, surface_k: f64) -> Result<serde_json::Value> {
+    pub(crate) fn inspect(&self, surface_k: f64) -> Result<serde_json::Value> {
         let risk = match self {
             Self::Missing { reason } => MoistureRisk::Missing {
                 reason: reason.clone(),
