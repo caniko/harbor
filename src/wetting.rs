@@ -45,6 +45,7 @@ impl ExecutionPlan {
             thermal_contact: None,
             freezing: None,
             spectral: None,
+            atmosphere: None,
             source: None,
             frames: None,
             filter: None,

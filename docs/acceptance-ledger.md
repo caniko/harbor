@@ -346,6 +346,17 @@ including the new atmospheric outputs, refused before evaluation at 9 GiB
 combined headroom. Atlas lease PID `3337737` remained active at the subsequent
 inspection. All scientific/package qualification stays pending these prerequisites.
 
+Version-14 atmospheric worker source integration is implemented: immutable
+`atmosphere → bundle` approvals, authority-before-runtime admission, separate
+closure/sandbox policy, original full-sphere fields with registered units and
+wavelength/solid-angle association, independent Rust field/energy reconstruction
+and read-only historical evidence. Legacy approvals reject atmospheric injection
+including null. The full CPU gate passes 49 Rust unit tests and every integration
+suite, strict Clippy, locked build, 131 Python tests with real CLI/MCP planning
+parity and authority refusal, pinned Simit drift and touched Nix syntax. Exact
+packaged native atmospheric worker execution and atmospheric-to-Mitsuba transport
+remain pending; manufactured numerical fixtures cannot promote runtime status.
+
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.

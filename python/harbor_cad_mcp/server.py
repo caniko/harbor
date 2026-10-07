@@ -175,6 +175,11 @@ def build_server(profile: str) -> MCPServer:
             return await request("validate_atmospheric_reference", spec=spec)
 
         @server.tool()
+        async def atmospheric_reference_plan(spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan immutable bounded native molecular UV fields; approve and submit through the same durable worker."""
+            return await request("plan_atmospheric_reference", spec=spec)
+
+        @server.tool()
         async def spectral_reflection_reference_validate(
             spec: dict[str, Any],
         ) -> dict[str, Any]:

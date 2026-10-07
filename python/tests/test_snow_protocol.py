@@ -61,7 +61,7 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
         spectral_plan["plan"]["schema_version"] == 13
         and spectral_plan["plan"]["observation"]["retained_times_s"] == []
     )
-    for old_field in ("freezing", "wetting", "case", "thermal_contact"):
+    for old_field in ("freezing", "wetting", "case", "thermal_contact", "atmosphere"):
         with pytest.raises(ValidationError):
             Draft202012Validator(schemas["ExecutionPlan"]).validate(
                 {**spectral_plan["plan"], old_field: None}
@@ -97,6 +97,22 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
     assert (
         not atmosphere_reference["executed"] and len(atmosphere_reference["umu"]) == 64
     )
+    atmosphere_plan = json.loads(
+        subprocess.check_output(
+            [binary, "case", "plan-atmospheric-reference", "/dev/stdin"],
+            input=json.dumps(atmosphere).encode(),
+        )
+    )
+    Draft202012Validator(schemas["ExecutionPlan"]).validate(atmosphere_plan["plan"])
+    assert (
+        atmosphere_plan["plan"]["schema_version"] == 14
+        and atmosphere_plan["atmospheric_reference"] == atmosphere_reference
+    )
+    for field in ("case", "spectral", "freezing", "thermal_contact", "atmosphere"):
+        with pytest.raises(ValidationError):
+            Draft202012Validator(schemas["ExecutionPlan"]).validate(
+                {**atmosphere_plan["plan"], field: None}
+            )
     profile = json.loads((repo / "profiles/ci.json").read_text())
     profile.update(
         policy="research", service_mode="systemd", allowed_input_root=str(tmp_path)
@@ -168,6 +184,21 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
                     not actual.is_error
                     and actual.structured_content == atmosphere_reference
                 )
+                actual = await client.call_tool(
+                    "atmospheric_reference_plan", {"spec": atmosphere}
+                )
+                assert (
+                    not actual.is_error and actual.structured_content == atmosphere_plan
+                )
+                rejected = await client.call_tool(
+                    "job_submit",
+                    {
+                        "plan": atmosphere_plan["plan"],
+                        "approved_digest": atmosphere_plan["approval_digest"],
+                        "idempotency_key": "no-authority-atmosphere",
+                    },
+                )
+                assert rejected.is_error and "unqualified" in str(rejected.content)
                 for field, value in [
                     ("diffuse_isotropic", True),
                     ("backend", "hip"),

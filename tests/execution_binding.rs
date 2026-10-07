@@ -158,3 +158,34 @@ fn legacy_plan_profile_and_export_keep_exact_identities_without_inventing_execut
         [&job.id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap();
     assert_eq!(prior, after);
 }
+
+#[test]
+fn atmosphere_binding_cannot_reuse_spectral_or_generic_cpu_policies() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runner = temporary.path().join("runner");
+    fs::write(&runner, b"binding-only unexecuted fixture").unwrap();
+    let plan = ExecutionPlan::atmospheric_reference(
+        serde_json::from_str(include_str!("../examples/atmosphere-reference.json")).unwrap(),
+        "research".into(),
+    )
+    .unwrap();
+    let before = plan.id().unwrap();
+    let mut profile = profile();
+    profile.policy = "research".into();
+    let binding = ExecutionBinding::capture(&plan, &profile, &runner, BTreeMap::new()).unwrap();
+    assert_eq!(
+        binding.sandbox_policy,
+        harbor_cad::atmosphere::SANDBOX_POLICY
+    );
+    binding.verify(&plan, &profile).unwrap();
+    for policy in [
+        SANDBOX_POLICY,
+        THERMAL_SANDBOX_POLICY,
+        harbor_cad::radiation::SANDBOX_POLICY,
+    ] {
+        let mut bad = binding.clone();
+        bad.sandbox_policy = policy.into();
+        assert!(bad.verify(&plan, &profile).is_err());
+    }
+    assert_eq!(plan.id().unwrap(), before);
+}

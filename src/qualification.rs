@@ -262,6 +262,10 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::SpectralReference => {
                 ("stages/spectral/spectral-receipt.json", Some("Mitsuba"))
             }
+            StageOperation::AtmosphericReference => (
+                "stages/atmosphere/atmosphere-receipt.json",
+                Some("libRadtran"),
+            ),
             StageOperation::ContactReference => {
                 ("stages/contact/contact-receipt.json", Some("CalculiX"))
             }
@@ -279,7 +283,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if plan.spectral.is_some() {
+            formulation: if let Some(spec) = &plan.atmosphere {
+                spec.model.clone()
+            } else if plan.spectral.is_some() {
                 "directional_planar_uv_irradiance_and_prescribed_dose".into()
             } else if let Some(spec) = &plan.thermal_contact {
                 match stage.operation {
@@ -316,7 +322,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     |t| Ok(t.formulation.clone()),
                 )?
             },
-            dimensions: if plan.wetting.is_some() || plan.freezing.is_some() {
+            dimensions: if plan.atmosphere.is_some() {
+                1
+            } else if plan.wetting.is_some() || plan.freezing.is_some() {
                 2
             } else {
                 plan.case
@@ -324,7 +332,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     .map_or(3, |c| c.applicability.dimensionality)
             },
             precision: None,
-            refinement: if let Some(spec) = &plan.spectral {
+            refinement: if let Some(spec) = &plan.atmosphere {
+                spec.streams
+            } else if let Some(spec) = &plan.spectral {
                 spec.samples
             } else if let Some(spec) = &plan.thermal_contact {
                 if stage.operation == StageOperation::ThermalReference {
@@ -382,6 +392,8 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                 "calculix_source_sha256",
                 "mitsuba_version",
                 "drjit_version",
+                "source_sha256",
+                "profile_sha256",
             ] {
                 if let Some(text) = optional_text(&value, key)? {
                     capability
@@ -584,6 +596,11 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     )?);
                     capability.numerical_verification = EvidenceState::ReportedPass;
                     capability.convergence="three retained directional seeds; exact original-knot quadrature; hemispherical sampling refinement assessed separately".into();
+                } else if stage.operation == StageOperation::AtmosphericReference {
+                    capability.numerical_evidence =
+                        Some(crate::atmosphere::registered(store, id, &plan, &value)?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                    capability.convergence="one declared DISORT/angle/wavelength grid; separate stream/angular-shape/spectral refinement not_assessed".into();
                 } else {
                     (
                         capability.numerical_verification,

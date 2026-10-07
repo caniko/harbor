@@ -1,4 +1,104 @@
 use harbor_cad::atmosphere::AtmosphericReferenceSpec;
+use harbor_cad::contracts::{ExecutionPlan, StageOperation};
+
+#[test]
+fn atmospheric_worker_recipe_has_a_strict_independent_approval_and_bounded_full_sphere_budget() {
+    let spec: AtmosphericReferenceSpec =
+        serde_json::from_str(include_str!("../examples/atmosphere-reference.json")).unwrap();
+    let plan = ExecutionPlan::atmospheric_reference(spec.clone(), "research".into()).unwrap();
+    assert_eq!(plan.schema_version, 14);
+    assert_eq!(
+        plan.stages[0].operation,
+        StageOperation::AtmosphericReference
+    );
+    assert_eq!(plan.stages[1].dependencies, ["atmosphere"]);
+    assert!(plan.case.is_none() && plan.observation.retained_times_s.is_empty());
+    assert!(plan.stages[0].ram_bytes >= 512 * 1024 * 1024 && plan.stages[0].vram_bytes == 0);
+    let encoded = serde_json::to_value(&plan).unwrap();
+    assert_eq!(
+        serde_json::from_value::<ExecutionPlan>(encoded.clone())
+            .unwrap()
+            .id()
+            .unwrap(),
+        plan.id().unwrap()
+    );
+    for version in 1..14 {
+        let mut injected = encoded.clone();
+        injected["schema_version"] = serde_json::json!(version);
+        assert!(serde_json::from_value::<ExecutionPlan>(injected).is_err());
+    }
+    for field in ["case", "spectral", "freezing", "thermal_contact"] {
+        let mut injected = encoded.clone();
+        injected[field] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<ExecutionPlan>(injected).is_err());
+    }
+    let mut understated = plan.clone();
+    understated.stages[0].ram_bytes = 1;
+    assert!(understated.validate().is_err());
+    let mut bad = plan.clone();
+    bad.observation.retained_times_s = vec![0.];
+    assert!(bad.validate().is_err());
+    assert!(ExecutionPlan::atmospheric_reference(spec.clone(), "ci".into()).is_err());
+    let mut changed = spec;
+    changed.phi_bins = 64;
+    let next = ExecutionPlan::atmospheric_reference(changed, "research".into()).unwrap();
+    assert_ne!(next.id().unwrap(), plan.id().unwrap());
+    assert!(next.observation.max_artifact_bytes > plan.observation.max_artifact_bytes);
+}
+
+#[test]
+fn atmospheric_original_reconstruction_preserves_rows_and_rejects_changed_angular_energy() {
+    let mut spec: AtmosphericReferenceSpec =
+        serde_json::from_str(include_str!("../examples/atmosphere-reference.json")).unwrap();
+    spec.model = "transparent_reference".into();
+    let prepared = spec.prepare().unwrap();
+    let text = prepared
+        .wavelengths_nm
+        .iter()
+        .zip(&prepared.toa_irradiance_w_m2_nm)
+        .map(|(wl, toa)| {
+            let mut columns = vec![
+                format!("{wl:.3}"),
+                format!("{:.6e}", toa * 30f64.to_radians().cos()),
+                "0".into(),
+                "0".into(),
+            ];
+            columns.extend(std::iter::repeat_n("0".into(), 2048));
+            columns.join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let result = harbor_cad::atmosphere::observations(&spec, &text).unwrap();
+    assert!(result.maximum_angular_flux_error < 1e-6);
+    assert_eq!(result.diffuse_downward_w_m2_nm, [0.; 3]);
+    for bad in [
+        text.replace("280.000", "280.001"),
+        text.rsplit_once(' ').unwrap().0.into(),
+        text.replacen(" 0 0 ", " 1 0 ", 1),
+        text.replacen(" 0 ", " nan ", 1),
+    ] {
+        assert!(harbor_cad::atmosphere::observations(&spec, &bad).is_err());
+    }
+    spec.model = "clear_sky_molecular_crs".into();
+    let excess = prepared
+        .wavelengths_nm
+        .iter()
+        .map(|wl| {
+            let mut row = vec![
+                format!("{wl:.3}"),
+                "0".into(),
+                format!("{}", 10. * std::f64::consts::PI),
+                "0".into(),
+            ];
+            row.extend(prepared.umu.iter().flat_map(|mu| {
+                std::iter::repeat_n(if *mu < 0. { "10".into() } else { "0".into() }, 32)
+            }));
+            row.join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(harbor_cad::atmosphere::observations(&spec, &excess).is_err());
+}
 
 #[test]
 fn atmospheric_preparation_preserves_solar_direction_full_angular_grid_units_and_missing_execution()

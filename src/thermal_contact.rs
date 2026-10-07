@@ -248,6 +248,7 @@ impl ExecutionPlan {
             thermal_contact: Some(spec),
             freezing: None,
             spectral: None,
+            atmosphere: None,
             fleetix_revision: FLEETIX_REV.into(),
             fleetix_contract_digest: fleetix_digest(),
             policy,

@@ -25,7 +25,7 @@
     "abi": "public CPU C DISORT with locked C/Fortran/NetCDF dependencies; native retained Float32 spectral arrays and unchanged native decimal output; isolated pure Python 3.13 reductions",
     "scope": "explicit synthetic AFGL sea-level molecular UV 280–400 nm at 1 AU, Lambertian ground boundary, full anisotropic angular original radiance; transparent cosine-law reference separate",
     "build": "unqualified; package and native transparent smoke gate defined, guarded realization pending",
-    "runtime": "unqualified",
+    "runtime": "unqualified; version-14 standalone atmospheric worker source integration and strict original-field reconstruction implemented, exact packaged execution pending",
     "physical_validation": "unqualified",
     "evidence": "docs/atmosphere-reference.md; docs/evidence/atmosphere-source-20261007.json"
   },

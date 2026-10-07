@@ -101,6 +101,12 @@ enum Case {
     ValidateAtmosphericReference {
         file: PathBuf,
     },
+    /// Plan an immutable native molecular UV solve with all original angular fields.
+    PlanAtmosphericReference {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
     /// Plan immutable native directional UV observations and prescribed exposure.
     PlanSpectralReference {
         file: PathBuf,
@@ -444,6 +450,14 @@ fn run(cli: Cli) -> Result<()> {
             Case::ValidateAtmosphericReference { file } => {
                 let spec: harbor_cad::atmosphere::AtmosphericReferenceSpec = read(&file)?;
                 return print(&spec.prepare()?);
+            }
+            Case::PlanAtmosphericReference { file, policy } => {
+                let spec: harbor_cad::atmosphere::AtmosphericReferenceSpec = read(&file)?;
+                let reference = spec.prepare()?;
+                let plan = ExecutionPlan::atmospheric_reference(spec, policy)?;
+                return print(
+                    &serde_json::json!({"approval_digest":plan.id()?,"plan":plan,"atmospheric_reference":reference}),
+                );
             }
             Case::ValidateSpectralReflectionReference { file } => {
                 let spec: harbor_cad::radiation::SpectralReflectionSpec = read(&file)?;

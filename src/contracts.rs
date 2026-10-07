@@ -288,6 +288,7 @@ pub enum StageOperation {
     WettingReference,
     FreezingReference,
     SpectralReference,
+    AtmosphericReference,
     ContactReference,
     Render,
     Video,
@@ -427,6 +428,8 @@ pub struct ExecutionPlan {
     pub freezing: Option<crate::freezing::FreezingReferenceSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spectral: Option<crate::radiation::SpectralReferenceSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub atmosphere: Option<crate::atmosphere::AtmosphericReferenceSpec>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -467,6 +470,14 @@ struct ExecutionPlanRecord {
     freezing: Option<crate::freezing::FreezingReferenceSpec>,
     #[serde(default, deserialize_with = "spectral_spec")]
     spectral: Option<crate::radiation::SpectralReferenceSpec>,
+    #[serde(default, deserialize_with = "atmospheric_spec")]
+    atmosphere: Option<crate::atmosphere::AtmosphericReferenceSpec>,
+}
+
+fn atmospheric_spec<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<crate::atmosphere::AtmosphericReferenceSpec>, D::Error> {
+    crate::atmosphere::AtmosphericReferenceSpec::deserialize(decoder).map(Some)
 }
 
 fn spectral_spec<'de, D: serde::Deserializer<'de>>(
@@ -548,6 +559,14 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> std::result::Result<Self, D::Error> {
         use serde::de::Error;
         let plan = ExecutionPlanRecord::deserialize(decoder)?;
+        if plan.atmosphere.is_some() {
+            if !plan.atmospheric_envelope() {
+                return Err(D::Error::custom(
+                    "strict independent version-14 molecular atmospheric recipe required",
+                ));
+            }
+            return Ok(plan);
+        }
         if plan.spectral.is_some() {
             if !plan.spectral_envelope() {
                 return Err(D::Error::custom(
@@ -625,7 +644,7 @@ impl JsonSchema for ExecutionPlan {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
             properties["schema_version"]["enum"] =
-                serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+                serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
         }
         schema.insert("allOf".into(), serde_json::json!([
             {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}}},
@@ -650,13 +669,34 @@ impl JsonSchema for ExecutionPlan {
             .and_then(serde_json::Value::as_array_mut)
         {
             conditions.push(spectral_schema);
+            conditions.push(serde_json::json!(
+                {"if":{"properties":{"schema_version":{"const":14}}},"then":{"required":["atmosphere"],"properties":{"atmosphere":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]},{"required":["cad_source"]},{"required":["imported_fem"]},{"required":["wetting"]},{"required":["contact"]},{"required":["thermal_contact"]},{"required":["freezing"]},{"required":["spectral"]}]}},"else":{"not":{"required":["atmosphere"]}}}
+            ));
         }
         schema
     }
 }
 impl ExecutionPlan {
+    fn atmospheric_envelope(&self) -> bool {
+        self.schema_version == 14
+            && self.atmosphere.is_some()
+            && self.spectral.is_none()
+            && self.freezing.is_none()
+            && self.thermal_contact.is_none()
+            && self.contact.is_none()
+            && self.wetting.is_none()
+            && self.case.is_none()
+            && self.fem.is_none()
+            && self.thermal.is_none()
+            && self.source.is_none()
+            && self.frames.is_none()
+            && self.filter.is_none()
+            && self.cad_source.is_none()
+            && self.imported_fem.is_none()
+    }
     fn spectral_envelope(&self) -> bool {
         self.schema_version == 13
+            && self.atmosphere.is_none()
             && self.spectral.is_some()
             && self.freezing.is_none()
             && self.thermal_contact.is_none()
@@ -673,6 +713,7 @@ impl ExecutionPlan {
     }
     fn freezing_envelope(&self) -> bool {
         self.schema_version == 12
+            && self.atmosphere.is_none()
             && self.spectral.is_none()
             && self.freezing.is_some()
             && self.thermal_contact.is_none()
@@ -689,6 +730,7 @@ impl ExecutionPlan {
     }
     fn thermal_contact_envelope(&self) -> bool {
         self.schema_version == 11
+            && self.atmosphere.is_none()
             && self.spectral.is_none()
             && self.freezing.is_none()
             && self.thermal_contact.is_some()
@@ -705,6 +747,7 @@ impl ExecutionPlan {
     }
     fn contact_envelope(&self) -> bool {
         self.schema_version == 10
+            && self.atmosphere.is_none()
             && self.spectral.is_none()
             && self.freezing.is_none()
             && self.thermal_contact.is_none()
@@ -721,6 +764,7 @@ impl ExecutionPlan {
     }
     fn wetting_envelope(&self) -> bool {
         self.schema_version == 9
+            && self.atmosphere.is_none()
             && self.spectral.is_none()
             && self.freezing.is_none()
             && self.thermal_contact.is_none()
@@ -741,6 +785,14 @@ impl ExecutionPlan {
             .ok_or_else(|| invalid("fluid/CAD case required for this operation"))
     }
     pub fn science_id(&self) -> Result<String> {
+        if let Some(spec) = &self.atmosphere {
+            if !self.atmospheric_envelope() {
+                return Err(invalid(
+                    "one independent atmospheric scientific recipe required",
+                ));
+            }
+            return digest(spec);
+        }
         if let Some(spec) = &self.spectral {
             if !self.spectral_envelope() {
                 return Err(invalid(
@@ -824,6 +876,7 @@ impl ExecutionPlan {
             thermal_contact: None,
             freezing: None,
             spectral: None,
+            atmosphere: None,
             stages: vec![
                 Stage {
                     id: "filter".into(),
@@ -898,6 +951,7 @@ impl ExecutionPlan {
             thermal_contact: None,
             freezing: None,
             spectral: None,
+            atmosphere: None,
             stages: vec![
                 Stage {
                     id: "video".into(),
@@ -1021,6 +1075,7 @@ impl ExecutionPlan {
             thermal_contact: None,
             freezing: None,
             spectral: None,
+            atmosphere: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1067,6 +1122,7 @@ impl ExecutionPlan {
             thermal_contact: None,
             freezing: None,
             spectral: None,
+            atmosphere: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -1125,6 +1181,7 @@ impl ExecutionPlan {
             thermal_contact: None,
             freezing: None,
             spectral: None,
+            atmosphere: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -1199,6 +1256,7 @@ impl ExecutionPlan {
             thermal_contact: None,
             freezing: None,
             spectral: None,
+            atmosphere: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1291,12 +1349,14 @@ impl ExecutionPlan {
         if let Some(fem) = &self.fem {
             fem.validate()?;
         }
-        if !(self.spectral_envelope()
+        if !(self.atmospheric_envelope()
+            || self.spectral_envelope()
             || self.freezing_envelope()
             || self.thermal_contact_envelope()
             || self.contact_envelope()
             || self.wetting_envelope()
-            || (self.spectral.is_none()
+            || (self.atmosphere.is_none()
+                && self.spectral.is_none()
                 && self.freezing.is_none()
                 && self.thermal_contact.is_none()
                 && self.contact.is_none()
@@ -1337,6 +1397,9 @@ impl ExecutionPlan {
             spec.validate_plan(self)?;
         }
         if let Some(spec) = &self.spectral {
+            spec.validate_plan(self)?;
+        }
+        if let Some(spec) = &self.atmosphere {
             spec.validate_plan(self)?;
         }
         if let Some(source) = &self.cad_source {
@@ -1588,6 +1651,12 @@ impl ExecutionPlan {
             if stage.operation == StageOperation::SpectralReference && self.spectral.is_none() {
                 return Err(invalid(
                     "spectral operation requires independent version-13 recipe",
+                ));
+            }
+            if stage.operation == StageOperation::AtmosphericReference && self.atmosphere.is_none()
+            {
+                return Err(invalid(
+                    "atmospheric operation requires independent version-14 recipe",
                 ));
             }
             if stage.operation == StageOperation::FreezingReference && self.freezing.is_none() {
@@ -1952,6 +2021,9 @@ pub enum Operation {
         spec: Box<crate::radiation::SpectralReferenceSpec>,
     },
     ValidateAtmosphericReference {
+        spec: Box<crate::atmosphere::AtmosphericReferenceSpec>,
+    },
+    PlanAtmosphericReference {
         spec: Box<crate::atmosphere::AtmosphericReferenceSpec>,
     },
     ValidateSpectralReflectionReference {

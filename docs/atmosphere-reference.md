@@ -70,8 +70,8 @@ remain anisotropic observations; conversion to an isotropic sky is unsupported.
 
 ## Operation isolation and qualification
 
-`nix/atmosphere.nix` provides `atmosphere-native-cpu`, `atmosphere-reference-cpu`
-and `runtime-atmosphere-reference-cpu`. A native transparent package smoke test
+`nix/atmosphere.nix` provides `atmosphere-native-cpu`, `atmosphere-reference-cpu`,
+`runtime-atmosphere-reference-cpu` and `runtime-atmosphere-worker`. A native transparent package smoke test
 is distinct from the complete atmospheric campaign. The adapter requires its
 own `harbor-cad-atmosphere-cpu-v1` Bubblewrap closure, read-only descriptor and
 eight measured CPU isolation checks, including changed network namespace and
@@ -82,9 +82,26 @@ the receipt also retains the exact packaged native executable path/hash. Full
 angular arrays stay in the authoritative native text artifact, with bounded
 flux summaries and original field shape/order/unit metadata in the receipt.
 
-The CLI command is `case validate-atmospheric-reference FILE`; the simulation MCP
-tool is `atmospheric_reference_validate`. These validate without executing or
-creating a job. Native atmospheric worker integration and direct/diffuse angular
+The CLI command `case validate-atmospheric-reference FILE` and simulation MCP
+tool `atmospheric_reference_validate` validate without executing or creating a
+job. `case plan-atmospheric-reference FILE` and `atmospheric_reference_plan`
+return the same independent version-14 `atmosphere → bundle` approval. Native
+submission requires the shared same-user authority and tracked systemd service.
+The complete angular sphere and bounded decimal/native parser copies are reserved
+before admission. Older approvals reject injected atmospheric fields, including
+null; atmosphere-only sandbox policy cannot reuse spectral or generic CPU policy.
+
+`src/atmosphere_fields.rs` independently verifies original text row coverage,
+units/shape, cosine-law/direct/ground/source energy, both hemisphere integrals,
+explicit gates, source/profile identities and complete isolation evidence before
+ingestion. Originals have registered units and wavelength/solid-angle association,
+with no invented physical time. Historical numerical verification rechecks the
+registered original bytes; manufactured numerical fixtures do not establish
+runtime execution. The worker additionally rechecks the actual immutable native
+executable hash at execution. Runtime, convergence and physical validation retain
+separate states.
+
+Exact packaged atmospheric worker execution and direct/diffuse angular
 handoff into Mitsuba remain separate acceptance work. Site-specific weather,
 solar history, aerosol/cloud profiles, measured optics, physical ageing/damage
 and GPU transport remain unqualified.

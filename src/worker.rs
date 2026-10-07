@@ -188,6 +188,7 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
                     | StageOperation::WettingReference
                     | StageOperation::FreezingReference
                     | StageOperation::SpectralReference
+                    | StageOperation::AtmosphericReference
                     | StageOperation::ContactReference
                     | StageOperation::CadMesh
                     | StageOperation::FemImported
@@ -484,6 +485,13 @@ fn dispatch(
         Operation::ValidateAtmosphericReference { spec } => {
             Ok(serde_json::to_value(spec.prepare()?)?)
         }
+        Operation::PlanAtmosphericReference { spec } => {
+            let reference = spec.prepare()?;
+            let plan = ExecutionPlan::atmospheric_reference(*spec, profile.policy.clone())?;
+            Ok(
+                serde_json::json!({"approval_digest":plan.id()?,"plan":plan,"atmospheric_reference":reference}),
+            )
+        }
         Operation::ValidateSpectralReflectionReference { spec } => {
             Ok(serde_json::to_value(spec.prepare()?)?)
         }
@@ -584,6 +592,7 @@ fn dispatch(
                 || plan.wetting.is_some()
                 || plan.freezing.is_some()
                 || plan.spectral.is_some()
+                || plan.atmosphere.is_some()
                 || plan.thermal_contact.is_some()
                 || plan.contact.is_some())
                 && authority.is_none()
@@ -643,6 +652,7 @@ fn dispatch(
                                 | StageOperation::WettingReference
                                 | StageOperation::FreezingReference
                                 | StageOperation::SpectralReference
+                                | StageOperation::AtmosphericReference
                                 | StageOperation::ContactReference
                                 | StageOperation::CadMesh
                                 | StageOperation::FemImported
@@ -656,6 +666,8 @@ fn dispatch(
                                     "freezing_closure"
                                 } else if stage.operation == StageOperation::SpectralReference {
                                     "spectral_closure"
+                                } else if stage.operation == StageOperation::AtmosphericReference {
+                                    "atmosphere_closure"
                                 } else if stage.operation == StageOperation::FemImported {
                                     "fem_imported_closure"
                                 } else if stage.operation == StageOperation::CadMesh {
@@ -1045,6 +1057,10 @@ struct NativeRuntime {
     #[serde(default)]
     spectral_closure: Option<String>,
     #[serde(default)]
+    atmosphere: Option<String>,
+    #[serde(default)]
+    atmosphere_closure: Option<String>,
+    #[serde(default)]
     contact: Option<String>,
     #[serde(default)]
     contact_closure: Option<String>,
@@ -1065,6 +1081,7 @@ impl NativeRuntime {
             StageOperation::WettingReference => &self.wetting_closure,
             StageOperation::FreezingReference => &self.freezing_closure,
             StageOperation::SpectralReference => &self.spectral_closure,
+            StageOperation::AtmosphericReference => &self.atmosphere_closure,
             StageOperation::ContactReference => &self.contact_closure,
             StageOperation::CadMesh => &self.cad_mesh_closure,
             StageOperation::FemImported => &self.fem_imported_closure,
@@ -1123,6 +1140,13 @@ impl NativeRuntime {
             StageOperation::SpectralReference => self.spectral.as_deref().ok_or_else(|| {
                 Error::Unqualified("isolated native spectral CPU adapter unavailable".into())
             })?,
+            StageOperation::AtmosphericReference => {
+                self.atmosphere.as_deref().ok_or_else(|| {
+                    Error::Unqualified(
+                        "isolated native molecular atmospheric CPU adapter unavailable".into(),
+                    )
+                })?
+            }
             StageOperation::ContactReference => self.contact.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU contact adapter absent from selected runtime".into())
             })?,
@@ -1235,6 +1259,7 @@ fn native_stage(
             | StageOperation::WettingReference
             | StageOperation::FreezingReference
             | StageOperation::SpectralReference
+            | StageOperation::AtmosphericReference
             | StageOperation::ContactReference
             | StageOperation::CadMesh
             | StageOperation::FemImported
@@ -1264,6 +1289,11 @@ fn native_stage(
                 "/spectral-runtime-closure.txt",
                 "HARBOR_CAD_SPECTRAL_POLICY",
                 crate::radiation::SANDBOX_POLICY,
+            ),
+            StageOperation::AtmosphericReference => (
+                "/atmosphere-runtime-closure.txt",
+                "HARBOR_CAD_ATMOSPHERE_POLICY",
+                crate::atmosphere::SANDBOX_POLICY,
             ),
             StageOperation::ContactReference => (
                 "/contact-runtime-closure.txt",
@@ -1439,6 +1469,8 @@ fn native_stage(
             "freezing-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::SpectralReference) {
             "spectral-receipt.json".into()
+        } else if stage.operation == StageOperation::AtmosphericReference {
+            "atmosphere-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::ContactReference) {
             "contact-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::CadMesh) {
@@ -1474,6 +1506,8 @@ fn native_stage(
                 "native-freezing-request.json".into()
             } else if matches!(stage.operation, StageOperation::SpectralReference) {
                 "native-spectral-request.json".into()
+            } else if stage.operation == StageOperation::AtmosphericReference {
+                "native-atmosphere-request.json".into()
             } else if matches!(stage.operation, StageOperation::ContactReference) {
                 "native-contact-request.json".into()
             } else if matches!(stage.operation, StageOperation::CadMesh) {
@@ -1496,6 +1530,7 @@ fn native_stage(
                     | StageOperation::WettingReference
                     | StageOperation::FreezingReference
                     | StageOperation::SpectralReference
+                    | StageOperation::AtmosphericReference
                     | StageOperation::ContactReference
             ) {
                 "reference"
@@ -1560,6 +1595,28 @@ fn native_stage(
             dir,
             &evidence,
         )?;
+    }
+    if stage.operation == StageOperation::AtmosphericReference {
+        crate::atmosphere::verify(
+            plan.atmosphere
+                .as_ref()
+                .ok_or_else(|| invalid("approved atmospheric recipe required"))?,
+            dir,
+            &evidence,
+        )?;
+        let native = crate::execution::FileIdentity::capture(
+            Path::new(
+                evidence["native_executable"]
+                    .as_str()
+                    .ok_or_else(|| invalid("native atmosphere executable required"))?,
+            ),
+            true,
+        )?;
+        if evidence["native_executable_sha256"] != native.sha256 {
+            return Err(invalid(
+                "observed native atmosphere executable identity changed",
+            ));
+        }
     }
     if matches!(stage.operation, StageOperation::NumericalFilter) {
         crate::filters::verify_receipt(store, id, plan, dir, &evidence)?;
@@ -1691,6 +1748,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::WettingReference => "OpenLB",
         StageOperation::FreezingReference => "OpenLB",
         StageOperation::SpectralReference => "Mitsuba",
+        StageOperation::AtmosphericReference => "libRadtran",
         StageOperation::ContactReference => "CalculiX",
         StageOperation::CadMesh => "Gmsh",
         StageOperation::FemImported => "CalculiX",
@@ -2190,6 +2248,15 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         .ok_or_else(|| invalid("approved directional spectral recipe required"))?;
                     store.add_artifact(id,&commit_artifact(&dir,"native-spectral-request.json",&serde_json::to_vec(spec)?,"json","exact approved angular UV source, SI sensor, spectral optical weights, retained seeds and complete prescribed dose history")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if stage.operation == StageOperation::AtmosphericReference {
+                    let working = native_work.join("stages/atmosphere");
+                    private_dir(&working)?;
+                    let spec = plan
+                        .atmosphere
+                        .as_ref()
+                        .ok_or_else(|| invalid("approved atmospheric recipe required"))?;
+                    store.add_artifact(id,&commit_artifact(&dir,"native-atmosphere-request.json",&serde_json::to_vec(spec)?,"json","exact original UV source/profile, solar direction and full anisotropic angular grid; no inferred physical time")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if matches!(stage.operation, StageOperation::FemImported) {
                     let working = native_work.join("stages/fem-imported");
                     private_dir(&working)?;
@@ -2245,6 +2312,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         crate::wetting::annotate_fields(&plan, &mut artifacts)?;
         crate::freezing::annotate_fields(&plan, &mut artifacts)?;
         crate::radiation::annotate_fields(&plan, &mut artifacts)?;
+        crate::atmosphere::annotate_fields(&plan, &mut artifacts)?;
         crate::contact::annotate_fields(&plan, &mut artifacts);
         for artifact in artifacts {
             store.add_artifact(id, &artifact)?;
@@ -2342,7 +2410,12 @@ mod tests {
             "research".into(),
         )
         .unwrap();
-        for plan in [plan, coupling, freezing] {
+        let atmosphere = ExecutionPlan::atmospheric_reference(
+            serde_json::from_str(include_str!("../examples/atmosphere-reference.json")).unwrap(),
+            "research".into(),
+        )
+        .unwrap();
+        for plan in [plan, coupling, freezing, atmosphere] {
             let request = crate::contracts::Operation::Submit {
                 approved_digest: plan.id().unwrap(),
                 plan: Box::new(plan),

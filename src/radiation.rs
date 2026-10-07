@@ -113,6 +113,7 @@ impl crate::contracts::ExecutionPlan {
             thermal_contact: None,
             freezing: None,
             spectral: Some(spec),
+            atmosphere: None,
             stages: vec![
                 Stage {
                     id: "spectral".into(),

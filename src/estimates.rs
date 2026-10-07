@@ -199,6 +199,22 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 add(512 * MIB, multiply(cells, 4096)?)?
             }
             StageOperation::Bundle => 16 * MIB,
+            StageOperation::AtmosphericReference => {
+                let spec = plan
+                    .atmosphere
+                    .as_ref()
+                    .ok_or_else(|| invalid("atmospheric resource recipe required"))?;
+                spec.prepare()?;
+                let columns = add(
+                    4,
+                    multiply(2 * u64::from(spec.mu_bins), u64::from(spec.phi_bins))?,
+                )?;
+                let original = multiply(multiply(spec.wavelengths.len() as u64, columns)?, 32)?;
+                output = add(output, add(16 * MIB, original)?)?;
+                // Native DISORT work/Fourier matrices and closed decimal output,
+                // Python decoding and independent original reconstruction copies.
+                add(512 * MIB, multiply(original, 8)?)?
+            }
             StageOperation::SpectralReference => {
                 let spec = plan
                     .spectral

@@ -82,6 +82,16 @@
 in {
   atmosphere-native-cpu = native;
   atmosphere-reference-cpu = adapter;
+  runtime-atmosphere-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    atmosphere = "${adapter}/bin/harbor-cad-atmosphere";
+    atmosphere_closure = "${closure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+  });
   runtime-atmosphere-reference-cpu = pkgs.writeText "harbor-cad-atmosphere-runtime.json" (builtins.toJSON {
     schema_version = 1;
     bwrap = "${pkgs.bubblewrap}/bin/bwrap";
