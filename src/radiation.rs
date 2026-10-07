@@ -88,6 +88,118 @@ fn unit_vector(v: [f64; 3]) -> bool {
     v.into_iter().all(f64::is_finite)
         && (v.into_iter().map(|x| x * x).sum::<f64>() - 1.).abs() <= 1e-12
 }
+
+/// Separate strict envelope; no extra capability can be injected into v1 inputs.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SpectralReflectionSpec {
+    pub schema_version: u32,
+    pub formulation: String,
+    pub incident: SpectralReferenceSpec,
+    pub disk_radius: Quantity,
+    pub sensor_height: Quantity,
+    pub reflectance: f64,
+    pub reflectance_provenance: String,
+    pub geometry_provenance: String,
+    pub maximum_model_error: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PreparedSpectralReflection {
+    pub schema_version: u32,
+    pub preparation_id: String,
+    pub input: SpectralReflectionSpec,
+    pub incident_reference: PreparedSpectralReference,
+    pub disk_radius_m: f64,
+    pub sensor_height_m: f64,
+    pub disk_view_factor: f64,
+    pub reflection_factor: f64,
+    pub sensor_view_factor_bounds: [f64; 2],
+    pub black_sensor_shadow_relative_error_bound: f64,
+    pub model_relative_error_bound: f64,
+    pub incident_irradiance_w_m2: f64,
+    pub absorbed_irradiance_w_m2: f64,
+    pub ageing_weighted_irradiance_w_m2: f64,
+    pub incident_power_w: f64,
+    pub absorbed_power_w: f64,
+    pub incident_exposure_j_m2: f64,
+    pub absorbed_exposure_j_m2: f64,
+    pub ageing_weighted_exposure_j_m2: f64,
+    pub executed: bool,
+    pub physical_validation: String,
+    pub limitations: Vec<String>,
+}
+impl SpectralReflectionSpec {
+    pub fn prepare(&self) -> Result<PreparedSpectralReflection> {
+        let incident = self.incident.prepare()?;
+        if self.schema_version != 1
+            || self.formulation != "isotropic_lambertian_disk"
+            || !matches!(self.incident.source, SpectralSource::Isotropic { .. })
+            || self.incident.sensor_normal != [0., 0., -1.]
+            || self.incident.occlusion != "none"
+            || !self.reflectance.is_finite()
+            || !(0. ..=1.).contains(&self.reflectance)
+            || !self.maximum_model_error.is_finite()
+            || self.maximum_model_error <= 0.
+            || self.maximum_model_error > 1e-5
+            || self.maximum_model_error > self.incident.relative_tolerance / 8.
+            || [&self.reflectance_provenance, &self.geometry_provenance]
+                .into_iter()
+                .any(|p| p.trim().is_empty() || p.len() > 4096)
+        {
+            return Err(invalid(
+                "strict synthetic isotropic UV Lambertian disk with explicit reflectance, downward black sensor and independent bounded model error required",
+            ));
+        }
+        let radius = self.disk_radius.si("length")?;
+        let height = self.sensor_height.si("length")?;
+        if !(0.1..=100.).contains(&radius) || !(0.1..=10.).contains(&height) {
+            return Err(invalid(
+                "bounded positive circular disk radius and sensor height required",
+            ));
+        }
+        let size = incident.normalized.sensor_size_m;
+        let offset = size[0].hypot(size[1]) / 2.;
+        if offset >= radius {
+            return Err(invalid(
+                "complete sensor footprint must be inside the circular reflection fixture",
+            ));
+        }
+        let view = |r: f64| r * r / (r * r + height * height);
+        let factor = view(radius);
+        let bounds = [view(radius - offset), view(radius + offset)];
+        let reflection = 1. - (1. - self.reflectance) * factor;
+        // For every rectangle point, centred disks R-a and R+a bound the
+        // projected solid angle. The black sensor removes at most A/h²
+        // incoming solid angle from the isotropic disk illumination.
+        let footprint =
+            (1. - self.reflectance) * (factor - bounds[0]).max(bounds[1] - factor) / reflection;
+        let shadow = self.reflectance * bounds[1] * incident.normalized.sensor_area_m2
+            / (std::f64::consts::PI * height * height * reflection);
+        let model = footprint + shadow;
+        if !model.is_finite() || model > self.maximum_model_error {
+            return Err(invalid(
+                "finite sensor footprint/shadow exceed the unchanged independent reflection model-error limit",
+            ));
+        }
+        let mut report=PreparedSpectralReflection {schema_version:1,preparation_id:String::new(),input:self.clone(),
+            disk_radius_m:radius,sensor_height_m:height,disk_view_factor:factor,reflection_factor:reflection,
+            sensor_view_factor_bounds:bounds,black_sensor_shadow_relative_error_bound:shadow,model_relative_error_bound:model,
+            incident_irradiance_w_m2:incident.incident_irradiance_w_m2*reflection,
+            absorbed_irradiance_w_m2:incident.absorbed_irradiance_w_m2*reflection,
+            ageing_weighted_irradiance_w_m2:incident.ageing_weighted_irradiance_w_m2*reflection,
+            incident_power_w:incident.incident_power_w*reflection,absorbed_power_w:incident.absorbed_power_w*reflection,
+            incident_exposure_j_m2:incident.incident_exposure_j_m2*reflection,
+            absorbed_exposure_j_m2:incident.absorbed_exposure_j_m2*reflection,
+            ageing_weighted_exposure_j_m2:incident.ageing_weighted_exposure_j_m2*reflection,
+            incident_reference:incident,executed:false,physical_validation:"unqualified".into(),limitations:vec![
+                "finite centred upward Lambertian disk under isotropic radiance; constant explicit UV reflectance and a downward black planar sensor".into(),
+                "uncovered projected solid angle retains the original isotropic environment; finite sensor footprint and illumination shadow have separate conservative model-error bounds".into(),
+                "native transport, sampling refinement, atmospheric inputs, imported optics and physical validation require separate qualification".into()]};
+        report.preparation_id = digest(&report)?;
+        Ok(report)
+    }
+}
 // Exact product integral for two piecewise-linear functions on one shared grid.
 // Endpoint-product trapezoids are not exact when optical weights vary.
 fn product_integral(x: &[f64], a: &[f64], b: &[f64]) -> f64 {

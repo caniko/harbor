@@ -49,6 +49,23 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
     )
     assert not spectral_reference["executed"]
     assert abs(spectral_reference["absorbed_irradiance_w_m2"] - 132.0) < 1e-10
+    reflection = json.loads(
+        (repo / "examples/spectral-reflection-reference.json").read_text()
+    )
+    Draft202012Validator(schemas["SpectralReflectionSpec"]).validate(reflection)
+    reflection_reference = json.loads(
+        subprocess.check_output(
+            [binary, "case", "validate-spectral-reflection-reference", "/dev/stdin"],
+            input=json.dumps(reflection).encode(),
+        )
+    )
+    Draft202012Validator(schemas["PreparedSpectralReflection"]).validate(
+        reflection_reference
+    )
+    assert (
+        not reflection_reference["executed"]
+        and reflection_reference["model_relative_error_bound"] < 1e-5
+    )
     profile = json.loads((repo / "profiles/ci.json").read_text())
     profile.update(
         policy="research", service_mode="systemd", allowed_input_root=str(tmp_path)
@@ -91,6 +108,26 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
                     not actual.is_error
                     and actual.structured_content == spectral_reference
                 )
+                actual = await client.call_tool(
+                    "spectral_reflection_reference_validate", {"spec": reflection}
+                )
+                assert (
+                    not actual.is_error
+                    and actual.structured_content == reflection_reference
+                )
+                for field, value in (
+                    ("reflectance", 1.1),
+                    ("maximum_model_error", 0.02),
+                    ("reflectance_provenance", ""),
+                    ("temperature_k", 273.15),
+                ):
+                    rejected = await client.call_tool(
+                        "spectral_reflection_reference_validate",
+                        {"spec": {**reflection, field: value}},
+                    )
+                    assert rejected.is_error and "invalid_input" in str(
+                        rejected.content
+                    )
                 for field, value in (
                     ("precision", "Float64"),
                     ("variant", "cuda_ad_spectral"),

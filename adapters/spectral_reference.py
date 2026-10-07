@@ -79,6 +79,8 @@ def product_integral(wavelengths, source, weight):
 
 
 def normalize(spec):
+    if isinstance(spec, dict) and "incident" in spec:
+        return normalize_reflection(spec)
     if (
         not isinstance(spec, dict)
         or set(spec) != KEYS
@@ -247,6 +249,102 @@ def normalize(spec):
     }
 
 
+def normalize_reflection(spec):
+    keys = {
+        "schema_version",
+        "formulation",
+        "incident",
+        "disk_radius",
+        "sensor_height",
+        "reflectance",
+        "reflectance_provenance",
+        "geometry_provenance",
+        "maximum_model_error",
+    }
+    if (
+        set(spec) != keys
+        or type(spec["schema_version"]) is not int
+        or spec["schema_version"] != 1
+        or spec["formulation"] != "isotropic_lambertian_disk"
+    ):
+        raise ValueError("strict separate synthetic planar reflection input required")
+    incident = spec["incident"]
+    if not isinstance(incident, dict) or "incident" in incident:
+        raise ValueError("unwrapped explicit angular UV incident spectrum required")
+    normalized = normalize(incident)
+    if (
+        incident["source"]["kind"] != "isotropic"
+        or incident["sensor_normal"] != [0, 0, -1]
+        or incident["occlusion"] != "none"
+    ):
+        raise ValueError(
+            "isotropic source and downward black sensor required for disk view-factor reference"
+        )
+    radius = quantity(spec["disk_radius"], {"m": 1.0, "mm": 0.001, "nm": 1e-9})
+    height = quantity(spec["sensor_height"], {"m": 1.0, "mm": 0.001, "nm": 1e-9})
+    reflectance = number(spec["reflectance"])
+    limit = number(spec["maximum_model_error"])
+    if (
+        not 0.1 <= radius <= 100.0
+        or not 0.1 <= height <= 10.0
+        or not 0 <= reflectance <= 1.0
+        or not 0 < limit <= min(1e-5, normalized["relative_tolerance"] / 8.0)
+    ):
+        raise ValueError(
+            "bounded positive reflection geometry, UV reflectance and unchanged independent model gate required"
+        )
+    for name in ("reflectance_provenance", "geometry_provenance"):
+        if (
+            not isinstance(spec[name], str)
+            or not spec[name].strip()
+            or len(spec[name]) > 4096
+        ):
+            raise ValueError(
+                "explicit bounded UV reflection and geometry provenance required"
+            )
+    offset = math.hypot(*normalized["sensor_size_m"]) / 2.0
+    if offset >= radius:
+        raise ValueError(
+            "complete centred sensor footprint inside circular disk required"
+        )
+
+    # Integrate 2*cos(theta)*sin(theta) over the cone subtended by the disk.
+    # At every surface position, inscribed/circumscribed cones bound the offset.
+    def projected_cone(r):
+        return 1.0 - height**2 / (height**2 + r**2)
+
+    view = projected_cone(radius)
+    bounds = [projected_cone(radius - offset), projected_cone(radius + offset)]
+    factor = (1.0 - view) + reflectance * view
+    footprint = (1.0 - reflectance) * max(view - bounds[0], bounds[1] - view) / factor
+    shadow = (
+        reflectance
+        * bounds[1]
+        * normalized["sensor_area_m2"]
+        / (math.pi * height**2 * factor)
+    )
+    error = footprint + shadow
+    if not math.isfinite(error) or error > limit:
+        raise ValueError(
+            "finite footprint and sensor shadow exceed the unchanged independent reflection model gate"
+        )
+    normalized["reference"] = {
+        name: value * factor for name, value in normalized["reference"].items()
+    }
+    normalized["reflection"] = {
+        "disk_radius_m": radius,
+        "sensor_height_m": height,
+        "reflectance": reflectance,
+        "disk_view_factor": view,
+        "reflection_factor": factor,
+        "sensor_view_factor_bounds": bounds,
+        "black_sensor_shadow_relative_error_bound": shadow,
+        "model_relative_error_bound": error,
+        "maximum_model_error": limit,
+    }
+    return normalized
+
+
 def verify_channels(normalized, values, tolerance):
     if (
         set(values) != {"incident", "absorbed", "ageing"}
@@ -321,6 +419,7 @@ def scene_definition(spec, normalized, mi):
         "meter": {
             "type": "rectangle",
             "to_world": frame,
+            "bsdf": {"type": "diffuse", "reflectance": 0.0},
             "sensor": {
                 "type": "irradiancemeter",
                 "film": film,
@@ -336,6 +435,21 @@ def scene_definition(spec, normalized, mi):
                 normalized["wavelengths_nm"], normalized["source_values_nm"]
             ),
         }
+        if "reflection" in normalized:
+            reflection = normalized["reflection"]
+            scene["disk"] = {
+                "type": "disk",
+                "to_world": mi.ScalarTransform4f()
+                .translate([0, 0, -reflection["sensor_height_m"]])
+                .scale(reflection["disk_radius_m"]),
+                "bsdf": {
+                    "type": "diffuse",
+                    "reflectance": native_spectrum(
+                        normalized["wavelengths_nm"],
+                        [reflection["reflectance"]] * len(normalized["wavelengths_nm"]),
+                    ),
+                },
+            }
     else:
         scene["source"] = {
             "type": "directional",
@@ -417,6 +531,7 @@ def measure_directional(scene, spec, normalized, seed, path, mi, dr):
 
 def execute(spec, root):
     normalized = normalize(spec)
+    incident = spec["incident"] if "reflection" in normalized else spec
     # Native imports are isolated from MCP and never run during pure validation.
     import drjit as dr
     import mitsuba as mi
@@ -433,16 +548,18 @@ def execute(spec, root):
         raise ValueError(
             "explicit native scalar spectral variant required; no backend fallback"
         )
-    scene = mi.load_dict(scene_definition(spec, normalized, mi))
+    scene = mi.load_dict(scene_definition(incident, normalized, mi))
     observations = []
-    for seed in spec["seeds"]:
+    for seed in incident["seeds"]:
         start = time.monotonic()
-        if spec["source"]["kind"] == "directional":
+        if incident["source"]["kind"] == "directional":
             path = root / f"directional-{seed}.csv"
-            values = measure_directional(scene, spec, normalized, seed, path, mi, dr)
+            values = measure_directional(
+                scene, incident, normalized, seed, path, mi, dr
+            )
             method = "native_emitter_direction_visibility_and_surface_position; exact_original_knot_product_quadrature"
         else:
-            image = mi.render(scene, seed=seed, spp=spec["samples"])
+            image = mi.render(scene, seed=seed, spp=incident["samples"])
             bitmap = scene.sensors()[0].film().bitmap()
             names = [field.name for field in bitmap.struct_()]
             values = dict(zip(names, [float(v) for v in image.array], strict=True))
@@ -457,11 +574,11 @@ def execute(spec, root):
                     "exact native Float32 EXR spectral channel roundtrip required"
                 )
             method = "native_irradiancemeter_cosine_hemisphere_path_and_specfilm_response_sampling"
-        checks = verify_channels(normalized, values, spec["relative_tolerance"])
+        checks = verify_channels(normalized, values, incident["relative_tolerance"])
         observations.append(
             {
                 "seed": seed,
-                "samples": spec["samples"],
+                "samples": incident["samples"],
                 "method": method,
                 "native_channels_w_m2": values,
                 "numerical_verification": checks,
@@ -490,7 +607,8 @@ def execute(spec, root):
         "normalized": normalized,
         "observations": observations,
         "physical_validation": "unqualified",
-        "scope": "synthetic planar directional/isotropic UV surface irradiance; prescribed fixed-angular dose; no atmosphere, reflection, GPU or worker qualification",
+        "reflection_model_assessment": normalized.get("reflection"),
+        "scope": "synthetic planar directional/isotropic UV surface irradiance and optional bounded isotropic Lambertian disk; prescribed fixed-angular dose; no atmosphere, GPU or worker qualification",
     }
 
 

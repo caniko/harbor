@@ -476,6 +476,9 @@ fn dispatch(
         }
         Operation::ValidateSnowReference { spec } => Ok(serde_json::to_value(spec.prepare()?)?),
         Operation::ValidateSpectralReference { spec } => Ok(serde_json::to_value(spec.prepare()?)?),
+        Operation::ValidateSpectralReflectionReference { spec } => {
+            Ok(serde_json::to_value(spec.prepare()?)?)
+        }
         Operation::PlanSnowReference { spec } => spec.plan(profile.policy.clone()),
         Operation::PlanWettingReference { spec } => {
             let plan = ExecutionPlan::wetting_reference(*spec, profile.policy.clone())?;

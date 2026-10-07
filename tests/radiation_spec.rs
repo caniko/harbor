@@ -139,3 +139,59 @@ fn declared_angular_source_and_occlusion_are_not_collapsed_to_unqualified_scalar
     value["temperature_k"] = serde_json::json!(273.15);
     assert!(serde_json::from_value::<SpectralReferenceSpec>(value).is_err());
 }
+
+#[test]
+fn reflected_uv_preserves_lambertian_view_factor_and_bounds_sensor_footprint_and_shadow() {
+    let mut incident = fixture();
+    incident.source = SpectralSource::Isotropic {
+        radiance: vec![quantity(1., "W/(m2*sr*nm)"), quantity(3., "W/(m2*sr*nm)")],
+    };
+    incident.sensor_normal = [0., 0., -1.];
+    let mut spec=SpectralReflectionSpec { schema_version:1,formulation:"isotropic_lambertian_disk".into(),incident,
+        disk_radius:quantity(10.,"m"),sensor_height:quantity(1.,"m"),reflectance:0.4,
+        reflectance_provenance:"synthetic constant UV Lambertian reflectance; no RGB derivation".into(),
+        geometry_provenance:"centred downward black sensor above finite upward circular disk; remaining solid angle sees original isotropic environment".into(),
+        maximum_model_error:1e-5 };
+    let reference = spec.prepare().unwrap();
+    let factor = 1. - 0.6 * 100. / 101.;
+    assert!((reference.disk_view_factor - 100. / 101.).abs() < 1e-15);
+    assert!((reference.reflection_factor - factor).abs() < 1e-15);
+    assert!(
+        (reference.incident_irradiance_w_m2 - 240. * std::f64::consts::PI * factor).abs() < 1e-10
+    );
+    assert!(
+        (reference.absorbed_irradiance_w_m2 - 132. * std::f64::consts::PI * factor).abs() < 1e-10
+    );
+    assert!(
+        (reference.absorbed_exposure_j_m2 - reference.absorbed_irradiance_w_m2 * 3600.).abs()
+            < 1e-8
+    );
+    assert!(
+        reference.model_relative_error_bound > 0. && reference.model_relative_error_bound < 1e-5
+    );
+    assert!(
+        reference.sensor_view_factor_bounds[0] < reference.disk_view_factor
+            && reference.sensor_view_factor_bounds[1] > reference.disk_view_factor
+    );
+    assert!(!reference.executed);
+    spec.reflectance = 1.;
+    let perfect = spec.prepare().unwrap();
+    assert_eq!(perfect.reflection_factor, 1.);
+    assert!(perfect.model_relative_error_bound > 0.); // finite black sensor shadows incoming disk illumination
+    spec.reflectance = 0.;
+    spec.incident.sensor_width = quantity(1e-5, "m");
+    spec.incident.sensor_height = quantity(1e-5, "m");
+    assert!(spec.prepare().unwrap().incident_irradiance_w_m2 > 0.); // original environment outside finite disk
+    spec.incident.sensor_normal = [0., 0., 1.];
+    assert!(spec.prepare().is_err());
+    spec.incident.sensor_normal = [0., 0., -1.];
+    spec.maximum_model_error = 0.02;
+    assert!(spec.prepare().is_err());
+    spec.maximum_model_error = 1e-5;
+    spec.incident.sensor_width = quantity(0.01, "m");
+    spec.incident.sensor_height = quantity(0.01, "m");
+    assert!(spec.prepare().is_err());
+    let mut legacy = serde_json::to_value(fixture()).unwrap();
+    legacy["reflection"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<SpectralReferenceSpec>(legacy).is_err());
+}

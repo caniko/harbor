@@ -119,15 +119,36 @@ def main():
     area = copy.deepcopy(base)
     area["sensor_width"]["value"] *= 2
     cases.append(("double-area", area))
+    reflection = json.loads(
+        (repo / "examples/spectral-reflection-reference.json").read_text()
+    )
+    cases.append(("reflection-rho04", reflection))
+    high = copy.deepcopy(reflection)
+    high["reflectance"] = 0.8
+    cases.append(("reflection-rho08", high))
+    black = copy.deepcopy(reflection)
+    black["reflectance"] = 0.0
+    black["disk_radius"]["value"] = 1.0
+    black["incident"]["sensor_width"] = {"value": 1e-5, "unit": "m"}
+    black["incident"]["sensor_height"] = {"value": 1e-5, "unit": "m"}
+    cases.append(("reflection-black", black))
     records = []
     for name, spec in cases:
+        incident = spec.get("incident", spec)
         inputs = root / f"input-{name}"
         inputs.mkdir(mode=0o700)
         request = inputs / "request.json"
         request.write_text(json.dumps(spec, allow_nan=False, separators=(",", ":")))
         prepared = json.loads(
             subprocess.check_output(
-                [str(binary), "case", "validate-spectral-reference", str(request)],
+                [
+                    str(binary),
+                    "case",
+                    "validate-spectral-reflection-reference"
+                    if "incident" in spec
+                    else "validate-spectral-reference",
+                    str(request),
+                ],
                 timeout=30,
             )
         )
@@ -235,7 +256,7 @@ def main():
             or receipt["executed"] is not True
             or receipt["software_fallback"] is not False
             or receipt["normalized"] != normalized
-            or [obs["seed"] for obs in receipt["observations"]] != spec["seeds"]
+            or [obs["seed"] for obs in receipt["observations"]] != incident["seeds"]
         ):
             raise ValueError(
                 "exact native source, variant, scientific identity and complete retained seed coverage required"
@@ -253,18 +274,18 @@ def main():
             if (
                 checksum(field) != observation["sha256"]
                 or field.stat().st_size != observation["bytes"]
-                or observation["samples"] != spec["samples"]
+                or observation["samples"] != incident["samples"]
             ):
                 raise ValueError(
                     "closed unchanged native spectral observations required"
                 )
             actual = observation["native_channels_w_m2"]
-            if spec["source"]["kind"] == "directional":
+            if incident["source"]["kind"] == "directional":
                 with field.open() as handle:
                     rows = list(csv.DictReader(handle))
-                if len(rows) != spec["samples"] or [
+                if len(rows) != incident["samples"] or [
                     int(row["sample"]) for row in rows
-                ] != list(range(spec["samples"])):
+                ] != list(range(incident["samples"])):
                     raise ValueError(
                         "complete native directional surface observations required"
                     )
@@ -311,7 +332,7 @@ def main():
                         "separate-process original Float32 spectral EXR observations must match exact reported channels"
                     )
             checks = verifier.verify_channels(
-                normalized, actual, spec["relative_tolerance"]
+                normalized, actual, incident["relative_tolerance"]
             )
             if checks != observation["numerical_verification"] or any(
                 not math.isclose(
@@ -337,6 +358,26 @@ def main():
                 "exit_code": process.returncode,
             }
         )
+        if "reflection" in normalized:
+            if receipt["reflection_model_assessment"] != normalized["reflection"]:
+                raise ValueError(
+                    "independent finite-footprint/shadow reflection model assessment required"
+                )
+            for key in (
+                "disk_view_factor",
+                "reflection_factor",
+                "model_relative_error_bound",
+                "black_sensor_shadow_relative_error_bound",
+            ):
+                if not math.isclose(
+                    prepared[key],
+                    normalized["reflection"][key],
+                    rel_tol=1e-10,
+                    abs_tol=1e-15,
+                ):
+                    raise ValueError(
+                        "independent Rust/Python projected-solid-angle and model-error reference agreement required"
+                    )
     rms = []
     for samples in (4096, 16384, 65536):
         record = next(
@@ -354,6 +395,80 @@ def main():
         raise ValueError(
             f"fixed-spectrum independent-seed numerical sampling error must decrease under equal-reference refinement: {rms}"
         )
+    rejection_specs = []
+    for field, value in (
+        ("precision", "Float64"),
+        ("variant", "cuda_ad_spectral"),
+        ("samples", 4095),
+        ("relative_tolerance", 0.1),
+        ("absorptivity", [0.2, 1.1]),
+        ("source_provenance", ""),
+        ("reflection", None),
+    ):
+        invalid = copy.deepcopy(base)
+        invalid[field] = value
+        rejection_specs.append((field, invalid, "validate-spectral-reference"))
+    for field, value in (
+        ("maximum_model_error", 0.02),
+        ("reflectance", 1.1),
+        ("reflectance_provenance", ""),
+        ("reflection", None),
+    ):
+        invalid = copy.deepcopy(reflection)
+        invalid[field] = value
+        rejection_specs.append(
+            ("reflection-" + field, invalid, "validate-spectral-reflection-reference")
+        )
+    rejections = []
+    for name, spec, cli_command in rejection_specs:
+        invalid_inputs = root / f"reject-input-{name}"
+        invalid_inputs.mkdir(mode=0o700)
+        invalid_request = invalid_inputs / "request.json"
+        invalid_request.write_text(json.dumps(spec, allow_nan=False))
+        invalid_work = root / f"reject-{name}"
+        invalid_work.mkdir(mode=0o700)
+        replacements = {
+            str(inputs): str(invalid_inputs),
+            str(request): str(invalid_request),
+            str(work): str(invalid_work),
+        }
+        native_command = [replacements.get(argument, argument) for argument in command]
+        result = subprocess.run(
+            native_command,
+            cwd=invalid_work,
+            env=environment,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        (root / f"reject-{name}.log").write_bytes(result.stdout + result.stderr)
+        cli = subprocess.run(
+            [str(binary), "case", cli_command, str(invalid_request)],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        if (
+            result.returncode == 0
+            or cli.returncode == 0
+            or any(invalid_work.iterdir())
+            or b"ValueError" not in result.stderr
+            or b"invalid_input" not in cli.stderr
+        ):
+            raise ValueError(
+                "strict native/CLI applicability rejection must precede native output and preserve typed errors"
+            )
+        rejections.append(
+            {
+                "case": name,
+                "argv": native_command,
+                "exit_code": result.returncode,
+                "cli_exit_code": cli.returncode,
+                "request_sha256": checksum(invalid_request),
+                "log_sha256": checksum(root / f"reject-{name}.log"),
+                "native_output_files": 0,
+            }
+        )
     report = {
         "schema_version": 1,
         "planner": str(binary),
@@ -368,10 +483,11 @@ def main():
         "runtime_sha256": checksum(args.runtime) if runtime else None,
         "adapter_source_sha256": checksum(repo / "adapters/spectral_reference.py"),
         "results": records,
+        "rejections": rejections,
         "isotropic_sampling_error_rms_4096_16384_65536": rms,
         "service_resources_before": before,
         "service_resources_after": service_resources(),
-        "scope": "synthetic native UV surface irradiance, angular orientation, opaque occlusion, separate optical weights and prescribed exact amplitude dose; no reflection, atmosphere, GPU, worker or physical qualification",
+        "scope": "synthetic native UV surface irradiance, angular orientation, opaque occlusion, bounded Lambertian disk reflection, separate optical weights and prescribed exact amplitude dose; no atmosphere, GPU, worker or physical qualification",
         "physical_validation": "unqualified",
     }
     (root / "verification.json").write_text(

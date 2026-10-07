@@ -122,3 +122,66 @@ def test_native_input_and_field_verification_reject_missing_angular_data_nonfini
         native.verify_channels(normalized, bad, 0.02)
     with pytest.raises(ValueError):
         native.verify_channels(normalized, values, 0.1)
+
+
+def reflection_fixture():
+    incident = fixture()
+    incident["source"] = {
+        "kind": "isotropic",
+        "radiance": [
+            {"value": 1.0, "unit": "W/(m2*sr*nm)"},
+            {"value": 3.0, "unit": "W/(m2*sr*nm)"},
+        ],
+    }
+    incident["sensor_normal"] = [0, 0, -1]
+    return {
+        "schema_version": 1,
+        "formulation": "isotropic_lambertian_disk",
+        "incident": incident,
+        "disk_radius": {"value": 10.0, "unit": "m"},
+        "sensor_height": {"value": 1.0, "unit": "m"},
+        "reflectance": 0.4,
+        "reflectance_provenance": "synthetic explicit constant UV reflectance; no visible material inference",
+        "geometry_provenance": "centred downward black sensor and finite upward circular disk with surrounding isotropic environment",
+        "maximum_model_error": 1e-5,
+    }
+
+
+def test_independent_reflection_retains_uncovered_environment_and_separate_model_error_bounds():
+    native = adapter()
+    raw = reflection_fixture()
+    normal = native.normalize(raw)
+    factor = 1.0 - 0.6 * 100 / 101
+    assert math.isclose(
+        normal["reference"]["absorbed"], 132 * math.pi * factor, rel_tol=1e-14
+    )
+    assert normal["reflection"]["model_relative_error_bound"] < 1e-5
+    assert normal["reflection"]["black_sensor_shadow_relative_error_bound"] > 0.0
+    raw["reflectance"] = 0.0
+    raw["incident"]["sensor_width"] = {"value": 1e-5, "unit": "m"}
+    raw["incident"]["sensor_height"] = {"value": 1e-5, "unit": "m"}
+    assert native.normalize(raw)["reference"]["incident"] > 0.0
+    raw["reflectance"] = 1.0
+    assert math.isclose(
+        native.normalize(raw)["reference"]["incident"], 240 * math.pi, rel_tol=1e-14
+    )
+    for field, value in (
+        ("maximum_model_error", 0.02),
+        ("reflectance", 1.1),
+        ("reflectance_provenance", ""),
+        ("schema_version", 2),
+        ("reflection", None),
+    ):
+        rejected = reflection_fixture()
+        rejected[field] = value
+        with pytest.raises(ValueError):
+            native.normalize(rejected)
+    rejected = reflection_fixture()
+    rejected["incident"]["source"] = fixture()["source"]
+    with pytest.raises(ValueError):
+        native.normalize(rejected)
+    rejected = reflection_fixture()
+    rejected["incident"]["sensor_width"]["value"] = 10.0
+    rejected["incident"]["sensor_height"]["value"] = 10.0
+    with pytest.raises(ValueError):
+        native.normalize(rejected)

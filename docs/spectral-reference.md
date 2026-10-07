@@ -115,4 +115,51 @@ The complete CPU gate passes 123 Python tests, all Rust tests, strict Clippy,
 locked builds and formatter/linter checks. Native source/API, syntax and
 immutable digest checks pass. Guarded build 45 refused evaluation at 12 GiB
 combined memory/swap headroom, below the required 24 GiB; no realization ran.
-The native spectral diagnostic is waiting behind Atlas's host execution lease.
+The native spectral ABI diagnostic timed out before execution behind Atlas's
+host lease held by `chaosbox-full-snapshot-sync` (PID 3337737). Its original
+command, exit record and refusal log remain retained. No native spectral
+measurement has been produced by that attempt.
+
+## Bounded Lambertian reflection reference
+
+`case validate-spectral-reflection-reference examples/spectral-reflection-reference.json`
+and MCP `spectral_reflection_reference_validate` prepare a separate strict
+`isotropic_lambertian_disk` contract. It wraps an explicit isotropic UV source
+and a downward-facing black rectangular irradiance meter at the origin. The
+centred, upward-facing disk is at `z=-height`; radius, height, constant UV
+Lambertian reflectance, geometry and optical provenance are prescribed. Extra
+reflection fields, including null values, are rejected by the older incident
+contract.
+
+For a point receiver, the disk's projected solid-angle fraction is
+`F=R²/(R²+h²)`. Under isotropic incident spectral radiance `L_lambda`, the
+Lambertian disk's outgoing radiance is `rho*L_lambda`. The part of the meter's
+hemisphere outside the disk still sees the original environment, so total
+spectral irradiance is `pi*L_lambda*(1-F+rho*F)`. Discarding the uncovered sky
+would give the wrong finite-disk reference. The source, absorbed and ageing
+integrals retain their distinct optical weights and prescribed-history dose.
+
+The full sensor footprint is finite. If `a` is its half-diagonal, disks of
+radii `R-a` and `R+a` bound the projected solid angle at every sensor point.
+This gives a conservative footprint-relative-error bound. The black sensor
+also blocks incoming disk illumination: its solid angle is at most
+`area/h²`, giving a separate relative-error bound
+`rho*F_upper*area/(pi*h²*(1-F+rho*F))`. Their sum must stay below the explicit
+model-error limit, at most `1e-5` and at most one eighth of the numerical gate.
+An unresolved sensor/geometry combination is rejected rather than hiding this
+model error inside Monte Carlo noise.
+
+The standalone native adapter constructs the actual disk and a black meter;
+native path transport, its spectral response channels and separate EXR reader
+remain the measured solver path. The exact CPU campaign adds two nonzero
+reflectances and a black-disk case with independently resolved sensor dimensions,
+plus native/CLI pre-output rejection tests. Separate numerical sampling and
+physical qualification remain required.
+
+The native reflection follows pinned upstream
+[`diffuse`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/bsdfs/diffuse.cpp)
+(one-sided Lambertian UV spectrum),
+[`disk`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/shapes/disk.cpp)
+(unit disk at the origin transformed by the prescribed radius and height) and
+the spectral irradiance-meter/film APIs above. It makes no atmospheric, imported
+material or physical-lifetime claim.

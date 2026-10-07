@@ -97,6 +97,10 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Prepare a synthetic UV Lambertian reflection reference with independently bounded sensor model error.
+    ValidateSpectralReflectionReference {
+        file: PathBuf,
+    },
     /// Prepare explicit angular UV source, optical weighting and prescribed exposure; no transport execution.
     ValidateSpectralReference {
         file: PathBuf,
@@ -420,6 +424,10 @@ fn run(cli: Cli) -> Result<()> {
             }
             Case::ValidateSpectralReference { file } => {
                 let spec: harbor_cad::radiation::SpectralReferenceSpec = read(&file)?;
+                return print(&spec.prepare()?);
+            }
+            Case::ValidateSpectralReflectionReference { file } => {
+                let spec: harbor_cad::radiation::SpectralReflectionSpec = read(&file)?;
                 return print(&spec.prepare()?);
             }
             Case::PlanSnowReference { file, policy } => {
