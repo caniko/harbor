@@ -41,7 +41,7 @@ def configured(label, memory_gb):
     runner = matches[0]
     require(runner["status"].lower() == "ready" and runner["maximum_runners"] > 0,
             "The requested hosted runner is not Ready or has no capacity allocation")
-    require(runner["machine_size"]["memory_gb"] >= memory_gb, "Hosted runner memory is below the qualification floor")
+    require(runner["machine_size_details"]["memory_gb"] >= memory_gb, "Hosted runner memory is below the qualification floor")
     group = api(f"orgs/{owner}/actions/runner-groups/{runner['runner_group_id']}")
     require(not repo["private"] or group["visibility"] in ("all", "private", "selected"), "Runner group excludes this repository")
     require(repo["private"] or group.get("allows_public_repositories") is True,

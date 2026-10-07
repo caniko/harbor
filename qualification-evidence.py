@@ -39,9 +39,14 @@ def identity():
     head = pr["head"]["sha"]
     require(api(f"pulls/{pr['number']}")["head"]["sha"] == head, "PR head advanced; evidence is historical")
     require(int(os.environ["GITHUB_RUN_ATTEMPT"]) == 1, "Retries cannot qualify; publish a source successor")
+    run_id = int(os.environ["GITHUB_RUN_ID"])
+    run = api(f"actions/runs/{run_id}")
+    require(run["id"] == run_id and run["event"] == "pull_request" and run["run_attempt"] == 1,
+            "Provider run identity does not match the original PR attempt")
     return {"repository": os.environ["GITHUB_REPOSITORY"], "pr": pr["number"], "head": head,
             "base": pr["base"]["sha"], "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
-            "workflow_sha": os.environ["GITHUB_WORKFLOW_SHA"], "run_id": int(os.environ["GITHUB_RUN_ID"]),
+            "workflow_sha": os.environ["GITHUB_WORKFLOW_SHA"], "run_id": run_id,
+            "workflow_run_head_sha": run["head_sha"], "event_sha": os.environ["GITHUB_SHA"],
             "run_attempt": 1}
 
 
@@ -127,7 +132,9 @@ def artifacts(prefix, count, destination):
                     f"Artifact {artifact['id']} lifetime is only {lifetime} seconds")
             digest = artifact.get("digest", "")
             require(digest.startswith("sha256:") and len(digest) == 71, "Provider artifact SHA-256 is missing")
-            require(artifact["workflow_run"]["head_sha"] == source["head"], "Artifact workflow source mismatch")
+            require(artifact["workflow_run"]["id"] == source["run_id"], "Artifact workflow run mismatch")
+            require(artifact["workflow_run"]["head_sha"] == source["workflow_run_head_sha"],
+                    "Artifact workflow source mismatch")
             retained.append({"id": artifact["id"], "name": artifact["name"], "sha256": digest,
                              "created_at": artifact["created_at"], "expires_at": artifact["expires_at"],
                              "retention_seconds": lifetime})

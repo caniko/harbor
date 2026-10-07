@@ -16,10 +16,25 @@ every required artifact, including the retention audit. Source, workflow,
 lockfiles, build outputs, reports, and raw logs are SHA-256 bound.
 
 The high-memory gate requires a supported organization-owned larger runner.
-`QUALIFICATION_LARGER_RUNNER` names it; `HOSTED_RUNNER_READ_TOKEN` supplies
-organization runner-read access. Provider readiness and repository access must
-pass before scheduling. The personal-account fork currently lacks this owner
-prerequisite. Ordinary native evidence cannot replace high-memory qualification.
+`QUALIFICATION_LARGER_RUNNER` names it. PR-controlled jobs receive only the
+read-only repository `GITHUB_TOKEN`; never provision an organization runner-read
+credential as a repository secret consumed by this workflow. Privileged provider
+readback must run through independently trusted owner code, outside the PR
+execution boundary, before a receipt-consumption route can be enabled. The
+current PR job fails closed when its repository token cannot prove organization
+runner readiness and repository access. The personal-account fork also lacks
+the organization prerequisite. Ordinary native evidence cannot replace
+high-memory qualification.
+
+Artifact readback binds each artifact to its provider workflow run ID and that
+run's recorded SHA. The checked-out PR head remains a separate exact-source
+identity in the build receipts; GitHub's synthetic merge/event SHA is retained
+as metadata and is not assumed to equal the checkout revision.
+
+Receipt regression tests run as a separate hosted job. They are not counted
+toward the mandatory 175-case lifecycle roster. That roster is still blocked:
+the selected tree has 106 cases, and the named source of the remaining accepted
+cases must be supplied before discovery can be repaired without lowering the bar.
 
 All execution is hosted-only. Failed evidence stays inspectable, and repaired
 source must obtain attempt-1 GREEN on its exact successor. Composition selection,
