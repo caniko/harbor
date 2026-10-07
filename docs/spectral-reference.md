@@ -202,3 +202,8 @@ controls/aggregate peaks, forced owned-tree death, cancellation and final shared
 reservation/runtime-root release. The campaign itself remains unexecuted until
 the normal packaging and Atlas lease prerequisites are available. Refused attempts
 are recorded in [the prerequisite evidence](evidence/qualification-refusals-20261007.json).
+
+The campaign calls the actual shared `WorkerCampaign.command/submit/wait/start`
+API and uses the packaged MCP server's environment-selected socket. An ABI-free
+API/signature check covers both spectral and freezing entrypoints; native
+scientific qualification still requires running the complete exact-package gate.

@@ -7,6 +7,7 @@ import csv
 import importlib.util
 import json
 import math
+import subprocess
 from pathlib import Path
 
 from native_worker_campaign import WorkerCampaign
@@ -19,6 +20,13 @@ from verify_systemd import (
     wait_admission_release,
     wait_retention_release,
 )
+
+
+async def mcp_call(client, operation, **inputs):
+    reply = await client.call_tool(operation, inputs)
+    if reply.is_error:
+        raise RuntimeError(reply.content)
+    return reply.structured_content
 
 
 def main():
@@ -121,43 +129,45 @@ def main():
 
             parameters = StdioServerParameters(
                 command=str(mcp),
-                args=["--socket", str(campaign.endpoint), "--profile", "all"],
-                env=campaign.environment,
+                args=["--profile", "all"],
+                env={
+                    **campaign.environment,
+                    "HARBOR_CAD_SOCKET": str(campaign.endpoint),
+                },
             )
             async with Client(parameters) as client:
-                schemas = campaign.cli("schema")
+                schemas = campaign.command("schema")
                 for interface in ("cli", "mcp"):
                     request = root / f"request-{interface}.json"
                     request.write_text(json.dumps(spec, allow_nan=False))
-                    planned = campaign.cli("case", "plan-spectral-reference", request)
+                    planned = campaign.command(
+                        "case", "plan-spectral-reference", request
+                    )
                     if interface == "mcp":
                         assert (
-                            await campaign.mcp_call(
-                                client, "spectral_reference_plan", spec=spec
-                            )
+                            await mcp_call(client, "spectral_reference_plan", spec=spec)
                             == planned
                         )
                     assert (
                         planned["plan"]["schema_version"] == 13
                         and planned["plan"]["observation"]["retained_times_s"] == []
                     )
-                    plan_file = root / f"plan-{interface}.json"
-                    plan_file.write_text(json.dumps(planned["plan"], allow_nan=False))
 
-                    async def submit(interface, planned, plan_file):
+                    async def submit(interface, planned):
                         if interface == "mcp":
-                            return await campaign.mcp_call(
+                            return await mcp_call(
                                 client,
                                 "job_submit",
                                 plan=planned["plan"],
                                 approved_digest=planned["approval_digest"],
                                 idempotency_key=interface,
                             )
-                        return campaign.submit(planned, plan_file, interface)
+                        return campaign.submit(planned, interface)
 
-                    job = await submit(interface, planned, plan_file)
-                    campaign.own(job)
-                    owner = campaign.wait_unit(job)
+                    job = await submit(interface, planned)
+                    if job["unit"] not in campaign.owned:
+                        campaign.owned.append(job["unit"])
+                    owner = campaign.wait(job, {"running"})
                     active = retention_snapshot(campaign.state, job, str(binary))
                     reservation = admission_record(campaign.state, job)
                     assert (
@@ -169,13 +179,11 @@ def main():
                     # already approved per-job source, runner or native service.
                     request.write_text("{}")
                     campaign.restart()
-                    assert (await submit(interface, planned, plan_file))["id"] == job[
-                        "id"
-                    ]
+                    assert (await submit(interface, planned))["id"] == job["id"]
                     outcome = campaign.wait(job, {"succeeded"})
-                    assert outcome["invocation_id"] == owner["InvocationID"]
+                    assert outcome["invocation_id"] == owner["invocation_id"]
                     bundle = root / f"bundle-{interface}"
-                    campaign.cli(
+                    campaign.command(
                         "artifact",
                         "export",
                         "--state",
@@ -260,10 +268,10 @@ def main():
                                 "samples": len(rows),
                             }
                         )
-                    historical = campaign.cli(
+                    historical = campaign.command(
                         "--socket", campaign.endpoint, "qualify", "--job", job["id"]
                     )["data"]
-                    assert historical == await campaign.mcp_call(
+                    assert historical == await mcp_call(
                         client, "qualification_report", job_id=job["id"]
                     )
                     capability = historical["capabilities"][0]
@@ -286,7 +294,7 @@ def main():
                         raw = original.read_bytes()
                         try:
                             original.write_bytes(raw + b"changed")
-                            assert not campaign.cli(
+                            assert not campaign.command(
                                 "--socket",
                                 campaign.endpoint,
                                 "qualify",
@@ -302,7 +310,7 @@ def main():
                             original.write_bytes(raw)
                     assert (
                         historical
-                        == campaign.cli(
+                        == campaign.command(
                             "--socket", campaign.endpoint, "qualify", "--job", job["id"]
                         )["data"]
                     )
@@ -376,26 +384,39 @@ def main():
                     slow["samples"] = 65536
                     request = root / f"request-{action}.json"
                     request.write_text(json.dumps(slow))
-                    planned = campaign.cli("case", "plan-spectral-reference", request)
-                    plan_file = root / f"plan-{action}.json"
-                    plan_file.write_text(json.dumps(planned["plan"]))
-                    job = campaign.submit(planned, plan_file, action)
-                    campaign.own(job)
-                    campaign.wait_unit(job)
+                    planned = campaign.command(
+                        "case", "plan-spectral-reference", request
+                    )
+                    job = campaign.submit(planned, action)
+                    campaign.wait(job, {"running"})
                     active = retention_snapshot(campaign.state, job, str(binary))
                     if action == "forced-death":
-                        campaign.force_failure(job)
+                        campaign.worker.kill()
+                        campaign.worker.wait(timeout=5)
+                        await asyncio.to_thread(
+                            subprocess.run,
+                            [
+                                "systemctl",
+                                "--user",
+                                "kill",
+                                "--signal=KILL",
+                                "--kill-whom=all",
+                                job["unit"],
+                            ],
+                            check=True,
+                            timeout=30,
+                            env=campaign.environment,
+                        )
+                        campaign.start()
                         outcome = campaign.wait(job, {"failed"})
                     else:
-                        campaign.cli(
+                        campaign.command(
                             "--socket", campaign.endpoint, "job", "cancel", job["id"]
                         )
                         outcome = campaign.wait(job, {"cancelled"})
-                    assert (
-                        campaign.submit(planned, plan_file, action)["id"] == job["id"]
-                    )
+                    assert campaign.submit(planned, action)["id"] == job["id"]
                     bundle = root / f"bundle-{action}"
-                    campaign.cli(
+                    campaign.command(
                         "artifact",
                         "export",
                         "--state",
