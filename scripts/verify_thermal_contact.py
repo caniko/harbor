@@ -1,5 +1,6 @@
 """Independent original-field recheck of an executed thermal-to-contact bundle."""
 
+import hashlib
 import json
 import math
 
@@ -26,6 +27,9 @@ def verify(bundle, spec, job_id, source):
         native_checks, _, retained = thermal.verify(history, nodes, cells, raw)
         receipt = json.loads((directory / "thermal-receipt.json").read_text())
         assert native_checks == receipt["numerical_verification"]
+        assert json.loads((directory / "thermal-fields.json").read_text())[
+            "times"
+        ] == json.loads(json.dumps(retained))
         selected = next(
             state
             for state in retained
@@ -50,6 +54,17 @@ def verify(bundle, spec, job_id, source):
         mean = integral / capacity
         loss = max(abs(v - mean) for v in values.values())
         p = projection["projections"][i]
+        assert p["source_files_sha256"] == {
+            f"stages/thermal-{block}/{name}": hashlib.sha256(
+                (directory / name).read_bytes()
+            ).hexdigest()
+            for name in (
+                "mesh.json",
+                "reference.dat",
+                "thermal-fields.json",
+                "thermal-receipt.json",
+            )
+        }
         assert abs(p["destination_temperature_k"] - mean) <= 1e-10
         assert abs(p["capacitance_j_k"] / capacity - 1) <= 1e-12
         assert abs(p["maximum_abs_projection_error_k"] - loss) <= 1e-10

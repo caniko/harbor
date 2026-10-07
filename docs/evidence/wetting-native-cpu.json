@@ -36,7 +36,28 @@
     "memory_peak_bytes": 73093120,
     "cpu_usage_microseconds": 2325271503
   },
-  "worker": "wetting-worker-1 failed before solve at the Python empty-directory guard; wetting-worker-2 failed before solve at the C++ guard after Python repair. Both attempts remain retained. Native guard repair 7fb436c includes direct filesystem regression tests; changed exact runtime requires fresh native and worker qualification",
+  "recovered_standalone": {
+    "qualifier_revision": "edc03587e3b4b9a048faa9ad7ff12a8e1caa5c30",
+    "source_capture": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/source-edc03587e3b4b9a048faa9ad7ff12a8e1caa5c30",
+    "capture_identity": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/identity-edc03587e3b4b9a048faa9ad7ff12a8e1caa5c30.json",
+    "capture_identity_sha256": "167e24a2c1056b8e26f5eaa21d3270d88ac30db6dc8f60f80b2e7db20fb068c9",
+    "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/wetting-native-9/verification.json",
+    "report_sha256": "2ab489170c6fe5e98c4b4aa8a48e366602abcfb5002980614b6e46a821691ea3",
+    "runtime": "/nix/store/199yq3r22i1bx949f8ryds2gk21qiwn9-harbor-cad-wetting-reference-runtime.json",
+    "runtime_sha256": "caa79d89311d92063622622ad9ee4e9dab81671ecb8f4ac6ddaf6efc4a6ceaa8",
+    "adapter": "/nix/store/adbm5ywlvzqy4pcx3kj1sm3j50hxzqn2-harbor-cad-wetting/bin/harbor-cad-wetting",
+    "native": "/nix/store/w3c274cffc4mijwygfsgsdgjd1808zrz-harbor-cad-openlb-wetting-cpu-1.9.0/bin/harbor-cad-openlb-wetting",
+    "native_solves": 6,
+    "native_rejections": 12,
+    "initial_layouts": ["standalone_empty", "worker_empty_regular_log"],
+    "numerical_and_refinement_gates": "passed at unchanged mass/angle/settling gates; identical retained angle errors and strictly decreasing equal-duration refinement sequences",
+    "maximum_phase_mass_relative_error": 0.0007972988105164891,
+    "memory_peak_bytes": 74240000,
+    "cpu_usage_microseconds": 2393720535,
+    "campaign_unit": "harbor-cad-wetting-native-9-20261007.service",
+    "campaign_exit": 0
+  },
+  "worker": "wetting-worker-1 failed before solve at the Python empty-directory guard; wetting-worker-2 failed before solve at the C++ guard after Python repair. Historical failure records are retained in Git; old raw scratch is now absent. Native guard repair 7fb436c includes direct filesystem regression tests, and the changed runtime passes fresh wetting-native-9 in both initial layouts. Exact wetting-worker-3 qualification is pending",
   "physical_validation": "unqualified",
   "scope": "static synthetic equal-density/equal-viscosity 2D planar diffuse-interface wetting; no real water-air, spray, ingress, retention, phase mobility or wetting-kinetics claim"
 }

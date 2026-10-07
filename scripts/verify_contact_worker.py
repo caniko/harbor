@@ -85,9 +85,23 @@ def main():
         thermal_reference = json.loads(
             (args.thermal_native_reference / "verification.json").read_text()
         )
-        if native["thermal"] != thermal_reference["adapter"]:
+        thermal_standalone = Path(thermal_reference["runtime"])
+        if (
+            checksum(thermal_standalone) != thermal_reference["runtime_sha256"]
+            or json.loads(thermal_standalone.read_text())["thermal"]
+            != native["thermal"]
+            or native["thermal"] != thermal_reference["adapter"]
+            or len(thermal_reference["results"]) != 8
+            or len(thermal_reference["rejections"]) != 9
+            or not thermal_reference["temporal_self_convergence"]["passed"]
+            or any(
+                not case["receipt"]["numerical_verification"][check]["passed"]
+                for case in thermal_reference["results"]
+                for check in ("temperature", "energy")
+            )
+        ):
             raise ValueError(
-                "coupling requires the exact native-qualified thermal adapter"
+                "coupling requires the complete matching native thermal/refinement gate"
             )
     elif native.get("thermal") is not None:
         raise ValueError("independent contact runtime required")

@@ -210,10 +210,17 @@ The earlier launcher directory, original native reports and most worker state
 files under the recorded scratch paths are absent. Historical committed hashes
 remain historical evidence; missing artifacts cannot support fresh rechecks.
 New campaigns use protected `harbor-cad-resume-20261007` source captures and
-fresh output names. The repaired wetting native campaign and follow-on CPU
-requalification are running through the normal bounded host lease. New package
-evaluation has been refused twice by the host memory-headroom guard (15/18 GiB
-available, 24 GiB required); exact guarded packaging remains pending.
+fresh output names. `wetting-native-9` now passes all six solves and twelve
+rejections, including standalone and preopened-worker-log directory layouts.
+Both equal-duration refinement sequences and all unchanged mass/angle/settling
+gates pass; fresh original fields and the report are retained. See the
+`recovered_standalone` entry in [wetting evidence](evidence/wetting-native-cpu.json).
+Follow-on CPU requalification uses the normal bounded host lease. Version-11
+implementation `0d995d6` passes all Rust tests, strict Clippy, 97 Python cases,
+Treefmt, Simit drift and whitespace checks. New package evaluation has been
+refused at 15, 18 and 19 GiB available against the required 24 GiB start headroom;
+build-41 captures the exact `0d995d6` request and rejection. Exact guarded
+packaging remains pending.
 
 ## External qualification prerequisites
 
