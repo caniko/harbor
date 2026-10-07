@@ -2,8 +2,11 @@
 
 `case validate-freezing-reference examples/freezing-reference.json` and
 simulation/all MCP `freezing_reference_validate` use the same Rust contract and
-explicit SI converter. Validation returns `executed: false`; there is no
-freezing-job submission path yet.
+explicit SI converter. Validation returns `executed: false`.
+`case plan-freezing-reference` and simulation/all MCP
+`case_plan_freezing_reference` generate the same immutable version-12 plan.
+Submission uses the common `job submit` / `job_submit` path and requires the
+authoritative same-user admission database and systemd execution profile.
 
 The selected native formulation follows the immutable public OpenLB source:
 
@@ -78,16 +81,20 @@ collection with explicit physical times, SI coordinates, field units and native
 IDs. These derived files are byte-verified against complete originals. Scientific
 CSV, heat exchange, native receipt and portable exports have independent hashes.
 
-Development protocol attempt 9 solved nine Stefan/grid combinations under the
+Development protocol attempts 9 and 10 solved nine Stefan/grid combinations under the
 normal bounded host lease. Independent replay passes all four gates for Stefan
 0.1 at n64/128/256, Stefan 0.2 at n128/256 and Stefan 0.05 at n256. The other
 three runs fail the fixed 0.02 temperature gate and remain retained. The Stefan
 0.1 maximum temperature errors are 0.01894585756434697,
 0.015456667961909809 and 0.010499081289470857 over both retained nonzero times;
-front errors also decrease. Energy balance remains below `1e-10`.
+front errors also decrease. Attempt 10's independent complete-field/flux replay
+also generated and byte-verified every portable VTK grid/time collection.
+Its energy balance errors are at most `5.813795342024023e-14`; mass errors are
+zero. Source, development binary, retained originals and report identities are
+recorded in [development freezing evidence](evidence/freezing-development-20261007.json).
 
-Production outputs `freezing-native-cpu`, `freezing-reference-cpu` and
-`runtime-freezing-reference-cpu` are wired through `nix/freezing.nix`, using the
+Production outputs `freezing-native-cpu`, `freezing-reference-cpu`,
+`runtime-freezing-reference-cpu` and `runtime-freezing-worker` are wired through `nix/freezing.nix`, using the
 existing pinned OpenLB/Harbor stack. The operation-specific CPU policy mounts
 only its exact closure, read-only inputs and bounded scratch. The packaged gate
 is `scripts/verify_freezing_cpu.py --runtime RUNTIME --output NEW_DIRECTORY`:
@@ -97,6 +104,49 @@ This packaged campaign remains pending: the host evaluation guard currently
 refuses its required memory headroom. Development compilation and numerical
 replay are separate from exact-package/sandbox and worker qualification.
 
-Worker execution and source-bound retained-water transfer remain separate
-pending slices. Pressure, volume expansion, fracture and freeze–thaw lifetime
-remain outside this reference's applicability.
+## Durable worker integration
+
+Version 12 contains only the approved freezing descriptor and a serial
+`freezing → bundle` DAG. Older approvals reject a freezing field, including null;
+the new plan rejects unrelated case/material/transfer capabilities. Refinement
+changes the scientific and approval identities. Allocated padded lattices,
+independent reconstruction, every retained CSV/VTK and the complete boundary
+ledger determine conservative resource minima; understating them rejects before
+submission.
+
+The bound runtime exposes only the freezing adapter/closure. The read-only
+descriptor is passed into its own isolated CPU sandbox, and the immutable job
+binding uses `harbor-cad-freezing-cpu-v1`. Rust reconstructs the same native
+phase/enthalpy relations, analytical front/temperature, complete active grid and
+boundary energy independently before success. It checks each VTK Float64 value
+against the original CSV, SI geometry/units and physical-time collection.
+Both formats are registered with explicit times and native point association.
+Historical `qualify --job JOB` checks original registered byte identities and
+reconstructs the scientific gates; editing both a field and an unregistered
+receipt cannot replace registered evidence.
+
+The exact packaged worker campaign is:
+
+```sh
+python3 scripts/verify_freezing_worker.py \
+  --executable CLI --runtime WORKER_RUNTIME --mcp MCP \
+  --authority AUTHORITY --native-reference QUALIFIED_NATIVE_DIRECTORY \
+  --output NEW_DIRECTORY
+```
+
+It requires the exact complete native campaign, then verifies successful CLI
+and real MCP jobs, immutable approvals, same-invocation worker restart,
+idempotency, original-field exports, historical mutation rejection, owned
+complete-tree forced death/cancellation, kernel resources and final admission/GC
+root release. This campaign remains unexecuted pending normal production-build
+headroom; implementation and CPU tests do not qualify its packaged execution.
+The integration at `77113a5a928aa016a98425eb38d19b2a9135df00` passes the full
+CPU gate: all Rust tests, Clippy with warnings denied, locked build, Ruff and
+111 Python tests, including real MCP approval/error parity. Treefmt, pinned Simit
+CI drift and Nix syntax checks pass. The Python/Rust manufactured-field tests
+reject changed source/geometry, incomplete or duplicate nodes, phase/enthalpy
+drift, boundary-ledger truncation, weakened gates, changed portable values/units
+and substituted checksums.
+Source-bound retained-water transfer is still pending. Pressure, volume
+expansion, fracture and freeze–thaw lifetime remain outside this reference's
+applicability.
