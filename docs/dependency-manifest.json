@@ -207,6 +207,21 @@
     "execution_evidence": "docs/evidence/job-lifecycle.json",
     "admission_estimates": "docs/resource-estimates.md"
   },
-  "missing_stacks": ["hybrid FEM/PaStiX qualification", "libRadtran/Mitsuba/Dr.Jit", "Catalyst/Conduit", "qualified VTKHDF"],
+  "spectral_cpu_packaging": {
+    "mitsuba_version": "3.9.1",
+    "mitsuba_revision": "478e193a183c21723f4a8251afc3ad29a8da4c5e",
+    "mitsuba_cp313_wheel_sha256": "8959e8de33427cf4d9b515a52d741dca7624e7c17094c5849f123a96504ca123",
+    "drjit_version": "1.5.0",
+    "drjit_cp313_wheel_sha256": "33a4b146cc56a02ea0dd9c43034277c59ae3c5dd3490678c2cbc8ef69a1e8c93",
+    "abi": "isolated Python 3.13 x86_64-linux; no FreeCAD/ParaView/MCP interpreter mixing",
+    "outputs": ["spectral-drjit", "spectral-mitsuba", "spectral-environment-cpu"],
+    "selected_reference_variant": "scalar_spectral",
+    "precision": "Float32",
+    "native_execution": "unqualified; source/ELF inspection is not a package or solver gate",
+    "gpu_transport": "CUDA best-effort and unqualified; upstream stack has no Vulkan/HIP transport backend",
+    "policy": "libre BSD upstream wheels; optional driver loading grants neither hardware selection nor GPU execution",
+    "source_contract": "docs/spectral-reference.md"
+  },
+  "missing_stacks": ["hybrid FEM/PaStiX qualification", "libRadtran and native Mitsuba/Dr.Jit qualification", "Catalyst/Conduit", "qualified VTKHDF"],
   "evidence": "docs/qualification.md"
 }

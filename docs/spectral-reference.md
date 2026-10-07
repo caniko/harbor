@@ -76,6 +76,14 @@ exceed 0.02. Native statistical/refinement evidence is separate from analytical
 preparation. CUDA transport and CPU/GPU agreement remain hardware-dependent,
 best-effort work; the pinned stack does not provide a Vulkan/HIP transport route.
 
+`nix/spectral.nix` exposes `spectral-drjit`, `spectral-mitsuba` and
+`spectral-environment-cpu` in an isolated Python-3.13 environment. Exact upstream
+wheel digests, bundled ELF dependencies and BSD notices have been inspected;
+Nix resolves external C++/atomic/zlib libraries through the immutable package
+closure and asserts the selected native CPU variant after fixup. The source
+packaging passes syntax/format checks; guarded evaluation, realization and
+closed-sandbox execution remain required before package qualification.
+
 ## Current verification
 
 Rust tests check exact optical-product quadrature, nm/metre spectral-density
