@@ -43,6 +43,11 @@ pub struct FreezingScale {
     pub stefan_number: f64,
     /// h = cp*(T-Tcold) + L*f_liquid. This is a declared energy zero.
     pub initial_specific_enthalpy_j_kg: f64,
+    pub shape: [u32; 2],
+    /// Uniform nodal control volumes; Dirichlet/reflecting shells have no mass.
+    pub active_volume_m3: f64,
+    pub cell_mass_kg: f64,
+    pub active_control_bounds_m: [[f64; 2]; 3],
 }
 
 impl FreezingReferenceSpec {
@@ -69,7 +74,7 @@ impl FreezingReferenceSpec {
             || !self.synthetic
             || self.backend != "cpu"
             || self.formulation != "conduction_stefan_solidification_2d"
-            || !(32..=128).contains(&self.resolution)
+            || !(32..=256).contains(&self.resolution)
             || !self.resolution.is_multiple_of(8)
             || self.size_m.iter().any(|v| !(1e-6..=1.).contains(v))
             || self.size_m[1] != self.size_m[0] / 8.
@@ -133,10 +138,22 @@ impl FreezingReferenceSpec {
         let step = spacing * spacing / (6. * diffusivity);
         let duration = self.steps as f64 * step;
         let enthalpy = self.specific_heat_j_kg_k * span + self.latent_heat_j_kg;
+        let cell_volume = spacing * spacing * self.size_m[2];
+        let cell_mass = self.density_kg_m3 * cell_volume;
+        let active_volume = (n - 1) as f64 * (n / 8) as f64 * cell_volume;
         if !(0.05..=0.2).contains(&stefan)
-            || ![spacing, diffusivity, step, duration, enthalpy]
-                .into_iter()
-                .all(positive)
+            || ![
+                spacing,
+                diffusivity,
+                step,
+                duration,
+                enthalpy,
+                cell_mass,
+                active_volume,
+                cell_mass * enthalpy * (n - 1) as f64 * (n / 8) as f64,
+            ]
+            .into_iter()
+            .all(positive)
         {
             return Err(invalid(
                 "finite SI conversion and Stefan number 0.05..0.2 required for the reference",
@@ -148,6 +165,14 @@ impl FreezingReferenceSpec {
             duration_s: duration,
             stefan_number: stefan,
             initial_specific_enthalpy_j_kg: enthalpy,
+            shape: [self.resolution + 1, self.resolution / 8],
+            active_volume_m3: active_volume,
+            cell_mass_kg: cell_mass,
+            active_control_bounds_m: [
+                [spacing / 2., self.size_m[0] - spacing / 2.],
+                [0., self.size_m[1]],
+                [0., self.size_m[2]],
+            ],
         })
     }
 }

@@ -28,6 +28,11 @@ fn explicit_solidification_scale_preserves_si_energy_and_diffusive_time_refineme
     assert_eq!(scale.spacing_m, 0.001 / 32.);
     assert!((scale.physical_step_s - 0.00016276041666666666).abs() < 1e-18);
     assert_eq!(scale.initial_specific_enthalpy_j_kg, 110000.);
+    assert_eq!(scale.shape, [33, 4]);
+    assert!((scale.active_volume_m3 - 1.2109375e-10).abs() < 1e-25);
+    // Independent rational volume/mass reference; multiplication order can
+    // differ by one Float64 rounding step across the SI converters.
+    assert!((scale.cell_mass_kg / 9.765625e-10 - 1.).abs() < 1e-15);
     assert!((scale.duration_s - 1. / 6.).abs() < 1e-15);
     let mut finer = spec.clone();
     finer.resolution = 64;
@@ -85,5 +90,8 @@ fn freezing_contract_rejects_missing_physics_nonconduction_and_weakened_acceptan
     }
     let mut changed = fixture();
     changed.conductivity_w_m_k = f64::INFINITY;
+    assert!(changed.scale().is_err());
+    changed = fixture();
+    changed.density_kg_m3 = f64::MIN_POSITIVE / 1000.;
     assert!(changed.scale().is_err());
 }
