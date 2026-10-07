@@ -589,7 +589,10 @@ def main():
     )
     if any(Path.cwd().glob("reference.*")) or any(Path.cwd().glob("mesh.json*")):
         raise ValueError("new stage-local thermal directory required")
-    nodes, cells, sets = fem.mesh(spec)
+    # OCC bounding boxes include native tolerance padding. The supported plane
+    # wall has exact analytic faces; retain the requested geometry gate using
+    # their original vertices rather than enlarging its tolerance.
+    nodes, cells, sets = fem.mesh(spec, exact_planar_vertices=True)
     Path("reference.inp").write_text(deck(spec, fem, nodes, cells, sets))
     environment = {
         "OMP_NUM_THREADS": "1",

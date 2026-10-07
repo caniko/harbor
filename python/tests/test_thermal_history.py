@@ -1,8 +1,10 @@
 """Independent energy integrals and plane-wall eigenmode references."""
 
 import importlib.util
+import json
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -258,3 +260,55 @@ def test_stock_temperature_serialization_cannot_qualify_small_heater_energy():
         else:
             checks, _, _ = bridge.verify(spec, nodes, cells, fields)
             assert checks["energy"]["maximum_relative_balance_error"] < 1e-8
+
+
+def test_thermal_entrypoint_preserves_tight_geometry_gate_using_exact_planar_vertices(
+    monkeypatch, tmp_path
+):
+    from test_fem_reference import bridge as fem_bridge
+
+    thermal, fem = module(), fem_bridge()
+    request = fixture()
+    request["geometry_tolerance_m"] = 1e-8
+
+    class Meshed(Exception):
+        pass
+
+    def mesh(spec, *, exact_planar_vertices=False):
+        assert spec == request
+        bounds = [value for size in spec["size_m"] for value in (0.0, size)]
+        faces = {}
+        for axis in range(3):
+            for side in range(2):
+                face = bounds.copy()
+                face[2 * axis : 2 * axis + 2] = [bounds[2 * axis + side]] * 2
+                if not exact_planar_vertices:
+                    face = [
+                        v + (-1e-7 if i % 2 == 0 else 1e-7) for i, v in enumerate(face)
+                    ]
+                faces[axis * 2 + side + 1] = face
+        fem.classify_box_faces(faces, bounds, spec["geometry_tolerance_m"])
+        raise Meshed
+
+    helper = SimpleNamespace(
+        read_regular=lambda *args: json.dumps(request).encode(),
+        strict_json=fem.strict_json,
+        cpu_sandbox=lambda *args: None,
+        mesh=mesh,
+    )
+    loader = SimpleNamespace(exec_module=lambda *args: None)
+    monkeypatch.setattr(
+        thermal.importlib.util,
+        "spec_from_file_location",
+        lambda *args: SimpleNamespace(loader=loader),
+    )
+    monkeypatch.setattr(
+        thermal.importlib.util, "module_from_spec", lambda *args: helper
+    )
+    monkeypatch.setattr(
+        thermal.sys, "argv", ["harbor-cad-thermal", "run", "request.json"]
+    )
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(Meshed):
+        thermal.main()
+    assert list(tmp_path.iterdir()) == []
