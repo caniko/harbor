@@ -37,5 +37,20 @@
   ],
   "refinement": {"stefan_number": 0.1, "resolutions": [64, 128, 256], "equal_retained_physical_times": true, "front_and_temperature_errors_strictly_decreasing": true, "active_nodal_control_volume_scope": "explicit per grid; excludes boundary shells"},
   "portable_formats": "complete canonical Float64 VTK point grids and physical-time PVD collections generated and byte-reverified against every original CSV grid",
-  "physical_validation": "unqualified"
+  "physical_validation": "unqualified",
+  "rust_replay": {
+    "report": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/freezing-rust-replay-4/verification.json",
+    "report_sha256": "4e0f8f14f8a08011b09b2f751022e45908fbdab4099284d5356a7a0f588e0533",
+    "rust_query_commit": "b769b3e5e33ed84d20f3f7a564c8f16a660ea4b2",
+    "source": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/freezing-rust-replay-4/main.rs",
+    "build": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/freezing-rust-replay-4/build-stderr.log",
+    "exit_code": 0,
+    "accepted_cases": ["s0.1-n64", "s0.1-n128", "s0.1-n256", "s0.05-n256", "s0.2-n128", "s0.2-n256"],
+    "maximum_approved_gate_fractions": [0.9472928782173484, 0.7728333980954905, 0.5249540644735429, 0.3786317257390426, 0.6359946669100447, 0.300759150400115],
+    "scope": "independent Rust reconstruction of unchanged original CSV grids, complete boundary exchange and derived VTK/PVD; wrapper request identity, moisture entry and sandbox canaries are fixture scaffolding, not measured execution evidence",
+    "sandbox_qualification": "unqualified",
+    "worker_qualification": "unqualified",
+    "physical_validation": "unqualified",
+    "prior_attempts": "attempts 1 and 2 could not compile against Cargo metadata stubs; attempt 3 rejected a missing wrapper moisture entry; every original attempt log is retained"
+  }
 }

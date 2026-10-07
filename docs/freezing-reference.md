@@ -93,6 +93,14 @@ Its energy balance errors are at most `5.813795342024023e-14`; mass errors are
 zero. Source, development binary, retained originals and report identities are
 recorded in [development freezing evidence](evidence/freezing-development-20261007.json).
 
+The independent Rust replay accepts the same six cases with unchanged gates;
+maximum gate utilizations are 0.947293, 0.772833 and 0.524954 for Stefan 0.1
+n64/128/256. It reconstructs complete original CSV, boundary exchange and
+portable VTK/PVD. Its wrapper request identity, moisture entry and sandbox
+canaries are fixture scaffolding, explicitly unqualified for runtime/sandbox/
+worker execution. The report hash and preserved failed replay attempts are
+recorded in the same development evidence file.
+
 Production outputs `freezing-native-cpu`, `freezing-reference-cpu`,
 `runtime-freezing-reference-cpu` and `runtime-freezing-worker` are wired through `nix/freezing.nix`, using the
 existing pinned OpenLB/Harbor stack. The operation-specific CPU policy mounts
