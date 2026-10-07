@@ -118,7 +118,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
 | §4 allocated solver resources, unresolved paths | `src/estimates.rs`, `adapters/openlb_channel.cpp` | channel allocation/Mach/model gates; other formulations and local-gap resolution gates pending |
 | §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy and static free expansion pass native and CLI/MCP gates; synthetic planar contact-native-2 passes 15 solves/8 rejections/five mesh checks; packaged contact worker and source-bound conservative projection qualification pending |
-| §5 airflow/wetting/snow/freezing | OpenLB recipe drivers | synthetic single-phase flow and planar wetting native campaign qualified at recorded identities; wetting worker launch repair in requalification; prescribed coverage and freezing conservation/refinement pending |
+| §5 airflow/wetting/snow/freezing | OpenLB recipe drivers | synthetic single-phase flow and planar wetting qualified at recorded identities; repaired wetting-native-9 and wetting-worker-3 pass fresh retained native/CLI/MCP/lifecycle gates; prescribed coverage and freezing conservation/refinement pending |
 | §5 solar/UV, angular inputs and dose | atmospheric/spectral adapters | orientation/occlusion/reflection/unit/temporal tests and GPU transport pending |
 | §5 typed one-way transfers and convection | `src/transfers.rs`, `src/thermal_transfer.rs`, `src/thermal_contact.rs` | typed conservative maps, complete native C3D8 capacitance projection and strict v11 thermal→projection→contact worker DAG implemented; CPU source/mapping/schema/MCP checks pass, packaged qualification pending; velocity-to-convection inference rejected by scope |
 | §5 moisture-risk entry | `src/moisture_results.rs`, thermal source fields | all six native planar thermal surfaces and explicit screening/missing/inapplicable branches pass packaged CLI/MCP moisture-results-1; combined recipe assembly pending |
@@ -143,8 +143,8 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | P1b | independent registered-frame video plans, lifecycle and source mutation rejection | complete at the recorded package/hardware scope; CLI/MCP frame mutation, restart/retry and release pass |
 | P2 | versioned recipe inputs, stage-local artifacts, conservative typed transfers and native policies | transfer/unit/material/cold-input foundation and independent v5 static FEM implemented; exact CLI/MCP native mesh/fields and operation-specific isolation qualified; closed BREP/imported-box correspondence and origin-aware FEM native gates pass; v7 mesh worker passes at build 22; v8 imported static FEM CLI/MCP/exports/lifecycle passes with matching native prerequisite at build 23; broader geometries/recipes remain pending |
 | P3 / B2 | exact compatible HIP numerical-filter stack, observations, RAM/VRAM telemetry and format checks | scoped v4 native/CLI/MCP analytical, CPU-HIP, byte/topology, source/lifecycle and aggregate RAM/CPU gates pass at the recorded revision; instruction trace, whole-card VRAM and broader filters pending |
-| P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | synthetic steady conduction/free expansion at 2/4/8 and CLI/MCP lifecycle pass; imported origin/translated BREP correspondence and static FEM pass native/worker gates; airflow separately scoped; synthetic planar wetting-native-7 passes six solves, twelve rejections and two decreasing-error sequences; worker launch repair requalification pending |
-| P5 / C | native thermal/contact/moisture/coupling slice | independent synthetic transient numerical/spatial/time and CLI/MCP worker/export/lifecycle gates passed; exact thermal queries and native surface moisture CLI/MCP gates passed; planar contact-native-2 passes 15 solves/8 rejections/five spatial checks; v10 contact worker and complete native conservative temperature projection implemented, exact packaged worker/projection and coupling pending |
+| P4 / A1 | controlled CAD/regions/Gmsh; thermal, FEM, wetting and flow reference gates | synthetic steady conduction/free expansion at 2/4/8 and CLI/MCP lifecycle pass; imported origin/translated BREP correspondence and static FEM pass native/worker gates; airflow separately scoped; repaired wetting-native-9 passes six solves, twelve rejections and two decreasing-error sequences; wetting-worker-3 passes fresh CLI/MCP/restart/exports/cancel/kill gates |
+| P5 / C | native thermal/contact/moisture/coupling slice | independent synthetic transient numerical/spatial/time and CLI/MCP worker/export/lifecycle gates passed; exact thermal queries and native surface moisture CLI/MCP gates passed; fresh contact-native-3 passes 15 solves/8 rejections/five spatial checks, thermal-native-7/thermal-worker-4 pass fresh gates; projection-results-1 passes exact CLI/MCP original-field capacitance projection and rejection checks; v10/v11 exact repaired contact/coupled worker qualification pending |
 | P6 / D | native local water, prescribed snow and retained-water freezing | strict synthetic conduction-solidification inputs and SI scaling implemented, real CLI/MCP validation preserves non-execution and missing moisture; thin pinned-OpenLB native diagnostic builds and is queued under the host lease; runnable/package/worker freezing, retained-water transfer and prescribed snow pending |
 | P7 / E | native atmosphere/spectral irradiance/dose slice | pending |
 | P8 / F | bounded studies, retention/recovery/resume, measurements and product closure | pending |
@@ -221,6 +221,27 @@ Treefmt, Simit drift and whitespace checks. New package evaluation has been
 refused at 15, 18 and 19 GiB available against the required 24 GiB start headroom;
 build-41 captures the exact `0d995d6` request and rejection. Exact guarded
 packaging remains pending.
+
+Fresh `contact-native-3` and `thermal-native-7` reports now retain replacement
+originals for the missing historical scratch. Contact passes 15 solves, eight
+rejections and five fixed-law spatial assessments. Thermal passes eight solves,
+nine rejections and its separate original-field, energy, spatial and temporal
+gates. Maximum thermal temperature/energy errors are 0.0075584/0.0153847 against
+the unchanged 0.02 limits; successive temporal differences decrease with
+observed order 0.999904. The exact report/runtime identities are recorded in
+[recovery evidence](evidence/native-recovery-20261007.json). Later worker and
+projection campaign stages remain separate gates.
+
+The recovery campaign completed all five subprocesses successfully. Fresh
+`thermal-worker-4` and `wetting-worker-3` pass CLI/MCP native solves, restart and
+idempotency, independent original-field checks, shared admission, historical
+qualification, exports, owned failures/cancellation and reservation release.
+`projection-results-1` passes CLI/MCP read-only capacitance projection and
+original-field mutation/loss rejection from the retained thermal jobs; source
+bytes and database counts remain unchanged. These gates bind the recovery
+CLI/MCP packages recorded in recovery evidence; they do not qualify the new
+v11 package or repaired typed MCP errors. Guarded build-42/build-43 were refused
+at 21 GiB headroom; both attempt logs are retained.
 
 ## External qualification prerequisites
 
