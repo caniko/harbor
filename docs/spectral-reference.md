@@ -61,6 +61,7 @@ Mitsuba tag v3.9.1 resolves to commit
 - [`specfilm`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/films/specfilm.cpp): native unprocessed weighted spectral channels, response ranges outside visible wavelengths, alphabetically named channels and explicit Float32 OpenEXR.
 - [`directional`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/emitters/directional.cpp): spectral irradiance normal to propagation, explicit direction and native visibility/next-event weight.
 - [`irregular`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/spectra/irregular.cpp): piecewise-linear spectral interpolation and explicit wavelength range.
+- [`uniform`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/spectra/uniform.cpp): exact zero reflectance or optical response over the original declared band, without constructing a zero-mass irregular sampling distribution.
 - [`sensor`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/render/sensor.cpp): spectral-film response controls wavelength sampling, preventing the default visible CIE range from truncating UV.
 
 Ordinary sensor-based path tracing does not sample a delta-directional light at
@@ -110,6 +111,25 @@ original directional sample is reconstructed and every EXR is reopened in a
 separate process. Analytical accuracy, numerical sampling refinement and
 physical qualification stay separate. The explicitly marked development modes
 retain diagnostic results without qualifying immutable packages or sandboxes.
+
+OpenEXR reorders channels by name. The writer/reader check binds each scientific
+channel name to its original Float32 value and requires exact equality, retaining
+separate absorbed and ageing channels. It rejects swapped values, missing or
+duplicated names, another pixel shape and lower-precision storage. CLI refusal
+checks parse the structured `invalid_input` envelope on stdout and retain its
+original bytes; stderr contains diagnostic text only.
+
+The bounded extracted-wheel campaign `spectral-native-diagnostic-8` passes all
+11 cases, 33 seed observations and 11 native/CLI pre-output rejections. Maximum
+channel relative error is `0.0031445940276881856` against the unchanged `0.02`
+gate. Isotropic sampling-error RMS decreases from `0.0009773395532564606` through
+`0.00037565236390244103` to `0.0002414243944856635` at 4096/16384/65536 samples.
+The development ABI includes explicitly hashed C++/atomic/zlib libraries and
+their SONAME links. Its LLVM initialization warnings remain in the originals;
+execution uses the requested `scalar_spectral` variant. These observations
+establish native API/numerical diagnostics, with production package, sandbox,
+worker, GPU and physical qualification still separate. Exact report and failed
+attempt identities are retained in [continuation evidence](evidence/cpu-native-diagnostics-20261007.json).
 
 The complete CPU gate passes 123 Python tests, all Rust tests, strict Clippy,
 locked builds and formatter/linter checks. Native source/API, syntax and

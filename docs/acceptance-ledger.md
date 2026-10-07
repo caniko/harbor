@@ -436,3 +436,42 @@ Build 51 and the three later lease refusals (`retained-phase-5`,
 [prerequisite evidence](evidence/qualification-refusals-20261007.json). All exited
 1 before evaluation or native execution; the 3600-second remainder wait did not
 start a systemd service. Their originals remain independent from future retries.
+
+## Native diagnostic recovery and unchanged scientific gates
+
+The normal Atlas lease is available again. `cpu-remainder-2/retention` passes
+16 original-source phase/velocity extrusions and 14 CLI/MCP rejections. Source
+bytes and database counts `[4,32,74]` remain unchanged; maximum mass-conservation
+error is `2.220446049250313e-16` at the unchanged `1e-10` gate. Its source-built
+CLI and Python-module MCP remain development-only, and no cooling solve is
+claimed.
+
+`spectral-native-diagnostic-5/atmospheric-spectral` passes nine manufactured
+native midpoint cases and 27 seed observations at the unchanged `0.02` gate,
+including the repaired original coverage, PMF and rectangle checks. Its enclosing
+attempt retains exit 1 from the separate failed spectral campaign. The complete
+spectral campaign then exposed and repaired named EXR ordering, exact-zero
+irregular-plugin rejection and a qualifier reading the CLI stdout error envelope
+from stderr. `spectral-native-diagnostic-8` passes 11 cases, 33 observations,
+11 pre-output rejections and decreasing three-level isotropic sampling error.
+The named EXR comparisons remain bit-exact; zero optical spectra use the pinned
+uniform plugin over their original wavelength band with no invented epsilon.
+
+Snow's original `1e-8` geometry gate exposed OCC bounding-box padding in the
+transient thermal mesh launcher. Commit `677127c` uses the existing exact planar
+vertex API and preserves the gate. `snow-source-diagnostic-1` then passes six
+native solves, eight rejections, decreasing n2/n4/n8 continuum errors and
+separate fixed-mesh temporal differences with observed order `0.9987997501061895`.
+Maximum energy error is `0.019576357114523216` below the unchanged `0.02` limit.
+This explicitly recorded read-only source overlay uses the recovery native
+dependencies and does not qualify the old packaged adapter or a sandbox.
+
+All commands, report hashes, ABI/source-overlay identities, failures and scoped
+results are consolidated in [continuation evidence](evidence/cpu-native-diagnostics-20261007.json).
+The complete CPU gate and pinned generator/Nix checks pass at the spectral/thermal
+repair source; the additional real-CLI refusal regression passes separately.
+Build 52 includes both new atmospheric-spectral outputs and refused evaluation
+at 11 GiB combined headroom against the normal 24 GiB start requirement. Latest
+read-only headroom increased to 15.7 GiB, still below that gate. Exact production
+packages and repaired contact/v11/freezing/snow/spectral/atmospheric worker
+campaigns remain pending; development diagnostics do not promote them.

@@ -30,7 +30,8 @@
       {"name":"build-48","revision":"b305bf97fb78df6c7f66a263ed269ac1d8e26c5a","available_gib":9,"command_sha256":"23db5dc11d14d786b10bf8a3a64fa180426eeeb647f0cb168e87f268961078a3","stdout_sha256":"b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96","exit_code":1},
       {"name":"build-49","revision":"2cace0564fd5a10c779c97b8169bff0c5d69ab30","available_gib":8,"command_sha256":"a366b4ea493831ee6eb0f34899307723e0162b474664a0965d0b2a81e207aa6e","stdout_sha256":"f08aca422e69660ec05ba710ac89afdbe18e3ce29c75ab7aa59fb375323b882f","exit_code":1},
       {"name":"build-50","revision":"5b41b483d4b90d997db5e0bea9447d779b6b01e5","available_gib":9,"command_sha256":"d0aa30ea2990d341dbb517f2a70aead6b589d63d076e2e35df2a50647e6fc5fc","stdout_sha256":"b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96","exit_code":1},
-      {"name":"build-51","revision":"c455260a84d71f15767effececf62437d3a49015","available_gib":9,"command_sha256":"f170b33d6aa953f0a479adff402ba2d9f342c58057fc5f6cde101592eab28046","stdout_sha256":"b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96","exit_code":1}
+      {"name":"build-51","revision":"c455260a84d71f15767effececf62437d3a49015","available_gib":9,"command_sha256":"f170b33d6aa953f0a479adff402ba2d9f342c58057fc5f6cde101592eab28046","stdout_sha256":"b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96","exit_code":1},
+      {"name":"build-52","revision":"677127c25fff840417ce67eaca1ae8e75f0d1171","available_gib":11,"command_sha256":"b39c212c0bf8cd60aff1e45b2b0ab94db62caf395baea3f278bc9f1e5b295dbf","stdout_sha256":"5ee9393ab4d32d8d18659226d72a256a19564e14bc81402ab3c4daeeee2ae4ac","exit_code":1}
     ],
     "file_convention": "NAME/evaluation-command.json, evaluation-stdout.json, evaluation-stderr.log, evaluation-exit.txt, revision.txt; no derivation realization started"
   },

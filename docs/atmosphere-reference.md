@@ -209,3 +209,13 @@ diagnostic. Neither manufactured source fields nor such a diagnostic qualify
 libRadtran execution, exact production packaging, registered-source worker
 transport, convergence, GPU transport or physical validation. Exact packaged
 execution and a source-bound durable transport approval remain separate gates.
+
+`spectral-native-diagnostic-5/atmospheric-spectral` passes all nine manufactured
+native transport cases and 27 seed observations, including positive direct
+incidence, an empty diffuse scene and varying six-knot packets. Maximum combined
+channel error is `0.009664103949220681` against the unchanged `0.02` gate. The
+complete originals, reconstruction and ABI identities are retained in
+[continuation evidence](evidence/cpu-native-diagnostics-20261007.json). The enclosing
+diagnostic attempt exited 1 because its separate broader spectral campaign
+failed; the successful atmospheric subreport does not supersede that failure or
+qualify libRadtran execution, registered sources or immutable worker transport.
