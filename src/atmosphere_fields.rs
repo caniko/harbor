@@ -28,6 +28,18 @@ pub(crate) fn verify(
     root: &Path,
     receipt: &Value,
 ) -> Result<crate::qualification::NumericalEvidence> {
+    let original = crate::worker::read_bounded(
+        &crate::storage::safe_path(root, "uvspec-original.txt")?,
+        64 * 1024 * 1024,
+    )?;
+    verify_bytes(spec, &original, receipt)
+}
+
+pub(crate) fn verify_bytes(
+    spec: &AtmosphericReferenceSpec,
+    original: &[u8],
+    receipt: &Value,
+) -> Result<crate::qualification::NumericalEvidence> {
     let prepared = spec.prepare()?;
     if receipt["schema_version"] != 1
         || receipt["adapter"] != "libRadtran"
@@ -97,11 +109,7 @@ pub(crate) fn verify(
             "approved atmospheric SI/source/angular preparation changed",
         ));
     }
-    let original = crate::worker::read_bounded(
-        &crate::storage::safe_path(root, "uvspec-original.txt")?,
-        64 * 1024 * 1024,
-    )?;
-    let expected_original = serde_json::json!({"path":"uvspec-original.txt","bytes":original.len(),"sha256":format!("{:x}",Sha256::digest(&original))});
+    let expected_original = serde_json::json!({"path":"uvspec-original.txt","bytes":original.len(),"sha256":format!("{:x}",Sha256::digest(original))});
     if receipt["original"] != expected_original
         || receipt["angular_fields"]
             != serde_json::json!({
@@ -114,7 +122,7 @@ pub(crate) fn verify(
     }
     let observed = observations(
         spec,
-        std::str::from_utf8(&original)
+        std::str::from_utf8(original)
             .map_err(|_| invalid("native atmospheric original UTF-8 text required"))?,
     )?;
     if !same(&receipt["observations"], &serde_json::to_value(&observed)?) {
@@ -185,9 +193,9 @@ pub(crate) fn registered(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    fn fixture() -> (tempfile::TempDir, AtmosphericReferenceSpec, Value) {
+    pub(crate) fn fixture() -> (tempfile::TempDir, AtmosphericReferenceSpec, Value) {
         let mut spec: AtmosphericReferenceSpec =
             serde_json::from_str(include_str!("../examples/atmosphere-reference.json")).unwrap();
         spec.model = "transparent_reference".into();

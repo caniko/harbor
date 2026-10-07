@@ -199,6 +199,32 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 add(512 * MIB, multiply(cells, 4096)?)?
             }
             StageOperation::Bundle => 16 * MIB,
+            StageOperation::AtmosphericTransport => {
+                let spec = plan.atmospheric_transport.as_ref().ok_or_else(|| {
+                    invalid("source-bound atmospheric transport resource recipe required")
+                })?;
+                spec.validate()?;
+                let knots = spec.request.receiver.wavelengths.len() as u64;
+                let shard = multiply(
+                    multiply(u64::from(spec.request.receiver.samples), knots.div_ceil(4))?,
+                    1024,
+                )?;
+                let angular = multiply(
+                    multiply(
+                        2 * u64::from(spec.atmosphere.mu_bins),
+                        u64::from(spec.atmosphere.phi_bins),
+                    )?,
+                    add(512, multiply(knots, 64)?)?,
+                )?;
+                output = add(
+                    output,
+                    add(
+                        multiply(shard, 6)?,
+                        add(angular, spec.source.original.bytes)?,
+                    )?,
+                )?;
+                add(512 * MIB, add(multiply(shard, 2)?, multiply(angular, 8)?)?)?
+            }
             StageOperation::AtmosphericReference => {
                 let spec = plan
                     .atmosphere

@@ -333,6 +333,13 @@ def build_server(profile: str) -> MCPServer:
             return await request("results_transfer_atmosphere", request=request_spec)
 
         @server.tool()
+        async def atmospheric_transport_plan(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Plan immutable CPU spectral transport using succeeded registered atmospheric originals and explicit receiver; requires approval before job_submit."""
+            return await request("plan_atmospheric_transport", request=request_spec)
+
+        @server.tool()
         async def results_compare_freezing(
             request_spec: dict[str, Any],
         ) -> dict[str, Any]:

@@ -31,6 +31,20 @@
     "enclosing_attempt_exit_code": 1,
     "source_runtime_evidence": "manufactured angular fields, not libRadtran execution"
   },
+  "independent_rust_packet_replay": {
+    "attempt": "atmospheric-rust-replay-4",
+    "source_revision": "b56592918d19a2769912a9a33439cdf7b606a51d",
+    "report_sha256": "6eebeeba008c5154204e9941f80455f96e23e1cdea94c08ba01dd6ba3d4aeb15",
+    "original_report_sha256": "5892eb830ed68d5c0896440e1a6f9d16e6911a94243ca377dbaa6563aa1ec86e",
+    "cases": 9,
+    "seed_observations": 27,
+    "original_component_files": 54,
+    "component_and_combined_agreement": "1e-11 relative plus 1e-12 absolute; unchanged 0.02 native scientific gate",
+    "exit_code": 0,
+    "service_runtime_s": 5.857,
+    "service_peak_memory_reported": "236.1M; swap 0B",
+    "scope": "source-captured development Rust reconstruction of manufactured-source native originals; no source, package, sandbox, worker or physical promotion"
+  },
   "spectral": {
     "attempt": "spectral-native-diagnostic-8",
     "source_revision": "3b60b9b07da97460be1920bcc190c2b853606ba8",

@@ -249,6 +249,7 @@ impl ExecutionPlan {
             freezing: None,
             spectral: None,
             atmosphere: None,
+            atmospheric_transport: None,
             fleetix_revision: FLEETIX_REV.into(),
             fleetix_contract_digest: fleetix_digest(),
             policy,

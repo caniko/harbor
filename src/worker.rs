@@ -189,6 +189,7 @@ fn check_plan(plan: &ExecutionPlan, profile: &HostExecutionProfile) -> Result<()
                     | StageOperation::FreezingReference
                     | StageOperation::SpectralReference
                     | StageOperation::AtmosphericReference
+                    | StageOperation::AtmosphericTransport
                     | StageOperation::ContactReference
                     | StageOperation::CadMesh
                     | StageOperation::FemImported
@@ -495,6 +496,16 @@ fn dispatch(
         Operation::ValidateSpectralReflectionReference { spec } => {
             Ok(serde_json::to_value(spec.prepare()?)?)
         }
+        Operation::PlanAtmosphericTransport { request } => {
+            request.validate()?;
+            if authority.is_none() {
+                return Err(Error::Unqualified(
+                    "registered atmospheric transport requires authoritative admission".into(),
+                ));
+            }
+            let plan = crate::atmospheric_transport::plan(store, *request, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanSnowReference { spec } => spec.plan(profile.policy.clone()),
         Operation::PlanWettingReference { spec } => {
             let plan = ExecutionPlan::wetting_reference(*spec, profile.policy.clone())?;
@@ -593,6 +604,7 @@ fn dispatch(
                 || plan.freezing.is_some()
                 || plan.spectral.is_some()
                 || plan.atmosphere.is_some()
+                || plan.atmospheric_transport.is_some()
                 || plan.thermal_contact.is_some()
                 || plan.contact.is_some())
                 && authority.is_none()
@@ -614,6 +626,9 @@ fn dispatch(
                 ));
             }
             check_plan(&plan, profile)?;
+            if let Some(spec) = &plan.atmospheric_transport {
+                crate::atmospheric_transport::registered_source(store, spec)?;
+            }
             if let Some(authority) = authority {
                 authority.authorize(&plan, profile)?;
             }
@@ -653,6 +668,7 @@ fn dispatch(
                                 | StageOperation::FreezingReference
                                 | StageOperation::SpectralReference
                                 | StageOperation::AtmosphericReference
+                                | StageOperation::AtmosphericTransport
                                 | StageOperation::ContactReference
                                 | StageOperation::CadMesh
                                 | StageOperation::FemImported
@@ -668,6 +684,8 @@ fn dispatch(
                                     "spectral_closure"
                                 } else if stage.operation == StageOperation::AtmosphericReference {
                                     "atmosphere_closure"
+                                } else if stage.operation == StageOperation::AtmosphericTransport {
+                                    "atmospheric_spectral_closure"
                                 } else if stage.operation == StageOperation::FemImported {
                                     "fem_imported_closure"
                                 } else if stage.operation == StageOperation::CadMesh {
@@ -735,6 +753,22 @@ fn dispatch(
                             "insufficient state-root capacity for immutable CAD source staging"
                                 .into(),
                         ));
+                    }
+                    Admission::open(&crate::admission::shared_root()?, authority)?
+                        .retain_inputs(store, bytes, submit)?
+                } else if let Some(spec) = &plan.atmospheric_transport {
+                    let bytes = spec
+                        .source
+                        .original
+                        .bytes
+                        .checked_add(spec.source.receipt.bytes)
+                        .and_then(|b| b.checked_add(16 * 1024 * 1024))
+                        .ok_or_else(|| invalid("atmospheric staging budget overflow"))?;
+                    if bytes
+                        .checked_add(disk_bytes(&store.root, false)?)
+                        .is_none_or(|n| n > profile.max_disk_bytes)
+                    {
+                        return Err(Error::Resource("insufficient state-root capacity for immutable atmospheric source staging".into()));
                     }
                     Admission::open(&crate::admission::shared_root()?, authority)?
                         .retain_inputs(store, bytes, submit)?
@@ -1064,6 +1098,10 @@ struct NativeRuntime {
     #[serde(default)]
     atmosphere_closure: Option<String>,
     #[serde(default)]
+    atmospheric_spectral: Option<String>,
+    #[serde(default)]
+    atmospheric_spectral_closure: Option<String>,
+    #[serde(default)]
     contact: Option<String>,
     #[serde(default)]
     contact_closure: Option<String>,
@@ -1085,6 +1123,7 @@ impl NativeRuntime {
             StageOperation::FreezingReference => &self.freezing_closure,
             StageOperation::SpectralReference => &self.spectral_closure,
             StageOperation::AtmosphericReference => &self.atmosphere_closure,
+            StageOperation::AtmosphericTransport => &self.atmospheric_spectral_closure,
             StageOperation::ContactReference => &self.contact_closure,
             StageOperation::CadMesh => &self.cad_mesh_closure,
             StageOperation::FemImported => &self.fem_imported_closure,
@@ -1153,6 +1192,13 @@ impl NativeRuntime {
             StageOperation::ContactReference => self.contact.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU contact adapter absent from selected runtime".into())
             })?,
+            StageOperation::AtmosphericTransport => {
+                self.atmospheric_spectral.as_deref().ok_or_else(|| {
+                    Error::Unqualified(
+                        "isolated atmospheric spectral transport adapter unavailable".into(),
+                    )
+                })?
+            }
             StageOperation::CadMesh => self.cad_mesh.as_deref().ok_or_else(|| {
                 Error::Unqualified("CPU CAD mesh adapter absent from selected runtime".into())
             })?,
@@ -1263,6 +1309,7 @@ fn native_stage(
             | StageOperation::FreezingReference
             | StageOperation::SpectralReference
             | StageOperation::AtmosphericReference
+            | StageOperation::AtmosphericTransport
             | StageOperation::ContactReference
             | StageOperation::CadMesh
             | StageOperation::FemImported
@@ -1303,6 +1350,11 @@ fn native_stage(
                 "HARBOR_CAD_CONTACT_POLICY",
                 crate::execution::CONTACT_SANDBOX_POLICY,
             ),
+            StageOperation::AtmosphericTransport => (
+                "/spectral-runtime-closure.txt",
+                "HARBOR_CAD_ATMOSPHERIC_SPECTRAL_POLICY",
+                crate::atmospheric_transport::SANDBOX_POLICY,
+            ),
             StageOperation::CadMesh => (
                 "/cad-mesh-runtime-closure.txt",
                 "HARBOR_CAD_CAD_MESH_POLICY",
@@ -1334,6 +1386,20 @@ fn native_stage(
     if matches!(stage.operation, StageOperation::NumericalFilter) {
         let (root, _, _) = crate::fields::registered(store, id)?;
         command.args(["--ro-bind"]).arg(root).arg("/inputs/fields");
+    }
+    if stage.operation == StageOperation::AtmosphericTransport {
+        let spec = plan
+            .atmospheric_transport
+            .as_ref()
+            .ok_or_else(|| invalid("approved original-source atmospheric transport required"))?;
+        crate::atmospheric_transport::registered_source(store, spec)?;
+        command
+            .args(["--dir", "/inputs", "--ro-bind"])
+            .arg(safe_path(
+                &store.job_dir(id)?,
+                "source-atmosphere-original.txt",
+            )?)
+            .arg("/inputs/atmosphere-original.txt");
     }
     if matches!(
         stage.operation,
@@ -1474,6 +1540,8 @@ fn native_stage(
             "spectral-receipt.json".into()
         } else if stage.operation == StageOperation::AtmosphericReference {
             "atmosphere-receipt.json".into()
+        } else if stage.operation == StageOperation::AtmosphericTransport {
+            "atmospheric-spectral-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::ContactReference) {
             "contact-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::CadMesh) {
@@ -1511,6 +1579,8 @@ fn native_stage(
                 "native-spectral-request.json".into()
             } else if stage.operation == StageOperation::AtmosphericReference {
                 "native-atmosphere-request.json".into()
+            } else if stage.operation == StageOperation::AtmosphericTransport {
+                "native-atmospheric-spectral-request.json".into()
             } else if matches!(stage.operation, StageOperation::ContactReference) {
                 "native-contact-request.json".into()
             } else if matches!(stage.operation, StageOperation::CadMesh) {
@@ -1525,26 +1595,26 @@ fn native_stage(
     command
         .arg("--")
         .arg(exe)
-        .arg(
-            if matches!(
-                stage.operation,
-                StageOperation::FemReference
-                    | StageOperation::FemImported
-                    | StageOperation::WettingReference
-                    | StageOperation::FreezingReference
-                    | StageOperation::SpectralReference
-                    | StageOperation::AtmosphericReference
-                    | StageOperation::ContactReference
-            ) {
-                "reference"
-            } else if matches!(stage.operation, StageOperation::ThermalReference) {
-                "run"
-            } else if matches!(stage.operation, StageOperation::CadMesh) {
-                "mesh"
-            } else {
-                &op
-            },
-        )
+        .arg(if stage.operation == StageOperation::AtmosphericTransport {
+            "transport"
+        } else if matches!(
+            stage.operation,
+            StageOperation::FemReference
+                | StageOperation::FemImported
+                | StageOperation::WettingReference
+                | StageOperation::FreezingReference
+                | StageOperation::SpectralReference
+                | StageOperation::AtmosphericReference
+                | StageOperation::ContactReference
+        ) {
+            "reference"
+        } else if matches!(stage.operation, StageOperation::ThermalReference) {
+            "run"
+        } else if matches!(stage.operation, StageOperation::CadMesh) {
+            "mesh"
+        } else {
+            &op
+        })
         .arg("/plan.json");
     let log = OpenOptions::new()
         .create_new(true)
@@ -1623,6 +1693,24 @@ fn native_stage(
     }
     if matches!(stage.operation, StageOperation::NumericalFilter) {
         crate::filters::verify_receipt(store, id, plan, dir, &evidence)?;
+    }
+    if stage.operation == StageOperation::AtmosphericTransport {
+        let spec = plan
+            .atmospheric_transport
+            .as_ref()
+            .ok_or_else(|| invalid("source-bound atmospheric transport recipe required"))?;
+        crate::atmospheric_transport::registered_source(store, spec)?;
+        let original = read_bounded(
+            &safe_path(&store.job_dir(id)?, "source-atmosphere-original.txt")?,
+            32 * 1024 * 1024,
+        )?;
+        crate::atmospheric_transport::verify_receipt(
+            spec,
+            std::str::from_utf8(&original)
+                .map_err(|_| invalid("original atmosphere UTF-8 required"))?,
+            dir,
+            &evidence,
+        )?;
     }
     if matches!(stage.operation, StageOperation::FemReference) {
         crate::fem::verify_receipt(plan, &evidence)?;
@@ -1751,6 +1839,7 @@ fn validate_native_receipt(stage: &Stage, evidence: &serde_json::Value) -> Resul
         StageOperation::WettingReference => "OpenLB",
         StageOperation::FreezingReference => "OpenLB",
         StageOperation::SpectralReference => "Mitsuba",
+        StageOperation::AtmosphericTransport => "Mitsuba",
         StageOperation::AtmosphericReference => "libRadtran",
         StageOperation::ContactReference => "CalculiX",
         StageOperation::CadMesh => "Gmsh",
@@ -2265,6 +2354,15 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     private_dir(&working)?;
                     store.add_artifact(id,&commit_artifact(&dir,"native-fem-imported-request.json",&serde_json::to_vec(&crate::fem_imported::descriptor(&plan)?)?,"json","exact original CAD geometry, explicit reference/material/boundary provenance; no invented physical time")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if stage.operation == StageOperation::AtmosphericTransport {
+                    let working = native_work.join("stages/atmospheric-transport");
+                    private_dir(&working)?;
+                    let spec = plan.atmospheric_transport.as_ref().ok_or_else(|| {
+                        invalid("approved registered atmospheric transport recipe required")
+                    })?;
+                    crate::atmospheric_transport::registered_source(store, spec)?;
+                    store.add_artifact(id,&commit_artifact(&dir,"native-atmospheric-spectral-request.json",&serde_json::to_vec(&spec.native_request()?)?,"json","exact original atmospheric angular fields, registered-source checksum, SI receiver and prescribed optical history")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if matches!(stage.operation, StageOperation::CadMesh) {
                     let working = native_work.join("stages/mesh");
                     private_dir(&working)?;
@@ -2316,6 +2414,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         crate::freezing::annotate_fields(&plan, &mut artifacts)?;
         crate::radiation::annotate_fields(&plan, &mut artifacts)?;
         crate::atmosphere::annotate_fields(&plan, &mut artifacts)?;
+        crate::atmospheric_transport::annotate_fields(&plan, &mut artifacts)?;
         crate::contact::annotate_fields(&plan, &mut artifacts);
         for artifact in artifacts {
             store.add_artifact(id, &artifact)?;

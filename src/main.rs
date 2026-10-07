@@ -300,6 +300,10 @@ enum Results {
     TransferAtmosphere {
         request: PathBuf,
     },
+    /// Plan CPU spectral transport from succeeded registered atmospheric originals.
+    PlanAtmosphericTransport {
+        request: PathBuf,
+    },
 }
 #[derive(Subcommand)]
 enum Artifact {
@@ -580,6 +584,9 @@ fn run(cli: Cli) -> Result<()> {
                 request: Box::new(read(&request)?),
             },
             Results::TransferAtmosphere { request } => Operation::ResultsTransferAtmosphere {
+                request: Box::new(read(&request)?),
+            },
+            Results::PlanAtmosphericTransport { request } => Operation::PlanAtmosphericTransport {
                 request: Box::new(read(&request)?),
             },
         },

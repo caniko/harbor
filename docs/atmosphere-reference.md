@@ -208,7 +208,7 @@ component, renamed artifact or compensated PDF/weight substitution rejects.
 diagnostic. Neither manufactured source fields nor such a diagnostic qualify
 libRadtran execution, exact production packaging, registered-source worker
 transport, convergence, GPU transport or physical validation. Exact packaged
-execution and a source-bound durable transport approval remain separate gates.
+execution and registered-source worker qualification remain separate gates.
 
 `spectral-native-diagnostic-5/atmospheric-spectral` passes all nine manufactured
 native transport cases and 27 seed observations, including positive direct
@@ -219,3 +219,48 @@ complete originals, reconstruction and ABI identities are retained in
 diagnostic attempt exited 1 because its separate broader spectral campaign
 failed; the successful atmospheric subreport does not supersede that failure or
 qualify libRadtran execution, registered sources or immutable worker transport.
+
+## Registered-source transport worker
+
+`results plan-atmospheric-transport REQUEST.json` and results-profile MCP
+`atmospheric_transport_plan` resolve the same request against a succeeded,
+originally authorized atmospheric job. They return a strict independent
+version-15 `atmospheric-transport → bundle` approval. The source science,
+execution, binding and authorization digests, original atmospheric receipt and
+original field checksum/size are immutable inputs. The receiver retains the
+original TOA prescription and native knots; caller-provided ground radiance and
+older-envelope injection (including null) reject.
+
+Submit the returned plan with `job submit` or MCP `job_submit`, its exact
+`approved_digest` and an idempotency key. The operation-only worker descriptor is
+`runtime-atmospheric-spectral-worker`; the standalone reference descriptor remains
+`runtime-atmospheric-spectral-reference-cpu`. Authoritative same-user systemd
+admission reserves native packets, parsing/reduction copies and the complete
+emitter manifest. Source staging is independently reserved before acknowledgment.
+Distinct checksummed source field/receipt inodes and original source execution
+provenance are retained atomically under the submission transaction. Failed
+submission recovery preserves the sole retained copy when its original source
+cannot be verified.
+
+The worker mounts only the spectral operation closure, read-only request and
+checksum-bound retained atmospheric original. Native execution uses `transport`.
+After the complete native process exits, Rust independently reconstructs every
+original direct/diffuse packet at each approved seed, including empty components,
+source-derived PMFs, receiver-local rectangular bounds, shared four-lane draw
+identities and repeated multiknot padding. It separately reconstructs emitter
+mapping, optical channels, area-dependent power and prescribed-history dose,
+requires all nine sandbox canaries and preserves the original `1e-10` transfer
+and at-most-`0.02` transport gates. Scientific CSV artifacts have explicit units
+and packet association; seeds remain distinct from physical time. Historical
+qualification rechecks registered original bytes and the original source
+authorization without upgrading convergence or physical validation.
+
+The source-bound implementation has CPU contract, schema/CLI/MCP refusal,
+independent receipt-mutation and immutable-source/orphan-storage regressions.
+The independent Rust packet replay at source `b56592918d19a2769912a9a33439cdf7b606a51d`
+passed all 54 native component files from the nine-case manufactured campaign;
+report SHA-256 is
+`6eebeeba008c5154204e9941f80455f96e23e1cdea94c08ba01dd6ba3d4aeb15`.
+This replay supplies numerical diagnostic evidence. Exact production packaging,
+registered libRadtran-source worker execution and lifecycle qualification remain
+pending.

@@ -3,6 +3,10 @@ pub mod atmosphere;
 mod atmosphere_fields;
 pub mod atmosphere_transfer;
 mod atmospheric_spectral_fields;
+pub mod atmospheric_transport;
+mod atmospheric_transport_receipt;
+#[cfg(test)]
+mod atmospheric_transport_tests;
 pub mod authority;
 pub mod cad;
 pub mod cad_mesh;

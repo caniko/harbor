@@ -255,6 +255,83 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
                     assert rejected.is_error and "invalid_input" in str(
                         rejected.content
                     )
+                    rejected = await results_client.call_tool(
+                        "atmospheric_transport_plan", {"request_spec": invalid}
+                    )
+                    assert rejected.is_error and "invalid_input" in str(
+                        rejected.content
+                    )
+                    rejected = await results_client.call_tool(
+                        "atmospheric_transport_plan", {"request_spec": transfer}
+                    )
+                    assert rejected.is_error and "unqualified" in str(rejected.content)
+                for request_spec, code in [
+                    (invalid, "invalid_input"),
+                    (transfer, "unqualified"),
+                ]:
+                    result = await asyncio.to_thread(
+                        subprocess.run,
+                        [
+                            binary,
+                            "--socket",
+                            str(socket),
+                            "results",
+                            "plan-atmospheric-transport",
+                            "/dev/stdin",
+                        ],
+                        input=json.dumps(request_spec).encode(),
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    assert (
+                        result.returncode != 0
+                        and json.loads(result.stdout)["error"]["code"] == code
+                    )
+                transport_plan = {
+                    key: value
+                    for key, value in atmosphere_plan["plan"].items()
+                    if key != "atmosphere"
+                }
+                transport_plan.update(
+                    schema_version=15,
+                    atmospheric_transport={
+                        "schema_version": 1,
+                        "request": transfer,
+                        "atmosphere": atmosphere,
+                        "source": {
+                            "job_id": transfer["source_job"],
+                            "science_id": "a" * 64,
+                            "execution_id": "b" * 64,
+                            "execution_binding_digest": "c" * 64,
+                            "authorization_digest": "d" * 64,
+                            "receipt": {
+                                "path": "stages/atmosphere/atmosphere-receipt.json",
+                                "sha256": "e" * 64,
+                                "bytes": 1,
+                            },
+                            "original": {
+                                "path": "stages/atmosphere/native/atmosphere-original.txt",
+                                "sha256": "f" * 64,
+                                "bytes": 1,
+                            },
+                        },
+                    },
+                )
+                validator = Draft202012Validator(schemas["ExecutionPlan"])
+                validator.validate(transport_plan)
+                for field in ("atmosphere", "spectral", "thermal", "source", "case"):
+                    with pytest.raises(ValidationError):
+                        validator.validate({**transport_plan, field: None})
+                for version in range(1, 15):
+                    with pytest.raises(ValidationError):
+                        validator.validate(
+                            {**transport_plan, "schema_version": version}
+                        )
+                with pytest.raises(ValidationError):
+                    validator.validate(
+                        {**atmosphere_plan["plan"], "atmospheric_transport": None}
+                    )
                 for field in ("radiance", "physical_time_s", "temperature_k"):
                     with pytest.raises(ValidationError):
                         Draft202012Validator(

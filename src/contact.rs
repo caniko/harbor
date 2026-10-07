@@ -161,6 +161,7 @@ impl crate::contracts::ExecutionPlan {
             freezing: None,
             spectral: None,
             atmosphere: None,
+            atmospheric_transport: None,
             source: None,
             frames: None,
             filter: None,

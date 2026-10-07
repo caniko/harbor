@@ -90,6 +90,16 @@ in {
     render = null;
     video = null;
   });
+  runtime-atmospheric-spectral-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    atmospheric_spectral = "${atmosphericAdapter}/bin/harbor-cad-atmospheric-spectral";
+    atmospheric_spectral_closure = "${atmosphericClosure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+  });
   runtime-spectral-reference-cpu = pkgs.writeText "harbor-cad-spectral-reference-runtime.json" (builtins.toJSON {
     schema_version = 1;
     bwrap = "${pkgs.bubblewrap}/bin/bwrap";

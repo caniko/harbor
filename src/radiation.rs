@@ -114,6 +114,7 @@ impl crate::contracts::ExecutionPlan {
             freezing: None,
             spectral: Some(spec),
             atmosphere: None,
+            atmospheric_transport: None,
             stages: vec![
                 Stage {
                     id: "spectral".into(),

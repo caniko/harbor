@@ -266,6 +266,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                 "stages/atmosphere/atmosphere-receipt.json",
                 Some("libRadtran"),
             ),
+            StageOperation::AtmosphericTransport => {
+                (crate::atmospheric_transport::RECEIPT_PATH, Some("Mitsuba"))
+            }
             StageOperation::ContactReference => {
                 ("stages/contact/contact-receipt.json", Some("CalculiX"))
             }
@@ -283,7 +286,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if let Some(spec) = &plan.atmosphere {
+            formulation: if plan.atmospheric_transport.is_some() {
+                "registered_full_sphere_original_midpoint_planar_uv_transport".into()
+            } else if let Some(spec) = &plan.atmosphere {
                 spec.model.clone()
             } else if plan.spectral.is_some() {
                 "directional_planar_uv_irradiance_and_prescribed_dose".into()
@@ -332,7 +337,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     .map_or(3, |c| c.applicability.dimensionality)
             },
             precision: None,
-            refinement: if let Some(spec) = &plan.atmosphere {
+            refinement: if let Some(spec) = &plan.atmospheric_transport {
+                spec.request.receiver.samples
+            } else if let Some(spec) = &plan.atmosphere {
                 spec.streams
             } else if let Some(spec) = &plan.spectral {
                 spec.samples
@@ -601,6 +608,12 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                         Some(crate::atmosphere::registered(store, id, &plan, &value)?);
                     capability.numerical_verification = EvidenceState::ReportedPass;
                     capability.convergence="one declared DISORT/angle/wavelength grid; separate stream/angular-shape/spectral refinement not_assessed".into();
+                } else if stage.operation == StageOperation::AtmosphericTransport {
+                    capability.numerical_evidence = Some(crate::atmospheric_transport::registered(
+                        store, id, &plan, &value,
+                    )?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                    capability.convergence="three declared native transport seeds; original source refinement and sampling convergence assessed separately".into();
                 } else {
                     (
                         capability.numerical_verification,
