@@ -74,6 +74,10 @@ own `harbor-cad-atmosphere-cpu-v1` Bubblewrap closure, read-only descriptor and
 eight measured CPU isolation checks, including changed network namespace and
 absent GPU/home/session/worker access. It generates a closed whitelisted input
 deck, retains original native text/logs and fails on unresolved or altered fields.
+The selected AFGL profile must match its original official SHA-256 before launch;
+the receipt also retains the exact packaged native executable path/hash. Full
+angular arrays stay in the authoritative native text artifact, with bounded
+flux summaries and original field shape/order/unit metadata in the receipt.
 
 The CLI command is `case validate-atmospheric-reference FILE`; the simulation MCP
 tool is `atmospheric_reference_validate`. These validate without executing or
@@ -81,3 +85,16 @@ creating a job. Native atmospheric worker integration and direct/diffuse angular
 handoff into Mitsuba remain separate acceptance work. Site-specific weather,
 solar history, aerosol/cloud profiles, measured optics, physical ageing/damage
 and GPU transport remain unqualified.
+
+`scripts/verify_atmosphere_cpu.py` requires exact packaged planner/runtime paths.
+It independently reconstructs original hemisphere flux, checks three transparent
+solar geometries and explicit 0.6-albedo conservation, and assesses three separate
+refinements: DISORT streams 16/32/64, angular midpoint grids 16/32/64 and nested
+4/2/1 nm spectral sampling over a prescribed 300–360 nm sub-band. Coarse angular
+shape is compared against corresponding fine native cells with solid-angle
+averaging; no isotropic replacement is used. Relative-L2 errors against the finest
+retain the same at-most-0.02 gate and must decrease, allowing an explicitly
+recorded at-most-1e-7 native-serialization plateau. Eight invalid inputs must reject
+before fields appear. The original native data, commands, exit codes, failed
+attempts, reconstructed receipts, resources and separate refinement assessments
+are retained. The campaign is implemented and remains unexecuted.

@@ -338,6 +338,13 @@ contract and all existing Rust suites, strict Clippy, locked build, pinned Simit
 drift, Nix syntax and whitespace. The official archive and all twelve selected
 source/data hashes match retained originals. Native decimal-wavelength resolution
 and source-energy rejection tests were observed red before the focused fixes.
+The exact atmospheric campaign is now wired for twelve native cases, separate
+stream/angular-shape/wavelength refinement and eight pre-output rejections.
+Original AFGL data/native executable identities and compact receipt field
+metadata preserve authoritative angular arrays in files. Guarded build 48,
+including the new atmospheric outputs, refused before evaluation at 9 GiB
+combined headroom. Atlas lease PID `3337737` remained active at the subsequent
+inspection. All scientific/package qualification stays pending these prerequisites.
 
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.

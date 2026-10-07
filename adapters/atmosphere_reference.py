@@ -15,6 +15,10 @@ from pathlib import Path
 
 SOURCE_SHA256 = "64930cc40b6e4a37aa220520974d330fc1563796f466a649b2238131f2d69840"
 POLICY = "harbor-cad-atmosphere-cpu-v1"
+PROFILE_SHA256 = {
+    "afglms": "875ada621ca86fb24ed49bbca44e540e9bfe81e2a2af7760a8ce7de991652b14",
+    "afglmw": "4425063a390b9c19f286abb051fcc98fda5cdc014c9e701a6be226e9932e816c",
+}
 
 
 def strict_object(pairs):
@@ -317,6 +321,12 @@ def main():
         raise ValueError(
             "immutable exact native libRadtran binary/data package required"
         )
+    profile = data / "atmmod" / (spec["profile"] + ".dat")
+    profile_sha256 = hashlib.sha256(profile.read_bytes()).hexdigest()
+    if profile_sha256 != PROFILE_SHA256[spec["profile"]]:
+        raise ValueError(
+            "unchanged original content-pinned atmospheric profile required"
+        )
     solar = root / "solar-spectrum.dat"
     grid = root / "wavelengths.dat"
     deck = root / "uvspec-input.inp"
@@ -384,6 +394,9 @@ def main():
         "adapter": "libRadtran",
         "source_sha256": SOURCE_SHA256,
         "version": "2.0.6",
+        "native_executable": str(binary),
+        "native_executable_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+        "profile_sha256": profile_sha256,
         "backend": "cpu",
         "solver": "disort",
         "precision": "Float32",
@@ -395,7 +408,23 @@ def main():
         "request_sha256": hashlib.sha256(raw).hexdigest(),
         "sandbox": isolation,
         "prepared": prepared,
-        "observations": parsed,
+        # Full native angular arrays remain solely in their authoritative text
+        # artifact. Receipts/protocol evidence carry bounded flux summaries and
+        # shape/ordering metadata, not a second large copy of every radiance.
+        "observations": {k: v for k, v in parsed.items() if k != "radiance_w_m2_sr_nm"},
+        "angular_fields": {
+            "path": output.name,
+            "shape": [
+                len(prepared["wavelengths_nm"]),
+                len(prepared["umu"]),
+                len(prepared["phi_deg"]),
+            ],
+            "association": "wavelength_propagation_solid_angle_sample",
+            "units": "W/(m2*sr*nm)",
+            "precision": "Float32",
+            "columns_start": 4,
+            "ordering": "umu-major phi-minor",
+        },
         "original": {
             "path": output.name,
             "bytes": output.stat().st_size,

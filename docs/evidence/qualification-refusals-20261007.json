@@ -26,7 +26,8 @@
     "attempts": [
       {"name": "build-45", "revision": "066644ff9336797a4140a8a4b7485df6030fdc26", "available_gib": 12, "command_sha256": "849e5be5c3650ad852bc8fce21b3f9434b91b3474ac5e2f4586e3d1a5979689b", "stdout_sha256": "65f6dc527b676eeef04b8d73c9b15a54b3649b48385c6984c9af8a0a3219ab6d", "exit_code": 1},
       {"name": "build-46", "revision": "98690d4d1a291c2f9491ec20148e6846eba6b65b", "available_gib": 9, "command_sha256": "52f8f64263fd10a9e7f8f70b7d91c9e4e0420f67e8b7a95a70ad04024f809d1c", "stdout_sha256": "b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96", "exit_code": 1},
-      {"name": "build-47", "revision": "3ad8dbc0cd13c5d94d9d1e3dcfc76d439334b662", "available_gib": 10, "command_sha256": "70e1d758e31a2b88ad98281cfd674167f075f5bba026f144c6f397d03de800e7", "stdout_sha256": "bed0262b421c75e059c3e6d08aca721444d46d80763109f8d1cdae64cfbfc053", "exit_code": 1}
+      {"name": "build-47", "revision": "3ad8dbc0cd13c5d94d9d1e3dcfc76d439334b662", "available_gib": 10, "command_sha256": "70e1d758e31a2b88ad98281cfd674167f075f5bba026f144c6f397d03de800e7", "stdout_sha256": "bed0262b421c75e059c3e6d08aca721444d46d80763109f8d1cdae64cfbfc053", "exit_code": 1},
+      {"name":"build-48","revision":"b305bf97fb78df6c7f66a263ed269ac1d8e26c5a","available_gib":9,"command_sha256":"23db5dc11d14d786b10bf8a3a64fa180426eeeb647f0cb168e87f268961078a3","stdout_sha256":"b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96","exit_code":1}
     ],
     "file_convention": "NAME/evaluation-command.json, evaluation-stdout.json, evaluation-stderr.log, evaluation-exit.txt, revision.txt; no derivation realization started"
   },
