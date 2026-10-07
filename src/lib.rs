@@ -2,6 +2,7 @@ pub mod admission;
 pub mod atmosphere;
 mod atmosphere_fields;
 pub mod atmosphere_transfer;
+mod atmospheric_spectral_fields;
 pub mod authority;
 pub mod cad;
 pub mod cad_mesh;

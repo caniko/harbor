@@ -1,4 +1,7 @@
 //! One-way identity/quadrature map from registered anisotropic atmospheric originals.
+pub use crate::atmospheric_spectral_fields::{
+    AtmosphericComponent, AtmosphericPacketChannels, reconstruct_native_packets,
+};
 use crate::{
     Error, Result,
     atmosphere::{self, AtmosphericReferenceSpec},
