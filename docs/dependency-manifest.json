@@ -214,7 +214,7 @@
     "drjit_version": "1.5.0",
     "drjit_cp313_wheel_sha256": "33a4b146cc56a02ea0dd9c43034277c59ae3c5dd3490678c2cbc8ef69a1e8c93",
     "abi": "isolated Python 3.13 x86_64-linux; no FreeCAD/ParaView/MCP interpreter mixing",
-    "outputs": ["spectral-drjit", "spectral-mitsuba", "spectral-environment-cpu"],
+    "outputs": ["spectral-drjit", "spectral-mitsuba", "spectral-environment-cpu", "spectral-reference-cpu", "runtime-spectral-reference-cpu"],
     "selected_reference_variant": "scalar_spectral",
     "precision": "Float32",
     "native_execution": "unqualified; source/ELF inspection is not a package or solver gate",

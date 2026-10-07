@@ -93,3 +93,26 @@ rejection of missing provenance, invalid optical weights, unsupported precision/
 backends, extrapolation and weakened acceptance. CLI/MCP schema and typed-error
 parity use the same worker. Native packaging and execution are not qualified by
 these tests.
+
+The standalone `spectral-reference-cpu` adapter now preserves native directional
+emitter weights/cosines/positions as CSV and native hemispherical irradiance
+channels as Float32 EXR. The independent Python verifier uses exact Simpson
+quadrature for the piecewise-quadratic optical products, separate from the Rust
+coefficient reduction. Dose reduction uses Float64; it does not change native
+transport precision. The operation-specific reference sandbox grants only its
+immutable closure, a read-only request and writable output, with the shared
+eight CPU isolation canaries.
+
+`scripts/verify_spectral_cpu.py --executable CLI --runtime RUNTIME --output NEW`
+checks normal/inclined/back-facing/occluded incidence, area semantics and
+hemispherical samples at 4096/16384/65536 with three independent seeds. Every
+original directional sample is reconstructed and every EXR is reopened in a
+separate process. Analytical accuracy, numerical sampling refinement and
+physical qualification stay separate. The explicitly marked development modes
+retain diagnostic results without qualifying immutable packages or sandboxes.
+
+The complete CPU gate passes 123 Python tests, all Rust tests, strict Clippy,
+locked builds and formatter/linter checks. Native source/API, syntax and
+immutable digest checks pass. Guarded build 45 refused evaluation at 12 GiB
+combined memory/swap headroom, below the required 24 GiB; no realization ran.
+The native spectral diagnostic is waiting behind Atlas's host execution lease.

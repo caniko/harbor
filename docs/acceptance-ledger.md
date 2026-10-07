@@ -287,6 +287,16 @@ plugin semantics are recorded in [spectral reference](spectral-reference.md).
 Native packaging, transport, reflection, atmospheric integration and GPU
 evidence remain unqualified.
 
+The standalone spectral CPU adapter and original-field campaign are implemented,
+with independent Simpson optical-product quadrature, native emitter visibility
+and unchanged EXR spectral round trips. Pure CPU gates pass 123 Python tests,
+all Rust tests, strict Clippy, locked builds, Ruff/Treefmt and pinned Simit drift.
+Build 45 refused evaluation at 12 GiB combined headroom against the normal 24 GiB
+start gate, before realization. Snow-native-2 and retained-phase-1 both timed out
+without execution behind the Atlas lease held by PID 3337737,
+`chaosbox-full-snapshot-sync`, on `/run/lock/canix/switch.lock`. Native qualification
+remains pending normal lease release/headroom; all refusal logs are retained.
+
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.

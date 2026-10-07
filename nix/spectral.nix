@@ -44,8 +44,27 @@
       platforms = ["x86_64-linux"];
     };
   };
+  environment = python.withPackages (_: [mitsuba]);
+  femBridge = pkgs.writeText "fem_reference.py" (builtins.readFile ../adapters/fem_reference.py);
+  bridge = pkgs.replaceVars ../adapters/spectral_reference.py {
+    fem_bridge = femBridge;
+  };
+  adapter = pkgs.writeShellScriptBin "harbor-cad-spectral" ''
+    exec ${environment}/bin/python3 -B ${bridge} "$@"
+  '';
+  closure = pkgs.closureInfo {rootPaths = [adapter];};
 in {
-  spectral-environment-cpu = python.withPackages (_: [mitsuba]);
+  spectral-environment-cpu = environment;
   spectral-mitsuba = mitsuba;
   spectral-drjit = drjit;
+  spectral-reference-cpu = adapter;
+  runtime-spectral-reference-cpu = pkgs.writeText "harbor-cad-spectral-reference-runtime.json" (builtins.toJSON {
+    schema_version = 1;
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    spectral = "${adapter}/bin/harbor-cad-spectral";
+    spectral_closure = "${closure}/store-paths";
+    backend = "cpu";
+    precision = "Float32";
+    qualification = "unqualified";
+  });
 }
