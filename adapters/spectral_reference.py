@@ -535,6 +535,32 @@ def measure_directional(scene, spec, normalized, seed, path, mi, dr):
     return values
 
 
+def bitmap_channels(bitmap, mi):
+    names = [field.name for field in bitmap.struct_()]
+    if (
+        list(bitmap.size()) != [1, 1]
+        or len(names) != 3
+        or set(names) != {"incident", "absorbed", "ageing"}
+        or bitmap.component_format() != mi.Struct.Type.Float32
+    ):
+        raise ValueError(
+            "original one-pixel Float32 spectral channels required; no RGB reinterpretation"
+        )
+    return dict(
+        zip(names, [number(float(v)) for v in mi.TensorXf(bitmap).array], strict=True)
+    )
+
+
+def verify_exr_roundtrip(values, bitmap, mi):
+    copied = bitmap_channels(bitmap, mi)
+    # OpenEXR stores channels in name order. Compare each original Float32
+    # value by its scientific channel name, without reordering its meaning or
+    # adding numerical tolerance to the lossless roundtrip.
+    if copied != values:
+        raise ValueError("exact native Float32 EXR spectral channel roundtrip required")
+    return copied
+
+
 def execute(spec, root):
     normalized = normalize(spec)
     incident = spec["incident"] if "reflection" in normalized else spec
@@ -572,13 +598,7 @@ def execute(spec, root):
             path = root / f"irradiance-{seed}.exr"
             bitmap.write(str(path))
             reopened = mi.Bitmap(str(path))
-            copied = [float(v) for v in mi.TensorXf(reopened).array]
-            if [field.name for field in reopened.struct_()] != names or copied != list(
-                values.values()
-            ):
-                raise ValueError(
-                    "exact native Float32 EXR spectral channel roundtrip required"
-                )
+            verify_exr_roundtrip(values, reopened, mi)
             method = "native_irradiancemeter_cosine_hemisphere_path_and_specfilm_response_sampling"
         checks = verify_channels(normalized, values, incident["relative_tolerance"])
         observations.append(
@@ -654,27 +674,7 @@ def main():
             raise ValueError("exact compatible native EXR reader required")
         mi.set_variant("scalar_spectral")
         bitmap = mi.Bitmap(str(request))
-        names = [field.name for field in bitmap.struct_()]
-        if (
-            list(bitmap.size()) != [1, 1]
-            or set(names) != {"incident", "absorbed", "ageing"}
-            or bitmap.component_format() != mi.Struct.Type.Float32
-        ):
-            raise ValueError(
-                "original one-pixel Float32 spectral channels required; no RGB reinterpretation"
-            )
-        print(
-            json.dumps(
-                dict(
-                    zip(
-                        names,
-                        [float(v) for v in mi.TensorXf(bitmap).array],
-                        strict=True,
-                    )
-                ),
-                allow_nan=False,
-            )
-        )
+        print(json.dumps(bitmap_channels(bitmap, mi), allow_nan=False))
         return
     raw = request.read_bytes()
     spec = json.loads(raw)

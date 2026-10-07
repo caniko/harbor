@@ -247,3 +247,37 @@ def test_independent_reflection_retains_uncovered_environment_and_separate_model
     rejected["incident"]["sensor_height"]["value"] = 10.0
     with pytest.raises(ValueError):
         native.normalize(rejected)
+
+
+@pytest.mark.parametrize(
+    "mutation", [None, "swapped_values", "duplicate", "format", "size"]
+)
+def test_exr_roundtrip_matches_named_float32_channels_without_positional_reinterpretation(
+    mutation,
+):
+    native = adapter()
+    original = {
+        "incident": 753.3287353515625,
+        "absorbed": 413.88055419921875,
+        "ageing": 533.985107421875,
+    }
+    names = ["absorbed", "ageing", "incident"]
+    values = [original[name] for name in names]
+    if mutation == "swapped_values":
+        values[0], values[1] = values[1], values[0]
+    if mutation == "duplicate":
+        names[1] = names[0]
+    bitmap = SimpleNamespace(
+        struct_=lambda: [SimpleNamespace(name=name) for name in names],
+        size=lambda: [2, 1] if mutation == "size" else [1, 1],
+        component_format=lambda: "float16" if mutation == "format" else "float32",
+    )
+    mi = SimpleNamespace(
+        Struct=SimpleNamespace(Type=SimpleNamespace(Float32="float32")),
+        TensorXf=lambda _: SimpleNamespace(array=values),
+    )
+    if mutation:
+        with pytest.raises(ValueError):
+            native.verify_exr_roundtrip(original, bitmap, mi)
+    else:
+        assert native.verify_exr_roundtrip(original, bitmap, mi) == original
