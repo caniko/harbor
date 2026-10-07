@@ -16,7 +16,11 @@ def test_native_worker_campaigns_use_existing_shared_methods_and_valid_signature
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    for name in ("verify_spectral_worker.py", "verify_freezing_worker.py"):
+    for name in (
+        "verify_spectral_worker.py",
+        "verify_freezing_worker.py",
+        "verify_atmosphere_worker.py",
+    ):
         tree = ast.parse((scripts / name).read_text())
         for node in ast.walk(tree):
             if (

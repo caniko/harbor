@@ -118,3 +118,13 @@ recorded at-most-1e-7 native-serialization plateau. Eight invalid inputs must re
 before fields appear. The original native data, commands, exit codes, failed
 attempts, reconstructed receipts, resources and separate refinement assessments
 are retained. The campaign is implemented and remains unexecuted.
+
+`scripts/verify_atmosphere_worker.py` requires a complete matching exact-package
+standalone report and unchanged originals, including all three independent
+refinements. It runs CLI and real MCP approval/submission, full angular original
+reconstruction/parity, registered mutation refusal, offline checksum export,
+tracked resource limits, worker restart, native-tree forced death and cancellation,
+and reservation/runtime-root release. Four plan/envelope/approval rejections are
+checked. The shared lifecycle API/signature regression covers this entrypoint.
+This worker campaign remains unexecuted until exact realization and the guarded
+Atlas execution lease are available.

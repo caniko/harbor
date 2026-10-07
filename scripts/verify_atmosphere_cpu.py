@@ -66,6 +66,68 @@ def spectral_integrals(record):
     ]
 
 
+def assess_refinements(records, root, tolerance):
+    if not math.isfinite(tolerance) or not 0 < tolerance <= 0.02:
+        raise ValueError("unchanged bounded atmospheric refinement tolerance required")
+    fine = records["clear-streams64"]
+    stream_errors = [
+        relative_l2(flatten_flux(records[f"clear-streams{s}"]), flatten_flux(fine))
+        for s in (16, 32)
+    ]
+
+    def angular_original(record):
+        original = root / record["case"] / "uvspec-original.txt"
+        if checksum(original) != record["original_files_sha256"][original.name]:
+            raise ValueError("refinement original native angular field changed")
+        return [
+            list(map(float, line.split()))[4:]
+            for line in original.read_text().splitlines()
+        ]
+
+    # Compare original coarse cell values to the solid-angle mean of matching
+    # finest-grid cells on the same complete sphere, without isotropic collapse.
+    angular_errors = []
+    fine_angular = angular_original(fine)
+    for bins in (16, 32):
+        factor = 64 // bins
+        coarse = angular_original(records[f"clear-angular{bins}"])
+        reduced = []
+        for row in fine_angular:
+            reduced.extend(
+                math.fsum(
+                    row[(i * factor + di) * 64 + j * factor + dj]
+                    for di in range(factor)
+                    for dj in range(factor)
+                )
+                / (factor * factor)
+                for i in range(2 * bins)
+                for j in range(bins)
+            )
+        angular_errors.append(relative_l2([v for row in coarse for v in row], reduced))
+    spectral_errors = [
+        relative_l2(
+            spectral_integrals(records[f"clear-wavelength{s}"]),
+            spectral_integrals(records["clear-wavelength1"]),
+        )
+        for s in (4, 2)
+    ]
+    return {
+        name: {
+            "relative_l2_errors_against_finest": errors,
+            "tolerance": tolerance,
+            "passed": errors[1] <= tolerance
+            and (errors[1] < errors[0] or max(errors) <= 1e-7),
+            "roundoff_plateau": max(errors) <= 1e-7,
+            "scope": "separate same-model refinement; no physical validation",
+        }
+        for name, errors in (
+            ("streams", stream_errors),
+            ("angular_shape", angular_errors),
+            ("wavelength_integrals", spectral_errors),
+        )
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("executable", "runtime", "output"):
@@ -205,6 +267,9 @@ def main():
             ]
         )
         with (root / f"launch-{name}.log").open("xb") as log:
+            (root / f"launch-{name}-command.json").write_text(
+                json.dumps(command, indent=2)
+            )
             process = subprocess.run(
                 command,
                 cwd=work,
@@ -363,64 +428,7 @@ def main():
             for w in wavelengths
         ]
         run(f"clear-wavelength{step}", spec)
-    fine = records["clear-streams64"]
-    stream_errors = [
-        relative_l2(flatten_flux(records[f"clear-streams{s}"]), flatten_flux(fine))
-        for s in (16, 32)
-    ]
-
-    # Angular shape convergence compares coarse native cell values with the
-    # solid-angle mean of corresponding fine native cells on the same sphere.
-    def angular_original(record):
-        original = root / record["case"] / "uvspec-original.txt"
-        if checksum(original) != record["original_files_sha256"][original.name]:
-            raise ValueError("refinement original native angular field changed")
-        return [
-            list(map(float, line.split()))[4:]
-            for line in original.read_text().splitlines()
-        ]
-
-    angular_errors = []
-    fine_angular = angular_original(fine)
-    for bins in (16, 32):
-        factor = 64 // bins
-        coarse = angular_original(records[f"clear-angular{bins}"])
-        reduced = []
-        for row in fine_angular:
-            reduced.extend(
-                math.fsum(
-                    row[(i * factor + di) * 64 + j * factor + dj]
-                    for di in range(factor)
-                    for dj in range(factor)
-                )
-                / (factor * factor)
-                for i in range(2 * bins)
-                for j in range(bins)
-            )
-        angular_errors.append(relative_l2([v for row in coarse for v in row], reduced))
-    spectral_errors = [
-        relative_l2(
-            spectral_integrals(records[f"clear-wavelength{s}"]),
-            spectral_integrals(records["clear-wavelength1"]),
-        )
-        for s in (4, 2)
-    ]
-    refinements = {}
-    for name, errors in (
-        ("streams", stream_errors),
-        ("angular_shape", angular_errors),
-        ("wavelength_integrals", spectral_errors),
-    ):
-        passed = errors[1] <= base["relative_tolerance"] and (
-            errors[1] < errors[0] or max(errors) <= 1e-7
-        )
-        refinements[name] = {
-            "relative_l2_errors_against_finest": errors,
-            "tolerance": base["relative_tolerance"],
-            "passed": passed,
-            "roundoff_plateau": max(errors) <= 1e-7,
-            "scope": "separate same-model refinement; no physical validation",
-        }
+    refinements = assess_refinements(records, root, base["relative_tolerance"])
     (root / "refinements.json").write_text(
         json.dumps(refinements, indent=2, allow_nan=False)
     )
@@ -457,6 +465,7 @@ def main():
         "runtime": str(descriptor),
         "runtime_sha256": checksum(descriptor),
         "source_sha256": bridge.SOURCE_SHA256,
+        "adapter_source_sha256": checksum(repo / "adapters/atmosphere_reference.py"),
         "results": list(records.values()),
         "rejections": rejections,
         "refinements": refinements,

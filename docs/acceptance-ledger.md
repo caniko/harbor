@@ -357,6 +357,15 @@ parity and authority refusal, pinned Simit drift and touched Nix syntax. Exact
 packaged native atmospheric worker execution and atmospheric-to-Mitsuba transport
 remain pending; manufactured numerical fixtures cannot promote runtime status.
 
+The exact atmospheric worker qualification campaign is wired for matching
+standalone originals and separately reconstructed stream/angular/spectral
+refinements, CLI/MCP parity, immutable approval/refusal, restart, native-tree
+death/cancellation, checksum export and resource release. Its API/signature and
+refinement-error/changed-original regressions pass; development runners refuse
+before output creation. Guarded build 49 binds `2cace05` and refused before Nix
+evaluation at 8 GiB combined headroom against the 24 GiB start minimum. The
+standalone and worker atmospheric campaigns remain unexecuted.
+
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.
