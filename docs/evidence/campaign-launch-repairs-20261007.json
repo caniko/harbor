@@ -24,6 +24,17 @@
       "repair": "Preserve the invoked virtualenv launcher for explicit development mode; exact packaged mode retains canonical immutable executable checks",
       "verification": "Real clean-environment child import confirms virtualenv prefix and MCP SDK; all 133 Python tests pass",
       "qualification": "unqualified; corrected original CLI/MCP campaign rerun pending"
+    },
+    {
+      "name": "retained-phase-4",
+      "revision": "5b41b483d4b90d997db5e0bea9447d779b6b01e5",
+      "command_sha256": "35cc95a8af31a1819152fd4663ae691b9a554598bb254b8eefdabb2d8831c5b4",
+      "log_sha256": "dfaf615b876483602e2cd7c5f5d3226da1f6eb35d23bf8af51a2db4a319f258a",
+      "log_bytes": 6242,
+      "exit_code": 1,
+      "failure": "CLI classified an unknown request field as protocol_error while the Rust worker classified the same MCP payload as invalid_input; campaign stopped at strict typed-error parity",
+      "repair": "Classify CLI deserialization data/schema errors as invalid_input while retaining protocol_error for malformed JSON syntax",
+      "qualification": "unqualified development diagnostic; complete campaign rerun required"
     }
   ],
   "file_convention": "NAME-command.json, NAME.log, NAME-exit.txt; original failed attempts preserved",

@@ -314,10 +314,13 @@ enum Artifact {
     },
 }
 fn read<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T> {
-    Ok(serde_json::from_slice(&worker::read_bounded(
-        path,
-        MAX_MESSAGE,
-    )?)?)
+    serde_json::from_slice(&worker::read_bounded(path, MAX_MESSAGE)?).map_err(|error| {
+        if error.is_data() {
+            harbor_cad::contracts::invalid(format!("input schema: {error}"))
+        } else {
+            error.into()
+        }
+    })
 }
 fn print(value: &impl serde::Serialize) -> Result<()> {
     serde_json::to_writer_pretty(std::io::stdout(), value)?;

@@ -243,7 +243,7 @@ def main():
                                 or rejected["code"] not in str(mcp_rejected.content)
                             ):
                                 raise ValueError(
-                                    "unsupported retained initialization must reject identically through CLI/MCP"
+                                    f"unsupported retained initialization must reject identically through CLI/MCP: field={field}, cli={rejected}, mcp={mcp_rejected.content}"
                                 )
                             rejections.append(
                                 {"source": job["id"], "field": field, "error": rejected}
