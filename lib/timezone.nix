@@ -27,7 +27,13 @@ rec {
   in {
     inherit env validationScript;
     packages = [tzdata];
-    shellHook = validationScript;
+    # nix develop deliberately omits TZ when restoring build variables. Select
+    # the configured zone at entry even when the calling environment has a TZ.
+    shellHook =
+      ''
+        export TZ='${env.TZ}'
+      ''
+      + validationScript;
   };
 
   mkEnv = args: (mkEnvironment args).env;
@@ -49,6 +55,23 @@ rec {
         // {
           TZDIR = old.TZDIR or (old.env.TZDIR or (passthru.devShellSpec.env.TZDIR or timezone.env.TZDIR));
         };
+      removePrefix = prefix: value: let
+        length = builtins.stringLength prefix;
+      in
+        if length > 0 && builtins.substring 0 length value == prefix
+        then builtins.substring length (builtins.stringLength value - length) value
+        else value;
+      # Replace our previous entry hook rather than nesting zone exports. Older
+      # adapters had validation-only prefixes, sometimes repeated by composition.
+      removeLegacy = value: let
+        rest = removePrefix timezone.validationScript value;
+      in
+        if rest == value
+        then value
+        else removeLegacy rest;
+      shellHook =
+        timezone.shellHook
+        + removeLegacy (removePrefix (passthru.harborTimezoneHook or "") (old.shellHook or ""));
     in
       (
         if old ? TZ || old ? TZDIR
@@ -62,9 +85,10 @@ rec {
         else {env = (old.env or {}) // env;}
       )
       // {
-        shellHook = timezone.validationScript + (old.shellHook or "");
+        inherit shellHook;
         passthru =
           passthru
+          // {harborTimezoneHook = timezone.shellHook;}
           // (
             if passthru ? devShellSpec
             then {
@@ -72,7 +96,7 @@ rec {
                 passthru.devShellSpec
                 // {
                   env = passthru.devShellSpec.env // (old.env or {}) // env;
-                  shellHook = timezone.validationScript + (old.shellHook or "");
+                  inherit shellHook;
                 };
             }
             else {}

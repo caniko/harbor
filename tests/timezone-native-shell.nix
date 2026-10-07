@@ -29,11 +29,22 @@
       extraShellHook = spec.shellHook;
     };
   };
+  direct = (import ../lib/shell.nix {}).mkShell {
+    inherit pkgs;
+    timeZone = "Europe/Istanbul";
+    env.TZDIR = database;
+    extraShellHook = spec.shellHook;
+  };
+  repeated = timezone.withShell {
+    inherit pkgs;
+    shell = nested;
+  };
 in
   assert topLevel.TZDIR == database;
   assert nested.TZDIR == database;
   assert nested.passthru.devShellSpec.env.TZDIR == database;
   assert nested.passthru.devShellSpec.env.TZ == "Europe/Istanbul";
+  assert repeated.shellHook == nested.shellHook;
   assert nested.passthru.devShellSpec.shellHook == nested.shellHook; {
     topLevel = {
       inherit (topLevel) drvPath shellHook;
@@ -45,6 +56,18 @@ in
       inherit (nested) drvPath shellHook;
       env = {
         inherit (nested) TZ TZDIR;
+      };
+    };
+    direct = {
+      inherit (direct) drvPath shellHook;
+      env = {
+        inherit (direct) TZ TZDIR;
+      };
+    };
+    repeated = {
+      inherit (repeated) drvPath shellHook;
+      env = {
+        inherit (repeated) TZ TZDIR;
       };
     };
   }
