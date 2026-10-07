@@ -97,6 +97,10 @@ enum Backend {
 }
 #[derive(Subcommand)]
 enum Case {
+    /// Prepare explicit angular UV source, optical weighting and prescribed exposure; no transport execution.
+    ValidateSpectralReference {
+        file: PathBuf,
+    },
     /// Validate prescribed full-face dry snow insulation and quasi-steady applicability; no native execution.
     ValidateSnowReference {
         file: PathBuf,
@@ -412,6 +416,10 @@ fn run(cli: Cli) -> Result<()> {
             }
             Case::ValidateSnowReference { file } => {
                 let spec: harbor_cad::snow::SnowReferenceSpec = read(&file)?;
+                return print(&spec.prepare()?);
+            }
+            Case::ValidateSpectralReference { file } => {
+                let spec: harbor_cad::radiation::SpectralReferenceSpec = read(&file)?;
                 return print(&spec.prepare()?);
             }
             Case::PlanSnowReference { file, policy } => {

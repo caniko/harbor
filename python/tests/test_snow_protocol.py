@@ -36,6 +36,19 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
     Draft202012Validator(schemas["PreparedSnowBoundary"]).validate(validated)
     assert planned["snow_boundary"] == validated and validated["executed"] is False
     assert planned["plan"]["thermal"] == validated["native"]
+    spectral = json.loads((repo / "examples/spectral-reference.json").read_text())
+    Draft202012Validator(schemas["SpectralReferenceSpec"]).validate(spectral)
+    spectral_reference = json.loads(
+        subprocess.check_output(
+            [binary, "case", "validate-spectral-reference", "/dev/stdin"],
+            input=json.dumps(spectral).encode(),
+        )
+    )
+    Draft202012Validator(schemas["PreparedSpectralReference"]).validate(
+        spectral_reference
+    )
+    assert not spectral_reference["executed"]
+    assert abs(spectral_reference["absorbed_irradiance_w_m2"] - 132.0) < 1e-10
     profile = json.loads((repo / "profiles/ci.json").read_text())
     profile.update(
         policy="research", service_mode="systemd", allowed_input_root=str(tmp_path)
@@ -71,6 +84,26 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
                     "snow_reference_validate", {"spec": spec}
                 )
                 assert not actual.is_error and actual.structured_content == validated
+                actual = await client.call_tool(
+                    "spectral_reference_validate", {"spec": spectral}
+                )
+                assert (
+                    not actual.is_error
+                    and actual.structured_content == spectral_reference
+                )
+                for field, value in (
+                    ("precision", "Float64"),
+                    ("variant", "cuda_ad_spectral"),
+                    ("absorptivity", [0.2, 1.1]),
+                    ("history_interpolation", "measured_solar_history"),
+                ):
+                    rejected = await client.call_tool(
+                        "spectral_reference_validate",
+                        {"spec": {**spectral, field: value}},
+                    )
+                    assert rejected.is_error and "invalid_input" in str(
+                        rejected.content
+                    )
                 rejected = await client.call_tool(
                     "snow_reference_validate",
                     {"spec": {**spec, "snow": {**spec["snow"], "coverage": "partial"}}},

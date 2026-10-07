@@ -158,6 +158,11 @@ def build_server(profile: str) -> MCPServer:
             return await request("validate_snow_reference", spec=spec)
 
         @server.tool()
+        async def spectral_reference_validate(spec: dict[str, Any]) -> dict[str, Any]:
+            """Prepare explicit angular UV source, optical absorption, ageing weighting and prescribed dose; no native transport execution."""
+            return await request("validate_spectral_reference", spec=spec)
+
+        @server.tool()
         async def case_plan_snow_reference(spec: dict[str, Any]) -> dict[str, Any]:
             """Plan native plane-wall heat transfer with approval-bound full-face prescribed snow; no deposition or opening-flow inference."""
             return await request("plan_snow_reference", spec=spec)

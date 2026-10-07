@@ -23,6 +23,7 @@ mod measurements;
 pub mod moisture_results;
 pub mod presentation;
 pub mod qualification;
+pub mod radiation;
 pub mod recipes;
 pub mod resources;
 pub mod results;

@@ -275,6 +275,18 @@ remain pending independent qualification.
 
 ## External qualification prerequisites
 
+The E reference now has a strict Rust SI/angular-source contract and matching
+CLI/MCP preparation. Exact piecewise-linear optical-product quadrature preserves
+absorbed heating separately from ageing-weighted dose, with explicit sensor area
+and prescribed complete temporal amplitude. UV nm/metre conversions, cosine/
+occlusion/isotropic references and real protocol rejection tests pass the full
+CPU gate (45 Rust unit tests plus integration suites, strict Clippy, locked build
+and 112 Python tests). Treefmt, Ruff, pinned Simit drift and whitespace checks
+pass. Official Mitsuba 3.9.1 / Dr.Jit 1.5.0 wheel identities and pinned spectral
+plugin semantics are recorded in [spectral reference](spectral-reference.md).
+Native packaging, transport, reflection, atmospheric integration and GPU
+evidence remain unqualified.
+
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
 - Hybrid CUDA FEM and CUDA/OptiX spectral transport need suitable NVIDIA hardware.

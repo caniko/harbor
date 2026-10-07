@@ -1,0 +1,87 @@
+# Explicit UV irradiance and dose reference
+
+`case validate-spectral-reference examples/spectral-reference.json` and
+simulation/all MCP `spectral_reference_validate` use the same Rust contract.
+They return independent analytical preparation, `executed: false`, and an
+identity binding the complete original request. Preparation does not qualify
+native transport, a solver package, GPU execution or a physical exposure.
+
+## Source, surface and units
+
+The bounded synthetic fixture uses either a fixed collimated spectral
+irradiance with an explicit unit propagation direction, or an isotropic
+spectral radiance. Surface normal and dimensions are explicit. Spectra have
+2–64 strictly increasing samples over 200–2500 nm and cover every optical
+weight; no extrapolation or visible-RGB conversion is authorized. Inputs retain
+their units and provenance while normalization uses wavelengths in metres,
+spectral irradiance in W/(m² m) or radiance in W/(m² sr m).
+
+Directional incidence uses `max(0,-dot(propagation,surface_normal))`.
+Hemispherical isotropic incidence uses `pi`. A procedural full-cover occluder
+is supported only for the directional reference. A directional scalar cannot
+authorize a sky distribution, and no atmospheric angular distribution is
+collapsed or invented. libRadtran, atmospheric histories and imported surfaces
+remain separate native integration work.
+
+Sensor power is irradiance times the explicitly prescribed area. Irradiance
+and radiant exposure remain independent of sensor area. Optical absorptivity
+and a distinct dimensionless ageing action spectrum are explicit, bounded
+piecewise-linear arrays with provenance. Incident exposure, absorbed heating
+and ageing-weighted exposure are reported separately; they imply neither
+temperature nor material lifetime.
+
+The spectral integral of a piecewise-linear source times a piecewise-linear
+weight is integrated exactly on each shared interval. For normalized coordinate
+`x` over an interval of width `d`, source `a0 + da*x` and weight `b0 + db*x`,
+the integral is `d*(a0*b0 + (a0*db+b0*da)/2 + da*db/3)`. Endpoint-product
+trapezoids would incorrectly treat the quadratic product as linear.
+
+Time dependence is an explicitly prescribed piecewise-linear nonnegative source
+amplitude, with fixed geometry, direction and optics. Its complete history starts
+at zero and ends within one year. Trapezoidal integration is exact for this
+declared amplitude model, not evidence that a measured solar history is sampled
+adequately. The example integrates 240 W/m² incident, 132 W/m² absorbed and
+170 W/m² ageing-weighted UV irradiance; its one-hour ramp has integrated
+amplitude 3600 s and absorbed exposure 475200 J/m².
+
+## Native compatibility boundary
+
+Official release metadata pins Mitsuba **3.9.1** to Dr.Jit **1.5.0**; the
+Python-3.13 manylinux wheels are immutable by SHA-256:
+
+| Package | Wheel SHA-256 |
+|---|---|
+| Mitsuba 3.9.1 | `8959e8de33427cf4d9b515a52d741dca7624e7c17094c5849f123a96504ca123` |
+| Dr.Jit 1.5.0 | `33a4b146cc56a02ea0dd9c43034277c59ae3c5dd3490678c2cbc8ef69a1e8c93` |
+
+Mitsuba tag v3.9.1 resolves to commit
+`478e193a183c21723f4a8251afc3ad29a8da4c5e`. Source-backed contracts:
+
+- [`irradiancemeter`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/sensors/irradiancemeter.cpp): incident power per area, inherited shape/normal, one-pixel sensor and cosine-hemisphere sampling.
+- [`specfilm`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/films/specfilm.cpp): native unprocessed weighted spectral channels, response ranges outside visible wavelengths, alphabetically named channels and explicit Float32 OpenEXR.
+- [`directional`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/emitters/directional.cpp): spectral irradiance normal to propagation, explicit direction and native visibility/next-event weight.
+- [`irregular`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/spectra/irregular.cpp): piecewise-linear spectral interpolation and explicit wavelength range.
+- [`sensor`](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/render/sensor.cpp): spectral-film response controls wavelength sampling, preventing the default visible CIE range from truncating UV.
+
+Ordinary sensor-based path tracing does not sample a delta-directional light at
+the meter's origin. Directional next-event measurement and visibility must be
+qualified explicitly; a zero path-traced result is not a physical zero exposure.
+Hemispherical radiance uses the native meter/film path. Source weights remain
+spectral power quantities and are not converted through CIE photometry.
+
+The CPU contract deliberately records `scalar_spectral` and `Float32`, matching
+the upstream wheel's native types. Three distinct ordered seeds and bounded
+power-of-two sample counts are required; the declared reference tolerance cannot
+exceed 0.02. Native statistical/refinement evidence is separate from analytical
+preparation. CUDA transport and CPU/GPU agreement remain hardware-dependent,
+best-effort work; the pinned stack does not provide a Vulkan/HIP transport route.
+
+## Current verification
+
+Rust tests check exact optical-product quadrature, nm/metre spectral-density
+conversion, prescribed-history dose, sensor-area scaling, cosine orientation,
+opposing normals, directional occlusion, isotropic angular integration and
+rejection of missing provenance, invalid optical weights, unsupported precision/
+backends, extrapolation and weakened acceptance. CLI/MCP schema and typed-error
+parity use the same worker. Native packaging and execution are not qualified by
+these tests.
