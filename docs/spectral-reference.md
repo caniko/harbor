@@ -193,3 +193,12 @@ metadata/approval drift and non-promotion; they supply no native-execution
 qualification. Exact packaged worker execution remains pending normal build and
 runtime availability. Build 46 refused before evaluation at 9 GiB combined
 headroom against the unchanged 24 GiB start gate.
+
+`scripts/verify_spectral_worker.py` requires the complete exact-package standalone
+spectral report and matching native adapter/closure. It checks CLI/MCP approvals,
+immutable jobs, original CSV reconstruction, exact standalone/worker original
+parity, exports, source edits, worker restart, mutation rejection, effective
+controls/aggregate peaks, forced owned-tree death, cancellation and final shared
+reservation/runtime-root release. The campaign itself remains unexecuted until
+the normal packaging and Atlas lease prerequisites are available. Refused attempts
+are recorded in [the prerequisite evidence](evidence/qualification-refusals-20261007.json).

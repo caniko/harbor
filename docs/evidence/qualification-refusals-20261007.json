@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "scope": "Guarded prerequisites refused before native execution or package evaluation; no numerical or runtime acceptance results",
+  "original_root": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007",
+  "runtime_lease": {
+    "lock_path": "/run/lock/canix/switch.lock",
+    "owner_pid": 3337737,
+    "owner_process_start_ticks": 29460839,
+    "operation_kind": "chaosbox-full-snapshot-sync",
+    "host": "atlas",
+    "started_at": "2026-10-07T09:06:20.298117165+00:00",
+    "refusal_log_sha256": "9d0e0e62d40f2e2cbf6a9cdfecb52b1eb5bf6c9282a1cf7a6340858e5218669e",
+    "refusal_log_bytes": 735,
+    "attempts": [
+      {"name": "snow-native-1", "command_sha256": "dc24eaa1ecefd95268e21f46d83ab23162685f64d3d93a7235a7759ad09ed1dc", "exit_code": 1},
+      {"name": "snow-native-2", "command_sha256": "81988d9d6370ca9fc82bc9db37803013046c960c06c46bc33b73a20d5663c57c", "exit_code": 1},
+      {"name": "retained-phase-1", "command_sha256": "2dc2a6ba5b2f6d0e2793e85f3d656644ed4e5d8e68a666083e2308ebe5ce8d43", "exit_code": 1},
+      {"name": "spectral-abi-2", "command_sha256": "eb62dac2e5af28888c8f178f43558f45a622da33776de28f204b10dd1660cfc9", "exit_code": 1}
+    ],
+    "file_convention": "NAME-command.json, NAME.log, NAME-exit.txt; originals retained independently"
+  },
+  "evaluation_headroom": {
+    "minimum_combined_start_gib": 24,
+    "evaluation_scope_gib": 32,
+    "attempts": [
+      {"name": "build-45", "revision": "066644ff9336797a4140a8a4b7485df6030fdc26", "available_gib": 12, "command_sha256": "849e5be5c3650ad852bc8fce21b3f9434b91b3474ac5e2f4586e3d1a5979689b", "stdout_sha256": "65f6dc527b676eeef04b8d73c9b15a54b3649b48385c6984c9af8a0a3219ab6d", "exit_code": 1},
+      {"name": "build-46", "revision": "98690d4d1a291c2f9491ec20148e6846eba6b65b", "available_gib": 9, "command_sha256": "52f8f64263fd10a9e7f8f70b7d91c9e4e0420f67e8b7a95a70ad04024f809d1c", "stdout_sha256": "b26d7a9d747d4503e1a383003f7a559a822d979aab666884218b2d1556c8ca96", "exit_code": 1},
+      {"name": "build-47", "revision": "3ad8dbc0cd13c5d94d9d1e3dcfc76d439334b662", "available_gib": 10, "command_sha256": "70e1d758e31a2b88ad98281cfd674167f075f5bba026f144c6f397d03de800e7", "stdout_sha256": "bed0262b421c75e059c3e6d08aca721444d46d80763109f8d1cdae64cfbfc053", "exit_code": 1}
+    ],
+    "file_convention": "NAME/evaluation-command.json, evaluation-stdout.json, evaluation-stderr.log, evaluation-exit.txt, revision.txt; no derivation realization started"
+  },
+  "qualification": "unqualified",
+  "physical_validation": "unqualified"
+}

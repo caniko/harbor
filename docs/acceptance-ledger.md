@@ -317,6 +317,11 @@ existing scientific gate. Its red/green regression and binding-policy check pass
 Exact packaged standalone/worker execution remains pending.
 Build 46 refused before evaluation at 9 GiB combined headroom against 24 GiB;
 spectral ABI attempt 2 refused before execution behind the same Atlas lease.
+Exact-package worker qualification is wired through
+`scripts/verify_spectral_worker.py`, requiring the complete matching native
+angular/reflection/refinement prerequisite. Build 47, at committed worker source
+`3ad8dbc`, refused before evaluation at 10 GiB headroom. Consolidated original
+command/log hashes are in [prerequisite refusal evidence](evidence/qualification-refusals-20261007.json).
 
 - Multi-GPU KFD exclusion needs multiple supported live devices and matched
   running-kernel source evidence. The observed host exposes one live AMD KFD GPU.
