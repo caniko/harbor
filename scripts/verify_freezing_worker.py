@@ -1,6 +1,8 @@
 """Exact freezing CLI/MCP native originals, immutable jobs and lifecycle gate."""
 
 import argparse
+import asyncio
+import csv
 import hashlib
 import json
 import subprocess
@@ -218,6 +220,108 @@ def main():
                 raise ValueError(
                     "separate original-field numerical, runtime and physical evidence states required"
                 )
+            points = [[0, 0], [resolution - 1, resolution // 8 - 1]]
+            time_s = observations[-1]["physical_time_s"]
+            originals = {
+                (int(row["i"]), int(row["j"])): row
+                for row in csv.DictReader(
+                    (data / f"freezing-{spec['steps']}.csv").open()
+                )
+            }
+            samples = []
+            for field, column, unit in (
+                ("temperature", "temperature_k", "K"),
+                ("specific_enthalpy", "specific_enthalpy_j_kg", "J/kg"),
+                ("liquid_fraction", "liquid_fraction", "1"),
+            ):
+                request = {
+                    "schema_version": 1,
+                    "job_id": job["id"],
+                    "field": field,
+                    "physical_time_s": time_s,
+                    "points": points,
+                }
+                path = root / f"sample-{key}-{field}.json"
+                path.write_text(json.dumps(request))
+                sampled = campaign.command(
+                    "--socket", campaign.endpoint, "results", "sample-freezing", path
+                )["data"]
+                if (
+                    sampled["unit"] != unit
+                    or sampled["native_step"] != spec["steps"]
+                    or [value["native_point"] for value in sampled["samples"]] != points
+                    or [value["value"] for value in sampled["samples"]]
+                    != [float(originals[tuple(point)][column]) for point in points]
+                ):
+                    raise ValueError(
+                        "exact original Float64 point values, units, time and caller order required"
+                    )
+                comparison = root / f"compare-{key}-{field}.json"
+                comparison.write_text(
+                    json.dumps({"schema_version": 1, "left": request, "right": request})
+                )
+                compared = campaign.command(
+                    "--socket",
+                    campaign.endpoint,
+                    "results",
+                    "compare-freezing",
+                    comparison,
+                )["data"]
+                if compared["maximum_abs_difference"] != 0 or any(
+                    value["value"] != 0 for value in compared["differences"]
+                ):
+                    raise ValueError(
+                        "same-source original-field comparison must preserve zero differences"
+                    )
+                samples.append(sampled)
+
+            async def mcp_query(job_id, retained_time, query_points, expected_sample):
+                from mcp import Client
+                from mcp.client.stdio import StdioServerParameters
+
+                parameters = StdioServerParameters(
+                    command=str(mcp),
+                    args=["--profile", "results"],
+                    env={
+                        **campaign.environment,
+                        "HARBOR_CAD_SOCKET": str(campaign.endpoint),
+                    },
+                )
+                async with Client(parameters) as client:
+                    request = {
+                        "schema_version": 1,
+                        "job_id": job_id,
+                        "field": "temperature",
+                        "physical_time_s": retained_time,
+                        "points": query_points,
+                    }
+                    sampled = await client.call_tool(
+                        "results_sample_freezing", {"request_spec": request}
+                    )
+                    if (
+                        sampled.is_error
+                        or sampled.structured_content != expected_sample
+                    ):
+                        raise ValueError(
+                            "exact registered freezing CLI/MCP read-only sample parity required"
+                        )
+                    rejected = await client.call_tool(
+                        "results_sample_freezing",
+                        {
+                            "request_spec": {
+                                **request,
+                                "physical_time_s": 0.75 * retained_time,
+                            }
+                        },
+                    )
+                    if not rejected.is_error or "invalid_input" not in str(
+                        rejected.content
+                    ):
+                        raise ValueError(
+                            "unretained freezing time must reject without interpolation"
+                        )
+
+            asyncio.run(mcp_query(job["id"], time_s, points, samples[0]))
             # Changing closed source bytes must reject a read-only historical
             # query. Restoration preserves the same registered job and approval.
             registered = (
@@ -272,6 +376,7 @@ def main():
                     "independent_checks": checks,
                     "observations": observations,
                     "original_files_sha256": hashes,
+                    "original_field_samples": samples,
                     "historical_evidence": historical,
                     "admission_record": reservation,
                     "service_resources": resources,

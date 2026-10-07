@@ -268,6 +268,44 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert {"results_sample_thermal", "results_compare_thermal"}.issubset(
                     names
                 )
+                assert {"results_sample_freezing", "results_compare_freezing"}.issubset(
+                    names
+                )
+                freezing_query = {
+                    "schema_version": 1,
+                    "job_id": "a05f78ac-a7ce-4aed-a458-e4a4cbf0b9fc",
+                    "field": "temperature",
+                    "physical_time_s": 0.0,
+                    "points": [[0, 0], [3, 1]],
+                }
+                Draft202012Validator(schemas["FreezingSampleRequest"]).validate(
+                    freezing_query
+                )
+                Draft202012Validator(schemas["FreezingCompareRequest"]).validate(
+                    {
+                        "schema_version": 1,
+                        "left": freezing_query,
+                        "right": freezing_query,
+                    }
+                )
+                for tool, query in (
+                    (
+                        "results_sample_freezing",
+                        {**freezing_query, "points": [[0, 0], [0, 0]]},
+                    ),
+                    (
+                        "results_compare_freezing",
+                        {
+                            "schema_version": 1,
+                            "left": freezing_query,
+                            "right": {**freezing_query, "physical_time_s": 1.0},
+                        },
+                    ),
+                ):
+                    rejected = await client.call_tool(tool, {"request_spec": query})
+                    assert rejected.is_error and "invalid_input" in str(
+                        rejected.content
+                    )
                 assert "results_moisture" in names
                 rejected_sample = await client.call_tool(
                     "results_sample_thermal",

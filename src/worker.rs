@@ -774,6 +774,12 @@ fn dispatch(
         Operation::ResultsSampleThermal { request } => Ok(serde_json::to_value(
             crate::thermal_results::sample(store, &request)?,
         )?),
+        Operation::ResultsSampleFreezing { request } => Ok(serde_json::to_value(
+            crate::freezing_results::sample(store, &request)?,
+        )?),
+        Operation::ResultsCompareFreezing { request } => Ok(serde_json::to_value(
+            crate::freezing_results::compare(store, &request)?,
+        )?),
         Operation::ResultsCompareThermal { request } => Ok(serde_json::to_value(
             crate::thermal_results::compare(store, &request)?,
         )?),

@@ -196,6 +196,14 @@ fn grid(spec: &FreezingReferenceSpec, step: u64, bytes: &[u8]) -> Result<Grid> {
     })
 }
 
+pub(crate) fn native_values(
+    spec: &FreezingReferenceSpec,
+    step: u64,
+    bytes: &[u8],
+) -> Result<Vec<[f64; 3]>> {
+    Ok(grid(spec, step, bytes)?.nodes)
+}
+
 fn vtk(spec: &FreezingReferenceSpec, bytes: &[u8], nodes: &[[f64; 3]]) -> Result<()> {
     let document = roxmltree::Document::parse(text(bytes)?)
         .map_err(|_| invalid("valid freezing VTK XML required"))?;
@@ -595,11 +603,11 @@ pub(crate) fn verify(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::fs;
 
-    fn fixture() -> (tempfile::TempDir, FreezingReferenceSpec, Value) {
+    pub(crate) fn fixture() -> (tempfile::TempDir, FreezingReferenceSpec, Value) {
         let mut spec: FreezingReferenceSpec =
             serde_json::from_str(include_str!("../examples/freezing-reference.json")).unwrap();
         spec.resolution = 32;
@@ -833,5 +841,85 @@ mod tests {
         assert!(crate::freezing::annotate_fields(&plan, &mut changed).is_err());
         records.push(records[missing].clone());
         assert!(crate::freezing::annotate_fields(&plan, &mut records).is_err());
+    }
+
+    #[test]
+    fn registered_freezing_preserves_original_bytes_and_cannot_promote_unexecuted_or_replaced_receipts()
+     {
+        let (originals, spec, receipt) = fixture();
+        let plan =
+            crate::contracts::ExecutionPlan::freezing_reference(spec.clone(), "research".into())
+                .unwrap();
+        let state = tempfile::tempdir().unwrap();
+        let store = crate::storage::Store::open(&state.path().join("state")).unwrap();
+        let job = store
+            .submit(&plan, "synthetic-unexecuted-freezing-parser")
+            .unwrap();
+        let root = store.job_dir(&job.id).unwrap();
+        fs::create_dir_all(root.join("stages/freezing")).unwrap();
+        let mut records = Vec::new();
+        for name in receipt["original_files_sha256"].as_object().unwrap().keys() {
+            let path = format!("stages/freezing/{name}");
+            fs::copy(originals.path().join(name), root.join(&path)).unwrap();
+            records.push(
+                crate::storage::native_manifest(
+                    &root,
+                    &path,
+                    32 * 1024 * 1024,
+                    "synthetic unexecuted parser fixture",
+                )
+                .unwrap(),
+            );
+        }
+        crate::freezing::annotate_fields(&plan, &mut records).unwrap();
+        for record in records {
+            store.add_artifact(&job.id, &record).unwrap();
+        }
+        let record = crate::storage::commit_artifact(
+            &root,
+            "stages/freezing/freezing-receipt.json",
+            &serde_json::to_vec(&receipt).unwrap(),
+            "json",
+            "synthetic unexecuted parser fixture",
+        )
+        .unwrap();
+        store.add_artifact(&job.id, &record).unwrap();
+        let database = fs::read(store.root.join("jobs.sqlite3")).unwrap();
+        crate::freezing::verify_registered(&store, &job.id, &plan, &receipt).unwrap();
+        let historical = crate::qualification::inspect(&store, &job.id).unwrap();
+        assert!(matches!(
+            historical.capabilities[0].runtime_execution,
+            crate::qualification::EvidenceState::NotObserved
+        ));
+        let query = crate::freezing_results::FreezingSampleRequest {
+            schema_version: 1,
+            job_id: job.id.clone(),
+            field: crate::freezing_results::FreezingField::Temperature,
+            physical_time_s: 0.,
+            points: vec![[0, 0]],
+        };
+        assert!(crate::freezing_results::sample(&store, &query).is_err());
+        let path = root.join("stages/freezing/freezing-1024.csv");
+        let before = fs::read(&path).unwrap();
+        let changed = [before.clone(), b"\n".to_vec()].concat();
+        fs::write(&path, &changed).unwrap();
+        let mut substituted = receipt.clone();
+        substituted["original_files_sha256"]["freezing-1024.csv"] =
+            format!("{:x}", Sha256::digest(&changed)).into();
+        fs::write(
+            root.join(&record.path),
+            serde_json::to_vec(&substituted).unwrap(),
+        )
+        .unwrap();
+        assert!(crate::freezing::verify_registered(&store, &job.id, &plan, &substituted).is_err());
+        assert!(crate::qualification::inspect(&store, &job.id).is_err());
+        fs::write(path, before).unwrap();
+        fs::write(
+            root.join(&record.path),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        crate::freezing::verify_registered(&store, &job.id, &plan, &receipt).unwrap();
+        assert_eq!(fs::read(store.root.join("jobs.sqlite3")).unwrap(), database);
     }
 }

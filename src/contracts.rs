@@ -1939,6 +1939,12 @@ pub enum Operation {
     ResultsCompareThermal {
         request: Box<crate::thermal_results::ThermalCompareRequest>,
     },
+    ResultsSampleFreezing {
+        request: Box<crate::freezing_results::FreezingSampleRequest>,
+    },
+    ResultsCompareFreezing {
+        request: Box<crate::freezing_results::FreezingCompareRequest>,
+    },
     ResultsMoisture {
         request: Box<crate::moisture_results::NativeMoistureRequest>,
     },
@@ -1994,6 +2000,18 @@ pub fn schemas() -> serde_json::Value {
         "ColdRestartSpec": schemars::schema_for!(crate::recipes::ColdRestartSpec),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)});
     // Keep individual expansions below the macro recursion bound as contracts grow.
+    schemas["FreezingSampleRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::freezing_results::FreezingSampleRequest
+    ));
+    schemas["FreezingSampleReport"] = serde_json::json!(schemars::schema_for!(
+        crate::freezing_results::FreezingSampleReport
+    ));
+    schemas["FreezingCompareRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::freezing_results::FreezingCompareRequest
+    ));
+    schemas["FreezingCompareReport"] = serde_json::json!(schemars::schema_for!(
+        crate::freezing_results::FreezingCompareReport
+    ));
     schemas["ThermalSampleRequest"] = serde_json::json!(schemars::schema_for!(
         crate::thermal_results::ThermalSampleRequest
     ));

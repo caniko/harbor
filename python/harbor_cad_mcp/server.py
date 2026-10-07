@@ -273,6 +273,20 @@ def build_server(profile: str) -> MCPServer:
             return await request("results_compare_thermal", request=request_spec)
 
         @server.tool()
+        async def results_sample_freezing(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Read exact registered Float64 freezing values at retained time and up to 64 original grid points."""
+            return await request("results_sample_freezing", request=request_spec)
+
+        @server.tool()
+        async def results_compare_freezing(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Compare same-grid registered freezing points in SI units; no interpolation or engineering acceptance."""
+            return await request("results_compare_freezing", request=request_spec)
+
+        @server.tool()
         async def results_moisture(request_spec: dict[str, Any]) -> dict[str, Any]:
             """Screen a complete native box surface; explicit air inputs, missing or inapplicable."""
             return await request("results_moisture", request=request_spec)

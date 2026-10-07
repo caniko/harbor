@@ -238,6 +238,14 @@ enum Results {
     SampleThermal {
         request: PathBuf,
     },
+    /// Sample complete native freezing fields at an exact retained time and up to 64 (i,j) grid points.
+    SampleFreezing {
+        request: PathBuf,
+    },
+    /// Compare same-grid registered freezing samples; signed right minus left.
+    CompareFreezing {
+        request: PathBuf,
+    },
     /// Compare registered thermal samples on the exact same mesh; right minus left.
     CompareThermal {
         request: PathBuf,
@@ -473,6 +481,12 @@ fn run(cli: Cli) -> Result<()> {
                 request: Box::new(read(&request)?),
             },
             Results::SampleThermal { request } => Operation::ResultsSampleThermal {
+                request: Box::new(read(&request)?),
+            },
+            Results::SampleFreezing { request } => Operation::ResultsSampleFreezing {
+                request: Box::new(read(&request)?),
+            },
+            Results::CompareFreezing { request } => Operation::ResultsCompareFreezing {
                 request: Box::new(read(&request)?),
             },
             Results::CompareThermal { request } => Operation::ResultsCompareThermal {

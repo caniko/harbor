@@ -150,3 +150,23 @@ and substituted checksums.
 Source-bound retained-water transfer is still pending. Pressure, volume
 expansion, fracture and freeze–thaw lifetime remain outside this reference's
 applicability.
+
+## Original-field queries
+
+`results sample-freezing REQUEST.json` and results/all MCP
+`results_sample_freezing` return up to 64 exact original `(i,j)` point values at
+one approved retained physical time. The typed field is `temperature` (K),
+`specific_enthalpy` (J/kg), or `liquid_fraction` (dimensionless). Requests contain
+`schema_version: 1`, `job_id`, `field`, `physical_time_s` and distinct ordered
+`points: [[i,j], ...]`. Zero time is supported; interpolation and unretained
+times are rejected. The request must identify a succeeded execution-bound
+native freezing job with complete registered scientific evidence.
+
+Reports retain source CSV/receipt identities, scientific/execution/binding IDs,
+native step, physical time, original point association, SI coordinates and units.
+Complete fields and conservation gates are rechecked before selecting values;
+querying a few good points cannot hide corruption elsewhere in the grid.
+`results compare-freezing` / `results_compare_freezing` accept `schema_version: 1`
+and two sample requests under `left` and `right`. They require the same grid,
+control geometry, field, physical time and ordered points, then report signed
+right-minus-left values. Engineering acceptance remains explicitly unassessed.
