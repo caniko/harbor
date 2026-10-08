@@ -50,5 +50,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-db/local/heads",
     "remoteRefs": "refs/imports/harbor-db/remote/heads"
+  },
+  {
+    "id": "harbor-eth",
+    "origin": "git@github.com:caniko/harbor-eth.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "8366711a87831144aba345f936b093a142fb8aa7",
+    "prefix": "sources/harbor-eth",
+    "sourceTree": "5225f64df966fc54d9808a233486de91fecae3bf",
+    "baseline": "7f60072453f3298005af7237b09bd368d735247f",
+    "preservedLocalHead": "d7134008c53a62f0be672b9840e16f5384c49ce3",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-eth/local/heads",
+    "remoteRefs": "refs/imports/harbor-eth/remote/heads"
   }
 ]
