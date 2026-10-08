@@ -677,6 +677,31 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
     request.source_job = id.clone();
     let database = std::fs::read(store.root.join("jobs.sqlite3")).unwrap();
     let prepared = prepare(&store, request.clone()).unwrap();
+    let mut transport: harbor_cad::cad_transport::CadSpectralTransportRequest =
+        serde_json::from_str(include_str!("../examples/cad-spectral-transport.json")).unwrap();
+    transport.scene = request.clone();
+    let bound = harbor_cad::cad_transport::resolve(&store, transport.clone()).unwrap();
+    bound.validate().unwrap();
+    assert_eq!(bound.scene.scene_id, prepared.scene_id);
+    assert_eq!(
+        bound.native_request().unwrap()["scene"],
+        serde_json::to_value(&prepared).unwrap()
+    );
+    assert_eq!(
+        bound.native_request().unwrap()["scene"]["ageing_readiness"],
+        "missing_inputs"
+    );
+    for key in ["scene_id", "transport_readiness", "physical_validation"] {
+        let mut value = serde_json::to_value(&bound).unwrap();
+        value["scene"][key] = serde_json::json!("changed");
+        let changed: harbor_cad::cad_transport::CadSpectralTransportSpec =
+            serde_json::from_value(value).unwrap();
+        assert!(changed.validate().is_err());
+    }
+    let mut changed = bound.clone();
+    changed.request.source_provenance = "different source approval".into();
+    changed.validate().unwrap();
+    assert_ne!(digest(&bound).unwrap(), digest(&changed).unwrap());
     assert!(!prepared.executed);
     assert_eq!(prepared.physical_validation, "unqualified");
     assert_eq!(prepared.transport_readiness, "prepared_not_executed");
@@ -710,6 +735,7 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
     assert!(prepare(&store, changed).is_err());
     std::fs::write(root.join("solid.stl"), b"changed original triangles").unwrap();
     assert!(prepare(&store, request.clone()).is_err());
+    assert!(harbor_cad::cad_transport::resolve(&store, transport).is_err());
     std::fs::write(root.join("solid.stl"), &data).unwrap();
     let mut artifact = original.clone();
     artifact.units = Some("m".into());

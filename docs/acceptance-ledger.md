@@ -231,6 +231,20 @@ the direct-only native reference scope, independently of registered-source
 worker approval/lifecycle, sampling convergence, interreflection and physical
 validation. See [exact triangle native evidence](evidence/cad-triangle-native-20261008.json).
 
+The transport descriptor now independently binds material-scene, collimated
+source, original units, prescribed history, explicit rounding and bounded
+complete-facet observations. Rust resolves it against unchanged registered CAD
+approvals and rejects prepared-scene identity/readiness drift, unknown optics,
+overlapping boxes, source substitution and weakened gates. Missing ageing remains
+unknown. This is the source-binding foundation; new-plan submission/staging,
+registered-source execution and lifecycle qualification are still independent
+implementation work.
+
+Source gate 27 passes complete Rust tests, strict Clippy, the locked build,
+Treefmt/Ruff, Nix syntax, pinned Simit drift and 196 Python tests after the
+source-bound transport contract addition. The new contract is present in the
+generated schema; older execution-plan versions gain no transport capability.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

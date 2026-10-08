@@ -46,6 +46,20 @@ follow Mitsuba 3.9.1 commit
 [Mesh storage](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/render/mesh.cpp),
 and [emitter sampling/visibility](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/render/scene.cpp).
 
+### Independently bound transport descriptor
+
+`CadSpectralTransportRequest` binds the complete material-scene request and the
+explicit illumination, history, seed/sample and geometry-rounding inputs.
+`CadSpectralTransportSpec` resolves that request against the unchanged registered
+CAD source into its complete prepared scene. The resolver verifies the scene's
+content identity, unique whole-region assignments, known optics, complete STL
+records, source approvals and separated disjoint boxes; it rejects source-byte
+substitution. `examples/cad-spectral-transport.json` supplies a manufactured
+request with missing ageing deliberately retained. The descriptor maps directly
+to the qualified native triangle entrypoint. This source-binding foundation does
+not yet provide submission, source staging, a new execution-plan version or
+registered-source worker qualification.
+
 `cad prepare-spectral-scene REQUEST.json` and MCP
 `cad_prepare_spectral_scene` (`cad`, `results`, `all`) verify a registered
 source and return a bounded preparation report. The request supplies ordered

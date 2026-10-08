@@ -2360,6 +2360,12 @@ pub fn schemas() -> serde_json::Value {
     schemas["AtmosphericTransportSpec"] = serde_json::json!(schemars::schema_for!(
         crate::atmospheric_transport::AtmosphericTransportSpec
     ));
+    schemas["CadSpectralTransportRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::cad_transport::CadSpectralTransportRequest
+    ));
+    schemas["CadSpectralTransportSpec"] = serde_json::json!(schemars::schema_for!(
+        crate::cad_transport::CadSpectralTransportSpec
+    ));
     schemas["SpectralReflectionSpec"] = serde_json::json!(schemars::schema_for!(
         crate::radiation::SpectralReflectionSpec
     ));
