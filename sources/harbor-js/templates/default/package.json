@@ -1,0 +1,5 @@
+{
+  "name": "harbor-js-template",
+  "private": true,
+  "packageManager": "bun@1.3.14"
+}

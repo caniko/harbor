@@ -76,5 +76,18 @@
     "pendingSourceChanges": false,
     "localRefs": "refs/imports/harbor-go/local/heads",
     "remoteRefs": "refs/imports/harbor-go/remote/heads"
+  },
+  {
+    "id": "harbor-js",
+    "origin": "git@github.com:caniko/harbor-js.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "d9669a73fc714d8117200028124ca7503c70a1cb",
+    "prefix": "sources/harbor-js",
+    "sourceTree": "181e09a06d54017796c3dd09a928655c64a79eae",
+    "baseline": "ef25d5181dbc7d23979043dad28063266c134c49",
+    "preservedLocalHead": "da6bd28b2c80f2771121bec1ebeed44d1ca83857",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-js/local/heads",
+    "remoteRefs": "refs/imports/harbor-js/remote/heads"
   }
 ]

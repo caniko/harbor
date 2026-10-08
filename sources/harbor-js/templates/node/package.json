@@ -1,0 +1,8 @@
+{
+  "name": "harbor-node-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
