@@ -44,3 +44,23 @@ Simulation/all MCP `study_submit` and `study_status` use these same operations.
 The collection contract and recovery tests exercise real SQLite state and the
 real worker. Native study execution and scalar comparison qualification are
 separate measured campaign gates.
+
+`scripts/verify_study_worker.py` is the opt-in exact-package thermal study gate.
+It first reconstructs every original standalone thermal case and the separate
+temporal/spatial refinements under the unchanged gates. It then submits two
+fixed-geometry/history/material cases with explicit native step refinement,
+rechecks complete original fields, compares exact retained node values through
+CLI/MCP, records per-job resource evidence, and exercises restart, queued-child
+cancellation and owned-service death without duplicating the collection. Every
+successful or failed child retains its independently checksummed bundle. This
+campaign records measurements and does not infer an optimization winner.
+
+```sh
+python scripts/verify_study_worker.py \
+  --executable /nix/store/CLI/bin/harbor-cad \
+  --mcp /nix/store/MCP/bin/harbor-cad-mcp \
+  --runtime /nix/store/THERMAL-WORKER.json \
+  --authority /absolute/installed-authority.json \
+  --native-reference /absolute/exact-thermal-native-gate \
+  --output /absolute/fresh-short-path-study-gate
+```

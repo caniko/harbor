@@ -22,6 +22,7 @@ def test_native_worker_campaigns_use_existing_shared_methods_and_valid_signature
         "verify_atmosphere_worker.py",
         "verify_atmospheric_transport_worker.py",
         "verify_snow_worker.py",
+        "verify_study_worker.py",
     ):
         tree = ast.parse((scripts / name).read_text())
         for node in ast.walk(tree):
@@ -64,6 +65,7 @@ def test_native_campaigns_call_registered_mcp_tool_names():
         "verify_atmospheric_transport_worker.py",
         "verify_atmosphere_worker.py",
         "verify_spectral_worker.py",
+        "verify_study_worker.py",
     ):
         for node in ast.walk(ast.parse((repo / "scripts" / filename).read_text())):
             if not isinstance(node, ast.Call):
