@@ -416,6 +416,93 @@ def main():
                 raise ValueError(
                     "saved native variant lost geometry, units or placement on reimport"
                 )
+            # Bind optical properties only after both native recomputation and
+            # independent saved-document import have succeeded. This query
+            # verifies scene preparation; it does not execute spectral transport.
+            scene_request = json.loads(
+                (
+                    Path(__file__).resolve().parents[1]
+                    / "examples/cad-spectral-scene.json"
+                ).read_text()
+            )
+            scene_request["source_job"] = variant["id"]
+            scene_path = root / ("scene-" + label + ".json")
+            scene_path.write_text(json.dumps(scene_request))
+            scene = campaign.command(
+                "--socket",
+                campaign.endpoint,
+                "cad",
+                "prepare-spectral-scene",
+                scene_path,
+            )["data"]
+            for profile in ("cad", "results"):
+                if (
+                    campaign.mcp_call(
+                        "cad_prepare_spectral_scene",
+                        {"request_spec": scene_request},
+                        profile=profile,
+                    )
+                    != scene
+                ):
+                    raise ValueError(
+                        "source-bound material triangle CLI/MCP parity drift"
+                    )
+            triangle_region = scene["regions"][0]
+            if (
+                len(scene["regions"]) != 1
+                or scene["executed"]
+                or scene["physical_validation"] != "unqualified"
+                or scene["transport_readiness"] != "prepared_not_executed"
+                or scene["ageing_readiness"] != "missing_inputs"
+                or triangle_region["geometry"]["triangles"]
+                != regions["regions"][0]["triangles"]
+                or triangle_region["original_triangles"]["sha256"]
+                != checksum(bundle / "solid.stl")
+                or triangle_region["geometry"]["volume_relative_error"] > 1e-10
+                or triangle_region["geometry"]["maximum_face_area_relative_error"]
+                > 1e-10
+            ):
+                raise ValueError(
+                    "complete original material triangles and independent unchanged geometry gates required"
+                )
+            source_stl = campaign.state / "artifacts" / variant["id"] / "solid.stl"
+            triangles = source_stl.read_bytes()
+            source_stl.write_bytes(triangles + b"changed registered original")
+            try:
+                reply = campaign.command(
+                    "--socket",
+                    campaign.endpoint,
+                    "cad",
+                    "prepare-spectral-scene",
+                    scene_path,
+                    allow_error=True,
+                )
+                if reply["ok"]:
+                    raise ValueError(
+                        "spectral scene accepted changed native original triangles"
+                    )
+                rejections.append(reply["error"])
+                campaign.mcp_call(
+                    "cad_prepare_spectral_scene",
+                    {"request_spec": scene_request},
+                    profile="results",
+                    expect_error=True,
+                )
+            finally:
+                source_stl.write_bytes(triangles)
+            if (
+                campaign.command(
+                    "--socket",
+                    campaign.endpoint,
+                    "cad",
+                    "prepare-spectral-scene",
+                    scene_path,
+                )["data"]
+                != scene
+            ):
+                raise ValueError(
+                    "read-only spectral preparation changed original scene identity"
+                )
             results.append(
                 {
                     "source": label,
@@ -432,6 +519,7 @@ def main():
                     "source_mutation": "pre-submission refused; acknowledged distinct original survived",
                     "worker_restart": "same invocation",
                     "roots_and_reservation_released": True,
+                    "material_triangle_preparation": scene,
                 }
             )
 
