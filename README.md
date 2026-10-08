@@ -144,6 +144,24 @@ wall-centered planar OpenLB reference. Its original Float64 phase/velocity
 fields, SI conversion and separate mass, angle, settling and refinement gates
 are described in [wetting references](docs/wetting-reference.md).
 
+`results prepare-retained-cooling examples/retained-cooling.json` prepares
+conserved original wetting enthalpy from explicit thermal inputs. Native cooling
+is separately approved with `results plan-retained-cooling REQUEST.json`, then
+submitted through ordinary `job submit`. The simulation/results MCP profiles
+expose `retained_cooling_plan`; results/all expose original-control
+`results_sample_retained_cooling`. Exact retained-time queries preserve the full
+source history and Float64 CSV/VTK provenance. See [retained cooling](docs/retained-cooling.md)
+for stationary-source bounds, physical-input requirements and independent
+conservation/analytic/refinement gates.
+
+`case plan-freezing-reference` exposes the independent synthetic uniform Stefan
+[freezing reference](docs/freezing-reference.md). CPU spectral exposure uses
+`case plan-spectral-reference` and [directional spectral inputs](docs/spectral-reference.md).
+`case plan-atmospheric-reference` and `results plan-atmospheric-transport` retain
+original direct/diffuse angular packets through independently approved
+[atmospheric transport](docs/atmosphere-reference.md). Every native plan retains
+its own exact-package execution, numerical, convergence and physical evidence.
+
 `case plan-contact-reference REQUEST.json` plans the independent synthetic
 two-block planar preload/contact reference. `case plan-thermal-contact
 examples/thermal-contact.json` plans two native thermal histories, conservative
@@ -152,7 +170,7 @@ The simulation/all MCP profiles expose matching planning tools and use ordinary
 explicitly approved `job_submit`. The version-11 coupling uses
 `runtime-thermal-contact-worker`; historical `qualify --job` rechecks registered
 thermal sources and the projection. See [contact and coupling](docs/contact-reference.md)
-for the supported one-way approximation and pending exact-package qualification.
+for the supported one-way approximation and recorded exact-package qualifications.
 
 Patched CAD inspection also exports checksummed named BREP solids with original
 units and placement. The independent [imported CAD mesh](docs/cad-mesh.md) and
