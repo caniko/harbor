@@ -13,6 +13,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const SANDBOX_POLICY: &str = "harbor-cad-cad-spectral-direct-cpu-v1";
+pub const STAGE: &str = "cad-spectral";
+pub const RECEIPT_PATH: &str = "stages/cad-spectral/cad-spectral-receipt.json";
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -97,6 +99,42 @@ pub struct CadSpectralTransportSpec {
 }
 
 impl CadSpectralTransportSpec {
+    pub fn validate_plan(&self, plan: &crate::contracts::ExecutionPlan) -> Result<()> {
+        use crate::contracts::{GpuRequirement, StageOperation};
+        self.validate()?;
+        let triangles: usize = self
+            .scene
+            .regions
+            .iter()
+            .map(|r| r.geometry.triangles)
+            .sum();
+        if plan.policy == "ci"
+            || triangles > 24
+            || serde_json::to_vec(self)?.len() > 64 * 1024
+            || plan.stages.len() != 2
+            || plan.stages[0].id != STAGE
+            || plan.stages[0].operation != StageOperation::SpectralReference
+            || !plan.stages[0].dependencies.is_empty()
+            || plan.stages[1].id != "bundle"
+            || plan.stages[1].operation != StageOperation::Bundle
+            || plan.stages[1].dependencies != [STAGE]
+            || plan.stages.iter().any(|s| {
+                s.gpu != GpuRequirement::CpuOnly || s.selection.is_some() || s.vram_bytes != 0
+            })
+            || !plan.transfers.is_empty()
+            || !plan.observation.metrics.is_empty()
+            || !plan.observation.probes.is_empty()
+            || !plan.observation.retained_times_s.is_empty()
+            || !plan.observation.checkpoint_times_s.is_empty()
+            || !plan.observation.preview_times_s.is_empty()
+            || plan.observation.preview_may_drop
+        {
+            return Err(invalid(
+                "strict independently approved direct CAD optical/bundle CPU DAG, at most 24 original facets and bounded receipt required; seeds are not times",
+            ));
+        }
+        Ok(())
+    }
     pub fn validate(&self) -> Result<()> {
         self.request.illumination()?;
         let missing = self.request.scene.validate()?;
@@ -195,6 +233,70 @@ impl CadSpectralTransportSpec {
     }
 }
 
+impl crate::contracts::ExecutionPlan {
+    pub fn cad_spectral_transport(spec: CadSpectralTransportSpec, policy: String) -> Result<Self> {
+        use crate::contracts::{GpuRequirement, ObservationPlan, Stage, StageOperation};
+        spec.validate()?;
+        let mut plan = Self {
+            schema_version: 17,
+            case: None,
+            source: None,
+            frames: None,
+            filter: None,
+            fem: None,
+            thermal: None,
+            cad_source: None,
+            imported_fem: None,
+            wetting: None,
+            contact: None,
+            thermal_contact: None,
+            freezing: None,
+            spectral: None,
+            atmosphere: None,
+            atmospheric_transport: None,
+            cad_variant: None,
+            cad_transport: Some(spec),
+            stages: vec![
+                Stage {
+                    id: STAGE.into(),
+                    dependencies: vec![],
+                    operation: StageOperation::SpectralReference,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 1,
+                    vram_bytes: 0,
+                },
+                Stage {
+                    id: "bundle".into(),
+                    dependencies: vec![STAGE.into()],
+                    operation: StageOperation::Bundle,
+                    gpu: GpuRequirement::CpuOnly,
+                    selection: None,
+                    ram_bytes: 1,
+                    vram_bytes: 0,
+                },
+            ],
+            transfers: vec![],
+            observation: ObservationPlan {
+                metrics: vec![],
+                probes: vec![],
+                retained_times_s: vec![],
+                checkpoint_times_s: vec![],
+                preview_times_s: vec![],
+                max_artifact_bytes: 0,
+                scientific_congestion: "fail".into(),
+                preview_may_drop: false,
+            },
+            fleetix_revision: crate::contracts::FLEETIX_REV.into(),
+            fleetix_contract_digest: crate::contracts::fleetix_digest(),
+            policy,
+        };
+        crate::estimates::minimum(&plan)?.apply(&mut plan);
+        plan.validate()?;
+        Ok(plan)
+    }
+}
+
 pub fn resolve(
     store: &Store,
     request: CadSpectralTransportRequest,
@@ -208,4 +310,187 @@ pub fn resolve(
     };
     spec.validate()?;
     Ok(spec)
+}
+
+pub fn source(store: &Store, spec: &CadSpectralTransportSpec) -> Result<std::path::PathBuf> {
+    spec.validate()?;
+    if digest(&resolve(store, spec.request.clone())?)? != digest(spec)? {
+        return Err(invalid(
+            "approved original CAD optical scene, approvals or bytes changed",
+        ));
+    }
+    store.job_dir(&spec.request.scene.source_job)
+}
+
+pub(crate) fn originals(
+    spec: &CadSpectralTransportSpec,
+) -> Result<std::collections::BTreeMap<String, (String, u64, String)>> {
+    let mut records = std::collections::BTreeMap::new();
+    for region in &spec.scene.regions {
+        let entries = [
+            (
+                &region.original_triangles.path,
+                &region.original_triangles.sha256,
+                region.original_triangles.bytes,
+                "stl",
+            ),
+            (
+                &region.source.brep.path,
+                &region.source.brep.sha256,
+                region.source.brep.bytes,
+                "brep",
+            ),
+            (
+                &region.source.region_evidence.path,
+                &region.source.region_evidence.sha256,
+                region.source.region_evidence.bytes,
+                "json",
+            ),
+            (
+                &region.source.manifest.path,
+                &region.source.manifest.sha256,
+                region.source.manifest.bytes,
+                "json",
+            ),
+        ];
+        for (path, hash, bytes, format) in entries {
+            let record = (hash.clone(), bytes, format.into());
+            if let Some(previous) = records.insert(path.clone(), record.clone())
+                && previous != record
+            {
+                return Err(invalid("unambiguous complete CAD source identity required"));
+            }
+        }
+    }
+    Ok(records)
+}
+
+pub(crate) fn retain(
+    store: &Store,
+    id: &str,
+    plan: &crate::contracts::ExecutionPlan,
+) -> Result<()> {
+    let Some(spec) = &plan.cad_transport else {
+        return Ok(());
+    };
+    let original = source(store, spec)?;
+    let root = store.job_dir(id)?;
+    let intent = crate::storage::commit_artifact(
+        &root,
+        "cad-optical-retention.json",
+        &serde_json::to_vec(spec)?,
+        "json",
+        "durable original-CAD optical input intent; preserve unverifiable interrupted inputs",
+    )?;
+    for (path, (hash, bytes, format)) in originals(spec)? {
+        let data =
+            crate::worker::read_bounded(&crate::storage::safe_path(&original, &path)?, bytes)?;
+        let copied = crate::storage::commit_artifact(
+            &root,
+            &format!("source-cad/{path}"),
+            &data,
+            &format,
+            "unchanged distinct-inode original CAD/triangle/geometry evidence retained before acknowledgment",
+        )?;
+        if copied.sha256 != hash || copied.bytes != bytes {
+            return Err(invalid("CAD optical input changed during source retention"));
+        }
+        store.add_artifact(id, &copied)?;
+    }
+    source(store, spec)?;
+    let source_id = &spec.request.scene.source_job;
+    let provenance = serde_json::json!({"source":spec,"plan":store.recorded_plan(source_id)?,"host_profile":store.job_profile(source_id)?,"execution_binding":store.execution_binding(source_id)?,"execution_authorization":store.execution_authorization(source_id)?});
+    store.add_artifact(id,&crate::storage::commit_artifact(&root,"cad-optical-source-execution.json",&serde_json::to_vec_pretty(&provenance)?,"json","complete original CAD approvals and runtime authorization; no upgraded optical or physical qualification")?)?;
+    store.add_artifact(id, &intent)?;
+    std::fs::File::open(&root)?.sync_all()?;
+    registered(store, id, plan)?;
+    Ok(())
+}
+
+pub fn registered(
+    store: &Store,
+    id: &str,
+    plan: &crate::contracts::ExecutionPlan,
+) -> Result<std::path::PathBuf> {
+    let spec = plan
+        .cad_transport
+        .as_ref()
+        .ok_or_else(|| invalid("approved source-bound CAD optics required"))?;
+    spec.validate()?;
+    let root = store.job_dir(id)?;
+    let (_, intent) =
+        crate::qualification::registered_json(store, id, "cad-optical-retention.json")?
+            .ok_or_else(|| {
+                invalid("complete registered optical input retention intent required")
+            })?;
+    if intent != serde_json::to_value(spec)? {
+        return Err(invalid("CAD optical source staging intent changed"));
+    }
+    let (_, provenance) =
+        crate::qualification::registered_json(store, id, "cad-optical-source-execution.json")?
+            .ok_or_else(|| invalid("retained original CAD source execution provenance required"))?;
+    let original: crate::contracts::ExecutionPlan =
+        serde_json::from_value(provenance["plan"].clone())?;
+    let binding: crate::execution::ExecutionBinding =
+        serde_json::from_value(provenance["execution_binding"].clone())?;
+    let profile: crate::contracts::HostExecutionProfile =
+        serde_json::from_value(provenance["host_profile"].clone())?;
+    let authorization: crate::authority::ExecutionAuthorization =
+        serde_json::from_value(provenance["execution_authorization"].clone())?;
+    authorization.verify(&original, &profile, &binding)?;
+    if provenance["source"] != serde_json::to_value(spec)?
+        || spec.scene.regions.iter().any(|r| {
+            original.id().ok().as_ref() != Some(&r.source.execution_id)
+                || original.science_id().ok().as_ref() != Some(&r.source.science_id)
+                || digest(&binding).ok().as_ref() != Some(&r.source.execution_binding_digest)
+                || digest(&authorization).ok().as_ref() != Some(&r.source.authorization_digest)
+        })
+    {
+        return Err(invalid(
+            "original CAD science/execution/binding/authorization changed",
+        ));
+    }
+    for (path, (hash, bytes, format)) in originals(spec)? {
+        let path = format!("source-cad/{path}");
+        let registered = store
+            .artifact_record(id, &path)?
+            .ok_or_else(|| invalid("complete registered original optical input required"))?;
+        let observed = crate::storage::native_manifest(
+            &root,
+            &path,
+            bytes,
+            "recheck immutable original optical input",
+        )?;
+        if registered.format != format
+            || registered.sha256 != hash
+            || registered.bytes != bytes
+            || observed.sha256 != hash
+            || observed.bytes != bytes
+        {
+            return Err(invalid(
+                "retained optical original bytes or metadata changed",
+            ));
+        }
+    }
+    crate::storage::safe_path(&root, "source-cad")
+}
+
+pub(crate) fn recover_orphan(store: &Store, id: &str) -> Result<()> {
+    let root = crate::storage::safe_path(&store.root, &format!("artifacts/{id}"))?;
+    let path = root.join("cad-optical-retention.json");
+    if path.exists() {
+        let spec: CadSpectralTransportSpec = serde_json::from_slice(&crate::worker::read_bounded(
+            &path,
+            crate::contracts::MAX_MESSAGE,
+        )?)?;
+        if source(store, &spec).is_ok() {
+            std::fs::remove_dir_all(&root)?;
+            std::fs::File::open(
+                root.parent()
+                    .ok_or_else(|| invalid("optical orphan parent required"))?,
+            )?
+            .sync_all()?;
+        }
+    }
+    Ok(())
 }

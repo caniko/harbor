@@ -245,6 +245,13 @@ Treefmt/Ruff, Nix syntax, pinned Simit drift and 196 Python tests after the
 source-bound transport contract addition. The new contract is present in the
 generated schema; older execution-plan versions gain no transport capability.
 
+Source gate 28 passes complete Rust tests, strict Clippy, the locked build and
+196 Python tests for the independent v17 direct optical/bundle contract and
+transactional original-input retention. Persisted-record fixtures verify exact
+version separation, distinct source inodes, post-acknowledgment source mutation,
+terminal idempotency and rejection of changed acknowledged copies. Native
+worker dispatch and registered-source qualification remain subsequent gates.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

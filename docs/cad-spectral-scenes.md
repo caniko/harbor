@@ -56,9 +56,13 @@ content identity, unique whole-region assignments, known optics, complete STL
 records, source approvals and separated disjoint boxes; it rejects source-byte
 substitution. `examples/cad-spectral-transport.json` supplies a manufactured
 request with missing ageing deliberately retained. The descriptor maps directly
-to the qualified native triangle entrypoint. This source-binding foundation does
-not yet provide submission, source staging, a new execution-plan version or
-registered-source worker qualification.
+to the qualified native triangle entrypoint. This source-binding foundation
+resolves into an independent version-17 CPU optical/bundle plan. That plan
+retains distinct-inode STL, BREP and geometric-context copies plus the original
+CAD approvals in the durable submission transaction. Subsequent source changes
+do not change acknowledged inputs, and interrupted unpublished copies are
+removed only while the original authorized source remains verifiable. Worker
+dispatch and registered-source execution qualification follow independently.
 
 `cad prepare-spectral-scene REQUEST.json` and MCP
 `cad_prepare_spectral_scene` (`cad`, `results`, `all`) verify a registered

@@ -653,6 +653,7 @@ impl Store {
         crate::frames::retain(self, &id, plan)?;
         crate::cad_source::retain(self, &id, plan)?;
         crate::cad_variant::retain(self, &id, plan)?;
+        crate::cad_transport::retain(self, &id, plan)?;
         crate::atmospheric_transport::retain(self, &id, plan)?;
         tx.execute(
             "INSERT INTO events(job,time,kind,message) VALUES(?1,?2,'submitted',?3)",
@@ -747,6 +748,7 @@ impl Store {
                 crate::presentation::recover_orphan(self, &id)?;
                 crate::cad_source::recover_orphan(self, &id)?;
                 crate::cad_variant::recover_orphan(self, &id)?;
+                crate::cad_transport::recover_orphan(self, &id)?;
                 crate::atmospheric_transport::recover_orphan(self, &id)?;
                 crate::retention::release(&self.root, &id, None)?;
             } else {

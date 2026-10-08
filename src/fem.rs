@@ -257,6 +257,7 @@ impl ExecutionPlan {
             atmosphere: None,
             atmospheric_transport: None,
             cad_variant: None,
+            cad_transport: None,
             source: None,
             frames: None,
             filter: None,

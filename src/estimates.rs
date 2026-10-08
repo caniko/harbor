@@ -254,6 +254,29 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 add(512 * MIB, multiply(original, 8)?)?
             }
             StageOperation::SpectralReference => {
+                if let Some(spec) = &plan.cad_transport {
+                    spec.validate()?;
+                    let facets = spec
+                        .scene
+                        .regions
+                        .iter()
+                        .map(|r| r.geometry.triangles as u64)
+                        .sum::<u64>();
+                    let packets = multiply(
+                        multiply(facets, u64::from(spec.request.samples_per_triangle))?,
+                        (spec.request.scene.wavelengths.len() as u64).div_ceil(4),
+                    )?;
+                    let shard = multiply(packets, 1024)?;
+                    let source = crate::cad_transport::originals(spec)?
+                        .values()
+                        .try_fold(0u64, |total, (_, bytes, _)| add(total, *bytes))?;
+                    output = add(output, add(multiply(shard, 3)?, add(source, 8 * MIB)?)?)?;
+                    stages.push(StageMinimum {
+                        ram_bytes: add(512 * MIB, multiply(shard, 2)?)?,
+                        vram_bytes: 0,
+                    });
+                    continue;
+                }
                 let spec = plan
                     .spectral
                     .as_ref()

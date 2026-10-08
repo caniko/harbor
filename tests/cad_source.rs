@@ -682,6 +682,34 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
     transport.scene = request.clone();
     let bound = harbor_cad::cad_transport::resolve(&store, transport.clone()).unwrap();
     bound.validate().unwrap();
+    let optical_plan =
+        ExecutionPlan::cad_spectral_transport(bound.clone(), "research".into()).unwrap();
+    assert_eq!(optical_plan.schema_version, 17);
+    let raw = serde_json::to_value(&optical_plan).unwrap();
+    assert_eq!(
+        serde_json::from_value::<ExecutionPlan>(raw.clone())
+            .unwrap()
+            .id()
+            .unwrap(),
+        optical_plan.id().unwrap()
+    );
+    for version in 1..17 {
+        let mut changed = raw.clone();
+        changed["schema_version"] = serde_json::json!(version);
+        assert!(serde_json::from_value::<ExecutionPlan>(changed).is_err());
+    }
+    let mut understated = optical_plan.clone();
+    understated.observation.max_artifact_bytes = 1;
+    assert!(understated.validate().is_err());
+    let mut mixed = raw;
+    mixed["spectral"] = serde_json::to_value(
+        serde_json::from_str::<harbor_cad::radiation::SpectralReferenceSpec>(include_str!(
+            "../examples/spectral-reference.json"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(serde_json::from_value::<ExecutionPlan>(mixed).is_err());
     assert_eq!(bound.scene.scene_id, prepared.scene_id);
     assert_eq!(
         bound.native_request().unwrap()["scene"],
@@ -723,6 +751,39 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
         std::fs::read(store.root.join("jobs.sqlite3")).unwrap(),
         database
     );
+    // The separately approved optical job retains its own durable originals;
+    // changing the importer artifacts later cannot change acknowledged inputs.
+    let profile = store.job_profile(&id).unwrap();
+    let optical_job = store
+        .submit_with_profile(&optical_plan, "original-optical", &profile)
+        .unwrap();
+    let copied =
+        harbor_cad::cad_transport::registered(&store, &optical_job.id, &optical_plan).unwrap();
+    use std::os::unix::fs::MetadataExt;
+    assert_ne!(
+        std::fs::metadata(copied.join("solid.stl")).unwrap().ino(),
+        std::fs::metadata(root.join("solid.stl")).unwrap().ino()
+    );
+    assert_eq!(std::fs::read(copied.join("solid.stl")).unwrap(), data);
+    std::fs::write(root.join("solid.stl"), b"original source later changed").unwrap();
+    harbor_cad::cad_transport::registered(&store, &optical_job.id, &optical_plan).unwrap();
+    assert_eq!(
+        store
+            .submit_with_profile(&optical_plan, "original-optical", &profile)
+            .unwrap()
+            .id,
+        optical_job.id
+    );
+    assert!(
+        store
+            .submit_with_profile(&optical_plan, "new-changed-source", &profile)
+            .is_err()
+    );
+    std::fs::write(root.join("solid.stl"), &data).unwrap();
+    std::fs::write(copied.join("solid.stl"), b"acknowledged copy changed").unwrap();
+    assert!(harbor_cad::cad_transport::registered(&store, &optical_job.id, &optical_plan).is_err());
+    std::fs::write(copied.join("solid.stl"), &data).unwrap();
+    harbor_cad::cad_transport::registered(&store, &optical_job.id, &optical_plan).unwrap();
     let mut missing = request.clone();
     missing.materials[0].response = harbor_cad::materials::PhysicalInput::Missing {
         reason: "UV data unavailable".into(),
