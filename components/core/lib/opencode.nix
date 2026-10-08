@@ -19,6 +19,9 @@
   }:
     {
       "$schema" = schema;
+      # Editing must not invoke OpenCode's per-file formatter pipeline.
+      # Repository formatting is routed exclusively through treefmt.
+      formatter = false;
       "${formatPolicy.marker}" = formatPolicy.markerValue;
     }
     // lib.optionalAttrs (lsp != {}) {inherit lsp;}

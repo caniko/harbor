@@ -2,14 +2,14 @@
 # ruff-*, …) stay in their owning Harbor and compose these — see
 # harbor-rs's `lib.hooks` for the Rust composition.
 {
-  # Format the working tree through treefmt; `--fail-on-change` makes an
-  # unformatted tree fail instead of silently rewriting staged files.
+  # `--ci` disables cache reuse and fails when formatting changes the working
+  # tree, so an earlier local run cannot hide drift from the commit hook.
   mkTreefmt = {treefmtWrapper}: {
     treefmt = {
       enable = true;
       name = "treefmt";
       package = treefmtWrapper;
-      entry = "${treefmtWrapper}/bin/treefmt --fail-on-change";
+      entry = "${treefmtWrapper}/bin/treefmt --ci";
       pass_filenames = false;
     };
   };

@@ -622,6 +622,8 @@ in
       # the identity marker survives even with formatPermissions = false.
       assert !(pkgs.lib.hasInfix "\"lsp\"" policyOnly);
       assert policyOnly == defaultedShape;
+      assert (lib.opencode.mkConfig {}).formatter == false;
+      assert (lib.opencode.mkConfig {formatPermissions = false;}).formatter == false;
       assert pkgs.lib.hasInfix "\"permission\"" policyOnly;
       assert pkgs.lib.hasInfix "\"${marker}\":\"${markerValue}\"" policyOnly;
       assert pkgs.lib.hasInfix "\"alejandra *\":\"deny\"" policyOnly;

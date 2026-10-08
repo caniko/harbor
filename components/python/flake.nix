@@ -59,6 +59,7 @@
     nix-opencode-lsp,
     treefmt-nix,
     git-hooks,
+    harborFormatting ? null,
     ...
   }: let
     lib = import ./lib {
@@ -75,6 +76,7 @@
   in
     {
       inherit lib;
+      treefmtModules.python = ./nix/treefmt/python.nix;
 
       templates.default = {
         path = ./templates/default;
@@ -84,32 +86,32 @@
     // flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = lib.mkPkgs {inherit system;};
+        treefmt = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
       in {
-        formatter = pkgs.writeShellApplication {
-          name = "harbor-py-fmt";
-          runtimeInputs = [pkgs.nixfmt];
-          text = ''
-            if [ "$#" -eq 0 ]; then
-              find . -name '*.nix' -print0 | xargs -0 nixfmt
-            else
-              exec nixfmt "$@"
-            fi
-          '';
-        };
+        formatter = treefmt.config.build.wrapper;
 
         devShells = {
           opencode-lsp-python = nix-opencode-lsp.lib.mkShell {
             inherit pkgs;
             profiles = ["python"];
           };
-          default = self.devShells.${system}.opencode-lsp-python;
+          default = self.devShells.${system}.opencode-lsp-python.overrideAttrs (old: {
+            nativeBuildInputs = (old.nativeBuildInputs or []) ++ [treefmt.config.build.wrapper];
+          });
         };
 
-        checks = import ./checks {
-          inherit self pkgs system nixpkgs nixpkgs-darwin treefmt-nix git-hooks;
-          harbor = lib;
-          meta = harbor-meta.lib;
-        };
+        checks =
+          import ./checks {
+            inherit self pkgs system nixpkgs nixpkgs-darwin treefmt-nix git-hooks;
+            harbor = lib;
+            meta = harbor-meta.lib;
+          }
+          // {
+            formatting =
+              if harborFormatting == null
+              then treefmt.config.build.check self
+              else harborFormatting system;
+          };
       }
     );
 }
