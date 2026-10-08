@@ -1,5 +1,37 @@
 # Registered native result sampling and comparison
 
+## Explicit coupled thermal histories
+
+`results sample-thermal`, `compare-thermal` and `moisture` accept
+`thermal_stage: 0` (the approved lower history) or `thermal_stage: 1` (upper)
+for a succeeded version-11 thermal/contact job. Each source keeps its own
+`thermal-lower` / `thermal-upper` native DAT, full mesh and retained temperature
+history. The worker verifies that selected stage's original execution and
+numerical evidence before reading its fields; it checks every original native
+time/node, not only the requested sample.
+
+The selector is required for a coupled source. Standalone thermal jobs omit it
+and retain their previous request/report serialization. A supplied index on a
+standalone source, absent index on a coupled source, foreign stage/path and
+unretained time refuse. Coupled responses carry the selected index and exact
+original artifact hashes. `compare-thermal` may compare explicitly selected
+histories only under the existing same-mesh/association gate, without numerical
+or physical acceptance inference.
+
+Moisture screening derives the full geometrically identified source surface
+minimum from that history, then applies the explicit air input, justified
+inapplicability or missing-input record. Local thermal-block coordinates remain
+local coordinates; projection into contact mechanics is not re-applied to a
+surface query. These are read-only original-field assessments, with physical
+validation remaining unqualified.
+
+`scripts/verify_coupled_thermal_results.py` exercises both independently
+qualified native coupling jobs, both histories, all retained times, all six
+surfaces and all three moisture branches. It compares CLI/MCP, independently
+selects geometrical face minima, rejects stage/time/path and original-DAT
+substitutions, and verifies source/database immutability. An explicit
+`--development` diagnostic remains package-unqualified.
+
 `results sample REQUEST.json` and results-profile MCP `results_sample` use the
 same read-only Rust worker. The version-1 request contains `job_id`, `field` and
 `locations`. The initial allowlist is registered succeeded v5/v8 static FEM:

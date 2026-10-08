@@ -22,12 +22,18 @@ pub struct ThermalSampleRequest {
     pub job_id: String,
     pub field: ThermalField,
     pub physical_time_s: f64,
+    /// Required for a coupled v11 source; omitted for a standalone history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_stage: Option<u32>,
     pub locations: Vec<SampleLocation>,
 }
 impl ThermalSampleRequest {
     pub fn validate(&self) -> Result<()> {
         self.static_request().validate()?;
-        if !self.physical_time_s.is_finite() || self.physical_time_s <= 0. {
+        if !self.physical_time_s.is_finite()
+            || self.physical_time_s <= 0.
+            || self.thermal_stage.is_some_and(|i| i > 1)
+        {
             return Err(invalid("positive explicit retained physical time required"));
         }
         Ok(())
@@ -56,6 +62,8 @@ pub struct ThermalSampleReport {
     pub sample: SampleReport,
     pub native_time_s: f64,
     pub time_serialization_tolerance_s: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_stage: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -207,6 +215,7 @@ pub(crate) fn verify_native_state(
         job_id: job_id.into(),
         field: ThermalField::Temperature,
         physical_time_s: time_s,
+        thermal_stage: None,
         locations: vec![SampleLocation::Node { node_id: 1 }],
     };
     let (_, _, time) = verified_snapshot(
@@ -266,15 +275,13 @@ pub(crate) fn verified_sample(
 ) -> Result<VerifiedThermalSample> {
     request.validate()?;
     let plan = store.plan(&request.job_id)?;
-    let spec = plan
-        .thermal
-        .as_ref()
-        .ok_or_else(|| Error::Unqualified("registered native thermal job required".into()))?;
+    let (spec, stage_id) = source_stage(&plan, request.thermal_stage)?;
     spec.validate()?;
     let evidence = qualification::inspect(store, &request.job_id)?;
     if evidence.job_state != "succeeded"
         || !evidence.capabilities.iter().any(|c| {
             c.operation == StageOperation::ThermalReference
+                && c.stage_id == stage_id
                 && matches!(c.runtime_execution, EvidenceState::Recorded)
                 && matches!(c.numerical_verification, EvidenceState::ReportedPass)
         })
@@ -283,8 +290,12 @@ pub(crate) fn verified_sample(
             "succeeded source-bound native thermal numerical result required".into(),
         ));
     }
-    let (field_artifact, fields) =
-        results::registered(store, &request.job_id, "stages/thermal/thermal-fields.json")?;
+    let prefix = format!("stages/{stage_id}");
+    let (field_artifact, fields) = results::registered(
+        store,
+        &request.job_id,
+        &format!("{prefix}/thermal-fields.json"),
+    )?;
     if fields["initial_condition"]["time_s"].as_f64() != Some(0.)
         || fields["initial_condition"]["temperature_k"].as_f64() != Some(spec.initial_temperature_k)
     {
@@ -293,11 +304,11 @@ pub(crate) fn verified_sample(
         ));
     }
     let (mesh_artifact, mesh) =
-        results::registered(store, &request.job_id, "stages/thermal/mesh.json")?;
+        results::registered(store, &request.job_id, &format!("{prefix}/mesh.json"))?;
     let (native_artifact, data) = results::registered_bytes(
         store,
         &request.job_id,
-        "stages/thermal/reference.dat",
+        &format!("{prefix}/reference.dat"),
         "dat",
     )?;
     let text =
@@ -338,12 +349,47 @@ pub(crate) fn verified_sample(
         },
         native_time_s,
         time_serialization_tolerance_s: time_tolerance(spec.duration_s),
+        thermal_stage: request.thermal_stage,
     };
     Ok(VerifiedThermalSample {
         report,
         mesh,
         fields,
     })
+}
+
+/// Resolve a declared history, never a caller-supplied artifact path or default
+/// first block. Standalone request serialization stays unchanged when omitted.
+pub(crate) fn source_stage(
+    plan: &crate::contracts::ExecutionPlan,
+    selected: Option<u32>,
+) -> Result<(&crate::thermal::ThermalReferenceSpec, String)> {
+    match (
+        plan.thermal.as_ref(),
+        plan.thermal_contact.as_ref(),
+        selected,
+    ) {
+        (Some(spec), None, None) => Ok((spec, "thermal".into())),
+        (None, Some(coupled), Some(index)) => {
+            let stage_id = ["thermal-lower", "thermal-upper"]
+                .get(index as usize)
+                .ok_or_else(|| invalid("approved coupled thermal stage index required"))?;
+            let spec = coupled
+                .thermal
+                .get(index as usize)
+                .ok_or_else(|| invalid("approved coupled thermal stage index required"))?;
+            Ok((spec, (*stage_id).into()))
+        }
+        (Some(_), None, Some(_)) => Err(invalid(
+            "standalone thermal source has no indexed coupling stage",
+        )),
+        (None, Some(_), None) => Err(invalid(
+            "explicit thermal_stage required for a coupled source; no first-block inference",
+        )),
+        _ => Err(Error::Unqualified(
+            "registered standalone or coupled native thermal source required".into(),
+        )),
+    }
 }
 
 pub fn compare(store: &Store, request: &ThermalCompareRequest) -> Result<ThermalCompareReport> {
@@ -380,6 +426,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn standalone_request_bytes_and_explicit_coupled_stage_identity_are_preserved() {
+        let request = json!({"schema_version":1,"job_id":uuid::Uuid::new_v4().to_string(),"field":"temperature","physical_time_s":120.,"locations":[{"association":"node","node_id":1}]});
+        let decoded: ThermalSampleRequest = serde_json::from_value(request.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), request);
+        let coupled: crate::thermal_contact::ThermalContactSpec =
+            serde_json::from_str(include_str!("../examples/thermal-contact.json")).unwrap();
+        let plan =
+            crate::contracts::ExecutionPlan::thermal_contact(coupled, "research".into()).unwrap();
+        assert!(source_stage(&plan, None).is_err());
+        assert!(source_stage(&plan, Some(2)).is_err());
+        for (index, name) in [(0, "thermal-lower"), (1, "thermal-upper")] {
+            let (spec, stage) = source_stage(&plan, Some(index)).unwrap();
+            assert_eq!(stage, name);
+            assert_eq!(
+                serde_json::to_value(spec).unwrap(),
+                serde_json::to_value(
+                    &plan.thermal_contact.as_ref().unwrap().thermal[index as usize]
+                )
+                .unwrap()
+            );
+        }
+        let spec = plan.thermal_contact.as_ref().unwrap().thermal[0].clone();
+        let standalone =
+            crate::contracts::ExecutionPlan::thermal_reference(spec, "research".into()).unwrap();
+        assert_eq!(source_stage(&standalone, None).unwrap().1, "thermal");
+        assert!(source_stage(&standalone, Some(0)).is_err());
+        let mut bad = request;
+        bad["thermal_stage"] = json!(2);
+        assert!(
+            serde_json::from_value::<ThermalSampleRequest>(bad)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+    }
+
     fn fixture() -> (
         ThermalSampleRequest,
         serde_json::Value,
@@ -391,6 +474,7 @@ mod tests {
             job_id: uuid::Uuid::new_v4().to_string(),
             field: ThermalField::Temperature,
             physical_time_s: 2.,
+            thermal_stage: None,
             locations: vec![
                 SampleLocation::Node { node_id: 8 },
                 SampleLocation::Node { node_id: 1 },

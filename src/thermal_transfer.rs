@@ -33,6 +33,7 @@ pub struct ThermalProjectionRequest {
 impl ThermalProjectionRequest {
     pub fn validate(&self) -> Result<()> {
         ThermalSampleRequest {
+            thermal_stage: None,
             schema_version: self.schema_version,
             job_id: self.source_job.clone(),
             field: ThermalField::Temperature,
@@ -88,6 +89,7 @@ pub fn project(
 ) -> Result<ThermalProjectionReport> {
     request.validate()?;
     let selection = ThermalSampleRequest {
+        thermal_stage: None,
         schema_version: 1,
         job_id: request.source_job.clone(),
         field: ThermalField::Temperature,

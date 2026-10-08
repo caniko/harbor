@@ -168,6 +168,15 @@ passes all 191 Python cases, including generated Rust schema and real CLI/stdio
 MCP refusal parity. Manufactured geometry fixtures establish contracts only;
 native material-tagged surface transport remains unqualified.
 
+Coupled-history sampling and moisture assessment now require an explicit
+`thermal_stage` index for each approved v11 block. Standalone request/report
+serialization stays unchanged. Selection binds that block's exact native DAT,
+complete mesh/history, execution and numerical evidence; all original times and
+nodes are rechecked before source-temperature/whole-surface reads. Source gate
+24 passes complete Rust tests, strict Clippy, locked build, Treefmt, pinned Simit
+drift and 192 Python cases. The dedicated closed-original CLI/MCP query campaign
+requires separate matching-package evidence; see [result queries](results.md).
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

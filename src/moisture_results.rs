@@ -83,6 +83,8 @@ pub struct NativeMoistureRequest {
     pub schema_version: u32,
     pub job_id: String,
     pub physical_time_s: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_stage: Option<u32>,
     pub surface_region: SurfaceRegion,
     pub moisture_risk: NativeMoistureAssessment,
 }
@@ -200,14 +202,12 @@ pub fn assess(store: &Store, request: &NativeMoistureRequest) -> Result<NativeMo
         job_id: request.job_id.clone(),
         field: ThermalField::Temperature,
         physical_time_s: request.physical_time_s,
+        thermal_stage: request.thermal_stage,
         locations: vec![SampleLocation::Node { node_id: 1 }],
     };
     let verified = thermal_results::verified_sample(store, &sample)?;
     let plan = store.plan(&request.job_id)?;
-    let spec = plan
-        .thermal
-        .as_ref()
-        .ok_or_else(|| invalid("native thermal recipe required"))?;
+    let (spec, _) = thermal_results::source_stage(&plan, request.thermal_stage)?;
     let snapshot = verified.fields["times"]
         .as_array()
         .and_then(|v| {
