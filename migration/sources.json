@@ -258,5 +258,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/rs-harbor/local/heads",
     "remoteRefs": "refs/imports/rs-harbor/remote/heads"
+  },
+  {
+    "id": "rs-harbor-macos-sdk-pin",
+    "origin": "ssh://git@codeberg.org/caniko/rs-harbor-macos-sdk-pin.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "ee425cadb48ff129de12a8e427e0767aa5dae685",
+    "prefix": "sources/rs-harbor-macos-sdk-pin",
+    "sourceTree": "ae180260cdee1a303864f1b2f40919a753f8215d",
+    "baseline": "2260259c172409324071ff7254142d2de0256f66",
+    "preservedLocalHead": "a02df1ca77928737fab457dda1d365613c253cd9",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/rs-harbor-macos-sdk-pin/local/heads",
+    "remoteRefs": "refs/imports/rs-harbor-macos-sdk-pin/remote/heads"
   }
 ]
