@@ -33,6 +33,35 @@ in rec {
 
   deterministicTarFlags = "--sort=name --owner=0 --group=0 --numeric-owner";
 
+  validRelativePath = path:
+    builtins.isString path
+    && path != ""
+    && !(lib.hasPrefix "/" path)
+    && !(lib.hasInfix "\n" path)
+    && !(lib.hasInfix "\r" path)
+    && lib.all (part: part != "" && part != "." && part != "..") (lib.splitString "/" path);
+
+  pathsOverlap = a: b: a == b || lib.hasPrefix "${a}/" b || lib.hasPrefix "${b}/" a;
+
+  # Named regular files; directories are created by install, never copied wholesale.
+  stageFiles = {
+    files,
+    root,
+    reserved ? [],
+  }: let
+    names = builtins.attrNames files;
+    validate = name: let
+      spec = files.${name};
+      mode = spec.mode or "0644";
+    in
+      assert lib.assertMsg (validRelativePath name) "harbor-rs: invalid release file destination '${name}'";
+      assert lib.assertMsg (lib.all (other: !(pathsOverlap name other)) reserved) "harbor-rs: release file '${name}' collides with a reserved path";
+      assert lib.assertMsg (lib.all (other: name == other || !(pathsOverlap name other)) names) "harbor-rs: release file '${name}' overlaps another destination";
+      assert lib.assertMsg (builtins.isAttrs spec && spec ? source) "harbor-rs: release file '${name}' requires source";
+      assert lib.assertMsg (builtins.isString mode && builtins.match "0[0-7][0-7][0-7]" mode != null) "harbor-rs: release file '${name}' has an invalid mode"; "install -D -m ${escapeShellArg mode} ${escapeShellArg (toString spec.source)} \"${root}\"/${escapeShellArg name}";
+  in
+    lib.concatMapStringsSep "\n" validate names;
+
   staticElfValidation = {
     readelf,
     grep,

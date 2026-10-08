@@ -53,6 +53,14 @@ the hosted KVM and sandbox-cache prerequisites. Go keeps its Linux, ARM Linux,
 and ARM macOS native runners. Failed and cancelled selected jobs fail the
 aggregate qualification gate.
 
+Shared shell constructors accept `timeZone = "Europe/Istanbul"` and default to
+UTC. `lib.core.timezone` supplies packaged zone data and an entry hook that
+restores the selected zone when Nix omits `TZ` from the shell environment.
+Shell composition retains explicit `TZDIR` overrides and interactive Bash.
+Release archives accept `archiveTimezone`; portable binary releases also retain
+named `extraFiles` with declared modes. Archive checks cover path collisions,
+filenames containing spaces, and reproducible tar/ZIP bytes.
+
 ## Independent releases
 
 ```console

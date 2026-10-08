@@ -3,6 +3,7 @@
   opencodeEngine = import ./opencode.nix {lib = nixLib;};
 in {
   flake = import ./flake.nix {lib = nixLib;};
+  timezone = import ./timezone.nix;
   opencode =
     opencodeEngine
     // (import ./opencode-cli.nix {

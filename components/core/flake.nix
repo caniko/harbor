@@ -69,6 +69,19 @@
             inherit harborOpencode;
           })
           // {
+            timezone = import ./checks/timezone.nix {
+              inherit pkgs;
+              inherit (self) lib;
+            };
+            timezone-consumers = let
+              results = import ./tests/timezone-consumers.nix;
+            in
+              assert builtins.all (value: value) (builtins.attrValues results);
+                pkgs.writeText "harbor-timezone-consumers.json" (builtins.toJSON results);
+            dev-shell-bash = import ./checks/dev-shell-bash.nix {
+              inherit pkgs;
+              inherit (self.lib) devShell;
+            };
             site = import ./checks/site.nix {inherit pkgs system;};
             treefmt-modules = import ./checks/treefmt.nix {
               inherit pkgs;

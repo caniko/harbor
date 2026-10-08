@@ -24,6 +24,7 @@
 in
   pythonLib
   // rec {
+    timezone = harbor-meta.lib.timezone;
     opencode =
       if harbor-meta != null
       then harbor-meta.lib.opencode

@@ -1,4 +1,5 @@
 {harbor-meta}: rec {
+  timezone = harbor-meta.lib.timezone;
   mkGoToolchain = {
     pkgs,
     go ? pkgs.buildPackages.go_1_27,
@@ -38,6 +39,7 @@
 
   mkGoDevShell = {
     pkgs,
+    timeZone ? "UTC",
     toolchain ? mkGoToolchain {inherit pkgs;},
     cgo ? true,
     packages ? [],
@@ -46,7 +48,7 @@
     mkShellArgs ? {},
   }:
     harbor-meta.lib.devShell.mkShell {
-      inherit pkgs packages env extraShellHook mkShellArgs;
+      inherit pkgs timeZone packages env extraShellHook mkShellArgs;
       fragments = [(mkGoDevShellFragment {inherit pkgs toolchain cgo;})];
     };
 

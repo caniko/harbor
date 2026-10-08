@@ -287,6 +287,9 @@
             inherit (inputs) treefmt-nix git-hooks;
             rootInputNames = builtins.attrNames inputs;
           })
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (import ./checks/release-archives.nix {
+            inherit pkgs self system;
+          })
           // {
             treefmt-modules = import ./nix/treefmt/check.nix {
               inherit pkgs;

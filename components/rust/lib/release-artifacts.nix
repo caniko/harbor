@@ -3,7 +3,10 @@
 # The artifact layer deliberately does not know about Codeberg or Simit.  It
 # produces deterministic, flat Nix outputs plus a small passthru descriptor;
 # Simit consumes the conventional release-bundle output in its Forgejo job.
-{pkgs}: let
+{
+  pkgs,
+  timezone ? throw "harbor-rs: archive builders require harbor-meta.lib.timezone",
+}: let
   lib = pkgs.lib;
   inherit (lib) concatStringsSep escapeShellArg optionalString;
   common = import ./release-common.nix {inherit lib;};
@@ -80,12 +83,37 @@
     rustTarget ? null,
     validation ? "none",
     consumable ? false,
+    archiveTimezone ? "UTC",
   }: let
     archiveName = requireString "archive name" name;
+    timezoneEnv = timezone.mkEnvironment {
+      inherit pkgs;
+      timeZone = archiveTimezone;
+    };
     packageValue = require "archive package" package;
     entryNames = builtins.attrNames entries;
     entryArgs = concatStringsSep " " (map escapeShellArg entryNames);
-    entrySources = concatStringsSep "\n" (map (destination: "source=\"${packageValue}/${entries.${destination}}\"\ndestination=\"$stage/${destination}\"\nmkdir -p \"$(dirname \"$destination\")\"\ninstall -m0755 \"$source\" \"$destination\"") entryNames);
+    entrySources = common.stageFiles {
+      root = "$stage";
+      files = lib.mapAttrs (_: entry: let
+        spec =
+          if builtins.isString entry
+          then {
+            source = entry;
+            mode = "0755";
+          }
+          else entry;
+        source = spec.source;
+      in
+        spec
+        // {
+          source =
+            if builtins.isString source && !(lib.hasPrefix "/" source)
+            then "${packageValue}/${source}"
+            else source;
+        })
+      entries;
+    };
     meta = descriptor {
       inherit pname version;
       name = archiveName;
@@ -110,18 +138,24 @@
       if format == "tar.gz"
       then ''tar ${deterministicTarFlags} --mtime='@0' -czf "$out/${archiveName}" -C "$stage" .''
       else if format == "zip"
-      then ''cd "$stage" && zip -X -q "$out/${archiveName}" $(find . -type f -print | LC_ALL=C sort)''
+      then ''cd "$stage" && find . -type f -print | LC_ALL=C sort | zip -X -q "$out/${archiveName}" -@''
       else throw "harbor-rs: unsupported release archive format '${format}'";
   in
     pkgs.runCommand "${pname}-${version}-${archiveName}-release-artifact" ((artifactPassthru meta)
+      // timezoneEnv.env
       // {
         nativeBuildInputs = [pkgs.binutils pkgs.coreutils pkgs.findutils pkgs.gnugrep pkgs.gnutar pkgs.gzip pkgs.zip];
       }) ''
       set -euo pipefail
       stage="$TMPDIR/stage"
+      ${timezoneEnv.validationScript}
+      umask 022
       mkdir -p "$stage"
       ${entrySources}
       ${validationScript}
+      # ZIP cannot represent the Unix epoch; normalize all formats to its
+      # minimum timestamp before archiving. Tar still uses --mtime=@0.
+      find "$stage" -exec touch -h -t 198001010000.00 {} +
       mkdir -p "$out"
       ${archiveCommand}
     '';

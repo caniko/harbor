@@ -5,6 +5,7 @@
 }: {
   mkTexDevShell = {
     pkgs,
+    timeZone ? "UTC",
     profile ? "article",
     extraTexPackages ? (_: []),
     extraPackages ? [],
@@ -21,7 +22,7 @@
     then throw "harbor-tex: mkTexDevShell requires the harbor-meta flake input"
     else
       metaDevShell.mkShell {
-        inherit pkgs;
+        inherit pkgs timeZone;
         packages = [texlive] ++ extraPackages ++ inheritedPackages;
         env = shellArgs.env or {};
         extraShellHook = shellArgs.shellHook or "";

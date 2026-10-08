@@ -4,6 +4,7 @@
 {
   pkgs,
   bundlers,
+  timezone ? throw "harbor-rs: archive builders require harbor-meta.lib.timezone",
 }: let
   lib = pkgs.lib;
   inherit (lib) concatStringsSep escapeShellArg;
@@ -15,6 +16,8 @@
     version,
     system,
     entries,
+    extraFiles ? {},
+    archiveTimezone ? "UTC",
   }: let
     binaries = requireBinaries {
       context = "portable release";
@@ -26,25 +29,43 @@
       inherit version system binaries;
       format = "nix-bundle";
     };
-    installLines = concatStringsSep "\n" (map (binary: "install -m0755 ${escapeShellArg (toString entries.${binary})} \"$out/bin/${binary}\"") binaries);
-    package = pkgs.runCommand "${pname}-${version}-${system}-portable-stage" {} ''
+    stagingScript = root: let
+      installLines = concatStringsSep "\n" (map (binary: "install -m0755 ${escapeShellArg (toString entries.${binary})} \"${root}/bin/${binary}\"") binaries);
+      supportingFiles = common.stageFiles {
+        files = extraFiles;
+        inherit root;
+        reserved = ["manifest.json"] ++ map (binary: "bin/${binary}") binaries;
+      };
+    in ''
       set -euo pipefail
-      mkdir -p "$out/bin"
+      umask 022
+      mkdir -p "${root}/bin"
       ${installLines}
-      cat > "$out/manifest.json" <<'MANIFEST'
+      ${supportingFiles}
+      cat > "${root}/manifest.json" <<'MANIFEST'
       ${manifest}
       MANIFEST
     '';
+    package = pkgs.runCommand "${pname}-${version}-${system}-portable-stage" {} (stagingScript "$out");
     archiveName = "${pname}-${version}-${system}-nix-bundle.tar.gz";
-    archive =
-      pkgs.runCommand "${pname}-${version}-${system}-portable-archive" {
+    timezoneEnv = timezone.mkEnvironment {
+      inherit pkgs;
+      timeZone = archiveTimezone;
+    };
+    archive = pkgs.runCommand "${pname}-${version}-${system}-portable-archive" (timezoneEnv.env
+      // {
         nativeBuildInputs = [pkgs.coreutils pkgs.gnutar pkgs.gzip];
-      } ''
-        set -euo pipefail
-        mkdir -p "$out"
-        tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
-          -czf "$out/${archiveName}" -C ${escapeShellArg (toString package)} .
-      '';
+      }) ''
+      set -euo pipefail
+      ${timezoneEnv.validationScript}
+      # Store outputs normalize modes to 0444/0555. Archive the writable stage
+      # directly so declared supporting-file modes survive in the tarball.
+      stage="$TMPDIR/stage"
+      ${stagingScript "$stage"}
+      mkdir -p "$out"
+      tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
+        -czf "$out/${archiveName}" -C "$stage" .
+    '';
   in {
     inherit archive archiveName package manifest;
   };
@@ -53,6 +74,7 @@
     pname,
     version,
     artifacts,
+    archiveTimezone ? "UTC",
   }: let
     prepared = lib.mapAttrs (system: spec: let
       bundler =
@@ -82,6 +104,8 @@
       mkArchive {
         inherit pname version system;
         entries = builtins.mapAttrs (_: bundle: toString bundle) entries;
+        extraFiles = spec.extraFiles or {};
+        archiveTimezone = spec.archiveTimezone or archiveTimezone;
       })
     artifacts;
     releaseArtifacts = lib.mapAttrs (system: result:

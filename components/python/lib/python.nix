@@ -134,6 +134,7 @@ in rec {
 
   mkUvDevShell = {
     pkgs,
+    timeZone ? "UTC",
     python ? pkgs.python313,
     uvExtra ? null,
     devGroup ? "dev",
@@ -183,7 +184,7 @@ in rec {
     then throw "harbor-py: mkUvDevShell requires the harbor-meta flake input"
     else
       metaDevShell.mkShell {
-        inherit pkgs;
+        inherit pkgs timeZone;
         packages =
           [
             python

@@ -4,6 +4,7 @@
   solanaSource,
   solanaSourceDarwin,
 }: rec {
+  timezone = harbor-meta.lib.timezone;
   rustOverlay = import harbor-rs.inputs.rust-overlay;
 
   mkCargoBuildSbf = {
@@ -72,11 +73,15 @@
     inherit (toolchain) packages env shellHook;
   };
 
-  mkSolanaDevShell = {pkgs, ...} @ args:
+  mkSolanaDevShell = {
+    pkgs,
+    timeZone ? "UTC",
+    ...
+  } @ args:
     harbor-meta.lib.devShell.mkShell {
-      inherit pkgs;
+      inherit pkgs timeZone;
       fragments = [
-        (mkSolanaDevShellFragment args)
+        (mkSolanaDevShellFragment (builtins.removeAttrs args ["timeZone"]))
       ];
     };
 }

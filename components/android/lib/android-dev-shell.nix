@@ -5,8 +5,9 @@
 #
 # Android env for `cargo ndk` + Gradle. Pass `base` to overlay an existing
 # rust/dev shell; omit it for a standalone mkShell. Does not compose an SDK.
-{
+{harbor-meta}: {
   pkgs,
+  timeZone ? null,
   androidSdk,
   ndkVersion,
   rustToolchain ? null,
@@ -47,12 +48,21 @@ in
   in
     if base != null
     then
-      base.overrideAttrs (old: {
-        buildInputs = (old.buildInputs or []) ++ packages;
-        shellHook = (old.shellHook or "") + hook;
-      })
+      harbor-meta.timezone.withShell ({
+          inherit pkgs;
+          shell = base.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ packages;
+            shellHook = (old.shellHook or "") + hook;
+          });
+        }
+        // lib.optionalAttrs (timeZone != null) {inherit timeZone;})
     else
-      pkgs.mkShell {
+      harbor-meta.devShell.mkShell {
         inherit packages;
-        shellHook = hook;
+        inherit pkgs;
+        timeZone =
+          if timeZone != null
+          then timeZone
+          else "UTC";
+        extraShellHook = hook;
       }

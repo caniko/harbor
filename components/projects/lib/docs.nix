@@ -1,4 +1,7 @@
-{packageTests}: rec {
+{
+  packageTests,
+  metaDevShell,
+}: rec {
   # Opinionated book.toml text. Mirrors the harbor-rs docs setup: coal dark
   # theme, site-url for the merged /docs/ mount, edit links to trunk.
   mkBookToml = {
@@ -116,12 +119,14 @@
   # harbor-projects deliberately does not pin plinth itself.
   mkDocsDevShell = {
     pkgs,
+    timeZone ? "UTC",
     plinthProject,
     extraPackages ? [],
   }:
-    pkgs.mkShell {
+    metaDevShell.mkShell {
+      inherit pkgs timeZone;
       packages = [pkgs.mdbook plinthProject] ++ extraPackages;
-      shellHook = ''
+      extraShellHook = ''
         echo "Documentation: mdbook serve docs"
         echo "Project site: plinth-project serve --config website/plinth-project.toml --out website/.plinth-project/public"
       '';

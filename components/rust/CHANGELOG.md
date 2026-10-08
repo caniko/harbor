@@ -23,6 +23,11 @@
 
 ### Added
 
+- Retain named-zone shell configuration, explicit archive timezones, and portable
+  release supporting files with declared modes in the shared Harbor workspace.
+- Verify archive destination collisions, whitespace-containing filenames, and
+  byte reproducibility through the relocated component checks.
+
 - `treefmtModules.rust` for composing rustfmt with harbor-meta Nix and TOML
   modules.
 

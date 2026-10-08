@@ -34,6 +34,22 @@ The root CI shell follows Simit's packaged native platforms: x86-64 Linux,
 ARM Linux, and ARM macOS. The default development shell and applicable component
 outputs also retain Intel macOS support.
 
+Retained TeX commit `d66c4221d5b14cecd2ae90f1faa9f29bb78fc72b` is absorbed:
+the template and its check forward the Intel macOS package set, while the
+template formatter and `treefmtModules.tex-latex` use TeX Live's wrapped
+`latexindent`, including its Perl runtime dependencies.
+
+The shared-timezone core through `364821e34a81eb3e1f0cd1c6ae37a766f30a08ff`
+and interactive-Bash fix `38131b61ee8fd8bc4320b7611c11de8a01a5b578` are
+incorporated with their adapter and runtime regression checks. Named-zone shell
+forwarding is incorporated for Rust (including MSVC and Android adapters), Python,
+JavaScript, Go, Android, TeX, EVM, Solana, NTT, and documentation projects.
+`core-timezone-consumers` checks those constructors directly in the relocated
+component layout. Archive-timezone and portable supporting-file changes through
+`d6108f8f513e0f442c87c20e5ef49ca78f1b550f` are incorporated with the retained
+mode, path-collision, whitespace-filename, and byte-reproducibility checks in
+`components/rust/checks/release-archives.nix`.
+
 ## Preserved work and retirement gate
 
 The 2026-10-08 source snapshot contains each original checkout's HEAD/status,

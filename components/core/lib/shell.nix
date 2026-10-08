@@ -23,6 +23,7 @@ _: rec {
 
   mkShell = {
     pkgs,
+    timeZone ? "UTC",
     fragments ? [],
     packages ? [],
     env ? {},
@@ -30,7 +31,7 @@ _: rec {
     builder ? null,
     mkShellArgs ? {},
   }: let
-    spec = merge (
+    merged = merge (
       fragments
       ++ [
         {
@@ -39,6 +40,19 @@ _: rec {
         }
       ]
     );
+    timezone = (import ./timezone.nix).mkEnvironment {
+      inherit pkgs;
+      timeZone = merged.env.TZ or timeZone;
+    };
+    spec =
+      merged
+      // {
+        # stdenv's build-only Bash lacks Readline and programmable completion.
+        # Keep an interactive Bash first for nested shells entered via direnv.
+        packages = [pkgs.bashInteractive] ++ merged.packages ++ timezone.packages;
+        env = timezone.env // merged.env;
+        shellHook = timezone.shellHook + merged.shellHook;
+      };
     drv =
       if builder != null
       then builder spec
@@ -52,7 +66,12 @@ _: rec {
   in
     drv
     // {
-      passthru = (drv.passthru or {}) // {devShellSpec = spec;};
+      passthru =
+        (drv.passthru or {})
+        // {
+          devShellSpec = spec;
+          harborTimezoneHook = timezone.shellHook;
+        };
     };
 
   mkPkgConfigEnv = {

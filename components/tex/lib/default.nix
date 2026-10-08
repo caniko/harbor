@@ -18,6 +18,7 @@
     mkTexlive = texlive.mkTexlive;
   };
 in {
+  timezone = harbor-meta.lib.timezone;
   inherit profiles;
   inherit (texlive) mkTexlive;
   inherit (shell) mkTexDevShell;

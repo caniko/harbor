@@ -22,6 +22,10 @@
     then harbor-meta.devShell
     else throw "harbor-rs: shell helpers require the harbor-meta flake input";
   minisignLib = import ./minisign.nix;
+  timezone =
+    if harbor-meta != null && harbor-meta ? timezone
+    then harbor-meta.timezone
+    else throw "harbor-rs: timezone helpers require an updated harbor-meta flake input";
   mkCargoConfig = import ./cargo-config.nix;
   inherit ((import ./build-cache.nix {})) mkBuildCachePolicy;
   mkToolchain = import ./toolchain.nix {
@@ -45,6 +49,7 @@
 in {
   inherit mkBuildCachePolicy mkToolchain hardeningProfiles packageTests templateTests devShellTests mkCargoConfig;
   buildContract = import ./build-contract.nix {};
+  inherit timezone;
   opencode =
     if harbor-meta != null
     then harbor-meta.opencode
@@ -59,7 +64,10 @@ in {
     mkCrossPackages = import ./cross-packages.nix {inherit mkToolchain;};
   };
   mkBinaryRelease = args:
-    (import ./binary-release.nix {inherit (args) pkgs;}).mkBinaryRelease
+    (import ./binary-release.nix {
+      inherit (args) pkgs;
+      inherit timezone;
+    }).mkBinaryRelease
     (builtins.removeAttrs args ["pkgs"]);
   mkReleaseBinaryPackage = args:
     (import ./binary-release.nix {inherit (args) pkgs;}).mkReleaseBinaryPackage
@@ -67,6 +75,7 @@ in {
   mkPortableBinaryRelease = args:
     (import ./portable-release.nix {
       inherit (args) pkgs;
+      inherit timezone;
       bundlers =
         args.bundlers or (
           if nixBundle != null
@@ -85,7 +94,10 @@ in {
     (import ./release-artifacts.nix {inherit (args) pkgs;}).mkReleaseArtifact
     (builtins.removeAttrs args ["pkgs"]);
   mkReleaseArchive = args:
-    (import ./release-artifacts.nix {inherit (args) pkgs;}).mkReleaseArchive
+    (import ./release-artifacts.nix {
+      inherit (args) pkgs;
+      inherit timezone;
+    }).mkReleaseArchive
     (builtins.removeAttrs args ["pkgs"]);
   mkReleaseBundle = args:
     (import ./release-artifacts.nix {inherit (args) pkgs;}).mkReleaseBundle
@@ -94,7 +106,7 @@ in {
   mkGpuRenderPin = import ./gpu-render-pin.nix;
   mkMacosUniversalStager = import ./macos-staging.nix;
   mkOsxcrossHooks = import ./osxcross-hooks.nix;
-  mkWindowsMsvcDevShell = import ./windows-msvc-shell.nix;
+  mkWindowsMsvcDevShell = import ./windows-msvc-shell.nix {inherit metaShellTools;};
   inherit (devShellLib) mkDevShell mkDocsShell mkDevShells;
   inherit (metaShellTools) mkProjectCliShellTools mkPkgConfigEnv;
   inherit (adapterLib) mkAdapter isHarborAdapter;
@@ -131,8 +143,17 @@ in {
     mkAndroidApkDevBuilder
     mkAndroidFlavorTable
     mkAndroidSdk
-    mkAndroidDevShell
     ;
+  mkAndroidDevShell = args @ {
+    pkgs,
+    timeZone ? null,
+    ...
+  }:
+    timezone.withShell ({
+        inherit pkgs;
+        shell = harbor-android.mkAndroidDevShell (builtins.removeAttrs args ["timeZone"]);
+      }
+      // pkgs.lib.optionalAttrs (timeZone != null) {inherit timeZone;});
   mkAppImage = import ./appimage.nix {inherit packageTests;};
   mkPackageArtifactBuilder = import ./package-artifact-builder.nix {inherit packageTests;};
   mkChocoPackage = import ./choco-package.nix {inherit packageTests;};
