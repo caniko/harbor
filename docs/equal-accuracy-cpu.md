@@ -40,3 +40,12 @@ Run this opt-in workload through the normal Atlas runtime lease and a bounded
 service. The worker owns every admission, service identity and lifetime;
 successful samples must release their shared reservations and runtime roots
 before changing the next effective profile.
+
+The exact packaged 2026-10-08 campaign passed all 12 retained observations,
+including two warmups. Five paired measured runs gave medians of `16.35355 s`
+at one core and `15.45866 s` at two cores (ratio `0.94528`). All original
+temperatures match exactly, with the same unchanged independent scientific
+gates. Maximum observed job-cgroup RAM was `71,417,856` and `192,008,192` bytes,
+respectively. [Checksummed evidence](evidence/equal-accuracy-cpu-20261008.json)
+binds every original observation, execution profile, package and report. The
+memory/time tradeoff and fixed-case measurement scope remain explicit.

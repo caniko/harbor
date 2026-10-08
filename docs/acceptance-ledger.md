@@ -246,6 +246,22 @@ prescribed planar blockage calculation; blocked-opening flow, permeability and
 automatic convection inference remain outside that geometric model. No native
 solver execution or physical validation is inferred from the area report.
 
+## Equal-accuracy CPU execution profile measurements
+
+The guarded `c8-4/equal-accuracy` exact-package campaign passes 12 original
+native thermal solves with identical approved science, mesh, all retained times
+and point IDs. Original temperatures agree exactly, below the independent
+`1e-12 K` comparison gate; every solve separately passes unchanged temperature/
+energy and historical original-byte gates and releases its reservation/root.
+Five paired repetitions after one retained warmup per profile yield medians of
+`16.353552431042772 s` at one core and `15.458660325035453 s` at two cores through
+checksum-verified export. Observed maximum job RAM is `71,417,856` versus
+`192,008,192` bytes. [Evidence](evidence/equal-accuracy-cpu-20261008.json)
+binds the complete originals, package/runtime/campaign identity, samples and
+separate kernel measurements. This closes the bounded fixed-case CPU profile
+comparison in F; GPU/JIT optimization and other workloads remain independent
+unqualified gates. Dispatch defaults and scientific approvals are unchanged.
+
 | Slice | Acceptance | State |
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |
