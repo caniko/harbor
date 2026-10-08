@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
     flake-parts.url = "github:hercules-ci/flake-parts";
     bun-overlay = {
       url = "github:alleneubank/bun-overlay";
@@ -28,6 +29,7 @@
     flake-parts,
     self,
     nixpkgs,
+    nixpkgs-darwin,
     bun-overlay,
     harbor-meta,
     ...
@@ -78,6 +80,15 @@
           settings.global.excludes = [".crow/**"];
         };
       in {
+        # The maintained compatibility branch retains Intel macOS and patched pnpm.
+        _module.args.pkgs =
+          if system == "x86_64-darwin"
+          then
+            import nixpkgs-darwin {
+              inherit system;
+              overlays = [(_: prev: {pnpm_10 = prev.pnpm_10_latest;})];
+            }
+          else nixpkgs.legacyPackages.${system};
         devShells.default = self.lib.node.mkNodeDevShell {inherit pkgs;};
         devShells.node = self.lib.node.mkNodeDevShell {inherit pkgs;};
         packages =
@@ -92,7 +103,7 @@
         checks = import ./checks {
           inherit pkgs system self;
           inherit (self) lib;
-          inherit bun_1_3_14 nixpkgs;
+          inherit bun_1_3_14 nixpkgs nixpkgs-darwin;
           inherit (inputs) treefmt-nix git-hooks;
           meta = harbor-meta.lib;
         };

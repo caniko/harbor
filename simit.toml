@@ -1,0 +1,150 @@
+[ci]
+platform = "github"
+provider = "actions"
+runtime = "nix"
+publish_crates = true
+
+[ci.nix_system_runners]
+x86_64-linux = "ubuntu-24.04"
+aarch64-linux = "ubuntu-24.04-arm"
+aarch64-darwin = "macos-15"
+
+[monorepo]
+schema_version = 1
+
+[[monorepo.components]]
+id = "core"
+paths = ["components/core"]
+checks = [
+  { id = "history", run = "python3 scripts/check_history.py" },
+  { id = "format", run = "treefmt --fail-on-change" },
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "rust"
+paths = ["components/rust"]
+cargo_packages = ["nix_harbor_rs", "harbor-cache", "harbor-sdk", "harbor-xtask"]
+depends_on = ["core", "android", "macos-sdk"]
+checks = [
+  { id = "test", run = "simit test --git-fixtures -- cargo test --locked --workspace --jobs 2 -- --test-threads=2", timeout_minutes = 30 },
+  { id = "clippy", run = "cargo clippy --locked --workspace --all-targets --jobs 2 -- -D warnings", timeout_minutes = 30 },
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-rust", timeout_minutes = 180 },
+]
+
+[[monorepo.components]]
+id = "python"
+paths = ["components/python"]
+depends_on = ["core"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-python", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "javascript"
+paths = ["components/javascript"]
+depends_on = ["core"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-javascript", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "go"
+paths = ["components/go"]
+depends_on = ["core"]
+systems = ["x86_64-linux", "aarch64-linux", "aarch64-darwin"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-go", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "android"
+paths = ["components/android"]
+depends_on = ["core"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-android", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "tex"
+paths = ["components/tex"]
+cargo_packages = ["anx-plugin-zenodo"]
+releases = [
+  { manifest = "components/tex/plugins/pandoc/pyproject.toml", namespace = "anx-plugin-pandoc", publish = false },
+]
+depends_on = ["core"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-tex .#tex-anx-plugin-zenodo .#tex-anx-plugin-pandoc", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "database"
+paths = ["components/database"]
+cargo_packages = ["harbor-db"]
+depends_on = ["rust"]
+checks = [
+  { id = "hosted-cache", run = "test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted && test -r /dev/kvm && test -w /dev/kvm && sudo install -d -m 1777 -o root -g root /var/cache/sccache && test ! -L /var/cache/sccache && test \"$(stat -c '%u:%a' /var/cache/sccache)\" = 0:1777 && printf '%s\\n' 'extra-sandbox-paths = /var/cache/sccache' 'log-lines = 250' | sudo tee -a /etc/nix/nix.conf && sudo systemctl restart nix-daemon.service && nix config show sandbox-paths | grep -F /var/cache/sccache" },
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-database .#database-storage-lifecycle .#database-harbor-db-cached", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "evm"
+paths = ["components/evm"]
+depends_on = ["core"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-evm", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "solana"
+paths = ["components/solana"]
+depends_on = ["core", "rust"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-solana", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "ntt"
+paths = ["components/ntt"]
+depends_on = ["core"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-ntt", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "llm"
+paths = ["components/llm"]
+releases = [
+  { manifest = "components/llm/package.json", namespace = "harbor-llm", publish = false },
+]
+depends_on = ["core"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#llm-default", timeout_minutes = 30 },
+]
+
+[[monorepo.components]]
+id = "cad"
+paths = ["components/cad"]
+cargo_packages = ["harbor-cad"]
+releases = [
+  { manifest = "components/cad/pyproject.toml", namespace = "harbor-cad-mcp", publish = false },
+]
+depends_on = ["rust", "python"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "projects"
+paths = ["components/projects"]
+depends_on = ["core"]
+checks = [
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-projects", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
+id = "macos-sdk"
+paths = ["components/macos-sdk"]
+checks = [
+  { id = "pin", run = "nix eval --json .#lib.pins.macosSdk | jq -e '(.sdkVersion | test(\"^[0-9]+([.][0-9]+)+$\")) and (.outputHash | startswith(\"sha256-\")) and (.storePath | startswith(\"/nix/store/\")) and .attic.cacheName == \"harbor-macos-sdk\"'" },
+]

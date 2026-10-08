@@ -1,0 +1,9 @@
+/target/
+/.direnv/
+/.nix-results/
+/result
+/result-*
+/plan.json
+__pycache__/
+.pytest_cache/
+.venv/

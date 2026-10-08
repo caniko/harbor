@@ -5,6 +5,7 @@
   packages,
   self,
   nixpkgs,
+  nixpkgs-darwin,
   treefmt-nix,
   git-hooks,
   meta,
@@ -129,7 +130,7 @@ in
       inherit pkgs system;
       flakeNix = ../templates/default/flake.nix;
       inputs = {
-        inherit nixpkgs treefmt-nix git-hooks;
+        inherit nixpkgs nixpkgs-darwin treefmt-nix git-hooks;
         harbor-tex = self;
       };
       requiredFiles = [
@@ -139,7 +140,7 @@ in
         "nix/treefmt.nix"
         "nix/pre-commit.nix"
       ];
-      requiredInputs = ["harbor-tex" "treefmt-nix" "git-hooks"];
+      requiredInputs = ["harbor-tex" "nixpkgs-darwin" "treefmt-nix" "git-hooks"];
       commands = ["pdflatex"];
       inherit (meta) devShellTests;
     };

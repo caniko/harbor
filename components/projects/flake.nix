@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
 
     flake-utils.url = "github:numtide/flake-utils";
 
@@ -24,6 +25,7 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-darwin,
     flake-utils,
     harbor-meta,
     treefmt-nix,
@@ -44,7 +46,11 @@
     }
     // flake-utils.lib.eachDefaultSystem (
       system: let
-        pkgs = import nixpkgs {inherit system;};
+        pkgs = import (
+          if system == "x86_64-darwin"
+          then nixpkgs-darwin
+          else nixpkgs
+        ) {inherit system;};
         treefmt = treefmt-nix.lib.evalModule pkgs {
           imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml];
           projectRootFile = "flake.nix";

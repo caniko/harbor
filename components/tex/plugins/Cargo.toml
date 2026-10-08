@@ -1,3 +1,0 @@
-[workspace]
-members = ["zenodo"]
-resolver = "2"

@@ -7,7 +7,7 @@
   secretFile = pkgs.writeText "harbor-db-module-eval-secret" secretValue;
   rawCommand = pkgs.writeShellScript "harbor-db-module-eval-raw" "exit 0";
   runner = pkgs.writeShellScriptBin "module-eval-runner" "exit 0";
-  eval = import "${pkgs.path}/nixos/lib/eval-config.nix" {
+  eval = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = pkgs.system;
     modules = [
       module
@@ -67,29 +67,23 @@
   checkService = eval.config.systemd.services.harbor-db-demo-check;
   restoreService = eval.config.systemd.services.harbor-db-demo-restore;
   rawService = eval.config.systemd.services.harbor-db-raw;
-  applyScript = builtins.replaceStrings ["\n"] [" "] (builtins.readFile service.serviceConfig.ExecStart);
-  manifest = builtins.elemAt (builtins.match ".*--manifest ([^ ]+).*" applyScript) 0;
-  plan = builtins.readFile manifest;
-  restoreScript = builtins.replaceStrings ["\n"] [" "] (builtins.readFile restoreService.serviceConfig.ExecStart);
 in
   (import ./eval-checks.nix {inherit pkgs;}).mkEvalCheck {
     name = "harbor-db-module-eval";
     resultMessage = "harbor-db generic lifecycle module keeps credentials out of plans";
+    # Inspect realized artifacts in the builder rather than during evaluation.
+    runtimeScript = ''
+      ${lib.getExe pkgs.python3} ${./module-eval-runtime.py} \
+        ${lib.escapeShellArg service.serviceConfig.ExecStart} \
+        ${lib.escapeShellArg restoreService.serviceConfig.ExecStart} \
+        ${lib.escapeShellArg secretValue} \
+        "$out/runtime-assertions.json"
+    '';
     assertions = [
       {
         name = "credential-load-is-per-operation-source";
         assertion = lib.elem "token:${secretFile}" service.serviceConfig.LoadCredential;
         message = "the operation credential source must be rendered as a systemd LoadCredential entry";
-      }
-      {
-        name = "credential-value-is-not-in-plan";
-        assertion = !(lib.hasInfix secretValue plan);
-        message = "credential contents must not be serialized into the generated plan";
-      }
-      {
-        name = "credential-reference-is-a-file-path";
-        assertion = lib.hasInfix "credential_environment" plan && lib.hasInfix "token" plan;
-        message = "plans must contain only the credential name reference";
       }
       {
         name = "state-directory";
@@ -150,14 +144,6 @@ in
         name = "restore-unit-is-manual";
         assertion = (restoreService.wantedBy or []) == [];
         message = "the restore unit must never start during activation";
-      }
-      {
-        name = "restore-targets-only-restore-operations";
-        assertion =
-          lib.hasInfix "--operation restore" restoreScript
-          && lib.hasInfix "--confirm" restoreScript
-          && !(lib.hasInfix "--operation ensure" restoreScript);
-        message = "the restore command must select exactly the restore-lifecycle operations";
       }
     ];
   }

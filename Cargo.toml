@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = [
+  "components/rust/cli",
+  "components/rust/crates/harbor-cache",
+  "components/rust/crates/harbor-sdk",
+  "components/rust/crates/harbor-xtask",
+  "components/database",
+  "components/cad",
+  "components/tex/plugins/zenodo",
+]
+exclude = [
+  "migration/legacy/*",
+  "components/rust/templates/*",
+  "components/rust/tests/fixtures/*",
+  "components/solana/templates/*",
+]
+
+# Versions and licenses belong to individual packages. Only shared lint policy
+# is inherited; CAD retains its explicit GPL license and non-publication policy.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

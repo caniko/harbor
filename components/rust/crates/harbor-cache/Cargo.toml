@@ -1,9 +1,9 @@
 [package]
 name = "harbor-cache"
 version = "0.1.0"
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/caniko/harbor"
 description = "Generic Attic helpers for harbor-rs and downstream tooling"
 
 [dependencies]

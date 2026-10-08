@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -21,19 +22,30 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-darwin,
     harbor-meta,
     harbor-rs,
     treefmt-nix,
+    solana-source,
+    solana-source-darwin,
     ...
   }: let
     systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
     forAllSystems = f:
       nixpkgs.lib.genAttrs systems (system:
-        f (import nixpkgs {
-          inherit system;
-          overlays = [self.lib.rustOverlay];
-        }));
-    lib = import ./lib {inherit harbor-meta harbor-rs;};
+        f (import (
+            if system == "x86_64-darwin"
+            then nixpkgs-darwin
+            else nixpkgs
+          ) {
+            inherit system;
+            overlays = [self.lib.rustOverlay];
+          }));
+    lib = import ./lib {
+      inherit harbor-meta harbor-rs;
+      solanaSource = solana-source;
+      solanaSourceDarwin = solana-source-darwin;
+    };
   in {
     inherit lib;
 
@@ -54,7 +66,7 @@
 
     checks = forAllSystems (pkgs:
       import ./checks {
-        inherit pkgs self nixpkgs;
+        inherit pkgs self nixpkgs nixpkgs-darwin;
         meta = harbor-meta.lib;
       });
 

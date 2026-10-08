@@ -3,6 +3,9 @@ name = "anx-plugin-zenodo"
 version = "0.1.0"
 description = "Zenodo archival plugin for the anx article toolchain"
 edition = "2021"
+license = "MIT"
+license-file = "../../LICENSE"
+repository = "https://github.com/caniko/harbor"
 
 [[bin]]
 name = "anx-plugin-zenodo"

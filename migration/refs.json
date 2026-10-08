@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "refCount": 164,
+  "sourceRefsSha256": "2311d4bf813d2ed1dbd7547a178b73d3789743df40064633b7ae4e7e536c00e3",
+  "importedHeadNamespace": "refs/tags/imported-ref/",
+  "originalHeadNamespace": "refs/imports/",
+  "originalTagNamespaces": ["refs/tags/imported/", "refs/tags/imported-local/"]
+}

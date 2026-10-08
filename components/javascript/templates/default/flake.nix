@@ -4,6 +4,7 @@
   inputs = {
     harbor-js.url = "github:caniko/harbor-js";
     nixpkgs.follows = "harbor-js/nixpkgs";
+    nixpkgs-darwin.follows = "harbor-js/nixpkgs-darwin";
     treefmt-nix.follows = "harbor-js/treefmt-nix";
     git-hooks.follows = "harbor-js/git-hooks";
   };
@@ -11,6 +12,7 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-darwin,
     harbor-js,
     treefmt-nix,
     git-hooks,
@@ -22,9 +24,14 @@
       "aarch64-darwin"
     ];
     forSystem = system: let
-      pkgs = import nixpkgs {inherit system;};
+      platformNixpkgs = if system == "x86_64-darwin" then nixpkgs-darwin else nixpkgs;
+      pkgs = import platformNixpkgs {
+        inherit system;
+        overlays = nixpkgs.lib.optionals (system == "x86_64-darwin") [(_: prev: {pnpm_10 = prev.pnpm_10_latest;})];
+      };
       treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {inherit harbor-js;});
-      pre-commit-check = git-hooks.lib.${system}.run {
+      hooks = import "${git-hooks}/nix" {nixpkgs = platformNixpkgs; inherit system; isFlakes = true;};
+      pre-commit-check = hooks.run {
         src = ./.;
         hooks = import ./nix/pre-commit.nix {
           inherit pkgs;

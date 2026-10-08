@@ -5,6 +5,7 @@
   bun_1_3_14,
   self,
   nixpkgs,
+  nixpkgs-darwin,
   treefmt-nix,
   git-hooks,
   meta,
@@ -56,7 +57,7 @@ in
         inherit pkgs system;
         flakeNix = ../templates/default/flake.nix;
         inputs = {
-          inherit nixpkgs treefmt-nix git-hooks;
+          inherit nixpkgs nixpkgs-darwin treefmt-nix git-hooks;
           harbor-js = self;
         };
         requiredFiles = [
@@ -67,7 +68,7 @@ in
           "nix/treefmt.nix"
           "nix/pre-commit.nix"
         ];
-        requiredInputs = ["harbor-js" "treefmt-nix" "git-hooks"];
+        requiredInputs = ["harbor-js" "nixpkgs-darwin" "treefmt-nix" "git-hooks"];
         commands = ["bun"];
         env.BUN_VERSION = "1.3.14";
         inherit (meta) devShellTests;

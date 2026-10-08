@@ -94,7 +94,7 @@
     };
     inherit (toolchain) craneLib;
     source = pkgs.lib.cleanSourceWith {
-      src = ./.;
+      src = ../..;
       filter = path: type:
         craneLib.filterCargoSources path type
         || pkgs.lib.hasInfix "/profiles/" path
@@ -112,6 +112,7 @@
     };
     common = {
       src = source;
+      cargoExtraArgs = "--locked -p harbor-cad";
       strictDeps = true;
       pname = "harbor-cad";
       version = "0.1.0";

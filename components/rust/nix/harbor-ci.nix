@@ -19,6 +19,7 @@ in
     pname = "harbor-ci";
     inherit version;
     src = source;
+    cargoExtraArgs = "-p harbor-xtask";
     strictDeps = true;
     doCheck = true;
     cargoBuildCommand = "cargo build --release -p harbor-xtask --bin harbor-ci";

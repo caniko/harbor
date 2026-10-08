@@ -1,20 +1,30 @@
 {
   harbor-meta,
   harbor-rs,
+  solanaSource,
+  solanaSourceDarwin,
 }: rec {
   rustOverlay = import harbor-rs.inputs.rust-overlay;
 
   mkCargoBuildSbf = {
     pkgs,
     solana ? pkgs.solana-cli,
+    source ?
+      if pkgs.stdenv.hostPlatform.system == "x86_64-darwin"
+      then solanaSourceDarwin
+      else solanaSource,
+    src ?
+      if builtins.pathExists (source + "/platform-tools-sdk/Cargo.toml")
+      then source + "/platform-tools-sdk"
+      else source,
   }: let
     toolchain = harbor-rs.lib.mkToolchain {inherit pkgs;};
-    src = solana.src + "/platform-tools-sdk";
+    manifest = builtins.fromTOML (builtins.readFile (src + "/Cargo.toml"));
     commonArgs = {
       inherit src;
       cargoLock = src + "/Cargo.lock";
       pname = "cargo-build-sbf";
-      version = solana.version;
+      version = assert manifest.workspace.package.version == solana.version; solana.version;
       cargoExtraArgs = "-p solana-cargo-build-sbf";
       rsHarborCargoTomlContents = builtins.readFile (src + "/Cargo.toml");
       doCheck = false;
@@ -22,7 +32,12 @@
       nativeBuildInputs = [pkgs.pkg-config];
       buildInputs = [pkgs.bzip2 pkgs.openssl];
     };
-    cargoArtifacts = toolchain.craneLib.buildDepsOnly commonArgs;
+    # Agave 3 patches registry dependencies with real workspace crates; Crane's
+    # dependency-only dummy sources cannot satisfy those path patches.
+    cargoArtifacts =
+      if builtins.pathExists (source + "/platform-tools-sdk/Cargo.toml")
+      then toolchain.craneLib.buildDepsOnly commonArgs
+      else null;
   in
     toolchain.craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
 

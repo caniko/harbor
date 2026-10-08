@@ -12,7 +12,7 @@
   git-hooks,
 }: let
   isLinux = builtins.match ".*-linux" system != null;
-  rootLock = builtins.fromJSON (builtins.readFile ./flake.lock);
+  rootLock = builtins.fromJSON (builtins.readFile ../../flake.lock);
   rootHasPathInput =
     builtins.any
     (nodeName: (rootLock.nodes.${nodeName}.original.type or null) == "path")

@@ -64,11 +64,11 @@
       ...
     }: let
       commonArgs = {
-        src = craneLib.cleanCargoSource ./.;
+        src = craneLib.cleanCargoSource ../..;
         pname = "harbor-db";
         version = "0.1.0";
         strictDeps = true;
-        cargoExtraArgs = "--locked";
+        cargoExtraArgs = "--locked -p harbor-db";
         meta = {
           description = "Secure generic lifecycle plans and deployment orchestration for services";
           homepage = "https://github.com/caniko/harbor-db";
@@ -110,13 +110,13 @@
       craneLib,
       ...
     }: let
-      src = craneLib.cleanCargoSource ./.;
+      src = craneLib.cleanCargoSource ../..;
       commonArgs = {
         inherit src;
         pname = "harbor-db";
         version = "0.1.0";
         strictDeps = true;
-        cargoExtraArgs = "--locked";
+        cargoExtraArgs = "--locked -p harbor-db";
       };
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
     in {
@@ -152,17 +152,17 @@
       cargo-test = craneLib.cargoTest (commonArgs
         // {
           inherit cargoArtifacts;
-          cargoExtraArgs = "--all-targets --all-features --locked";
+          cargoExtraArgs = "--all-targets --all-features --locked -p harbor-db";
         });
       cargo-doc = craneLib.cargoDoc (commonArgs
         // {
           inherit cargoArtifacts;
-          cargoDocExtraArgs = "--no-deps --all-features";
+          cargoDocExtraArgs = "--no-deps --all-features -p harbor-db";
         });
       cargo-clippy = craneLib.cargoClippy (commonArgs
         // {
           inherit cargoArtifacts;
-          cargoExtraArgs = "--all-targets --all-features --locked";
+          cargoExtraArgs = "--all-targets --all-features --locked -p harbor-db";
           cargoClippyExtraArgs = "-- -D warnings";
         });
     });

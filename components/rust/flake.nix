@@ -132,14 +132,14 @@
         rsHarborCli = import ./nix/harbor-rs-cli.nix {
           inherit pkgs;
           inherit (toolchain) craneLib;
-          src = ./.;
+          src = ../..;
           version = rsHarborVersion;
         };
 
         harborCi = import ./nix/harbor-ci.nix {
           inherit pkgs;
           inherit (toolchain) craneLib;
-          src = ./.;
+          src = ../..;
           version = rsHarborVersion;
         };
 
@@ -151,7 +151,8 @@
               inherit (toolchain) craneLib;
               pname = "harbor-rs";
               commonArgs = {
-                src = ./.;
+                src = ../..;
+                cargoExtraArgs = "-p nix_harbor_rs";
                 version = rsHarborVersion;
                 strictDeps = true;
                 doCheck = false;
