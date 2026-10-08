@@ -737,6 +737,9 @@ fn dispatch(
             let plan = ExecutionPlan::cad_spectral_transport(spec, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::CadOpticalResults { request } => Ok(serde_json::to_value(
+            crate::cad_transport_results::inspect(store, *request)?,
+        )?),
         Operation::PlanPresentation { request } => {
             if authority.is_none() {
                 return Err(Error::Unqualified(

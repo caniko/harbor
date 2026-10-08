@@ -112,10 +112,10 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
-| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v16 plans and original approval compatibility tested; source-bound spectral preparation schema/CLI/MCP verified independently |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v17 plans and original approval compatibility tested; source-bound spectral preparation, independent optical approvals and result-query schemas/CLI/MCP implemented |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
 | §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; scoped synthetic CPU contact and optical native/worker execution verified |
-| §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs`, `src/cad_spectral.rs` | source snapshot/import isolation and imported box correspondence qualified at recorded identities; immutable v16 parameter copies and whole-region spectral triangle preparation implemented; fresh native variant qualification pending |
+| §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs`, `src/cad_spectral.rs` | source snapshot/import isolation and imported box correspondence qualified at recorded identities; immutable v16 parameter copies/reimports and whole-region spectral triangle preparation qualified in `c8-5`; exact direct-only native triangle reference passes `c8-11`; registered optical worker qualification pending |
 | §4 allocated solver resources, unresolved paths | `src/estimates.rs`, `adapters/openlb_channel.cpp` | channel allocation/Mach/model gates; other formulations and local-gap resolution gates pending |
 | §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy, free expansion and planar contact pass scoped native/CLI/MCP gates; refined source-bound v11 thermal/contact worker passes `c8-2`; hybrid CUDA FEM and product material validation unqualified |
 | §5 airflow/wetting/snow/freezing | OpenLB recipe drivers and snow thermal adapter | synthetic single-phase flow, planar wetting, prescribed snow insulation and fixed-volume Stefan freezing pass recorded native/CLI/MCP/conservation/refinement gates; retained-distribution cooling and blocked-opening flow remain pending |
@@ -269,6 +269,14 @@ The registered-CAD campaign retains a distinct read-only-source state snapshot
 and checks CLI/MCP plans, independent original-area power/dose, unknown ageing,
 acknowledged source mutation, unchanged service invocation across restart,
 separate cancellation/forced service death and final root/reservation release.
+
+Source gates 31 and 34 verify bounded v17 original-region/seed result views:
+the complete Rust/Clippy/locked-build and 196-case Python gate passes, followed
+by focused tests for wavelengths/provenance and interrupted optical retention.
+Unverifiable unpublished originals remain quarantined after their runtime roots
+are released, including after a later source restoration. This is preservation,
+not an automatic deletion queue. The failed gate-32/33 test expectations and
+the first atmospheric launch's resource-control refusal are retained in scratch.
 
 ### Receipt and packaging continuation — 2026-10-08
 

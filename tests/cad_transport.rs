@@ -74,3 +74,27 @@ fn triangle_request_rejects_weakened_gate_implicit_physics_unknown_keys_and_spec
     let input: CadSpectralTransportRequest = serde_json::from_value(changed).unwrap();
     assert!(input.illumination().is_err());
 }
+
+#[test]
+fn optical_results_require_original_named_region_seed_without_time_or_interpolation_inference() {
+    use harbor_cad::cad_transport_results::CadOpticalResultsRequest;
+    let value = serde_json::json!({"schema_version":1,"job_id":"00000000-0000-0000-0000-000000000001","seed":17,"region_name":"solid"});
+    let request: CadOpticalResultsRequest = serde_json::from_value(value.clone()).unwrap();
+    request.validate().unwrap();
+    for (key, change) in [
+        ("seed", serde_json::json!(0)),
+        ("region_name", serde_json::json!("../solid")),
+        ("job_id", serde_json::json!("source")),
+        ("schema_version", serde_json::json!(2)),
+    ] {
+        let mut changed = value.clone();
+        changed[key] = change;
+        let request: CadOpticalResultsRequest = serde_json::from_value(changed).unwrap();
+        assert!(request.validate().is_err());
+    }
+    for key in ["time_s", "interpolation", "execute", "temperature_k"] {
+        let mut changed = value.clone();
+        changed[key] = serde_json::json!(0);
+        assert!(serde_json::from_value::<CadOpticalResultsRequest>(changed).is_err());
+    }
+}

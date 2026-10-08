@@ -5,7 +5,6 @@ import copy
 import json
 import math
 import shutil
-import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -68,18 +67,20 @@ def main():
             indent=2,
         )
     )
-    # Read-only source database backup; retained evidence is tested in a distinct
-    # copy so mutation tests cannot alter the independent importer qualification.
+    # The qualified source campaign has stopped its worker. Copy its complete
+    # SQLite/WAL snapshot without opening it: even mode=ro can alter the original
+    # shared-memory WAL index. Only the private state is opened or mutated.
     state = root / "state"
     state.mkdir(mode=0o700)
     shutil.copytree(original / "state/artifacts", state / "artifacts")
-    with (
-        sqlite3.connect(
-            "file:" + str(original / "state/jobs.sqlite3") + "?mode=ro", uri=True
-        ) as source,
-        sqlite3.connect(state / "jobs.sqlite3") as destination,
-    ):
-        source.backup(destination)
+    if (original / "state/worker.sock").exists():
+        raise ValueError(
+            "closed original source worker required before its complete database snapshot"
+        )
+    for name in ("jobs.sqlite3", "jobs.sqlite3-wal", "jobs.sqlite3-shm"):
+        path = original / "state" / name
+        if path.exists():
+            shutil.copyfile(path, state / name)
     verifier = module(
         Path(__file__).resolve().parents[1] / "adapters/cad_spectral_transport.py"
     )
@@ -224,10 +225,43 @@ def main():
                 if c["stage_id"] == "cad-spectral"
             )
             assert (
-                capability["runtime_execution"] == "reported_pass"
+                capability["runtime_execution"] == "recorded"
                 and capability["numerical_verification"] == "reported_pass"
                 and capability["physical_validation"] == "unqualified"
             )
+            queries = []
+            for observation in receipt["observations"]:
+                query = {
+                    "schema_version": 1,
+                    "job_id": job["id"],
+                    "seed": observation["seed"],
+                    "region_name": "solid",
+                }
+                path = root / f"query-{index}-{observation['seed']}.json"
+                path.write_text(json.dumps(query))
+                view = campaign.command(
+                    "--socket", campaign.endpoint, "results", "cad-optical", path
+                )["data"]
+                assert view == campaign.mcp_call(
+                    "results_cad_optical", {"request_spec": query}, profile="results"
+                )
+                assert (
+                    view["facets"] == observation["facets"]
+                    and view["physical_time_s"] is None
+                    and view["history"] == current["history"]
+                    and view["physical_validation"] == "unqualified"
+                )
+                assert view["original_packets"]["sha256"] == observation["original"][
+                    "sha256"
+                ] and view["source_triangles"]["sha256"] == checksum(
+                    bundle / "source-cad/solid.stl"
+                )
+                assert (
+                    view["field_units"]["power_w"] == "W"
+                    and view["field_units"]["energy_j"] == "J"
+                )
+                queries.append(view)
+                assert view["wavelengths"] == current["scene"]["wavelengths"]
             assert not campaign.submit(
                 planned, f"approval-drift-{index}", approval="0" * 64, allow_error=True
             )["ok"]
@@ -247,6 +281,7 @@ def main():
                     "roots_and_reservation_released": True,
                     "power": totals,
                     "qualification": qualification,
+                    "queries": queries,
                     "resources": resources,
                 }
             )

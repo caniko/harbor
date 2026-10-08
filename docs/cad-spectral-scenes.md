@@ -82,6 +82,24 @@ approvals, packet metadata and numerical reductions. Manufactured receipt
 fixtures cannot establish native execution or sandbox qualification. Exact
 registered-source worker and lifecycle qualification remain separate gates.
 
+### Reading retained optical results
+
+`harbor-cad results cad-optical REQUEST.json` and results-profile MCP
+`results_cad_optical` read a complete original region at one declared native
+seed. For example:
+
+```json
+{"schema_version":1,"job_id":"QUALIFIED_OPTICAL_JOB_UUID","seed":17,"region_name":"solid"}
+```
+
+The view requires independently recorded execution and verified original
+packets. It retains facet order, original triangle and packet hashes, material
+and illumination provenance, units, complete prescribed history and the
+distinction between irradiance, power, dose and energy. Missing ageing leaves
+its channel absent. A seed has no physical timestamp; the view neither averages
+seeds nor introduces spatial or temporal interpolation. Queued, failed,
+unbound, modified or foreign-recipe jobs cannot produce verified optical views.
+
 `cad prepare-spectral-scene REQUEST.json` and MCP
 `cad_prepare_spectral_scene` (`cad`, `results`, `all`) verify a registered
 source and return a bounded preparation report. The request supplies ordered

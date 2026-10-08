@@ -2259,6 +2259,9 @@ pub enum Operation {
     PlanCadSpectralTransport {
         request: Box<crate::cad_transport::CadSpectralTransportRequest>,
     },
+    CadOpticalResults {
+        request: Box<crate::cad_transport_results::CadOpticalResultsRequest>,
+    },
     PrepareCadSpectralScene {
         request: Box<crate::cad_spectral::CadSpectralSceneRequest>,
     },
@@ -2453,6 +2456,12 @@ pub fn schemas() -> serde_json::Value {
     ));
     schemas["CadSpectralTransportSpec"] = serde_json::json!(schemars::schema_for!(
         crate::cad_transport::CadSpectralTransportSpec
+    ));
+    schemas["CadOpticalResultsRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::cad_transport_results::CadOpticalResultsRequest
+    ));
+    schemas["CadOpticalResultsReport"] = serde_json::json!(schemars::schema_for!(
+        crate::cad_transport_results::CadOpticalResultsReport
     ));
     schemas["SpectralReflectionSpec"] = serde_json::json!(schemars::schema_for!(
         crate::radiation::SpectralReflectionSpec

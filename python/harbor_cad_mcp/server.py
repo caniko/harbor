@@ -304,6 +304,11 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"results", "all"}:
 
         @server.tool()
+        async def results_cad_optical(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Read independently verified original-facet optical power/dose for one exact region/seed; missing ageing stays absent and no solve or seed averaging is performed."""
+            return await request("cad_optical_results", request=request_spec)
+
+        @server.tool()
         async def render_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
             """Plan retained-field presentation with exact source binding and independent devices."""
             return await request("plan_presentation", request=request_spec)

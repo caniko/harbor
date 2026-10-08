@@ -291,6 +291,10 @@ enum Cad {
 }
 #[derive(Subcommand)]
 enum Results {
+    /// Read complete original-region facet power/dose at one explicitly retained seed.
+    CadOptical {
+        request: PathBuf,
+    },
     Describe {
         id: String,
     },
@@ -614,6 +618,9 @@ fn run(cli: Cli) -> Result<()> {
             Job::Cancel { id } => Operation::Cancel { job_id: id },
         },
         Commands::Results { command } => match command {
+            Results::CadOptical { request } => Operation::CadOpticalResults {
+                request: Box::new(read(&request)?),
+            },
             Results::Describe { id } => Operation::Describe { job_id: id },
             Results::Sample { request } => Operation::ResultsSample {
                 request: Box::new(read(&request)?),

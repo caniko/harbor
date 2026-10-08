@@ -767,6 +767,18 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
         pending.capabilities[0].runtime_execution,
         harbor_cad::qualification::EvidenceState::NotObserved
     ));
+    assert!(matches!(
+        harbor_cad::cad_transport_results::inspect(
+            &store,
+            harbor_cad::cad_transport_results::CadOpticalResultsRequest {
+                schema_version: 1,
+                job_id: optical_job.id.clone(),
+                seed: 17,
+                region_name: "solid".into()
+            }
+        ),
+        Err(harbor_cad::Error::Unqualified(_))
+    ));
     let copied =
         harbor_cad::cad_transport::registered(&store, &optical_job.id, &optical_plan).unwrap();
     use std::os::unix::fs::MetadataExt;
@@ -778,6 +790,84 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
     std::fs::write(root.join("solid.stl"), b"original source later changed").unwrap();
     harbor_cad::cad_transport::registered(&store, &optical_job.id, &optical_plan).unwrap();
     optical_packet_fixture(&bound, &data);
+    std::fs::write(root.join("solid.stl"), &data).unwrap();
+    // Isolated storage-only foreground bindings exercise interrupted admission;
+    // these fixtures do not establish native execution or a systemd guarantee.
+    let mut staging_profile = profile.clone();
+    staging_profile.service_mode = "foreground".into();
+    let staging_binding = ExecutionBinding::capture(
+        &optical_plan,
+        &staging_profile,
+        &std::env::current_exe().unwrap(),
+        std::collections::BTreeMap::new(),
+    )
+    .unwrap();
+    let staging_authority = store
+        .execution_authorization(&id)
+        .unwrap()
+        .unwrap()
+        .authority;
+    let staging_auth = ExecutionAuthorization::capture(
+        &optical_plan,
+        &staging_profile,
+        &staging_binding,
+        &staging_authority,
+    )
+    .unwrap();
+    let intact = store
+        .submit_authorized(
+            &optical_plan,
+            "optical-intact-orphan",
+            &staging_profile,
+            &staging_binding,
+            &staging_auth,
+        )
+        .unwrap();
+    store
+        .connection
+        .execute("DELETE FROM jobs WHERE id=?1", [&intact.id])
+        .unwrap();
+    store.cleanup_retention(|_| Ok(false)).unwrap();
+    assert!(!store.root.join("artifacts").join(&intact.id).exists());
+    let lost = store
+        .submit_authorized(
+            &optical_plan,
+            "optical-lost-source-orphan",
+            &staging_profile,
+            &staging_binding,
+            &staging_auth,
+        )
+        .unwrap();
+    store
+        .connection
+        .execute("DELETE FROM jobs WHERE id=?1", [&lost.id])
+        .unwrap();
+    std::fs::write(
+        root.join("solid.stl"),
+        b"source unavailable after interrupted publication",
+    )
+    .unwrap();
+    store.cleanup_retention(|_| Ok(false)).unwrap();
+    assert_eq!(
+        std::fs::read(
+            store
+                .root
+                .join("artifacts")
+                .join(&lost.id)
+                .join("source-cad/solid.stl")
+        )
+        .unwrap(),
+        data
+    );
+    std::fs::write(root.join("solid.stl"), &data).unwrap();
+    store.cleanup_retention(|_| Ok(false)).unwrap();
+    // Once unverifiable input has been quarantined, its runtime roots are
+    // released and later cleanup does not rediscover or delete its artifacts.
+    // Restoring the source permits new submissions, not retrospective deletion.
+    harbor_cad::cad_transport::source(&store, &bound).unwrap();
+    assert!(store.root.join("artifacts").join(&lost.id).exists());
+    assert!(!store.root.join("retentions").join(&lost.id).exists());
+    std::fs::write(root.join("solid.stl"), b"original source later changed").unwrap();
     assert_eq!(
         store
             .submit_with_profile(&optical_plan, "original-optical", &profile)

@@ -20,6 +20,17 @@ def test_cad_spectral_schema_retains_missing_response_and_refuses_foreign_or_nul
     transport = json.loads((repo / "examples/cad-spectral-transport.json").read_text())
     transport_validator = Draft202012Validator(schemas["CadSpectralTransportRequest"])
     transport_validator.validate(transport)
+    query = {
+        "schema_version": 1,
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "seed": 17,
+        "region_name": "solid",
+    }
+    query_validator = Draft202012Validator(schemas["CadOpticalResultsRequest"])
+    query_validator.validate(query)
+    for field in ("execute", "physical_time_s", "average_seeds"):
+        with pytest.raises(ValidationError):
+            query_validator.validate({**query, field: True})
     for changed in (
         {**transport, "execute": True},
         {**transport, "scene": None},
@@ -140,6 +151,34 @@ def test_real_cad_spectral_cli_and_stdio_profiles_use_the_same_bounded_worker(
                     expect_error=True,
                 )
                 assert reply["error"]["code"] + ":" in str(refusal)
+        query = {
+            "schema_version": 1,
+            "job_id": "00000000-0000-0000-0000-000000000001",
+            "seed": 17,
+            "region_name": "solid",
+        }
+        for extra in ({}, {"execute": True}):
+            current = {**query, **extra}
+            path = tmp_path / ("query-" + str(bool(extra)) + ".json")
+            path.write_text(json.dumps(current))
+            reply = campaign.command(
+                "--socket",
+                campaign.endpoint,
+                "results",
+                "cad-optical",
+                path,
+                allow_error=True,
+            )
+            assert reply["ok"] is False and reply["error"]["code"] == (
+                "invalid_input" if extra else "state_error"
+            )
+            refusal = campaign.mcp_call(
+                "results_cad_optical",
+                {"request_spec": current},
+                profile="results",
+                expect_error=True,
+            )
+            assert reply["error"]["code"] + ":" in str(refusal)
     finally:
         worker.terminate()
         worker.communicate(timeout=5)
