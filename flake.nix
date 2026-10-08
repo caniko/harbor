@@ -106,6 +106,8 @@
         || pkgs.lib.hasSuffix "/examples/atmosphere-transfer.json" path
         || pkgs.lib.hasSuffix "/examples/cad-spectral-scene.json" path
         || pkgs.lib.hasSuffix "/examples/cad-spectral-transport.json" path
+        || pkgs.lib.hasSuffix "/examples/retained-cooling.json" path
+        || pkgs.lib.hasSuffix "/adapters/openlb_retained_cooling.cpp" path
         || pkgs.lib.hasSuffix "/nix/patches/calculix-temperature-precision.patch" path;
     };
     common = {
