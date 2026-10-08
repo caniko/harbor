@@ -24,6 +24,7 @@ def test_native_worker_campaigns_use_existing_shared_methods_and_valid_signature
         "verify_snow_worker.py",
         "verify_study_worker.py",
         "verify_equal_accuracy_cpu.py",
+        "verify_cad_variant_worker.py",
     ):
         tree = ast.parse((scripts / name).read_text())
         for node in ast.walk(tree):
@@ -67,6 +68,7 @@ def test_native_campaigns_call_registered_mcp_tool_names():
         "verify_atmosphere_worker.py",
         "verify_spectral_worker.py",
         "verify_study_worker.py",
+        "verify_cad_variant_worker.py",
     ):
         for node in ast.walk(ast.parse((repo / "scripts" / filename).read_text())):
             if not isinstance(node, ast.Call):
@@ -74,9 +76,70 @@ def test_native_campaigns_call_registered_mcp_tool_names():
             tool = None
             if isinstance(node.func, ast.Name) and node.func.id == "mcp_call":
                 tool = node.args[1]
-            elif isinstance(node.func, ast.Attribute) and node.func.attr == "call_tool":
+            elif isinstance(node.func, ast.Attribute) and node.func.attr in {
+                "call_tool",
+                "mcp_call",
+            }:
                 tool = node.args[0]
             if isinstance(tool, ast.Constant) and isinstance(tool.value, str):
                 assert tool.value in registered, (
                     f"{filename}:{node.lineno}: unregistered MCP tool {tool.value}"
                 )
+
+
+def test_shared_packaged_stdio_call_preserves_worker_payload_and_expected_refusal(
+    tmp_path, monkeypatch
+):
+    import json
+    import os
+    import subprocess
+    import time
+
+    import pytest
+
+    repo = Path(__file__).parents[2]
+    monkeypatch.syspath_prepend(str(repo / "scripts"))
+    from native_worker_campaign import WorkerCampaign
+
+    binary = os.environ["HARBOR_CAD_TEST_BINARY"]
+    campaign = object.__new__(WorkerCampaign)
+    campaign.mcp = repo / ".venv/bin/harbor-cad-mcp"
+    campaign.endpoint = tmp_path / "state/worker.sock"
+    campaign.environment = dict(os.environ)
+    worker = subprocess.Popen(
+        [
+            binary,
+            "worker",
+            "--state",
+            str(tmp_path / "state"),
+            "--profile",
+            str(repo / "profiles/ci.json"),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while not campaign.endpoint.exists():
+            assert worker.poll() is None and time.monotonic() < deadline
+            time.sleep(0.01)
+        case = json.loads(subprocess.check_output([binary, "case", "init"]))
+        plan = campaign.mcp_call("case_plan", {"case": case})
+        expected = json.loads(
+            subprocess.check_output(
+                [binary, "case", "plan", "/dev/stdin"], input=json.dumps(case).encode()
+            )
+        )
+        assert plan == expected["plan"]
+        request = json.loads((repo / "examples/cad-variant.json").read_text())
+        rejected = campaign.mcp_call(
+            "cad_plan_variant", {"variant": request}, profile="cad", expect_error=True
+        )
+        assert "unqualified:" in str(rejected)
+        with pytest.raises(RuntimeError, match="unqualified:"):
+            campaign.mcp_call("cad_plan_variant", {"variant": request}, profile="cad")
+        with pytest.raises(RuntimeError):
+            campaign.mcp_call("case_plan", {"case": case}, expect_error=True)
+    finally:
+        worker.terminate()
+        worker.communicate(timeout=5)

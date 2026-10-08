@@ -53,3 +53,8 @@ invocation. New documents are opened by a second independent patched import to
 check saved geometry/placement, followed by owned cancellation/forced-death
 and reservation/runtime-root release. Development packages are refused before
 creating a campaign output. This gate does not pass until executed successfully.
+
+The shared campaign API regression includes this entrypoint. A real stdio MCP
+client/worker test checks its CAD profile and expected refusal path; source gate
+21 passes all 189 Python cases. These tests repaired a missing shared call and
+the original inspection's plan-only MCP response shape before native execution.

@@ -171,6 +171,26 @@ class WorkerCampaign:
         self.owned.append(job["unit"])
         return job
 
+    def mcp_call(self, tool, arguments, *, profile="simulation", expect_error=False):
+        """Call the exact packaged stdio server against this campaign's worker."""
+
+        async def invoke():
+            from mcp import Client
+            from mcp.client.stdio import StdioServerParameters
+
+            parameters = StdioServerParameters(
+                command=str(self.mcp),
+                args=["--profile", profile],
+                env={**self.environment, "HARBOR_CAD_SOCKET": str(self.endpoint)},
+            )
+            async with Client(parameters) as client:
+                reply = await client.call_tool(tool, arguments)
+            if reply.is_error != expect_error:
+                raise RuntimeError(reply.content)
+            return reply.content if expect_error else reply.structured_content
+
+        return asyncio.run(invoke())
+
     def wait(self, job, states):
         return wait_job(
             str(self.binary),

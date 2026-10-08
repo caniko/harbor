@@ -238,8 +238,8 @@ def main():
             path.write_text(json.dumps(case))
             plan = offline("cad", "inspect", path)
             if (
-                campaign.mcp("cad_plan_inspection", {"case": case}, profile="cad")
-                != plan
+                campaign.mcp_call("cad_plan_inspection", {"case": case}, profile="cad")
+                != plan["plan"]
             ):
                 raise ValueError("CLI/MCP original inspection planning drift")
             job = campaign.submit(plan, "source-" + label)
@@ -267,7 +267,9 @@ def main():
             )["data"]
             if (
                 prepared["plan"]["schema_version"] != 16
-                or campaign.mcp("cad_plan_variant", {"variant": request}, profile="cad")
+                or campaign.mcp_call(
+                    "cad_plan_variant", {"variant": request}, profile="cad"
+                )
                 != prepared
             ):
                 raise ValueError("CLI/MCP controlled-copy approval drift")
@@ -291,7 +293,7 @@ def main():
                     if reply["ok"]:
                         raise ValueError("stale original document was accepted")
                     rejections.append(reply["error"])
-                campaign.mcp(
+                campaign.mcp_call(
                     "cad_plan_variant",
                     {"variant": request},
                     profile="cad",
@@ -310,10 +312,18 @@ def main():
             variant = (
                 campaign.submit(prepared, "variant-" + label)
                 if label == "origin"
-                else campaign.mcp_submit(
-                    prepared, "variant-" + label, profile="cad", tool="cad_submit"
+                else campaign.mcp_call(
+                    "cad_submit",
+                    {
+                        "plan": prepared["plan"],
+                        "approved_digest": prepared["approval_digest"],
+                        "idempotency_key": "variant-" + label,
+                    },
+                    profile="cad",
                 )
             )
+            if variant["unit"] not in campaign.owned:
+                campaign.owned.append(variant["unit"])
             copy_path = (
                 campaign.state / "artifacts" / variant["id"] / "source-document.FCStd"
             )
