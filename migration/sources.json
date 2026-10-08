@@ -89,5 +89,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-js/local/heads",
     "remoteRefs": "refs/imports/harbor-js/remote/heads"
+  },
+  {
+    "id": "harbor-llm",
+    "origin": "git@github.com:caniko/harbor-llm.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "fd1e771f4ed1f2663f86c6fe30e949b646062dbf",
+    "prefix": "sources/harbor-llm",
+    "sourceTree": "b746f90c5896f30c2babb1e4d897194d826fc7ed",
+    "baseline": "bcd05f50c40109b33e82d81f9a681f99903e4885",
+    "preservedLocalHead": "fd1e771f4ed1f2663f86c6fe30e949b646062dbf",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-llm/local/heads",
+    "remoteRefs": "refs/imports/harbor-llm/remote/heads"
   }
 ]

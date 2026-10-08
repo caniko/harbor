@@ -1,0 +1,15 @@
+[ci]
+platform = "github"
+provider = "actions"
+runtime = "nix"
+runner = "ubuntu-24.04"
+nix_builds = [".#default", ".#checks.x86_64-linux.environments", ".#checks.x86_64-linux.plugin", ".#checks.x86_64-linux.module", ".#checks.x86_64-linux.formatting", ".#checks.x86_64-linux.shell"]
+
+[ci.nix_build]
+only = true
+max_parallel = 2
+max_jobs = 1
+cores = 2
+timeout_minutes = 30
+capture_results = true
+artifact_retention_days = 14
