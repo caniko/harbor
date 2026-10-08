@@ -289,7 +289,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if plan.atmospheric_transport.is_some() {
+            formulation: if let Some(spec) = &plan.cad_transport {
+                spec.request.formulation.clone()
+            } else if plan.atmospheric_transport.is_some() {
                 "registered_full_sphere_original_midpoint_planar_uv_transport".into()
             } else if let Some(spec) = &plan.atmosphere {
                 spec.model.clone()
@@ -344,6 +346,8 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                 spec.request.receiver.samples
             } else if let Some(spec) = &plan.atmosphere {
                 spec.streams
+            } else if let Some(spec) = &plan.cad_transport {
+                spec.request.samples_per_triangle
             } else if let Some(spec) = &plan.spectral {
                 spec.samples
             } else if let Some(spec) = &plan.thermal_contact {

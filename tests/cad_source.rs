@@ -757,6 +757,16 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
     let optical_job = store
         .submit_with_profile(&optical_plan, "original-optical", &profile)
         .unwrap();
+    let pending = harbor_cad::qualification::inspect(&store, &optical_job.id).unwrap();
+    assert_eq!(
+        pending.capabilities[0].formulation,
+        "opaque_lambertian_direct_only"
+    );
+    assert_eq!(pending.capabilities[0].refinement, 64);
+    assert!(matches!(
+        pending.capabilities[0].runtime_execution,
+        harbor_cad::qualification::EvidenceState::NotObserved
+    ));
     let copied =
         harbor_cad::cad_transport::registered(&store, &optical_job.id, &optical_plan).unwrap();
     use std::os::unix::fs::MetadataExt;

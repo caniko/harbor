@@ -261,6 +261,15 @@ normal, PDF, spectral/material and facet-association mutations, altered
 reductions and invented evidence statuses. Exact registered-source worker and
 lifecycle measurements still require the newly packaged runtime.
 
+Source gate 30 passes complete Rust tests, strict Clippy, the locked build,
+Treefmt/Ruff and 196 Python tests after a reproduced pending-v17 qualification
+failure. Qualification now reports the original direct-only formulation and
+explicit sampling budget without requiring a fluid case or inventing execution.
+The registered-CAD campaign retains a distinct read-only-source state snapshot
+and checks CLI/MCP plans, independent original-area power/dose, unknown ageing,
+acknowledged source mutation, unchanged service invocation across restart,
+separate cancellation/forced service death and final root/reservation release.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

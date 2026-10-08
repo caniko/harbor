@@ -1,0 +1,330 @@
+"""Registered original-CAD direct optics, independent power/dose and owned lifecycle."""
+
+import argparse
+import copy
+import json
+import math
+import shutil
+import sqlite3
+import subprocess
+from pathlib import Path
+
+from atmospheric_transport_prerequisites import immutable
+from native_worker_campaign import WorkerCampaign
+from verify_atmospheric_transport_worker import tree_identity
+from verify_cad_spectral_cpu import module
+from verify_native_cpu import verify_manifest
+from verify_openlb_hip import service_resources
+from verify_spectral_cpu import checksum
+from verify_systemd import (
+    admission_record,
+    retention_snapshot,
+    wait_admission_release,
+    wait_retention_release,
+)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("executable", "mcp", "runtime", "authority", "source", "output"):
+        parser.add_argument("--" + name, type=Path, required=True)
+    args = parser.parse_args()
+    binary, mcp, runtime = map(immutable, (args.executable, args.mcp, args.runtime))
+    native = json.loads(runtime.read_text())
+    if (
+        not native.get("spectral")
+        or not native["spectral"].endswith("/bin/harbor-cad-cad-spectral-direct")
+        or any(
+            native.get(k)
+            for k in ("cad", "openlb", "render", "video", "fem", "filter", "thermal")
+        )
+    ):
+        raise ValueError(
+            "exact independently scoped direct-only optical worker runtime required"
+        )
+    for key in ("spectral", "spectral_closure", "bwrap"):
+        immutable(native[key])
+    original = args.source.resolve(strict=True)
+    report = json.loads((original / "verification.json").read_text())
+    if len(report["results"]) != 2 or any(
+        not row["roots_and_reservation_released"] for row in report["results"]
+    ):
+        raise ValueError(
+            "two independently qualified original CAD source inspections/reimports required"
+        )
+    baseline = tree_identity(original)
+    root = args.output.resolve()
+    root.mkdir(mode=0o700, parents=True, exist_ok=False)
+    (root / ".doty-protect").write_text(
+        "Preserve registered-CAD optical originals, independent scope and failed attempts.\n"
+    )
+    (root / "source-reference.json").write_text(
+        json.dumps(
+            {
+                "path": str(original),
+                "report_sha256": checksum(original / "verification.json"),
+                "original_tree": baseline,
+            },
+            indent=2,
+        )
+    )
+    # Read-only source database backup; retained evidence is tested in a distinct
+    # copy so mutation tests cannot alter the independent importer qualification.
+    state = root / "state"
+    state.mkdir(mode=0o700)
+    shutil.copytree(original / "state/artifacts", state / "artifacts")
+    with (
+        sqlite3.connect(
+            "file:" + str(original / "state/jobs.sqlite3") + "?mode=ro", uri=True
+        ) as source,
+        sqlite3.connect(state / "jobs.sqlite3") as destination,
+    ):
+        source.backup(destination)
+    verifier = module(
+        Path(__file__).resolve().parents[1] / "adapters/cad_spectral_transport.py"
+    )
+    request = json.loads(
+        (
+            Path(__file__).resolve().parents[1] / "examples/cad-spectral-transport.json"
+        ).read_text()
+    )
+    request["samples_per_triangle"] = 1024
+    before = service_resources()
+    results, rejections, lifecycle = [], [], []
+    with WorkerCampaign(
+        binary, mcp, runtime, args.authority, root, timeout=600
+    ) as campaign:
+        for index, row in enumerate(report["results"]):
+            current = copy.deepcopy(request)
+            current["scene"]["source_job"] = row["reimport"]["id"]
+            if index:
+                current["scene"]["materials"][0]["ageing_action"] = {
+                    "availability": "known",
+                    "value": [0.5, 1.5],
+                    "provenance": "explicit manufactured action; no material lifetime calibration",
+                    "synthetic": True,
+                }
+            path = root / f"request-{index}.json"
+            path.write_text(json.dumps(current))
+            planned = campaign.command(
+                "--socket", campaign.endpoint, "cad", "plan-spectral-transport", path
+            )["data"]
+            assert planned == campaign.mcp_call(
+                "cad_plan_spectral_transport", {"request_spec": current}
+            )
+            assert planned["plan"]["schema_version"] == 17
+            source_tree = state / "artifacts" / current["scene"]["source_job"]
+            unchanged = tree_identity(source_tree)
+            original_stl = source_tree / "solid.stl"
+            raw = original_stl.read_bytes()
+            try:
+                original_stl.write_bytes(raw + b"changed before acknowledgement")
+                assert not campaign.submit(
+                    planned, f"reject-source-{index}", allow_error=True
+                )["ok"]
+                rejections.append({"changed_original_before_ack": index})
+            finally:
+                original_stl.write_bytes(raw)
+            job = campaign.submit(planned, f"optical-{index}")
+            acknowledged = state / "artifacts" / job["id"] / "source-cad/solid.stl"
+            assert (
+                acknowledged.read_bytes() == raw
+                and acknowledged.stat().st_ino != original_stl.stat().st_ino
+            )
+            owner = campaign.wait(job, {"running"})
+            active = retention_snapshot(state, job, str(binary))
+            reservation = admission_record(state, job)
+            assert (
+                reservation is not None
+                and active["intent"]["binding"]["sandbox_policy"]
+                == "harbor-cad-cad-spectral-direct-cpu-v1"
+            )
+            try:
+                original_stl.write_bytes(raw + b"changed after acknowledgement")
+                path.write_text("{}")
+                campaign.restart()
+                assert (
+                    campaign.mcp_call(
+                        "job_submit",
+                        {
+                            "plan": planned["plan"],
+                            "approved_digest": planned["approval_digest"],
+                            "idempotency_key": f"optical-{index}",
+                        },
+                    )["id"]
+                    == job["id"]
+                )
+                outcome = campaign.wait(job, {"succeeded"})
+                assert outcome["invocation_id"] == owner["invocation_id"]
+            finally:
+                original_stl.write_bytes(raw)
+            bundle = root / f"bundle-{index}"
+            campaign.command("artifact", "export", "--state", state, job["id"], bundle)
+            manifests = verify_manifest(bundle)
+            work = bundle / "stages/cad-spectral"
+            receipt = json.loads((work / "cad-spectral-receipt.json").read_text())
+            spec = json.loads((bundle / "native-cad-spectral-request.json").read_text())
+            assert receipt["request_sha256"] == checksum(
+                bundle / "native-cad-spectral-request.json"
+            )
+            assert (
+                receipt["sandbox"]["policy"] == "harbor-cad-cad-spectral-direct-cpu-v1"
+                and len(receipt["sandbox"]["checks"]) == 9
+                and all(receipt["sandbox"]["checks"].values())
+            )
+            normalized = verifier.normalize(spec, bundle / "source-cad")
+            totals = []
+            for observation in receipt["observations"]:
+                facets = verifier.reconstruct(
+                    spec,
+                    normalized,
+                    receipt["geometry_conversions"],
+                    work / observation["original"]["path"],
+                )
+                assert facets == observation["facets"]
+                power = math.fsum(facet["power_w"]["incident"] for facet in facets)
+                widths = normalized["regions"][0]["bounds_m"]
+                area = (widths[1] - widths[0]) * (widths[3] - widths[2])
+                expected = 150.0 * area
+                assert math.isclose(power, expected, rel_tol=2e-6, abs_tol=0.0)
+                assert all(
+                    ("ageing" in f["channels_w_m2"]) == bool(index) for f in facets
+                )
+                assert all(
+                    math.isclose(
+                        f["energy_j"]["incident"],
+                        f["power_w"]["incident"] * 7200.0,
+                        rel_tol=1e-12,
+                        abs_tol=0.0,
+                    )
+                    for f in facets
+                )
+                totals.append(
+                    {
+                        "seed": observation["seed"],
+                        "incident_power_w": power,
+                        "independent_projected_power_w": expected,
+                    }
+                )
+            fields = [record for record in manifests if record["path"].endswith(".csv")]
+            assert len(fields) == 3 and all(
+                record["association"] == "native_original_facet_spectral_packet"
+                and record["time_s"] is None
+                for record in fields
+            )
+            qualification = campaign.command(
+                "qualify", "--job", job["id"], "--state", state
+            )["data"]
+            assert qualification == campaign.mcp_call(
+                "qualification_report", {"job_id": job["id"]}, profile="results"
+            )
+            capability = next(
+                c
+                for c in qualification["capabilities"]
+                if c["stage_id"] == "cad-spectral"
+            )
+            assert (
+                capability["runtime_execution"] == "reported_pass"
+                and capability["numerical_verification"] == "reported_pass"
+                and capability["physical_validation"] == "unqualified"
+            )
+            assert not campaign.submit(
+                planned, f"approval-drift-{index}", approval="0" * 64, allow_error=True
+            )["ok"]
+            wait_admission_release(state, job)
+            wait_retention_release(state, job, str(binary))
+            assert tree_identity(source_tree) == unchanged
+            resources = json.loads((bundle / "service-resources.json").read_text())
+            results.append(
+                {
+                    "source": row["source"],
+                    "source_job": current["scene"]["source_job"],
+                    "job": outcome,
+                    "approval_digest": planned["approval_digest"],
+                    "original_distinct_inodes": True,
+                    "source_unchanged": True,
+                    "restart_preserved_invocation": True,
+                    "roots_and_reservation_released": True,
+                    "power": totals,
+                    "qualification": qualification,
+                    "resources": resources,
+                }
+            )
+        for name, target in (("cancel", "cancelled"), ("service-death", "failed")):
+            current = copy.deepcopy(request)
+            current["scene"]["source_job"] = report["results"][0]["reimport"]["id"]
+            current["samples_per_triangle"] = 4096
+            planned = campaign.mcp_call(
+                "cad_plan_spectral_transport", {"request_spec": current}
+            )
+            job = campaign.submit(planned, name)
+            owner = campaign.wait(job, {"running"})
+            active = retention_snapshot(state, job, str(binary))
+            assert admission_record(state, job) is not None
+            if name == "cancel":
+                campaign.mcp_call("job_cancel", {"job_id": job["id"]})
+            else:
+                subprocess.run(
+                    [
+                        "systemctl",
+                        "--user",
+                        "kill",
+                        "--kill-whom=all",
+                        "--signal=SIGKILL",
+                        owner["unit"],
+                    ],
+                    check=True,
+                    timeout=30,
+                )
+            campaign.restart()
+            outcome = campaign.wait(job, {target})
+            assert campaign.submit(planned, name)["id"] == job["id"]
+            wait_admission_release(state, job)
+            wait_retention_release(state, job, str(binary))
+            lifecycle.append(
+                {
+                    "kind": name,
+                    "job": outcome,
+                    "active_retention": active,
+                    "roots_and_reservation_released": True,
+                    "terminal_idempotency": True,
+                }
+            )
+    assert tree_identity(original) == baseline
+    verification = {
+        "schema_version": 1,
+        "binary": str(binary),
+        "binary_sha256": checksum(binary),
+        "mcp": str(mcp),
+        "mcp_sha256": checksum(mcp),
+        "runtime": str(runtime),
+        "runtime_sha256": checksum(runtime),
+        "campaign_sha256": checksum(Path(__file__)),
+        "source": str(original),
+        "source_verification_sha256": checksum(original / "verification.json"),
+        "source_unchanged": True,
+        "results": results,
+        "rejections": rejections,
+        "lifecycle": lifecycle,
+        "service_resources_before": before,
+        "service_resources_after": service_resources(),
+        "scope": "independently approved registered original-CAD direct-only CPU optical power/dose; no interreflection, atmosphere, GPU, sampling convergence or physical qualification",
+        "physical_validation": "unqualified",
+    }
+    (root / "verification.json").write_text(
+        json.dumps(verification, indent=2, allow_nan=False)
+    )
+    print(
+        json.dumps(
+            {
+                "jobs": len(results),
+                "seeds": sum(len(row["power"]) for row in results),
+                "lifecycle": len(lifecycle),
+                "report_sha256": checksum(root / "verification.json"),
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
