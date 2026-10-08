@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "scope": "Exact packaged prescribed snow, one-way thermal/contact and bounded native thermal study with original-field verification and owned lifecycle",
+  "campaign_source_revision": "4e7fa9d03cb2af5ee45865185b5e0bc910825a4d",
+  "cli_mcp_package_source_revision": "f5995979e2477d7d0bf7f0f0b3f1fd6237bd05c2",
+  "runtime_package_source_revision": "87f0a0fbdc9c97c29399dfa9f46a0dda5eb98a31",
+  "root": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/c8-2",
+  "selection_sha256": "9c59817bf51d9a655dae0fa29e8969c159cbde6b6f7e7fe5654e36f09c218989",
+  "enclosing_report_sha256": "e6fe580f1105143a42c2140e3387f2f6560dbc5f1ec9c10219d761e58a06d5c2",
+  "enclosing_log_sha256": "9dd5187434dfeeb0b149d88b8f11fb1d7a0a950a3a19defe512f50e743950a99",
+  "enclosing_command_sha256": "374a5a595a44312c80e5b122bfd12ccf8a39288fe63fd627ded54ef090ab0566",
+  "exit_code": 0,
+  "reports_sha256": {
+    "snow-native/verification.json": "25ed24a3e3e5a13d9f09539f141fe6d7a50c8ff09fe5491d7d2ccc235e9e1b21",
+    "snow-worker/verification.json": "50a492daba80f702574b14eb28782af50a0a521ea3cc9e76f152b934609d8599",
+    "thermal-contact-worker/verification.json": "81ca4285781c1021f424b1ef80d46fb65c4f547d4a6289a1c45863a3ca06cb0d",
+    "study-worker/verification.json": "38159e62e3c97095e24e7bd291609c204fc1714d1593a160e53ac5b544696c65"
+  },
+  "binary": "/nix/store/5lgazfhlzlsjv726bddxdl5w3fj7qj8g-harbor-cad-0.1.0/bin/harbor-cad",
+  "binary_sha256": "c66e359469152e93f6dfe8dbf7ec33487dc01b14b756328a544fb9fd5c3d441e",
+  "mcp": "/nix/store/iwgkgyqh5p77kamsk42s5168lmg7f263-harbor-cad-mcp/bin/harbor-cad-mcp",
+  "mcp_sha256": "d177221ed78aa6598970f75be0b6168c6c6dbc0bd1839e49137916982f89c5f9",
+  "authority_digest": "e99c2f6f0ac44a6b0f8d338111bff182620fd9ba0ec05e5a313f672ae34b53bf",
+  "study": {
+    "successful_cases": 2,
+    "original_temperature_difference_k_at_120s_node_1": 0.0005008012855682864,
+    "cpu_usage_usec": [14334028, 27816472],
+    "job_cgroup_peak_bytes": [64479232, 89042944],
+    "task_peaks": [8, 8],
+    "restart_kept_invocation": true,
+    "terminal_recovery": "queued cancellation and complete owned-service forced death preserve original child IDs, terminal bundles and released reservations/roots",
+    "optimization_acceptance": "not assessed; explicit temporal refinement changes native accuracy, and one sample per case does not establish a performance winner"
+  },
+  "independent_prior_failures": "current-native-worker-20261008.json retains attempt-1 coupling energy failure and snow mutation-refusal failure; later scoped passes do not supersede independent libRadtran builds or Paperclip audit",
+  "physical_validation": "unqualified"
+}

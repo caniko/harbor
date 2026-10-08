@@ -147,6 +147,12 @@ substeps, producing the 1.25-second step while preserving the 10-second energy
 output intervals and 10/60/120-second retained times. Full worker coupling remains
 a separate exact-package gate; the failed attempt is preserved.
 
+The subsequent exact packaged `c8-2/thermal-contact-worker` gate passes both
+CLI/MCP native solves and immutable approval, raw-field reconstruction, sandbox,
+worker restart, idempotency, cancellation/forced-death, resource and root-release
+checks. Its source and report identities are recorded in
+[repaired worker evidence](evidence/repaired-workers-20261008.json).
+
 The worker independently checks the complete original thermal DAT/JSON schedules,
 positive affine C3D8 geometry, capacitance weights, loss and conservation before
 launching contact. Its derived contact descriptor and projection report bind the

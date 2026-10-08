@@ -212,6 +212,22 @@ original and receipt-substitution regressions pass. The complete CPU gate in
 formatting/Ruff and 173 Python tests. These source repairs require fresh packaged
 snow/coupling worker campaigns before their acceptance.
 
+The fresh guarded `c8-2` exact-package repair campaign now passes prescribed-snow
+native and complete CLI/MCP worker gates, one-way thermal/contact worker gates
+and the bounded native thermal study. [Checksummed evidence](evidence/repaired-workers-20261008.json)
+binds the repaired CLI/MCP, original independent runtimes, campaign source and
+all reports. Snow rejects changed original DAT during historical qualification.
+The coupled solve uses the refined explicit step and reconstructs both original
+thermal sources, conservative projections and original contact fields.
+
+The study records two independently verified native cases and their exact
+120-second node comparison (`0.0005008012855682864 K`), original bundles,
+kernel resource measurements and complete restart/terminal-child recovery.
+The case CPU usages are `14,334,028` and `27,816,472` microseconds with job-cgroup
+peaks `64,479,232` and `89,042,944` bytes. These are single-case refinement
+measurements, not equal-accuracy optimization acceptance. All scoped campaign
+reservations and runtime roots close; physical validation remains unqualified.
+
 | Slice | Acceptance | State |
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |

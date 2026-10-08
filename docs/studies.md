@@ -55,6 +55,12 @@ cancellation and owned-service death without duplicating the collection. Every
 successful or failed child retains its independently checksummed bundle. This
 campaign records measurements and does not infer an optimization winner.
 
+The exact packaged gate passed at `c8-2/study-worker` on 2026-10-08, including
+both original native field sets, CLI/MCP exact-time comparison, same-invocation
+restart and terminal-child recovery. Kernel CPU/memory/task observations and
+every report identity are recorded in
+[repaired worker evidence](evidence/repaired-workers-20261008.json).
+
 ```sh
 python scripts/verify_study_worker.py \
   --executable /nix/store/CLI/bin/harbor-cad \
