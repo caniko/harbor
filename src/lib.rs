@@ -39,6 +39,7 @@ pub mod retention;
 pub mod sandbox;
 pub mod science;
 pub mod snow;
+pub mod snow_openings;
 mod spectral_fields;
 pub mod storage;
 pub mod study;

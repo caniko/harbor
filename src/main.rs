@@ -149,6 +149,10 @@ enum Case {
     ValidateSnowReference {
         file: PathBuf,
     },
+    /// Measure named planar aperture coverage by explicit prescribed snow prisms.
+    ValidateSnowOpenings {
+        file: PathBuf,
+    },
     /// Plan native transient device conduction with an approval-bound prescribed snow resistance.
     PlanSnowReference {
         file: PathBuf,
@@ -485,6 +489,9 @@ fn run(cli: Cli) -> Result<()> {
             Case::ValidateSnowReference { file } => {
                 let spec: harbor_cad::snow::SnowReferenceSpec = read(&file)?;
                 return print(&spec.prepare()?);
+            }
+            Case::ValidateSnowOpenings { file } => {
+                return print(&harbor_cad::snow_openings::prepare(&read(&file)?)?);
             }
             Case::ValidateSpectralReference { file } => {
                 let spec: harbor_cad::radiation::SpectralReferenceSpec = read(&file)?;

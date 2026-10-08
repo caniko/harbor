@@ -103,24 +103,24 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | Specification | Implementation / verification owner | Evidence / remaining acceptance |
 |---|---|---|
 | §1 local CLI, worker, MCP, file/native boundaries | `src/main.rs`, `src/worker.rs`, `python/harbor_cad_mcp`, `adapters/` | CLI/MCP B1 recorded; remaining recipes below |
-| §1 selected native stacks; no extra mandatory framework | `nix/native.nix`, `nix/openlb.nix`, `nix/fem.nix` | FreeCAD/OpenLB/ParaView/FFmpeg and isolated Gmsh/CalculiX packaged and scoped native gates passed; spectral integration pending |
+| §1 selected native stacks; no extra mandatory framework | `nix/native.nix`, `nix/openlb.nix`, `nix/fem.nix`, `nix/spectral.nix`, `nix/atmosphere.nix` | FreeCAD/OpenLB/ParaView/FFmpeg, isolated Gmsh/CalculiX and CPU Mitsuba packaged/scoped native gates passed; libRadtran realization and registered atmospheric transport remain pending |
 | §2 Harbor and Fleetix merged PR #3 | `flake.nix`, `Cargo.toml`, `build.rs` | pinned signatures/contracts; source and digest drift tests |
 | §2 packages, modules, clean-runtime discovery | `flake.nix`, `nix/modules.nix`, `tests/worker.rs` | lightweight CLI/MCP and native packages built; remaining backend packages pending |
-| §2 independent interpreters and immutable ABIs | `nix/native.nix`, `docs/dependency-manifest.json` | importer/MCP/EGL and isolated Gmsh/CalculiX worker executed; spectral ABI sets pending |
-| §2 locks, native patches, GPU architecture | lock files, `nix/patches/`, `nix/openlb.nix` | immutable pins, `gfx1100`, isolated CPU FEM and compatible HIP filter verified; Dr.Jit set pending |
+| §2 independent interpreters and immutable ABIs | `nix/native.nix`, `docs/dependency-manifest.json` | importer/MCP/EGL, isolated Gmsh/CalculiX and Mitsuba 3.9.1/Dr.Jit 1.5.0 Python 3.13 CPU native/worker execution verified at recorded identities |
+| §2 locks, native patches, GPU architecture | lock files, `nix/patches/`, `nix/openlb.nix` | immutable pins, `gfx1100`, isolated CPU FEM, compatible HIP filter and CPU spectral stack verified; CUDA remains best-effort/unqualified |
 | §2 unfree, driver boundary, caches and closure retention | `flake.nix`, `src/retention.rs` | scoped policy, no host activation; active roots/recovery qualified |
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
 | §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v15 plans and original approval compatibility tested; broader recipe-specific contracts pending |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
-| §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; native contact/optical execution pending |
+| §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; scoped synthetic CPU contact and optical native/worker execution verified |
 | §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
 | §4 allocated solver resources, unresolved paths | `src/estimates.rs`, `adapters/openlb_channel.cpp` | channel allocation/Mach/model gates; other formulations and local-gap resolution gates pending |
-| §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy and static free expansion pass native and CLI/MCP gates; synthetic planar contact-native-2 passes 15 solves/8 rejections/five mesh checks; packaged contact worker and source-bound conservative projection qualification pending |
-| §5 airflow/wetting/snow/freezing | OpenLB recipe drivers | synthetic single-phase flow and planar wetting qualified at recorded identities; repaired wetting-native-9 and wetting-worker-3 pass fresh retained native/CLI/MCP/lifecycle gates; prescribed coverage and freezing conservation/refinement pending |
-| §5 solar/UV, angular inputs and dose | atmospheric/spectral adapters | orientation/occlusion/reflection/unit/temporal tests and GPU transport pending |
-| §5 typed one-way transfers and convection | `src/transfers.rs`, `src/thermal_transfer.rs`, `src/thermal_contact.rs` | typed conservative maps, complete native C3D8 capacitance projection and strict v11 thermal→projection→contact worker DAG implemented; CPU source/mapping/schema/MCP checks pass, packaged qualification pending; velocity-to-convection inference rejected by scope |
+| §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy, free expansion and planar contact pass scoped native/CLI/MCP gates; refined source-bound v11 thermal/contact worker passes `c8-2`; hybrid CUDA FEM and product material validation unqualified |
+| §5 airflow/wetting/snow/freezing | OpenLB recipe drivers and snow thermal adapter | synthetic single-phase flow, planar wetting, prescribed snow insulation and fixed-volume Stefan freezing pass recorded native/CLI/MCP/conservation/refinement gates; retained-distribution cooling and blocked-opening flow remain pending |
+| §5 solar/UV, angular inputs and dose | atmospheric/spectral adapters | CPU spectral native/worker orientation/occlusion/reflection/unit/temporal gates pass; numerical atmospheric packet replay passes independently; libRadtran/registered-source worker and GPU transport remain pending/unqualified |
+| §5 typed one-way transfers and convection | `src/transfers.rs`, `src/thermal_transfer.rs`, `src/thermal_contact.rs` | typed conservative maps, native C3D8 capacitance projection and v11 thermal→projection→contact worker pass scoped original-field and lifecycle gates; signed retained-wetting extrusion preserves original distributions; velocity-to-convection inference rejected |
 | §5 moisture-risk entry | `src/moisture_results.rs`, thermal source fields | all six native planar thermal surfaces and explicit screening/missing/inapplicable branches pass packaged CLI/MCP moisture-results-1; combined recipe assembly pending |
 | §6 durable lifecycle/idempotency/services | `src/lifecycle.rs`, `src/worker.rs`, `src/storage.rs` | restart/disconnect/owned tree/cancel/partial output qualified; logout/reboot/resume pending |
 | §6 patched importer and operation policies | `src/sandbox.rs`, `adapters/import_policy.py`, device sandbox | importer and selected single-KFD HIP scope qualified; broader solver/JIT/filter policies pending |
@@ -131,6 +131,7 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §7 compute filters vs presentation | `adapters/paraview_bridge.py`, `adapters/video_bridge.py`, `adapters/filters/` | independent EGL/VAAPI and scoped HIP numerical-gradient native/worker gates recorded; broader filters pending |
 | §7 portable provenance and retained re-render | immutable snapshot, source-bound v2/v3 plans | packaged standalone CLI/MCP rendering and independent video qualified at the recorded revision |
 | §7 Catalyst/Conduit | optional optimization | deferred until measured baseline justifies it |
+| §7 bounded studies and resource measurements | `src/study.rs`, `scripts/verify_study_worker.py` | explicit independently approved CPU collections and immutable partial submission recovery tested; exact packaged two-case thermal study/lifecycle/resource gate passes; equal-accuracy optimization acceptance remains pending |
 | §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render/video/filter and CAD regions/export/mesh/imported-FEM surfaces implemented and scoped worker gates passed; v5/v8 exact native sample/signed same-mesh compare pass packaged results-3 CLI/MCP gate (eight fields, 40 rejections); CAD variants pending |
 | §9 CI and negative tests | `scripts/check_cpu.py`, generated workflow, tests | local gate green; hardware gates remain opt-in and scoped |
 
@@ -227,6 +228,23 @@ The case CPU usages are `14,334,028` and `27,816,472` microseconds with job-cgro
 peaks `64,479,232` and `89,042,944` bytes. These are single-case refinement
 measurements, not equal-accuracy optimization acceptance. All scoped campaign
 reservations and runtime roots close; physical validation remains unqualified.
+
+## Prescribed snow/opening geometry
+
+`case validate-snow-openings` and simulation/all MCP `snow_openings_validate`
+now evaluate explicit named planar apertures against bounded prescribed closed
+snow prisms. [The geometry contract](snow-openings.md) binds original SI-capable
+inputs and provenance, preserves closed-plane tangency and thin remaining slits,
+and counts overlapping projected coverage once. Four Rust tests compare 64
+arrangements against independent unit-square area accounting, verify all normal
+axes/units and refuse unresolved spans, unknown physics and oversized responses.
+Real CLI/MCP parity and typed refusals pass through the same worker.
+
+The complete `source-verification-16` CPU gate passes Rust tests, strict Clippy,
+locked build, formatting/Ruff and 174 Python tests. This closes the explicit
+prescribed planar blockage calculation; blocked-opening flow, permeability and
+automatic convection inference remain outside that geometric model. No native
+solver execution or physical validation is inferred from the area report.
 
 | Slice | Acceptance | State |
 |---|---|---|

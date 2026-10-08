@@ -38,6 +38,18 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
     Draft202012Validator(schemas["PreparedSnowBoundary"]).validate(validated)
     assert planned["snow_boundary"] == validated and validated["executed"] is False
     assert planned["plan"]["thermal"] == validated["native"]
+    openings = json.loads((repo / "examples/snow-openings.json").read_text())
+    Draft202012Validator(schemas["SnowOpeningRequest"]).validate(openings)
+    opening_report = json.loads(
+        subprocess.check_output(
+            [binary, "case", "validate-snow-openings", "/dev/stdin"],
+            input=json.dumps(openings).encode(),
+        )
+    )
+    Draft202012Validator(schemas["PreparedSnowOpenings"]).validate(opening_report)
+    assert opening_report["input"] == openings and not opening_report["executed"]
+    assert abs(opening_report["openings"][0]["covered_area_m2"] - 0.0011) < 1e-15
+    assert abs(opening_report["openings"][0]["remaining_area_m2"] - 0.0005) < 1e-15
     spectral = json.loads((repo / "examples/spectral-reference.json").read_text())
     Draft202012Validator(schemas["SpectralReferenceSpec"]).validate(spectral)
     spectral_reference = json.loads(
@@ -149,6 +161,21 @@ def test_snow_prescription_schema_approval_and_typed_applicability_match_cli_and
                     "snow_reference_validate", {"spec": spec}
                 )
                 assert not actual.is_error and actual.structured_content == validated
+                actual = await client.call_tool(
+                    "snow_openings_validate", {"spec": openings}
+                )
+                assert (
+                    not actual.is_error and actual.structured_content == opening_report
+                )
+                for mutated in (
+                    {**openings, "convection_from_open_area": True},
+                    {**openings, "synthetic": False},
+                    {**openings, "geometry_tolerance": {"value": 1.0, "unit": "kg"}},
+                ):
+                    refusal = await client.call_tool(
+                        "snow_openings_validate", {"spec": mutated}
+                    )
+                    assert refusal.is_error and "invalid_input" in str(refusal.content)
                 actual = await client.call_tool(
                     "spectral_reference_validate", {"spec": spectral}
                 )

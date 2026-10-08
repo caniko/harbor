@@ -107,6 +107,10 @@ of independently approved CPU cases through the same durable worker. Simulation/
 MCP profiles use the same study operations. See [bounded studies](docs/studies.md)
 for partial-submission recovery, resource admission and qualification boundaries.
 
+`case validate-snow-openings examples/snow-openings.json` and simulation/all MCP
+measure named planar-opening coverage by explicit prescribed snow geometry.
+See [snow openings](docs/snow-openings.md) for union-area and applicability semantics.
+
 `filter REQUEST.json` plans an independently approved HIP point-gradient job
 from registered retained science. Its version-4 compute-only DAG, native package
 and qualification boundaries are described in [numerical filters](docs/numerical-filters.md).

@@ -151,6 +151,11 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"simulation", "all"}:
 
         @server.tool()
+        async def snow_openings_validate(spec: dict[str, Any]) -> dict[str, Any]:
+            """Measure explicit prescribed snow/planar-aperture geometry; no deposition, flow, permeability or convection inference."""
+            return await request("validate_snow_openings", spec=spec)
+
+        @server.tool()
         async def freezing_reference_validate(spec: dict[str, Any]) -> dict[str, Any]:
             """Validate explicit synthetic fixed-volume Stefan inputs and SI conversion; no native solve or retained-water transfer."""
             return await request("validate_freezing_reference", spec=spec)

@@ -80,7 +80,10 @@ equal-time spatial errors and separate fixed-mesh temporal convergence, compares
 snow with the bare reference, and retains unsupported-input rejections. An
 explicit `--development-planner` flag labels source-built planner diagnostics
 as package-unqualified. Exact packaged native and worker qualification remain
-pending normal build headroom; full CPU tests do not establish them.
+independent of source CPU tests. The current six-solve/eight-refusal native gate
+and complete CLI/MCP worker campaign passed in the guarded 2026-10-08 `c8-2`
+attempt; [checksummed evidence](evidence/repaired-workers-20261008.json) binds
+their package, campaign, originals and separately reconstructed refinements.
 
 `--worker-runtime THERMAL_WORKER_RUNTIME` explicitly selects an already realized
 operation-only CPU thermal worker descriptor instead of `--runtime`. It must
@@ -98,4 +101,10 @@ moisture inapplicability, reconstruct native fields and historical qualification
 and exercise changed-prescription approval refusal, restart/idempotency, registered
 field mutations, offline exports, complete-tree death/cancellation and final
 reservation/runtime-root release. This exact worker campaign is implemented and
-remains unexecuted.
+passed at those recorded package identities. The earlier `c8-1` mutation-refusal
+failure remains retained independently.
+
+[Prescribed planar opening geometry](snow-openings.md) separately measures the
+union of explicit snow/aperture intersections. Its geometric covered fraction
+does not alter this reference's prescribed thermal coefficient or qualify
+blocked-opening airflow.

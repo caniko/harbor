@@ -2096,6 +2096,9 @@ pub enum Operation {
     ValidateSnowReference {
         spec: Box<crate::snow::SnowReferenceSpec>,
     },
+    ValidateSnowOpenings {
+        spec: Box<crate::snow_openings::SnowOpeningRequest>,
+    },
     ValidateSpectralReference {
         spec: Box<crate::radiation::SpectralReferenceSpec>,
     },
@@ -2293,6 +2296,12 @@ pub fn schemas() -> serde_json::Value {
         serde_json::json!(schemars::schema_for!(crate::snow::SnowReferenceSpec));
     schemas["PreparedSnowBoundary"] =
         serde_json::json!(schemars::schema_for!(crate::snow::PreparedSnowBoundary));
+    schemas["SnowOpeningRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::snow_openings::SnowOpeningRequest
+    ));
+    schemas["PreparedSnowOpenings"] = serde_json::json!(schemars::schema_for!(
+        crate::snow_openings::PreparedSnowOpenings
+    ));
     schemas["FreezingSampleRequest"] = serde_json::json!(schemars::schema_for!(
         crate::freezing_results::FreezingSampleRequest
     ));

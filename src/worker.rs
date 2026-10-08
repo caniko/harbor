@@ -627,6 +627,9 @@ fn dispatch(
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
         Operation::ValidateSnowReference { spec } => Ok(serde_json::to_value(spec.prepare()?)?),
+        Operation::ValidateSnowOpenings { spec } => {
+            Ok(serde_json::to_value(crate::snow_openings::prepare(&spec)?)?)
+        }
         Operation::ValidateSpectralReference { spec } => Ok(serde_json::to_value(spec.prepare()?)?),
         Operation::PlanSpectralReference { spec } => {
             let plan = ExecutionPlan::spectral_reference(*spec, profile.policy.clone())?;
