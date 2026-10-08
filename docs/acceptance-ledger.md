@@ -411,6 +411,15 @@ spatial `2/3/4` and temporal `1/2/4` assessments. Initial identity uses the
 stricter `1e-10` conservation screen separately from evolved refinement; the
 original coarse-history `0.02316` refusal remains recorded.
 
+Source gate 49 passes complete Rust/Clippy/build/format/lint checks, both touched
+Nix parse checks and 222 Python tests. The native retained-cooling driver,
+strict original-field/boundary verifier and separate complete-history assessment
+are retained in local commits. Numerical diagnostic identities and every fixed
+threshold are recorded in
+[retained cooling diagnostic evidence](evidence/retained-cooling-diagnostic-20261008.json).
+Operation-only source-bound native reference packages and their exact-package
+campaign are exposed; package/worker execution qualification remains pending.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

@@ -150,6 +150,7 @@
     wetting = import ./nix/wetting.nix {inherit pkgs inputs cudaPkgs;};
     contact = import ./nix/contact.nix {inherit pkgs fem;};
     freezing = import ./nix/freezing.nix {inherit pkgs inputs cudaPkgs;};
+    retainedCooling = import ./nix/retained-cooling.nix {inherit pkgs inputs cudaPkgs;};
     spectral = import ./nix/spectral.nix {inherit pkgs;};
     atmosphere = import ./nix/atmosphere.nix {inherit pkgs;};
     format = inputs.treefmt-nix.lib.evalModule pkgs {
@@ -187,6 +188,7 @@
       inherit (wetting) wetting-reference-cpu runtime-wetting-reference-cpu runtime-wetting-worker;
       inherit (contact) contact-reference-cpu runtime-contact-reference-cpu runtime-contact-worker;
       inherit (freezing) freezing-native-cpu freezing-reference-cpu runtime-freezing-reference-cpu runtime-freezing-worker;
+      inherit (retainedCooling) retained-cooling-native-cpu retained-cooling-reference-cpu runtime-retained-cooling-reference-cpu;
       inherit (spectral) spectral-environment-cpu spectral-mitsuba spectral-drjit spectral-reference-cpu runtime-spectral-reference-cpu runtime-spectral-worker;
       inherit (spectral) atmospheric-spectral-reference-cpu runtime-atmospheric-spectral-reference-cpu runtime-atmospheric-spectral-worker;
       inherit (spectral) cad-spectral-direct-reference-cpu runtime-cad-spectral-direct-reference-cpu runtime-cad-spectral-direct-worker;
