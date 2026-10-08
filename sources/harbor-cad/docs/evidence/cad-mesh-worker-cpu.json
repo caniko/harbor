@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "package_revision": "a507a154a7d23ee4a72a6f24dbcfda629dba016b",
+  "qualifier_revision": "493b49c174baba17fd08eff434eee23f17fa2326",
+  "build_attempt": 22,
+  "gate": "cad-mesh-worker-2",
+  "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/cad-mesh-worker-2/verification.json",
+  "report_sha256": "a745defad35b1d908563dda9bd82b5c3da96315adf7247a9bd088c2e499b9774",
+  "qualifier_identity": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/cad-mesh-worker-2-qualifier-identity.json",
+  "qualifier_identity_sha256": "9291258197ed49a2cf0c747f2660979c9193dfa443a5a778dbd42d61ca9adcf8",
+  "runtime": "/nix/store/yvpv3pmggcvvn9v83s35qwywprf2bqsq-harbor-cad-native-runtime.json",
+  "runtime_sha256": "6f0c80d62152cd26624da9ab5b33549da9bee5d092ed363f001d82bac1ba6f59",
+  "cli_job": "499f7f9c-d18c-41c3-9f37-63a82586bf02",
+  "mcp_job": "2cfacf48-b266-4978-9237-63557ba3dd81",
+  "resolution": 8,
+  "cli_mcp_artifact_counts": [20, 20],
+  "cli_mcp_memory_peak_bytes": [35950592, 36261888],
+  "kernel_controls": {
+    "cpu.max": "200000 100000",
+    "memory.max": "1121517568",
+    "memory.swap.max": "0",
+    "pids.max": "128"
+  },
+  "passed": [
+    "approved authorized named-source planning through CLI and real pinned MCP client",
+    "pre-submission BREP mutation/stale source, approval and transform mutation rejection",
+    "distinct-inode retained BREP survives original mutation after acknowledgment",
+    "exact world-grid, positive C3D8 Gauss Jacobians, volume and boundary-plane checks",
+    "ten operation-closure/read-only-source isolation checks",
+    "worker restart and idempotency retain the exact running invocation",
+    "checksum-complete portable exports and historical geometric evidence",
+    "forced complete-service death and cancellation retain terminal idempotency",
+    "original source hashes unchanged; canonical reservations and retained runtime roots empty"
+  ],
+  "failed_attempt": {
+    "gate": "cad-mesh-worker-1",
+    "log": "/data/scratch/tmp/opencode/harbor-cad-filter-research-20261006/cad-mesh-worker-gate-1.log",
+    "log_sha256": "9abfdd2d4fa048b39062fd559c2ecef7a6f1b0d524fadfc64dd1b0953aa41a0a",
+    "outcome": "CLI passed; campaign failed before MCP submission: launcher Python had no mcp module",
+    "repair": "launcher uses the existing uv-locked project Python environment; unchanged packages, science and numerical gates; complete fresh rerun"
+  },
+  "physical_validation": "unqualified",
+  "scope": "registered origin/translated controlled BREP to independent source-bound CPU mesh; no field-solve, contact or physical validation claim"
+}

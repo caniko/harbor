@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "source_revision": "0032a415201ec8f4efc4902e86b48aa678917a9c",
+  "source_capture": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/current-worker-source-10.json",
+  "package_selection": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/build-83/packages.json",
+  "report_root": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/c8-26",
+  "reports_sha256": {
+    "native-atmosphere/verification.json": "d47e98860ed971de7b15ddaa5d7ca29dfe1fce19b143406cd9b39c8741ed0108",
+    "native-transport/verification.json": "49cf694669b654a024798d721c259100b87a1ff4adc716a22f8713add6e64950",
+    "worker-atmosphere/verification.json": "c949543dcfed933084d169fb87934dc432bc8bd334f96d06bbd153416edd0dcf",
+    "worker-transport/verification.json": "c54c7d4938c03e4edc5e2e2fdb2a40852939d75d6a9aba293abeca5600f4212c"
+  },
+  "scope": "Exact CPU libRadtran atmosphere and independently approved registered-source Mitsuba scalar_spectral transport, authoritative original retention before acknowledgment, source mutation/loss quarantine, original packet reconstruction, CLI/MCP parity, units, exports and owned lifecycle",
+  "transport_jobs": [
+    {"interface": "cli", "id": "bf30a323-f797-4d4f-8410-4055f5a15946", "state": "succeeded", "roots_and_reservation_released": true},
+    {"interface": "mcp", "id": "bb4d0ef5-0de9-490f-851d-c3915ceef131", "state": "succeeded", "roots_and_reservation_released": true},
+    {"action": "forced-death", "id": "367389ca-e69b-4e59-afe7-13de66e25c2f", "state": "failed", "roots_and_reservation_released": true},
+    {"action": "cancel", "id": "f93fe4c9-c1f0-408a-8850-a488ac048956", "state": "cancelled", "roots_and_reservation_released": true}
+  ],
+  "source_originals_unchanged": true,
+  "physical_validation": "unqualified"
+}

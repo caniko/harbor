@@ -1,0 +1,13 @@
+[formatter.rust]
+command = "rustfmt"
+options = ["--edition", "2024"]
+includes = ["*.rs"]
+
+[formatter.nix]
+command = "alejandra"
+includes = ["*.nix"]
+
+[formatter.python]
+command = "uv"
+options = ["run", "--locked", "ruff", "format"]
+includes = ["*.py"]

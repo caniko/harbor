@@ -1,0 +1,6 @@
+diff --git a/default.single.mk b/default.single.mk
+--- a/default.single.mk
++++ b/default.single.mk
+@@ -38 +38 @@
+-	@$(CXX) $(CXXFLAGS) $(INCLUDE_FLAGS) $< -MM -MT $(@:.d=.o) >$@
++	@$(CXX) $(CXXFLAGS) $(INCLUDE_FLAGS) $< --offload-host-only -MM -MT $(@:.d=.o) >$@

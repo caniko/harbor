@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "build_source_revision": "96d3942838179fefa664373be7816c6fcfd8c026",
+  "build_command": "canix --output json cache binary build .#TARGET --no-push --max-jobs 1 --cores 2; checks use --include-tests",
+  "build_log_root": "/data/scratch/tmp/opencode/harbor-cad-canix-inspection-96d3942",
+  "published": false,
+  "builds": {
+    "default": {
+      "derivation": "/nix/store/1wggxzpi3bzmh39va6lb4x690nk2j3hf-harbor-cad-0.1.0.drv",
+      "output": "/nix/store/jzncj98hbrjlmwh9dxl4zbxhsi0wfxgn-harbor-cad-0.1.0",
+      "log_sha256": "db3c43ae180af961ead9c924e4e5b153b23b254d87183d514e369ccfbf68d910"
+    },
+    "mcp": {
+      "derivation": "/nix/store/h3dby4wr4b7jglw96y5v958cy5dzk9c9-harbor-cad-mcp.drv",
+      "output": "/nix/store/ns2xj5wnrr2sycsq1knh9mb0x57i051g-harbor-cad-mcp",
+      "log_sha256": "644a426285a46b9ba21565117e3f9c28363d4a62a99add581b2456cbfe2bdb10"
+    },
+    "media": {
+      "derivation": "/nix/store/vxnsj22fq52a0bp1cjb34qakz29ncnfw-harbor-cad-video.drv",
+      "output": "/nix/store/dahv2hw4vhirxdnkddf7fxg4w9aa4si8-harbor-cad-video",
+      "log_sha256": "5a2127e107ce9fef655b56a4b641d54bb540bf646189070227266957edad3dc2"
+    },
+    "checks.x86_64-linux.python": {
+      "derivation": "/nix/store/2hkxc7lvmsswiqspx4h6bccqv4243wi5-harbor-cad-python-tests.drv",
+      "output": "/nix/store/rcamggjmx6471hnl9pqmyr7rcwk92whb-harbor-cad-python-tests",
+      "log_sha256": "19215e2a189e871911dbd9750142b356e39ce8020c2bc0bda139d190dce1650b"
+    },
+    "checks.x86_64-linux.clean-runtime": {
+      "derivation": "/nix/store/39a8q23hi2z89i2zryvn0cl6cy04d347-harbor-cad-clean-runtime.drv",
+      "output": "/nix/store/pdvywaq5pqxm7rgs3sqf53a9rw8mxw55-harbor-cad-clean-runtime",
+      "log_sha256": "67448fe6471d96cb204e3905bbcae7b3cfb90a012f561f85a185506280154528"
+    }
+  },
+  "cad_inspection": {
+    "verification_path": "/data/scratch/tmp/opencode/harbor-cad-packaged-inspection-96d3942/verification.json",
+    "sha256": "f6e7102504125a3feac27e4cf412fb843c4dfa81cef70bde5897b3aef5f23cf3",
+    "interfaces": ["packaged CLI", "packaged official MCP stdio client"],
+    "successful_inspection_records": 12,
+    "changed_source": "failed before importer launch; no input snapshot or importer receipt; seven checksummed diagnostic records",
+    "original_preserved": true,
+    "scope": "generated synthetic FCStd inspection; no implicit solver or external engineering qualification"
+  },
+  "detached_descendants": {
+    "verification_path": "/data/scratch/tmp/opencode/harbor-cad-native-bwrap-containment-96d3942/verification.json",
+    "sha256": "13c1574573cbfba6d1f10ed1c02e3c1e3856c7b7cd9db289062c8416b087120a",
+    "scope": "production NativeProcess library plus packaged Bubblewrap 0.12.0 PID namespace",
+    "scenarios": ["normal exit", "timeout", "monitor rejection"],
+    "detached_session_writer_survived": false,
+    "cargo_dependencies": "exact source/checksum parity with repository Cargo.lock"
+  },
+  "media": {
+    "verification_path": "/data/scratch/tmp/opencode/harbor-cad-vaapi-qualified-drm-metadata-20261005/verification.json",
+    "sha256": "ef52a575fb97a853242664f7c05314e3d4cb7a48e7eebe9b783c1f1db82ed03f",
+    "pci": "0000:03:00.0",
+    "render_node": "/dev/dri/renderD128",
+    "device_observed": "AMD Radeon RX 7900 XTX",
+    "ffmpeg_observed": "9.0.1, GCC 16.2.0; --enable-gpl --enable-version3 --disable-nonfree",
+    "libva_observed": "2.24.1",
+    "host_driver_observed": "Mesa Gallium 26.2.1 radeonsi/navi31",
+    "fixture": "three explicitly synthetic 128x128 RGB PNGs",
+    "encoder": "h264_vaapi",
+    "pixel_format": "NV12 upload, yuv420p decoded",
+    "decoded_frames": 3,
+    "decoded_timestamps_s": [0.0, 0.041667, 0.083333],
+    "software_fallback": false,
+    "scope": "selected-device sandboxed hardware encoding and actual CPU decode; EGL, physical-time labels and B1 remain unqualified"
+  },
+  "production_drm_binding": {
+    "source_revision": "2863fa5b18d661dd00b33f7b69acc2e2846dc305",
+    "verification_path": "/data/scratch/tmp/opencode/harbor-cad-production-drm-binding-green-20261005/verification.json",
+    "sha256": "5ecf27dd342fbe26d1896e74e96aeaccf5feea6624ebca78b29cc4956e6dc2e3",
+    "source_device_code_sha256": "2ccf92ef303972849ac145dbc0da6b0050a9e07af2f93d7f8c2a570e53f68f48",
+    "scope": "actual production DrmSandbox and NativeProcess library under bounded systemd service",
+    "encode_decode_passed": true,
+    "mount_isolation_passed": true,
+    "read_only_pci_attributes": ["vendor", "device", "subsystem_vendor", "subsystem_device", "revision", "uevent"],
+    "other_gpu_nodes_hidden": true,
+    "other_device_metadata_hidden": true,
+    "pci_config_and_resources_hidden": true,
+    "private_inputs_and_session_paths_hidden": true
+  },
+  "root_cause": {
+    "libdrm_source": "https://dri.freedesktop.org/libdrm/libdrm-2.4.134.tar.xz",
+    "source_sha256": "sha256-rF500VeDDri+5Exqa/OtSXdO8N0qcr2tdKjyAwi1KpU=",
+    "source_definition": "locked Nixpkgs pkgs/by-name/li/libdrm/package.nix",
+    "function": "drmNodeIsDRM requires /sys/dev/char/MAJOR:MINOR/device/drm",
+    "minimal_repro_path": "/data/scratch/tmp/opencode/harbor-cad-vaapi-libdrm-source/minimal-repro.json",
+    "minimal_repro_sha256": "b527836f5302a3c77747c8aa9478ae57228093b30b95ce5470097b9e2920341c",
+    "initial_failures": ["missing selected DRM sysfs metadata", "64x64 fixture below observed 128x128 hardware minimum"],
+    "policy": "revalidate character-device minor and PCI identity; expose allowlisted selected metadata read-only; never mount all sysfs or add another device"
+  },
+  "physical_validation": "unqualified"
+}

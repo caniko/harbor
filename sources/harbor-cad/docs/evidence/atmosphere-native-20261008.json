@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "source_revision": "026a940540b891bf1a9cf84e01bbc7b099cdb1ef",
+  "package_selection": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/build-76/packages.json",
+  "scope": "Independent exact-package native atmosphere and original-midpoint spectral transport prerequisites; worker attempt separately failed",
+  "report_root": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/c8-14",
+  "native_atmosphere": {
+    "report_sha256": "d6e99e7b751c0a518efb475d501751594080965d7cad2fd1075d8e49ebde4731",
+    "runtime": "/nix/store/9r4civrks8c10r4n97r6q8z29y5dcbmk-harbor-cad-atmosphere-runtime.json",
+    "runtime_sha256": "3ad62fa1b96e48305a8a656d1b725ed2f55528fc5058f5e2830d6a1215b767f9",
+    "stream_refinement_relative_l2_errors": [4.9501953391122796e-5, 4.924134964412075e-5],
+    "angular_shape_refinement_relative_l2_errors": [0.002118400116438042, 0.00048284880813010143],
+    "wavelength_integral_refinement_relative_l2_errors": [0.004324638468052591, 0.003160495298212696],
+    "unchanged_tolerance": 0.02,
+    "passed": true
+  },
+  "native_transport": {
+    "report_sha256": "282258616d5773b1216ee59d45faf130a9de15c7230a2d705a1768a42eefc164",
+    "runtime": "/nix/store/v3s2bnxcagry62fln8skwqaq19ssmzxj-harbor-cad-atmospheric-spectral-reference-runtime.json",
+    "runtime_sha256": "51b00aec9572e0626874c6a0eba730aff1de5ae4cc43bce89fd79098cadff07d",
+    "passed": true
+  },
+  "worker_attempt": {
+    "exit_code": 1,
+    "failure": "bundle ingestion omitted scientific atmosphere/transport metadata; originals retained, fresh matching worker qualification required"
+  },
+  "physical_validation": "unqualified"
+}

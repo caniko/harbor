@@ -1,0 +1,10 @@
+/target/
+/.ci-bootstrap/
+/.venv/
+/.direnv/
+/.nix-results/
+/.pytest_cache/
+__pycache__/
+*.pyc
+/result*
+/evidence/local/

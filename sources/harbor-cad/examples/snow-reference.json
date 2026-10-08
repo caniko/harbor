@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "thermal": {
+    "schema_version": 1,
+    "synthetic": true,
+    "backend": "cpu",
+    "formulation": "plane_wall_robin",
+    "size_m": [0.04, 0.01, 0.01],
+    "resolution": 2,
+    "geometry_tolerance_m": 1e-8,
+    "initial_temperature_k": 263.15,
+    "density_kg_m3": 2700.0,
+    "specific_heat_j_kg_k": 900.0,
+    "conductivity_w_m_k": 2.0,
+    "material_temperature_domain_k": [243.15, 273.0],
+    "convection_w_m2_k": 50.0,
+    "duration_s": 8000.0,
+    "max_step_s": 40.0,
+    "integration_substeps": 8,
+    "observation_times_s": [2000.0, 4000.0, 8000.0],
+    "ambient_history": [[0.0, 253.15], [8000.0, 253.15]],
+    "heater_history": [[0.0, 0.0], [8000.0, 0.0]],
+    "numerical_tolerance": 0.02,
+    "energy_tolerance": 0.02,
+    "geometry_provenance": "synthetic plane wall; exposed x faces; transverse faces insulated; no openings",
+    "material_provenance": "synthetic constant solid properties, not a qualified product material",
+    "history_provenance": "prescribed constant dry subzero environment; no heater",
+    "convection_provenance": "prescribed bare-wall coefficient; no inference from velocity",
+    "moisture_risk": {
+      "assessment": "inapplicable",
+      "justification": "synthetic dry prescribed snow; deposition, frost and liquid transport omitted"
+    }
+  },
+  "snow": {
+    "schema_version": 1,
+    "synthetic": true,
+    "model": "dry_quasi_steady_series_resistance",
+    "coverage": "complete_both_x_faces",
+    "opening_model": "no_openings_in_plane_wall_fixture",
+    "thickness": {"value": 2.0, "unit": "mm"},
+    "conductivity": {"value": 0.05, "unit": "W/(m*K)"},
+    "density": {"value": 100.0, "unit": "kg/m3"},
+    "specific_heat": {"value": 2000.0, "unit": "J/(kg*K)"},
+    "material_temperature_domain_k": [243.15, 273.0],
+    "maximum_omitted_capacity_ratio": 0.02,
+    "maximum_diffusion_timescale_ratio": 0.02,
+    "provenance": "synthetic prescribed dry uniform coverage; constant effective conductivity; no deposition or adhesion model"
+  }
+}

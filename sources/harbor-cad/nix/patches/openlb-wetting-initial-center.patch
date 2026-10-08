@@ -1,0 +1,9 @@
+--- a/examples/multiComponent/contactAngle2d/contactAngle2d.cpp
++++ b/examples/multiComponent/contactAngle2d/contactAngle2d.cpp
+@@ -213,3 +213,4 @@
+-  // initialise phi with a circle with centre at (Nx/2,1) and radius (diameter/2), smoothed by w/2
+-  SmoothIndicatorFactoredCircle2D<T,T> circle( {extent[0]/2., 1.}, diameter/2., w/2, 0, {0,0}, 0, 1. );
++  // Harbor's explicit initial_center_above_wall_m=0 keeps the same physical
++  // half-circle across refinement. The Bouzidi wall is at y=0.5, not y=1.
++  SmoothIndicatorFactoredCircle2D<T,T> circle( {extent[0]/2., 0.5}, diameter/2., w/2, 0, {0,0}, 0, 1. );
+   AnalyticalIdentity2D<T,T> phi( one - circle );

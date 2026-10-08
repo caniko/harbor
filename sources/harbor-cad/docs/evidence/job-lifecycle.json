@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-05",
+  "qualification_scope": "Exact execution binding, production importer isolation, real active closure roots, native partial-field recovery and frame-bound EGL/VAAPI adapter sequence; not GPU OpenLB or complete B1",
+  "source_code_revision": "41b8dd8",
+  "runner": "/nix/store/lsg1gb9jnlcg3sfbh0y06w7mzkm74n27-harbor-cad-0.1.0/bin/harbor-cad",
+  "runner_sha256": "2409612155913124b9cca2d0a2060cc869b7405660239676aa86ac4644f39811",
+  "runtime": "/nix/store/hq5ipf2r22xwq1b69h62qc0jbvr4mw8n-harbor-cad-native-runtime.json",
+  "renderer": "/nix/store/6hwnpiq9rv95j919d2is4q73k2r75i01-harbor-cad-render/bin/harbor-cad-render",
+  "media": "/nix/store/dgq85aq9b0zjcazg5rgng9ac04dw8y2b-harbor-cad-video/bin/harbor-cad-video",
+  "importer": {
+    "evidence": "/data/scratch/tmp/opencode/harbor-cad-job-lifecycle-20261005/importer-final/verification.json",
+    "evidence_sha256": "f28f5cc5cbdfeaa097a28a63975f1870dd9c3f8be080385bbbda6113541847cc",
+    "source_sha256": "972db1e993665fb1d51bcbba5fa478c4dea5e90948a1c864676aaf64438860e2",
+    "policy": "production",
+    "isolation_policy": "harbor-cad-importer-v1",
+    "declared_read_only_store_objects": 672,
+    "runtime_roots_per_job": 5,
+    "memory_limit_bytes": 1073741824,
+    "threads": 1,
+    "tasks_limit": 128,
+    "timeout_seconds": 60,
+    "input_unchanged": true,
+    "credential_and_environment_canaries_hidden": true,
+    "session_socket_and_host_loopback_denied": true,
+    "gpu_devices_absent": true,
+    "complete_descendant_tree_closed": true,
+    "terminal_runtime_roots_released": true,
+    "results": [
+      {"scenario": "valid", "job_id": "5298d450-bbbe-42fe-94b3-3e56723086d9", "state": "succeeded", "verified_bundle_records": 15, "execution_binding_sha256": "2497262ee11689d63518b70221ea2bff3c7d3caa9e6a47748961ae9c6eda90c5"},
+      {"scenario": "missing-region", "job_id": "85306f23-84b4-4482-a7ca-6a87c4647f39", "state": "failed", "verified_bundle_records": 13, "execution_binding_sha256": "8f352d4af51be1866783c912dd4d3b02f075b1c5a307cb574daeadafba3c3644"}
+    ]
+  },
+  "native_recovery": {
+    "evidence": "/data/scratch/tmp/opencode/harbor-cad-job-lifecycle-20261005/recovery-final/verification.json",
+    "evidence_sha256": "61bc7fdb3a6da81a2ebae46eb0596386793ba695a39f70e171db989d6b374e72",
+    "resolution": 64,
+    "initial_vti_bytes": 61287,
+    "array_type": "Float64",
+    "vtk_shape": [130, 68, 66],
+    "retained_fields_unchanged": true,
+    "runtime_retained_across_worker_death": true,
+    "terminal_runtime_roots_released": true,
+    "results": [
+      {"test": "owned-service-SIGKILL-and-worker-restart", "state": "failed", "exit_code": 9, "verified_bundle_records": 25},
+      {"test": "ordinary-cancellation", "state": "cancelled", "exit_code": 143, "verified_bundle_records": 25}
+    ]
+  },
+  "egl_vaapi": {
+    "evidence": "/data/scratch/tmp/opencode/harbor-cad-job-lifecycle-20261005/egl/verification.json",
+    "evidence_sha256": "66e5a99ac663fc05328b06584c1b7ccb0c9925edae8d033bdd1b13629a1e23b0",
+    "pci": "0000:03:00.0",
+    "frames": 3,
+    "dimensions": [640, 480],
+    "frame_sequence_sha256": "6f3c111192b1c054642bcc467a1c0452353d505808a351f405244607033d3a7d",
+    "requested_physical_times_s": [0, 10, 20],
+    "observed_physical_times_s": [0, 10.000000000000002, 20.000000000000004],
+    "playback_timestamps_s": [0, 0.041667, 0.083333],
+    "source_fields_unchanged": true,
+    "render_memory_peak_bytes": 638685184,
+    "media_memory_peak_bytes": 194781184,
+    "render_elapsed_s": 1.8670289129950106,
+    "media_elapsed_s": 0.5646269629942253,
+    "vram_peak": "unqualified"
+  },
+  "synthetic_encoder": {
+    "evidence": "/data/scratch/tmp/opencode/harbor-cad-job-lifecycle-20261005/vaapi/verification.json",
+    "evidence_sha256": "b94716d8c78185b3ba8a66ead38221c9c22ff985b38d6a20bd2c74df7ebca229",
+    "frame_sequence_sha256": "cb2a5e4b4cf351274d0fee6ef44df5323a3e77519a0145d1232335ae1d2fe19e",
+    "scientific_time_labels": "unqualified: synthetic encoder fixture"
+  },
+  "packaged_cli_mcp_cpu": {
+    "evidence": "/data/scratch/tmp/opencode/harbor-cad-job-lifecycle-20261005/cpu-final/verification.json",
+    "evidence_sha256": "914f51a9c41c289b65bf14df989b77adfa352ee8fa776dfaf5ed929efad07463",
+    "mcp": "/nix/store/h8asxlc3ayj0rwp69yvcwgv3x8jgk686-harbor-cad-mcp/bin/harbor-cad-mcp",
+    "resolutions": [8, 16],
+    "bundle_records": [30, 30],
+    "velocity_relative_l2": [0.01112442826614978, 0.0027813873419648702],
+    "cad_inspection_cli_mcp_records": [14, 14],
+    "missing_region_rejected": true,
+    "changed_source_rejected": true,
+    "convergence": "not assessed",
+    "pressure_accuracy": "unqualified"
+  },
+  "local_cpu_gate": {"rust_unit_tests": 6, "rust_integration_tests": 46, "python_cases": 31, "clippy": "passed with -D warnings", "rust_format": "passed", "ruff_lint_format": "passed", "command": "python3 scripts/check_cpu.py", "source_code_revision": "41b8dd8"},
+  "canix_package_checks": {
+    "jobs": 1,
+    "cores": 2,
+    "publication": "explicitly skipped",
+    "cli_derivation": "/nix/store/lksqnni7yzfq7prnlyyp0j6qklnzzifs-harbor-cad-0.1.0.drv",
+    "cli_output": "/nix/store/lsg1gb9jnlcg3sfbh0y06w7mzkm74n27-harbor-cad-0.1.0",
+    "python_check_command": "canix --output json cache binary build .#checks.x86_64-linux.python --include-tests --no-push --max-jobs 1 --cores 2",
+    "python_check_derivation": "/nix/store/kiiyqrfbycm3kbsjs3digd4sd259k81x-harbor-cad-python-tests.drv",
+    "python_check_output": "/nix/store/dlm1phszmc8ax4qr2kxsmycnfnjj816a-harbor-cad-python-tests",
+    "python_check": "passed",
+    "cpu_runtime": "passed",
+    "mcp": "passed",
+    "renderer": "passed",
+    "media": "passed"
+  },
+  "nonqualifying_attempts": "Shared evaluation-lease contention, a collected unrooted derivation, an interrupted multi-package orchestration and an unlocked client environment missing the MCP SDK are retained in the scratch command logs; passing results use bounded guarded Canix evaluation, retained outputs and the locked client environment.",
+  "limitations": "Exact source/runtime closure identities remain archived in full evidence. Solver/GPU/JIT policies, aggregate capacity, per-process VRAM and complete CUDA B1 remain unqualified."
+}

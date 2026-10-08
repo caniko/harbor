@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "scope": "Exact-package synthetic planar CPU contact CLI/MCP worker and lifecycle; thermal-projection coupling, unrelated runtimes and physical validation remain separate",
+  "package_source_revision": "87f0a0fbdc9c97c29399dfa9f46a0dda5eb98a31",
+  "campaign_source_revision": "0405db074f4aac7bf51393ed7e3236c722e891b1",
+  "campaign_sha256": "67f11cab4545f3e0cbbba1453f147487d9d71a3f456652c9e3197ae1a9242711",
+  "contact_adapter_source_sha256": "2f14b8ea41fa4254edc0b742d6094e6cc78fab3cdaccbca38d52e000d484e733",
+  "report": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/c8-1/contact-worker/verification.json",
+  "report_sha256": "90dde438daea61d9f4bae4ace9a6a220d15cf879f3540861b627bd61b919c30f",
+  "binary": "/nix/store/s5rizhrwh2zyc0vzbmg0b8wz90hyz4nv-harbor-cad-0.1.0/bin/harbor-cad",
+  "binary_sha256": "2e3e09c8dd5cc2a23ce708be2b83559092d9f1da120c2ffc06bd9fc749839432",
+  "mcp": "/nix/store/7l07v0lnyqgsm624myzasib309dvwpzv-harbor-cad-mcp/bin/harbor-cad-mcp",
+  "mcp_sha256": "4eaa2af531c3580e67a725a784a95f4eead334948191d1b6e8be1581e437cda9",
+  "runtime": "/nix/store/6x9bfqk44aykgvk7lph6gfhhncmf21pc-harbor-cad-native-runtime.json",
+  "runtime_sha256": "95f31323bbd1c73cfc531c2f094600e7f1c1dedb34a9823fbf1df86305aa37cc",
+  "native_reference_sha256": "457d1cd8c96afa4901e9bdf75f557f0fd86f7000c9b5d3bf20e949096a4e7e2e",
+  "command": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/contact-current-2-command.json",
+  "command_sha256": "c6e7c6be3709f28a933a1004dd79c980db3267b2a65003d5e7aef3282fc84173",
+  "log": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/contact-current-2.log",
+  "log_sha256": "0ba3b99e23a210cabadc7a525040de3c691ac11a1dd4083032ce3aa91140b6ee",
+  "exit_code": 0,
+  "service_runtime_s": 11.120,
+  "service_peak_memory_reported": "347.2M; swap 0B",
+  "jobs": {
+    "cli_succeeded": "7650f2ef-f83d-4b47-8290-9bc99b956f57",
+    "mcp_succeeded": "d5f7bf42-180f-4e0b-bbcc-a65dd60fa005",
+    "forced_death_failed": "119fd832-4600-4fd4-867e-6f9f5b70c84d",
+    "cancel_cancelled": "f9688f25-0b4a-4d05-ac6a-db4b4d6c6a74"
+  },
+  "physical_validation": "unqualified",
+  "independent_failed_attempt": {
+    "root": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/current-20261008-1",
+    "worker_log_sha256": "da99d6eaf1557c9b90e037d879075fff2bc3cb746933aac6bfb56c39970957de",
+    "campaign_log_sha256": "7ca0a7672c54fcfdf3b89eb7cdc94abc9d5c225a739f45cfe228a86b4eaaaa25",
+    "command_sha256": "633299af494ee439fdba8f5f76205ea45ba58a2fdc6c5ef3ecb48a24a1ab7a90",
+    "exit_code": 1,
+    "outcome": "worker startup refused a qualification output path too long for Linux sockaddr_un; a fresh short-path attempt subsequently passed"
+  }
+}

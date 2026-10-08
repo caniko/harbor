@@ -1,0 +1,106 @@
+# Host authority and shared admission
+
+`HostAuthority` is an explicit version-1 authorization contract separate from
+the existing version-1 case, plan and host-profile records. It declares:
+
+- The exact Fleetix source revision and contract digest.
+- Aggregate same-user RAM capacity and reserved headroom.
+- One canonical scoped root, application byte budget and free-space headroom
+  per filesystem. Multiple roots on the same filesystem cannot create separate
+  budgets.
+- Exact allowed role/backend/PCI/UUID identities, authoritative routes and
+  individually recorded overrides. An absent route stays disabled.
+- One VRAM budget and headroom allowance per physical card, shared across roles.
+- Allowed input roots and immutable native-runtime manifests.
+
+All values are operator-supplied policy, never inferred from an imported document
+or a plan's device selection. Export the generated `HostAuthority` JSON Schema
+with `harbor-cad schema` when preparing the configuration. Route records must
+come from the resolved Fleetix host configuration; an alternative belongs in
+an explicit override with its reason.
+
+```sh
+harbor-cad authority install /absolute/authority.json
+harbor-cad worker --state /absolute/private/state \
+  --profile /absolute/profile.json --authority /absolute/authority.json
+```
+
+Workers using the authority require systemd execution. The same-user admission
+journal is anchored under the **OS account's canonical home**, at
+`.local/state/harbor-cad/admission/admission.sqlite3`; `HOME` and XDG environment
+variables cannot select another pool. Its owned private database and sidecars
+reject symlinks and hardlinked/foreign inodes. The journal persists independently
+of workers and the user runtime directory. Conflicting worker authorities reject.
+
+Explicit policy installation can promote a new configuration only after every
+reservation has been released through verified closure. Registered roots must
+remain within its filesystem scopes and retained bytes must fit its budgets.
+Already-bound jobs are never rewritten or upgraded. A worker or queued job using
+the superseded authority receives a compatibility rejection; submit a new job
+under the deliberately selected policy.
+
+## Immutable execution authorization
+
+Each authorized submission atomically commits an `ExecutionAuthorization` with
+the job/profile/execution binding. It includes the full authority and binds the
+exact plan, profile and execution-binding digests. Idempotent retries retain the
+first authorization. Launch and the executing runner verify it independently.
+Successful execution archives `execution-authorization.json`; terminal exports
+include it in `execution.json` even when execution failed before artifact creation.
+Historical jobs export `execution_authorization: null`. Their original approved
+JSON/digests remain unchanged; an authority-enabled worker cannot silently
+upgrade their execution policy.
+
+## Admission and lifecycle
+
+One SQLite immediate transaction checks and records aggregate reservations before
+service launch. A durable reservation includes the canonical state root, job ID,
+authorization digest, RAM, filesystem staging allowance and shared card identities.
+An occupied pool leaves the job queued; no service runtime deadline is spent
+waiting for capacity. The runner requires the pre-launch reservation before its
+running transition.
+
+Filesystem accounting includes every registered state's retained artifacts,
+quarantined/incomplete bytes, database files and the complete native-copy staging
+allowance. Nested mounts, missing registered roots, arithmetic overflow and
+ambiguous identities reject conservatively. Live `MemAvailable` and filesystem
+available bytes are rechecked with explicit headroom. Active bytes plus complete
+reservations are deliberately conservative rather than discounted using an
+unverified progress estimate. External filesystem usage is reflected in live
+free space; this is not a universal filesystem quota.
+
+Heavy GPU admission is exclusive by physical PCI card. It checks existing card
+anchors before recording ownership; production probe helpers also honor durable
+reservations. Authorized runners acquire their anchors without a runtime wait.
+AMD `mem_info_vram_total`/`mem_info_vram_used` supply a conservative pre-launch
+headroom check; unavailable or inconsistent telemetry does not qualify a backend.
+Reservations are application admission, not hard VRAM quotas or measured peaks.
+
+Worker death does not release a reservation for an independent surviving service.
+Terminal status alone does not release it either: cleanup checks the recorded
+unit/invocation and complete cgroup tree. Missing/ambiguous ownership retains
+capacity. A queued cancellation can release after proving no owned service lives.
+Services explicitly receive `MemorySwapMax=0` in addition to RAM/CPU/task limits.
+
+Legacy workers without `--authority` retain the previously documented per-root
+CPU-reference behavior. They do not qualify aggregate capacity or GPU execution.
+HIP submissions require this authority and the independently correlated exact
+PCI/UUID. Its single-KFD-GPU worker policy rejects another exposed compute GPU;
+durable GPU qualification and multi-GPU exclusion remain separate evidence gates.
+
+## Qualification
+
+```sh
+python3 scripts/verify_shared_admission.py \
+  --executable /nix/store/CLI/bin/harbor-cad \
+  --output /absolute/new/qualification-directory
+```
+
+This opt-in verifier installs a deliberately scoped application authority, starts
+two packaged workers and uses labelled synthetic CPU jobs. It verifies queued
+cross-root RAM/disk contention before service creation, reservation survival after
+worker death, cross-root progress after complete service closure, checksummed
+authorization exports, and the existing restart/forced-death/cancellation
+qualifier with the same authority. It signals only its recorded job units.
+Numerical GPU, KFD, multi-GPU, per-process VRAM peaks and logout/reboot behavior
+require independent qualification.

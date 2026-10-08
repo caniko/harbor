@@ -1,0 +1,314 @@
+"""Independent energy integrals and plane-wall eigenmode references."""
+
+import importlib.util
+import json
+import math
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+
+def module():
+    path = Path(__file__).resolve().parents[2] / "adapters/thermal_history.py"
+    spec = importlib.util.spec_from_file_location("thermal_history", path)
+    result = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(result)
+    return result
+
+
+def test_piecewise_linear_power_preserves_exact_energy_at_partial_intervals():
+    bridge = module()
+    history = [[0.0, 0.0], [10.0, 2.0], [20.0, 2.0]]
+    assert bridge.history_value(history, 5.0) == 1.0
+    assert bridge.history_energy(history, 5.0) == 2.5
+    assert bridge.history_energy(history, 15.0) == 20.0
+    with pytest.raises(ValueError):
+        bridge.history_value(history, 25.0)
+
+
+def test_robin_eigenvalues_and_decay_match_independent_plane_wall_reference():
+    bridge = module()
+    values = bridge.eigenvalues(1.0, 4)
+    assert values[0] == pytest.approx(0.86033358901938, abs=2e-14)
+    for index, root in enumerate(values):
+        assert index * math.pi < root < index * math.pi + math.pi / 2
+        assert root * math.tan(root) == pytest.approx(1.0, rel=1e-12)
+    # Heisler first mode for Fo=1 at the centre: terms n>=1 are below 2e-6.
+    expected = (
+        4
+        * math.sin(values[0])
+        / (2 * values[0] + math.sin(2 * values[0]))
+        * math.exp(-(values[0] ** 2))
+    )
+    observed = bridge.plane_wall_temperature(
+        0.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        [[0.0, 0.0], [1.0, 0.0]],
+        [[0.0, 0.0], [1.0, 0.0]],
+    )
+    assert observed == pytest.approx(expected, abs=2e-6)
+
+
+def test_adiabatic_uniform_heating_and_constant_ambient_do_not_invent_heat_loss():
+    bridge = module()
+    # rho*c*V=2 J/K, integral of ramp through 5 s is 2.5 J.
+    observed = bridge.plane_wall_temperature(
+        0.3,
+        5.0,
+        1.0,
+        1.0,
+        2.0,
+        0.0,
+        250.0,
+        [[0.0, 300.0], [10.0, 300.0]],
+        [[0.0, 0.0], [10.0, 2.0]],
+    )
+    assert observed == 251.25
+    # Stable exponential convolution of constant and linear forcing, also at tiny dt.
+    for duration in (1e-10, 0.5, 10.0):
+        integral = bridge.decay_integral(2.0, 3.0, 4.0, duration)
+        constant = 3.0 * -math.expm1(-2.0 * duration) / 2.0
+        ramp = 4.0 * (duration / 2.0 + math.expm1(-2.0 * duration) / 4.0)
+        assert integral == pytest.approx(constant + ramp, rel=1e-12, abs=1e-20)
+
+
+def fixture():
+    return {
+        "schema_version": 1,
+        "synthetic": True,
+        "backend": "cpu",
+        "formulation": "plane_wall_robin",
+        "size_m": [0.02, 0.01, 0.01],
+        "resolution": 4,
+        "geometry_tolerance_m": 1e-6,
+        "initial_temperature_k": 293.15,
+        "density_kg_m3": 7800.0,
+        "specific_heat_j_kg_k": 500.0,
+        "conductivity_w_m_k": 20.0,
+        "material_temperature_domain_k": [240.0, 320.0],
+        "convection_w_m2_k": 200.0,
+        "duration_s": 120.0,
+        "max_step_s": 1.0,
+        "integration_substeps": 64,
+        "observation_times_s": [10.0, 60.0, 120.0],
+        "ambient_history": [[0.0, 253.15], [60.0, 253.15], [120.0, 273.15]],
+        "heater_history": [[0.0, 0.0], [60.0, 0.0], [120.0, 1.0]],
+        "numerical_tolerance": 0.02,
+        "energy_tolerance": 0.02,
+        "geometry_provenance": "synthetic reference box",
+        "material_provenance": "synthetic constant-property steel-like solid",
+        "history_provenance": "prescribed synthetic cold soak then heater ramp",
+        "convection_provenance": "prescribed synthetic h; no velocity conversion",
+        "moisture_risk": {"assessment": "missing", "reason": "no humidity supplied"},
+    }
+
+
+def test_transient_admission_preserves_ranges_histories_and_unknown_moisture():
+    bridge = module()
+    request = fixture()
+    bridge.validate(request)
+    for field, value in [
+        ("backend", "hip"),
+        ("synthetic", False),
+        ("convection_provenance", ""),
+        ("density_kg_m3", 0.0),
+        ("material_temperature_domain_k", [270.0, 320.0]),
+        ("max_step_s", 1e-10),
+        ("integration_substeps", 65),
+        ("integration_substeps", True),
+        ("observation_times_s", [10.0, 120.0, 60.0]),
+        ("numerical_tolerance", 0.1),
+        ("heater_history", [[0.0, 0.0], [60.0, None], [120.0, 1.0]]),
+        ("moisture_risk", None),
+    ]:
+        with pytest.raises((ValueError, TypeError)):
+            bridge.validate({**request, field: value})
+    with pytest.raises(ValueError):
+        bridge.validate({**request, "implicit_velocity_to_h": True})
+
+
+def test_convection_face_selection_retains_local_ccx_orientation_after_id_changes():
+    bridge = module()
+    spec = {**fixture(), "resolution": 1}
+    ids = [8, 42, 9, 5, 76, 6, 1, 30]
+    positions = [
+        (0, 0, 0),
+        (0.02, 0, 0),
+        (0.02, 0.01, 0),
+        (0, 0.01, 0),
+        (0, 0, 0.01),
+        (0.02, 0, 0.01),
+        (0.02, 0.01, 0.01),
+        (0, 0.01, 0.01),
+    ]
+    nodes = dict(zip(ids, positions, strict=True))
+    faces = bridge.plane_wall_faces(spec, nodes, {93: ids})
+    assert {f[1] for f in faces} == {4, 6}
+    assert {tuple(sorted(f[2])) for f in faces} == {
+        tuple(sorted([8, 5, 76, 30])),
+        tuple(sorted([42, 9, 6, 1])),
+    }
+    with pytest.raises(ValueError):
+        bridge.plane_wall_faces(spec, nodes, {93: ids, 94: ids})
+
+
+def test_native_thermal_verification_rejects_incomplete_fields_and_false_energy():
+    bridge = module()
+    spec = {
+        **fixture(),
+        "resolution": 1,
+        "duration_s": 2.0,
+        "max_step_s": 1.0,
+        "observation_times_s": [1.0, 2.0],
+        "initial_temperature_k": 250.0,
+        "convection_w_m2_k": 0.0,
+        "density_kg_m3": 1000.0,
+        "specific_heat_j_kg_k": 1000.0,
+        "ambient_history": [[0.0, 250.0], [2.0, 250.0]],
+        "heater_history": [[0.0, 1.0], [2.0, 1.0]],
+    }
+    positions = [
+        (0, 0, 0),
+        (0.02, 0, 0),
+        (0.02, 0.01, 0),
+        (0, 0.01, 0),
+        (0, 0, 0.01),
+        (0.02, 0, 0.01),
+        (0.02, 0.01, 0.01),
+        (0, 0.01, 0.01),
+    ]
+    nodes = dict(enumerate(positions, 1))
+    cells = {53: list(nodes)}
+    fields = {
+        "temperature": [
+            {"time": t, "values": {(n,): [250.0 + t / 2.0] for n in nodes}}
+            for t in (1.0, 2.0)
+        ]
+    }
+    checks, metrics, retained = bridge.verify(spec, nodes, cells, fields)
+    assert checks["temperature"]["normalized_max_abs_error"] == 0.0
+    assert checks["energy"]["maximum_relative_balance_error"] < 1e-12
+    assert metrics[-1]["stored_energy_j"] == pytest.approx(2.0, rel=1e-12)
+    assert [s["requested_s"] for s in retained] == [1.0, 2.0]
+    fields["temperature"][0]["values"].pop((1,))
+    with pytest.raises(ValueError):
+        bridge.verify(spec, nodes, cells, fields)
+    fields["temperature"][0]["values"] = {(n,): [250.0] for n in nodes}
+    with pytest.raises(ValueError):
+        bridge.verify(spec, nodes, cells, fields)
+
+
+def test_solver_substeps_preserve_energy_observation_times_and_physical_histories():
+    bridge = module()
+    request = fixture()
+    original_times = bridge.output_times(request)
+    assert bridge.integration_step(request) == 1.0 / 64.0
+    assert (
+        bridge.output_times({**request, "integration_substeps": 32}) == original_times
+    )
+    assert (
+        bridge.integration_step({**request, "integration_substeps": 32}) == 1.0 / 32.0
+    )
+    assert bridge.history_energy(request["heater_history"], 120.0) == 30.0
+
+
+def test_ccx_time_card_respects_native_twenty_character_numeric_fields():
+    bridge = module()
+    values = [0.03125, 120.0, 0.03125 * 1e-4, 0.03125]
+    card = bridge.heat_transfer_time_card({**fixture(), "max_step_s": 2.0})
+    assert all(len(field) <= 20 for field in card.split(","))
+    assert list(map(float, card.split(","))) == pytest.approx(values, rel=1e-13)
+
+
+def test_stock_temperature_serialization_cannot_qualify_small_heater_energy():
+    bridge = module()
+    spec = {
+        **fixture(),
+        "resolution": 1,
+        "convection_w_m2_k": 0.0,
+        "initial_temperature_k": 253.15,
+    }
+    positions = [
+        (0, 0, 0),
+        (0.02, 0, 0),
+        (0.02, 0.01, 0),
+        (0, 0.01, 0),
+        (0, 0, 0.01),
+        (0.02, 0, 0.01),
+        (0.02, 0.01, 0.01),
+        (0, 0.01, 0.01),
+    ]
+    nodes = dict(enumerate(positions, 1))
+    cells = {53: list(nodes)}
+    for precision in (6, 15):
+        fields = {"temperature": []}
+        for t in bridge.output_times(spec):
+            exact = 253.15 + bridge.history_energy(spec["heater_history"], t) / 7.8
+            printed = float(f"{exact:.{precision}e}")
+            fields["temperature"].append(
+                {"time": t, "values": {(n,): [printed] for n in nodes}}
+            )
+        if precision == 6:
+            with pytest.raises(ValueError, match="energy gate failed"):
+                bridge.verify(spec, nodes, cells, fields)
+        else:
+            checks, _, _ = bridge.verify(spec, nodes, cells, fields)
+            assert checks["energy"]["maximum_relative_balance_error"] < 1e-8
+
+
+def test_thermal_entrypoint_preserves_tight_geometry_gate_using_exact_planar_vertices(
+    monkeypatch, tmp_path
+):
+    from test_fem_reference import bridge as fem_bridge
+
+    thermal, fem = module(), fem_bridge()
+    request = fixture()
+    request["geometry_tolerance_m"] = 1e-8
+
+    class Meshed(Exception):
+        pass
+
+    def mesh(spec, *, exact_planar_vertices=False):
+        assert spec == request
+        bounds = [value for size in spec["size_m"] for value in (0.0, size)]
+        faces = {}
+        for axis in range(3):
+            for side in range(2):
+                face = bounds.copy()
+                face[2 * axis : 2 * axis + 2] = [bounds[2 * axis + side]] * 2
+                if not exact_planar_vertices:
+                    face = [
+                        v + (-1e-7 if i % 2 == 0 else 1e-7) for i, v in enumerate(face)
+                    ]
+                faces[axis * 2 + side + 1] = face
+        fem.classify_box_faces(faces, bounds, spec["geometry_tolerance_m"])
+        raise Meshed
+
+    helper = SimpleNamespace(
+        read_regular=lambda *args: json.dumps(request).encode(),
+        strict_json=fem.strict_json,
+        cpu_sandbox=lambda *args: None,
+        mesh=mesh,
+    )
+    loader = SimpleNamespace(exec_module=lambda *args: None)
+    monkeypatch.setattr(
+        thermal.importlib.util,
+        "spec_from_file_location",
+        lambda *args: SimpleNamespace(loader=loader),
+    )
+    monkeypatch.setattr(
+        thermal.importlib.util, "module_from_spec", lambda *args: helper
+    )
+    monkeypatch.setattr(
+        thermal.sys, "argv", ["harbor-cad-thermal", "run", "request.json"]
+    )
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(Meshed):
+        thermal.main()
+    assert list(tmp_path.iterdir()) == []

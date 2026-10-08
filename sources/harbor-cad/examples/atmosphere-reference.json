@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "backend": "cpu",
+  "solver": "disort",
+  "model": "clear_sky_molecular_crs",
+  "profile": "afglms",
+  "wavelengths": [{"value": 280, "unit": "nm"}, {"value": 320, "unit": "nm"}, {"value": 400, "unit": "nm"}],
+  "toa_irradiance": [{"value": 1, "unit": "W/(m2*nm)"}, {"value": 2, "unit": "W/(m2*nm)"}, {"value": 3, "unit": "W/(m2*nm)"}],
+  "solar_zenith_deg": 30,
+  "solar_azimuth_deg": 0,
+  "albedo": 0,
+  "streams": 16,
+  "mu_bins": 32,
+  "phi_bins": 32,
+  "relative_tolerance": 0.02,
+  "source_provenance": "synthetic prescribed top-of-atmosphere UV knots at 1 AU; no measured solar or weather history",
+  "atmosphere_provenance": "explicit immutable AFGL midlatitude summer reference at sea level; default molecular cross sections, no aerosols/clouds or site-specific validation"
+}

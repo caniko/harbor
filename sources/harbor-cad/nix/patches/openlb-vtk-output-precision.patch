@@ -1,0 +1,75 @@
+--- a/src/io/superVtmWriter3D.hh
++++ b/src/io/superVtmWriter3D.hh
+@@ -32,6 +32,8 @@
+ #include <fstream>
+ #include <iostream>
+ #include <iomanip>
++#include <limits>
++#include <stdexcept>
+ #include <string>
+ #include "core/singleton.h"
+ #include "communication/loadBalancer.h"
+@@ -320,6 +320,7 @@
+   if (!fout) {
+     clout << "Error: could not open " << fullName << std::endl;
+   }
++  fout.precision(std::numeric_limits<BaseType<T>>::max_digits10);
+   fout << "<?xml version=\"1.0\"?>\n";
+   fout << "<VTKFile type=\"ImageData\" version=\"0.1\" ";
+   if (_compress) {
+@@ -476,9 +479,12 @@
+   }
+ 
+   size_t numberOfFloats = f.getTargetDim() * (extent1[0]+2*_overlap) * (extent1[1]+2*_overlap) * (extent1[2]+2*_overlap);
++  if (numberOfFloats > std::numeric_limits<uint32_t>::max()/sizeof(OUT_T)) {
++    throw std::runtime_error("VTK UInt32 field payload capacity exceeded");
++  }
+-  uint32_t binarySize = static_cast<uint32_t>( numberOfFloats*sizeof(float) );
++  uint32_t binarySize = static_cast<uint32_t>( numberOfFloats*sizeof(OUT_T) );
+ 
+-  std::unique_ptr<float[]> streamFloat(new float[numberOfFloats]);    // stack may be too small
++  std::unique_ptr<OUT_T[]> streamFloat(new OUT_T[numberOfFloats]);    // stack may be too small
+   int itter = 0;
+   // fill buffer with functor data
+   for (i[3] = -_overlap; i[3] < extent1[2]+_overlap; ++i[3]) {
+@@ -486,7 +487,7 @@
+       for (i[1] = -_overlap; i[1] < extent1[0]+_overlap; ++i[1]) {
+         f(evaluated,i);
+         for (int iDim = 0; iDim < f.getTargetDim(); ++iDim) {
+-          streamFloat[itter] = float( evaluated[iDim] );
++          streamFloat[itter] = OUT_T( evaluated[iDim] );
+           ++itter;
+         }
+       }
+@@ -496,12 +497,14 @@
+   if (_compress) {
+     // char buffer for functor data
+     const unsigned char* charData = reinterpret_cast<unsigned char*>(streamFloat.get());
+-    // buffer for compression
+-    std::unique_ptr<unsigned char[]> comprData(new unsigned char[ binarySize ]);    // stack may be too small
++    // compressBound is the required capacity, including incompressible data.
++    uLongf sizeCompr = compressBound(binarySize);
++    std::unique_ptr<unsigned char[]> comprData(new unsigned char[sizeCompr]);
+ 
+     // compress data (not yet decoded as base64) by zlib
+-    uLongf sizeCompr = compressBound(binarySize);
+-    compress2( comprData.get(), &sizeCompr, charData, binarySize, -1);
++    if (compress2(comprData.get(), &sizeCompr, charData, binarySize, -1) != Z_OK) {
++      throw std::runtime_error("VTK field compression failed");
++    }
+ 
+     // encode prefix to base64 documented in  http://www.earthmodels.org/software/vtk-and-paraview/vtk-file-formats
+     Base64Encoder<uint32_t> prefixEncoder(fout, 4);
+@@ -517,10 +520,11 @@
+     Base64Encoder<uint32_t> prefixEncoder(fout, 1);
+     prefixEncoder.encode(&binarySize, 1);
+     //  write numbers from functor
+-    Base64Encoder<float> dataEncoder(fout, numberOfFloats);
++    Base64Encoder<OUT_T> dataEncoder(fout, numberOfFloats);
+     dataEncoder.encode(streamFloat.get(),numberOfFloats);
+   }
+   else {
++    fout.precision(std::numeric_limits<OUT_T>::max_digits10);
+     for ( size_t iOut = 0; iOut < numberOfFloats; ++iOut ) {
+       fout << streamFloat[iOut] << " ";
+     }

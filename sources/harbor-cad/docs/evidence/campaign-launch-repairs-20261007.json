@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "original_root": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007",
+  "attempts": [
+    {
+      "name": "snow-native-3",
+      "revision": "b1379e19b9548fe2e2a77de73e639999746618d8",
+      "command_sha256": "a96eb26cff6b994382c6b24c1fc42f6463cc1e17d44cc31e2da34398309c0a3b",
+      "log_sha256": "1f1c41b43ece11e737c987c598d6060a0a4d6527284fc09838c92b26aff5e92e",
+      "log_bytes": 802,
+      "exit_code": 1,
+      "failure": "Exact standalone thermal runtime lacked thermal_closure; no native solve executed",
+      "repair": "Include the operation-specific closure in runtime-thermal-cpu and refuse older incomplete descriptors before output creation",
+      "qualification": "unqualified; exact corrected package and campaign rerun pending"
+    },
+    {
+      "name": "retained-phase-2",
+      "revision": "b448cbb8fb5cd2c254075d46e7373cc7e6271569",
+      "command_sha256": "2661d39f01b518c5cc24562444d2251e43d3bbfed5c35420c0853c3534b003a5",
+      "log_sha256": "cb9c547d854df2536678b54a23aa4a868fd3f614f26789e35c31a8faac015a7d",
+      "log_bytes": 7280,
+      "exit_code": 1,
+      "failure": "Development campaign resolved the virtualenv interpreter symlink to its store interpreter, losing the isolated MCP SDK environment",
+      "repair": "Preserve the invoked virtualenv launcher for explicit development mode; exact packaged mode retains canonical immutable executable checks",
+      "verification": "Real clean-environment child import confirms virtualenv prefix and MCP SDK; all 133 Python tests pass",
+      "qualification": "unqualified; corrected original CLI/MCP campaign rerun pending"
+    },
+    {
+      "name": "retained-phase-4",
+      "revision": "5b41b483d4b90d997db5e0bea9447d779b6b01e5",
+      "command_sha256": "35cc95a8af31a1819152fd4663ae691b9a554598bb254b8eefdabb2d8831c5b4",
+      "log_sha256": "dfaf615b876483602e2cd7c5f5d3226da1f6eb35d23bf8af51a2db4a319f258a",
+      "log_bytes": 6242,
+      "exit_code": 1,
+      "failure": "CLI classified an unknown request field as protocol_error while the Rust worker classified the same MCP payload as invalid_input; campaign stopped at strict typed-error parity",
+      "repair": "Classify CLI deserialization data/schema errors as invalid_input while retaining protocol_error for malformed JSON syntax",
+      "qualification": "unqualified development diagnostic; complete campaign rerun required"
+    }
+  ],
+  "file_convention": "NAME-command.json, NAME.log, NAME-exit.txt; original failed attempts preserved",
+  "physical_validation": "unqualified"
+}

@@ -1,0 +1,19 @@
+--- a/libsrc_c/cdisort.c
++++ b/libsrc_c/cdisort.c
+@@ -2657,6 +2657,16 @@
+         U0C (iq, lu) += ZZG (iq, lyu);
+       }
+       U0C (iq, lu) += ZPLK0 (iq, lyu) + ZPLK1 (iq, lyu) * UTAUPR (lu);
++      /* At an explicitly black, non-emitting lower boundary the outgoing
++       * intensity is exactly zero. Use this boundary condition at quadrature
++       * angles just as c_user_intensities uses it at user angles, rather than
++       * retaining cancellation residuals from the eigenfunction expansion.
++       * Do not change interior levels, reflecting BRDFs or thermal sources. */
++      if (ds->flag.lamber && !ds->flag.planck && ds->bc.albedo == 0. &&
++          ds->bc.fluor == 0. && lyu == ds->nlyr &&
++          UTAUPR (lu) == TAUCPR (ds->nlyr)) {
++        U0C (iq, lu) = 0.;
++      }
+       UAVG (lu) += CWT (iq - nn) * U0C (iq, lu);
+       UAVGUP (lu) += CWT (iq - nn) * U0C (iq, lu);
+       FLUP (lu) += CWT (iq - nn) * U0C (iq, lu) * CMU (iq - nn);

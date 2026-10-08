@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "scope": "Exact immutable package native references and scoped CLI/MCP lifecycle campaigns; enclosing attempts independently failed",
+  "campaign_source_revision": "0405db074f4aac7bf51393ed7e3236c722e891b1",
+  "package_selection": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/build-56/packages.json",
+  "package_selection_sha256": "01e8c365e3e1e4699a7a55697385c7459a4e8afb28b31a7772153030c175030f",
+  "report_root": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/c8-1",
+  "reports": {
+    "contact-native/verification.json": "c265c19e69f1536c7431aa002f5d44cdedfe7d78c9b3322b2d055e0660614601",
+    "thermal-native/verification.json": "6adb597ddb54e85c3efc167e40668a6ab352b6c99ac2084fd7db845c3610ed3c",
+    "freezing-native/verification.json": "9987e3cd2aa440c6da8264f81a3da2b8c31d7fe42ca6c7a9ac773c525e33fb6e",
+    "spectral-native/verification.json": "094870e73cd37d32d96a36d889062b079e1d24d2342703959ce7acc4ae4d43e3",
+    "atmospheric-spectral-native/verification.json": "5c134359212ae20274e310dfd5bdd826b2795bcd1395626fbf52f65b0ae88b38",
+    "snow-native/verification.json": "835eca8027a6b41bb6929e3a6ffbeb78bc1e98dad0e7fa748ce7c191fe341831",
+    "thermal-worker/verification.json": "186a25c0af0ff61644733a483286e3182fd680d3b6ae6de83e67c2313a61222a",
+    "freezing-worker/verification.json": "adb026a29593d4a78e28bedeb5ad725b71906996961411215bdc77b7c3fe61d2",
+    "spectral-worker/verification.json": "c8c5c55715f76633ed7565350aeb4d937a763f279fc2c4679e8b546c2011f692"
+  },
+  "independent_failures": {
+    "thermal-contact-worker": {
+      "log_sha256": "bd4980fefdc435d5a5bc80579e3af791e419bc6c0033391e5669c0df3d8845f6",
+      "command_sha256": "23f7b1c94eff6eb6b3b74d929de9c24f08612007dc60ffd18891efc7ab665af1",
+      "exit_code": 1,
+      "job_id": "f6de3890-e332-4d56-847b-37e5d33795bc",
+      "outcome": "native thermal-lower energy error 0.027909769575547243 exceeds unchanged 0.02 gate; initial integration step 2.5 seconds requires refinement"
+    },
+    "snow-worker": {
+      "log_sha256": "2f77e03e1878e7b130f9d5a3961a4c03ea207ccfc6a6a36fa36a0baffc2416a0",
+      "command_sha256": "12f5d106167a4a48cd6b3db16c76b035cdaab706586eb65ee00ca92b03f74ea5",
+      "exit_code": 1,
+      "outcome": "historical qualify returned success after registered native thermal DAT mutation; original bytes restored and complete worker qualification remains failed"
+    }
+  },
+  "enclosing_attempts": {
+    "native-current-1": {
+      "exit_code": 1,
+      "log_sha256": "7355a3df0e036178eb429afeeb443db6710d56e3569d2973c0526574e1960100",
+      "command_sha256": "efcd6becd7247020985246ed5a42e9d6d314f93f6e79c800848abd9663875c0f",
+      "outcome": "six independent campaigns passed; libRadtran exact runtime remained unavailable"
+    },
+    "workers-current-1": {
+      "exit_code": 1,
+      "log_sha256": "6ed8aa4bb1e71a161e81631b9a8cb9cfb22a910f152c07ac863e0aecbbcd655a",
+      "command_sha256": "3c690e3f9094d194791e74c851ecb37986e5e39c3719449ef6abb42614790b62",
+      "outcome": "thermal/freezing/spectral workers passed; coupling and snow independently failed"
+    },
+    "build-57": {
+      "exit_code": 1,
+      "evaluation_stdout_sha256": "e1663fedc2a741efbda4d56fa7fc926669f39ad0bd25c17912e361cdd715b537",
+      "outcome": "bounded Canix evaluation wait refused behind independently owned nix-eval.lock; no realization occurred"
+    }
+  },
+  "source_verification_9": {
+    "exit_code": 0,
+    "cpu_log_sha256": "a5eb3016d5ce2cb484014a86ab1e49be04a852534e9dbd5066e5207da8bf40fb",
+    "extra_log_sha256": "13a3a73b36921a0a77999870311f85c188a3f3981212cf16996f432fe5b011b8",
+    "python_tests": 172
+  },
+  "coupling_temporal_diagnostic": {
+    "report": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/coupling-temporal-diagnostic-1/verification.json",
+    "report_sha256": "8a61d2fdd7861b506117102c5f1a312305cf0007ceae958b6675a2e5d298b611",
+    "log_sha256": "5733929cd062eab36c9d43584a27676a154ecfbf95502fbc8cecc9a39c0d8461",
+    "command_sha256": "73bcebf07a9c54c259ab4168e7e97536d5cdcc08aa0b7bc579e08d0fb9c9cf72",
+    "exit_code": 0,
+    "scope": "four exact immutable-driver diagnostics over unchanged coupling histories with explicit temporal refinement; separate operation-specific worker coupling remains pending",
+    "steps_s": [1.25, 0.625],
+    "maximum_energy_errors": [0.016145056827222688, 0.010119141175997898],
+    "unchanged_energy_tolerance": 0.02
+  },
+  "source_verification_13": {
+    "exit_code": 0,
+    "cpu_log_sha256": "8f958c69ef80d175ccfa79eff8a4cb861bdcefeb83ea882daadd771e8cc2af28",
+    "python_tests": 173
+  },
+  "physical_validation": "unqualified"
+}

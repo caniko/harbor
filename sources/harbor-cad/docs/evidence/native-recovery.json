@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "cli_build_source_revision": "bba6ab138f259ac9875d80f1032a43e467a62752",
+  "cli_build_command": "canix --output json cache binary build .#default --no-push --max-jobs 1 --cores 2",
+  "cli_derivation": "/nix/store/7dkf9g6z781mnxb3ydqn0vhvnnz98hy6-harbor-cad-0.1.0.drv",
+  "cli_output": "/nix/store/176rs0x6vr0izvgd0k7zah0gqjxpzxwl-harbor-cad-0.1.0",
+  "cli_build_log": "/data/scratch/tmp/opencode/harbor-cad-canix-drm-egl-bba6ab1/default-attempt-1.log",
+  "cli_build_log_sha256": "9f26f3ee9c0d5160b0cd9c0a4d3e6eedf3187d9cc0e7bcac70148cfb0e6a9677",
+  "frozen_cli_sha256": "dbd8bc5f61060a49904df29a840e616e35fbb14d4bdc9e324e59688fcc8d2b80",
+  "runtime": "/nix/store/wsnpifpgq92fa2ayafdzadp53xza3hwj-harbor-cad-native-runtime.json",
+  "verifier": "scripts/verify_native_recovery.py",
+  "verifier_sha256": "2bd9b46b54b7fd824110d1ff99d6e2d1f727375cd9967b3f2f543e2e757e8cdb",
+  "verification_path": "/data/scratch/tmp/opencode/harbor-cad-packaged-openlb-recovery-20261005/verification.json",
+  "verification_sha256": "f99dcd056122dbb8f9dbaa02f8236ffdc545637a8cce18a6a603facdbf0caa4e",
+  "scope": "actual packaged FreeCAD/OpenLB initial VTI recovery after owned service SIGKILL plus worker restart and ordinary cancellation",
+  "fixture": {
+    "synthetic": true,
+    "formulation": "periodic_forced_channel",
+    "resolution": 64,
+    "dimensions_m": [0.02, 0.01, 0.01],
+    "duration_s": 20,
+    "requested_retained_times_s": [0, 10, 20],
+    "interrupted_after": "initial channel VTI closed; full solve did not complete",
+    "profile_ram_bytes": 2147483648,
+    "profile_disk_bytes": 1073741824,
+    "threads": 1,
+    "timeout_s": 120
+  },
+  "results": [
+    {"scenario": "owned service SIGKILL and worker restart", "state": "failed", "exit_code": 9, "bundle_records": 23, "initial_native_field_preserved": true},
+    {"scenario": "ordinary complete-tree cancellation", "state": "cancelled", "exit_code": 143, "bundle_records": 23, "initial_native_field_preserved": true}
+  ],
+  "initial_field": {
+    "path": "failed-native/tmp/vtkData/data/channel_iT0000000iC00000.vti",
+    "bytes": 61287,
+    "sha256": "06aa89916379e447bc43a43bf9799cd2ab7f1f3ac7779df205711f41ea2bd9e8",
+    "shape": [130, 68, 66],
+    "verified_finite_float64_arrays": ["geometry", "physPressure", "physVelocity"],
+    "association": "PointData",
+    "velocity_components": 3,
+    "compression": "lossless zlib"
+  },
+  "service_ownership": "unit and InvocationID match archived live service owner; terminal service inactive or failed",
+  "portable_export": "every manifest checksum/size verified; checksummed execution.json retains failed/cancelled state, original plan and profile",
+  "successful_solver_receipt": false,
+  "numerical_success": false,
+  "physical_validation": "unqualified",
+  "published": false
+}

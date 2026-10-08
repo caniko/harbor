@@ -1,0 +1,149 @@
+{pkgs}: let
+  # Public CPU DISORT implementation and data only; no private MYSTIC,
+  # GPU backend, GUI or dynamically fetched atmospheric data.
+  sourceSha256 = "64930cc40b6e4a37aa220520974d330fc1563796f466a649b2238131f2d69840";
+  native = pkgs.stdenv.mkDerivation {
+    pname = "harbor-cad-libradtran";
+    version = "2.0.6";
+    src = pkgs.fetchurl {
+      url = "https://www.libradtran.org/download/libRadtran-2.0.6.tar.gz";
+      sha256 = sourceSha256;
+    };
+    strictDeps = true;
+    patches = [./patches/libradtran-no-scattering-albedo.patch ./patches/libradtran-black-surface-quadrature.patch];
+    nativeBuildInputs = [
+      pkgs.gfortran
+      pkgs.flex
+      pkgs.python313
+      pkgs.pkg-config
+      # configure executes nc-config/nf-config; strictDeps keeps target
+      # libraries off PATH, so these helpers also belong to the native inputs.
+      (pkgs.lib.getBin pkgs.netcdf)
+      (pkgs.lib.getBin pkgs.netcdffortran)
+    ];
+    # The pinned configure.in unconditionally links both GSL and gslcblas.
+    # nf-config --flibs additionally names curl/zlib/HDF5-HL directly. Under
+    # strictDeps their linker search paths must be declared, not inferred from
+    # NetCDF's runtime closure (which does not propagate build search paths).
+    buildInputs = [pkgs.netcdf pkgs.netcdffortran pkgs.gsl pkgs.curl pkgs.zlib pkgs.hdf5];
+    # The distribution's fixed-form legacy Fortran routines use the original
+    # F77 calling convention. This compiler mode does not reduce arithmetic
+    # precision or enable unsafe floating-point optimization.
+    env.FFLAGS = "-O2 -std=legacy";
+    # The pinned source archive ships developer-generated dependency files
+    # containing /opt/local headers. Its Makefiles regenerate these with -MM;
+    # remove both stale files before parsing rather than rebinding host paths.
+    postPatch = ''
+      rm libsrc_c/.depend src/.depend
+    '';
+    enableParallelBuilding = true;
+    buildPhase = ''
+      runHook preBuild
+      make -j"$NIX_BUILD_CORES" uvspec
+      runHook postBuild
+    '';
+    doCheck = true;
+    checkPhase = ''
+      runHook preCheck
+      printf '280 1\n320 2\n400 3\n' > solar-reference.dat
+      cat > transparent.inp <<EOF
+      data_files_path $PWD/data
+      atmosphere_file $PWD/data/atmmod/afglms.dat
+      source solar $PWD/solar-reference.dat per_nm
+      wavelength 280 400
+      mol_abs_param crs
+      sza 30
+      albedo 0
+      rte_solver disort
+      number_of_streams 8
+      zout 0
+      no_absorption
+      no_scattering
+      output_user lambda edir edn eup
+      quiet
+      EOF
+      bin/uvspec < transparent.inp > transparent-original.txt
+      ${pkgs.python313.interpreter} - <<'PY'
+      import math
+      from pathlib import Path
+      rows = [list(map(float, row.split())) for row in Path("transparent-original.txt").read_text().splitlines()]
+      print("Original transparent DISORT observations:", rows, flush=True)
+      assert len(rows) == 3, ("complete original solar knots", rows)
+      for row, wavelength, flux in zip(rows, (280, 320, 400), (1, 2, 3), strict=True):
+          assert len(row) == 4 and row[0] == wavelength, ("original knot", row, wavelength)
+          assert math.isclose(row[1], flux * math.cos(math.pi / 6), rel_tol=1e-6), ("direct solar cosine", row, flux)
+          assert row[2:] == [0, 0], ("transparent diffuse flux", row)
+      PY
+      # Native clear-sky surface regression: exact black boundary at quadrature
+      # and user angles, without relaxing or rewriting any original output.
+      for streams in 16 32 64; do
+        sed '/no_absorption/d; /no_scattering/d; s/number_of_streams 8/number_of_streams '"$streams"'/' \
+          transparent.inp > clear-black-"$streams".inp
+        bin/uvspec < clear-black-"$streams".inp > clear-black-"$streams"-original.txt
+      done
+      ${pkgs.python313.interpreter} - <<'PY'
+      import math
+      from pathlib import Path
+      for streams in (16, 32, 64):
+          rows = [list(map(float, row.split())) for row in Path(f"clear-black-{streams}-original.txt").read_text().splitlines()]
+          print("Original black-surface DISORT observations:", streams, rows, flush=True)
+          assert len(rows) == 3
+          for row, wavelength in zip(rows, (280, 320, 400), strict=True):
+              assert len(row) == 4 and row[0] == wavelength
+              assert all(math.isfinite(v) and v >= 0 for v in row)
+              assert row[3] == 0, ("explicit black non-emitting native surface flux", streams, row)
+      PY
+      runHook postCheck
+    '';
+    installPhase = ''
+      runHook preInstall
+      install -Dm755 bin/uvspec $out/bin/uvspec
+      mkdir -p $out/share/libRadtran $out/share/harbor-cad-libradtran
+      cp -r data $out/share/libRadtran/data
+      cp COPYING INSTALL $out/share/harbor-cad-libradtran/
+      cp ${./patches/libradtran-no-scattering-albedo.patch} $out/share/harbor-cad-libradtran/no-scattering-albedo.patch
+      cp ${./patches/libradtran-black-surface-quadrature.patch} $out/share/harbor-cad-libradtran/black-surface-quadrature.patch
+      cp transparent.inp transparent-original.txt $out/share/harbor-cad-libradtran/
+      cp clear-black-*.inp clear-black-*-original.txt $out/share/harbor-cad-libradtran/
+      printf '%s\n' '${sourceSha256}' > $out/share/harbor-cad-libradtran/source.sha256
+      runHook postInstall
+    '';
+    meta = {
+      description = "Pinned public libRadtran CPU DISORT for explicit synthetic UV atmosphere references";
+      homepage = "https://www.libradtran.org/";
+      license = pkgs.lib.licenses.gpl2Plus;
+      platforms = ["x86_64-linux"];
+    };
+  };
+  bridge = pkgs.writeText "atmosphere_reference.py" (builtins.readFile ../adapters/atmosphere_reference.py);
+  adapter = pkgs.writeShellScriptBin "harbor-cad-atmosphere" ''
+    export HARBOR_CAD_LIBRADTRAN=${native}/bin/uvspec
+    export HARBOR_CAD_LIBRADTRAN_DATA=${native}/share/libRadtran/data
+    exec ${pkgs.python313.interpreter} -B ${bridge} "$@"
+  '';
+  closure = pkgs.closureInfo {rootPaths = [adapter];};
+in {
+  atmosphere-native-cpu = native;
+  atmosphere-reference-cpu = adapter;
+  runtime-atmosphere-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    atmosphere = "${adapter}/bin/harbor-cad-atmosphere";
+    atmosphere_closure = "${closure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+  });
+  runtime-atmosphere-reference-cpu = pkgs.writeText "harbor-cad-atmosphere-runtime.json" (builtins.toJSON {
+    schema_version = 1;
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    atmosphere = "${adapter}/bin/harbor-cad-atmosphere";
+    atmosphere_closure = "${closure}/store-paths";
+    backend = "cpu";
+    solver = "disort";
+    precision = "Float32";
+    source_sha256 = sourceSha256;
+    qualification = "unqualified";
+  });
+}

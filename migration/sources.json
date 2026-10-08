@@ -24,5 +24,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-android/local/heads",
     "remoteRefs": "refs/imports/harbor-android/remote/heads"
+  },
+  {
+    "id": "harbor-cad",
+    "origin": "git@github.com:caniko/harbor-cad.git",
+    "sourceRef": "refs/heads/implementation/local-worker",
+    "sourceRevision": "6bb292ee278dcc4a6f6f37f7b1ad4176401791fb",
+    "prefix": "sources/harbor-cad",
+    "sourceTree": "9b60c0c50937bd8c46536aed90a1fa193bcbb7ba",
+    "baseline": "7048dd1a4e397dd39289d81b9c9bac4f4e1f58e3",
+    "preservedLocalHead": "6bb292ee278dcc4a6f6f37f7b1ad4176401791fb",
+    "pendingSourceChanges": false,
+    "localRefs": "refs/imports/harbor-cad/local/heads",
+    "remoteRefs": "refs/imports/harbor-cad/remote/heads"
   }
 ]
