@@ -61,6 +61,11 @@ restart and terminal-child recovery. Kernel CPU/memory/task observations and
 every report identity are recorded in
 [repaired worker evidence](evidence/repaired-workers-20261008.json).
 
+[Equal-accuracy CPU measurements](equal-accuracy-cpu.md) hold the scientific
+case and originals fixed while comparing effective one/two-core profiles in
+paired repetitions. They are independent of the study's step-refinement
+comparison, which changes native numerical accuracy.
+
 ```sh
 python scripts/verify_study_worker.py \
   --executable /nix/store/CLI/bin/harbor-cad \
