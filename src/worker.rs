@@ -973,6 +973,9 @@ fn dispatch(
         Operation::ResultsRetainWetting { request } => Ok(serde_json::to_value(
             crate::wetting_retention::prepare(store, &request)?,
         )?),
+        Operation::ResultsPrepareRetainedCooling { request } => Ok(serde_json::to_value(
+            crate::retained_cooling::prepare(store, *request)?,
+        )?),
         Operation::ResultsTransferAtmosphere { request } => Ok(serde_json::to_value(
             crate::atmosphere_transfer::prepare(store, &request)?,
         )?),

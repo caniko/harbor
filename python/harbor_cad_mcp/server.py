@@ -378,6 +378,15 @@ def build_server(profile: str) -> MCPServer:
             return await request("results_retain_wetting", request=request_spec)
 
         @server.tool()
+        async def results_prepare_retained_cooling(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Prepare conserved stationary original-phase enthalpy with explicit synthetic thermal inputs; refuse moving or overshooting sources and do not solve."""
+            return await request(
+                "results_prepare_retained_cooling", request=request_spec
+            )
+
+        @server.tool()
         async def results_transfer_atmosphere(
             request_spec: dict[str, Any],
         ) -> dict[str, Any]:

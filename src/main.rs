@@ -334,6 +334,10 @@ enum Results {
     RetainWetting {
         request: PathBuf,
     },
+    /// Prepare conserved original-phase cooling enthalpy from explicit thermal inputs without solving.
+    PrepareRetainedCooling {
+        request: PathBuf,
+    },
     /// Prepare source-bound native direct/diffuse angular midpoint transfer, without executing transport.
     TransferAtmosphere {
         request: PathBuf,
@@ -649,6 +653,11 @@ fn run(cli: Cli) -> Result<()> {
             Results::RetainWetting { request } => Operation::ResultsRetainWetting {
                 request: Box::new(read(&request)?),
             },
+            Results::PrepareRetainedCooling { request } => {
+                Operation::ResultsPrepareRetainedCooling {
+                    request: Box::new(read(&request)?),
+                }
+            }
             Results::TransferAtmosphere { request } => Operation::ResultsTransferAtmosphere {
                 request: Box::new(read(&request)?),
             },

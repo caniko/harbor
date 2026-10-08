@@ -2382,6 +2382,9 @@ pub enum Operation {
     ResultsRetainWetting {
         request: Box<crate::wetting_retention::WettingRetentionRequest>,
     },
+    ResultsPrepareRetainedCooling {
+        request: Box<crate::retained_cooling::RetainedCoolingRequest>,
+    },
     ResultsTransferAtmosphere {
         request: Box<crate::atmosphere_transfer::AtmosphericTransferRequest>,
     },
@@ -2480,6 +2483,12 @@ pub fn schemas() -> serde_json::Value {
     ));
     schemas["RetainedWettingReport"] = serde_json::json!(schemars::schema_for!(
         crate::wetting_retention::RetainedWettingReport
+    ));
+    schemas["RetainedCoolingRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::retained_cooling::RetainedCoolingRequest
+    ));
+    schemas["PreparedRetainedCooling"] = serde_json::json!(schemars::schema_for!(
+        crate::retained_cooling::PreparedRetainedCooling
     ));
     schemas["AtmosphericTransferRequest"] = serde_json::json!(schemars::schema_for!(
         crate::atmosphere_transfer::AtmosphericTransferRequest

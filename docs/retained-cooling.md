@@ -73,3 +73,15 @@ reconstruction tests and operation-only Nix packages. Verify each slice with
 `python3 -B scripts/check_cpu.py` gate before its local commit. Package/campaign
 execution uses the existing guarded Canix lease and immutable source capture.
 This document defines acceptance; it records no executed cooling capability.
+
+## Source-bound initialization preparation
+
+`harbor-cad results prepare-retained-cooling examples/retained-cooling.json` and
+results/all MCP `results_prepare_retained_cooling` share the Rust preparation
+contract. Replace the example source ID with a succeeded registered wetting job
+and select an exact retained time. The request carries explicit original thermal
+quantities and provenance; it accepts no caller-supplied phase, velocity or
+source temperature. The result retains complete source/receipt/execution
+identities and independently checks conserved water mass and the sum of sensible
+and latent initial energy. Its `executed` field is false: preparation supplies
+inputs for a separately approved native cooling solve.
