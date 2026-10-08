@@ -2341,10 +2341,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         &dir,
                         plan.observation.max_artifact_bytes,
                     )?;
-                    crate::wetting::annotate_fields(&plan, &mut artifacts)?;
-                    crate::freezing::annotate_fields(&plan, &mut artifacts)?;
-                    crate::radiation::annotate_fields(&plan, &mut artifacts)?;
-                    crate::contact::annotate_fields(&plan, &mut artifacts);
+                    annotate_native_artifacts(&plan, &mut artifacts)?;
                     for artifact in artifacts {
                         store.add_artifact(id, &artifact)?;
                     }
@@ -2577,13 +2574,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
     if native_pending {
         let mut artifacts =
             ingest_native_tree(&native_work, &dir, plan.observation.max_artifact_bytes)?;
-        crate::wetting::annotate_fields(&plan, &mut artifacts)?;
-        crate::freezing::annotate_fields(&plan, &mut artifacts)?;
-        crate::radiation::annotate_fields(&plan, &mut artifacts)?;
-        crate::atmosphere::annotate_fields(&plan, &mut artifacts)?;
-        crate::cad_transport_fields::annotate(&plan, &mut artifacts)?;
-        crate::atmospheric_transport::annotate_fields(&plan, &mut artifacts)?;
-        crate::contact::annotate_fields(&plan, &mut artifacts);
+        annotate_native_artifacts(&plan, &mut artifacts)?;
         for artifact in artifacts {
             store.add_artifact(id, &artifact)?;
         }
@@ -2592,11 +2583,66 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
     Ok(())
 }
 
+fn annotate_native_artifacts(
+    plan: &ExecutionPlan,
+    artifacts: &mut [crate::contracts::ArtifactManifest],
+) -> Result<()> {
+    crate::wetting::annotate_fields(plan, artifacts)?;
+    crate::freezing::annotate_fields(plan, artifacts)?;
+    crate::radiation::annotate_fields(plan, artifacts)?;
+    crate::atmosphere::annotate_fields(plan, artifacts)?;
+    crate::cad_transport_fields::annotate(plan, artifacts)?;
+    crate::atmospheric_transport::annotate_fields(plan, artifacts)?;
+    crate::contact::annotate_fields(plan, artifacts);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{disk_bytes, packaged_file, read_native_receipt, validate_native_receipt};
     use crate::contracts::{CaseSpec, ExecutionPlan};
     use std::{fs, path::Path};
+
+    #[test]
+    fn bundled_native_atmospheric_originals_retain_registered_units_and_association() {
+        let (original, spec, _) = crate::atmosphere_fields::tests::fixture();
+        let root = tempfile::tempdir().unwrap();
+        let work = root.path().join("work");
+        let stage = work.join("stages/atmosphere");
+        fs::create_dir_all(&stage).unwrap();
+        fs::copy(
+            original.path().join("uvspec-original.txt"),
+            stage.join("uvspec-original.txt"),
+        )
+        .unwrap();
+        let committed = root.path().join("artifacts");
+        fs::create_dir(&committed).unwrap();
+        let plan = ExecutionPlan::atmospheric_reference(spec, "research".into()).unwrap();
+        let mut artifacts = crate::storage::ingest_native_tree(
+            &work,
+            &committed,
+            plan.observation.max_artifact_bytes,
+        )
+        .unwrap();
+        super::annotate_native_artifacts(&plan, &mut artifacts).unwrap();
+        assert_eq!(artifacts.len(), 1);
+        let original = &artifacts[0];
+        assert_eq!(original.path, crate::atmosphere::ORIGINAL_PATH);
+        assert_eq!(
+            original.association.as_deref(),
+            Some(crate::atmosphere::FIELD_ASSOCIATION)
+        );
+        assert_eq!(
+            original.units.as_deref(),
+            Some(crate::atmosphere::FIELD_UNITS)
+        );
+        assert!(original.time_s.is_none());
+        assert!(
+            original
+                .provenance
+                .contains(crate::atmosphere::SOURCE_SHA256)
+        );
+    }
 
     #[test]
     fn lexical_store_prefix_cannot_authorize_mutable_native_code() {

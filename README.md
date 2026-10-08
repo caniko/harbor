@@ -117,8 +117,10 @@ CAD. See [CAD variants](docs/cad-variants.md) for its narrow parameter allowlist
 original preservation and package-qualification boundaries.
 
 Registered CAD triangles can be bound to explicit spectral materials through
-`cad prepare-spectral-scene`; see [source-bound spectral scenes](docs/cad-spectral-scenes.md)
-for geometry, precision and missing-input scope.
+`cad prepare-spectral-scene`. `cad plan-spectral-transport` prepares an independent
+direct-only optical job; `results cad-optical` reads verified original-region power
+and dose at an explicit retained seed. See [source-bound spectral scenes](docs/cad-spectral-scenes.md)
+for geometry, precision, approval and missing-input scope.
 
 `filter REQUEST.json` plans an independently approved HIP point-gradient job
 from registered retained science. Its version-4 compute-only DAG, native package

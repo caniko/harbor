@@ -108,9 +108,13 @@ only its exact closure, read-only inputs and bounded scratch. The packaged gate
 is `scripts/verify_freezing_cpu.py --runtime RUNTIME --output NEW_DIRECTORY`:
 six accepted solves, three unresolved-temperature failures, twelve pre-launch
 science rejections, both initial log layouts and decreasing equal-time errors.
-This packaged campaign remains pending: the host evaluation guard currently
-refuses its required memory headroom. Development compilation and numerical
-replay are separate from exact-package/sandbox and worker qualification.
+The exact native and CLI/MCP worker campaigns passed under the normal lease in
+`c8-1/freezing-native` and `c8-1/freezing-worker`. Their immutable package selection,
+report hashes and separately failed neighbouring campaigns are recorded in
+[current native-worker evidence](evidence/current-native-worker-20261008.json).
+This qualifies only the declared equal-property Stefan reference. Transferring
+an original retained wetting distribution requires its own native formulation,
+thermal inputs, conservative initialization and qualification.
 
 ## Durable worker integration
 

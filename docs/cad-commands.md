@@ -26,6 +26,12 @@ binding and metadata artifact hashes. It opens no document and launches no
 native process. Solid names do not establish ordinal face identities, assembly
 correspondence or qualified FEM meshes.
 
+For whole-region spectral materials and independently approved direct optical
+transport, use `cad prepare-spectral-scene`, `cad plan-spectral-transport` and
+`results cad-optical`. Their original-facet geometry, source retention and
+seed-specific result contracts are described in
+[source-bound spectral scenes](cad-spectral-scenes.md).
+
 `cad export` first verifies the region report, then performs the same atomic
 full-job export/checksum procedure as `artifact export`. It retains the approved
 source copy and scientific/provenance records in the portable job bundle.

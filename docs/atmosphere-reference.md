@@ -222,6 +222,16 @@ qualify libRadtran execution, registered sources or immutable worker transport.
 
 ## Registered-source transport worker
 
+The immutable libRadtran source is accompanied by two package-local native
+patches. Explicit `no_scattering` supplies exactly zero single-scattering albedo,
+and an exact black non-emitting Lambertian lower boundary supplies zero outgoing
+quadrature intensity before flux/mean-intensity reduction. Both conditions are
+native model identities, not post-processing tolerances: the readers continue
+to refuse negative originals and nonzero transparent diffuse observations.
+Installed `share/harbor-cad-libradtran` retains both patches and original
+transparent/16–64-stream black-boundary packaging checks. Runtime and refinement
+qualification remain separate from those packaging checks.
+
 `results plan-atmospheric-transport REQUEST.json` and results-profile MCP
 `atmospheric_transport_plan` resolve the same request against a succeeded,
 originally authorized atmospheric job. They return a strict independent

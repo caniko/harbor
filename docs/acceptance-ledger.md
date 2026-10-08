@@ -314,6 +314,17 @@ The campaign's explicit manufactured ageing action now stays within its original
 dimensionless `[0,1]` contract. Exact latest-package worker qualification remains
 required; build 77 predates this source repair.
 
+Guarded `c8-14` passes exact native atmosphere, its three separate decreasing
+refinements and original-angular spectral transport prerequisites; report hashes
+are retained in [native atmospheric evidence](evidence/atmosphere-native-20261008.json).
+The enclosing campaign remains failed: bundle ingestion omitted atmosphere,
+atmospheric-transport and CAD-optical metadata despite the fallback ingestion
+path including it. A single shared annotation function now covers both paths.
+Its regression reproduces the missing association and checks closed ingested
+originals retain exact wavelength/solid-angle association, SI units, absence of
+invented time and pinned source provenance before registration.
+Source gate 37 passes all Rust/Clippy/locked-build checks and 198 Python tests.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
