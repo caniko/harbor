@@ -10,7 +10,7 @@
       sha256 = sourceSha256;
     };
     strictDeps = true;
-    patches = [./patches/libradtran-no-scattering-albedo.patch];
+    patches = [./patches/libradtran-no-scattering-albedo.patch ./patches/libradtran-black-surface-quadrature.patch];
     nativeBuildInputs = [
       pkgs.gfortran
       pkgs.flex
@@ -74,6 +74,25 @@
           assert math.isclose(row[1], flux * math.cos(math.pi / 6), rel_tol=1e-6), ("direct solar cosine", row, flux)
           assert row[2:] == [0, 0], ("transparent diffuse flux", row)
       PY
+      # Native clear-sky surface regression: exact black boundary at quadrature
+      # and user angles, without relaxing or rewriting any original output.
+      for streams in 16 32 64; do
+        sed '/no_absorption/d; /no_scattering/d; s/number_of_streams 8/number_of_streams '"$streams"'/' \
+          transparent.inp > clear-black-"$streams".inp
+        bin/uvspec < clear-black-"$streams".inp > clear-black-"$streams"-original.txt
+      done
+      ${pkgs.python313.interpreter} - <<'PY'
+      import math
+      from pathlib import Path
+      for streams in (16, 32, 64):
+          rows = [list(map(float, row.split())) for row in Path(f"clear-black-{streams}-original.txt").read_text().splitlines()]
+          print("Original black-surface DISORT observations:", streams, rows, flush=True)
+          assert len(rows) == 3
+          for row, wavelength in zip(rows, (280, 320, 400), strict=True):
+              assert len(row) == 4 and row[0] == wavelength
+              assert all(math.isfinite(v) and v >= 0 for v in row)
+              assert row[3] == 0, ("explicit black non-emitting native surface flux", streams, row)
+      PY
       runHook postCheck
     '';
     installPhase = ''
@@ -82,7 +101,10 @@
       mkdir -p $out/share/libRadtran $out/share/harbor-cad-libradtran
       cp -r data $out/share/libRadtran/data
       cp COPYING INSTALL $out/share/harbor-cad-libradtran/
+      cp ${./patches/libradtran-no-scattering-albedo.patch} $out/share/harbor-cad-libradtran/no-scattering-albedo.patch
+      cp ${./patches/libradtran-black-surface-quadrature.patch} $out/share/harbor-cad-libradtran/black-surface-quadrature.patch
       cp transparent.inp transparent-original.txt $out/share/harbor-cad-libradtran/
+      cp clear-black-*.inp clear-black-*-original.txt $out/share/harbor-cad-libradtran/
       printf '%s\n' '${sourceSha256}' > $out/share/harbor-cad-libradtran/source.sha256
       runHook postInstall
     '';

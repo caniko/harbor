@@ -278,6 +278,21 @@ are released, including after a later source restoration. This is preservation,
 not an automatic deletion queue. The failed gate-32/33 test expectations and
 the first atmospheric launch's resource-control refusal are retained in scratch.
 
+Build 73 realizes the patched atmospheric and direct-CAD runtime closures.
+Guarded `c8-13/native-transport` passes the independent original-angular native
+transport campaign. The same attempt passes all three transparent native cases,
+but clear-sky DISORT still refuses its exact black-boundary gate: original
+upward flux is `-1.507967e-16` at 320 nm and `-6.486882e-15` at 400 nm while
+all native upward user-angle radiances are zero. No original was clipped.
+Pinned `libsrc_c/cdisort.c:c_fluxes` evaluates quadrature intensities by cancelling
+eigenfunctions, unlike the explicit boundary expression used at user angles.
+The package-local black-surface patch applies the exact zero outgoing intensity
+only at the bottom of a black non-emitting Lambertian boundary, before computing
+the flux, mean intensity and flux derivative. Its dry-run against the original
+archive passes. Native packaging now tests original clear-sky fluxes at 16/32/64
+streams and retains both patches and original check outputs. New native and
+registered-source qualification is required for this changed closure.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
