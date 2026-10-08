@@ -203,6 +203,26 @@ Treefmt/Ruff and 196 Python tests. Gate 25 retains the qualifier's missing
 explicit subprocess check argument as an independent lint failure; its Nix
 syntax and pinned Simit drift checks passed before that failure.
 
+Build 68 and the guarded `c8-5/variants` campaign qualify controlled CAD-copy
+execution and material-triangle preparation at their exact immutable package
+scope. Both origin/translated variants preserve original documents and placement,
+pass native reimport and CLI/MCP preparation/substitution checks, and survive
+worker restart. Separate cancellation and forced-service-death jobs preserve
+terminal idempotency and release owned trees, roots and canonical reservations.
+All eight refusals pass; the copied state has six succeeded jobs (two source
+inspections, two variants, two reimports), one cancelled and one failed job.
+Material preparation remains `prepared_not_executed` for optical transport.
+See [CAD native evidence](evidence/cad-variants-native-20261008.json).
+
+The guarded `c8-9/coupled-results` campaign then passes the same 12 original
+history samples, 216 complete-surface moisture assessments and 28 refusals with
+the exact build-68 CLI/MCP packages. Native source bytes and database counts
+remain unchanged. Independently, `c8-10/native-optical` passes ten direct-only
+triangle source-diagnostic cases and 30 seeded observations; the maximum
+complete-scene projected-area power error is `0.013427734375 < 0.02`. The optical
+source overlay remains package-unqualified. Both reports and resource peaks are
+retained in [query and triangle evidence](evidence/coupled-queries-and-triangle-diagnostic-20261008.json).
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
