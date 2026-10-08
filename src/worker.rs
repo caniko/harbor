@@ -453,6 +453,108 @@ fn owned_service_closed(store: &Store, job: &Job, info: &BTreeMap<String, String
     }
     Ok(true)
 }
+fn submission_binding(
+    store: &Store,
+    profile: &HostExecutionProfile,
+    authority: Option<&HostAuthority>,
+    plan: &ExecutionPlan,
+) -> Result<ExecutionBinding> {
+    if plan.source.is_some() && authority.is_none() {
+        return Err(Error::Unqualified(
+            "standalone presentation requires authoritative admission".into(),
+        ));
+    }
+    if (plan.fem.is_some()
+        || plan.thermal.is_some()
+        || plan.cad_source.is_some()
+        || plan.wetting.is_some()
+        || plan.freezing.is_some()
+        || plan.spectral.is_some()
+        || plan.atmosphere.is_some()
+        || plan.atmospheric_transport.is_some()
+        || plan.thermal_contact.is_some()
+        || plan.contact.is_some())
+        && authority.is_none()
+    {
+        return Err(Error::Unqualified(
+            "CPU native recipe submission requires authoritative same-user admission".into(),
+        ));
+    }
+    if authority.is_none()
+        && plan.stages.iter().any(|stage| {
+            stage
+                .selection
+                .as_ref()
+                .is_some_and(|g| g.role == Role::Compute && g.backend == "hip")
+        })
+    {
+        return Err(Error::Unqualified(
+            "HIP submission requires authoritative same-user admission".into(),
+        ));
+    }
+    check_plan(plan, profile)?;
+    if let Some(spec) = &plan.atmospheric_transport {
+        crate::atmospheric_transport::registered_source(store, spec)?;
+    }
+    if let Some(authority) = authority {
+        authority.authorize(plan, profile)?;
+    }
+    let mut files = BTreeMap::new();
+    if let Some(path) = &profile.native_runtime {
+        let runtime = NativeRuntime::load(Path::new(path))?;
+        files.insert("bwrap".into(), runtime.bwrap.clone());
+        for stage in &plan.stages {
+            if matches!(
+                stage.operation,
+                StageOperation::Bundle
+                    | StageOperation::ChannelReference
+                    | StageOperation::ThermalProjection
+            ) {
+                continue;
+            }
+            files.insert(
+                serde_json::to_string(&stage.operation)?,
+                runtime.executable(&stage.operation)?.into(),
+            );
+            if matches!(
+                stage.operation,
+                StageOperation::CadInspect | StageOperation::CadFixture
+            ) {
+                files.insert(
+                    "cad_closure".into(),
+                    runtime
+                        .importer_closure()?
+                        .to_str()
+                        .ok_or_else(|| invalid("importer closure path"))?
+                        .into(),
+                );
+            }
+            let closure_key = match stage.operation {
+                StageOperation::ContactReference => "contact_closure",
+                StageOperation::WettingReference => "wetting_closure",
+                StageOperation::FreezingReference => "freezing_closure",
+                StageOperation::SpectralReference => "spectral_closure",
+                StageOperation::AtmosphericReference => "atmosphere_closure",
+                StageOperation::AtmosphericTransport => "atmospheric_spectral_closure",
+                StageOperation::FemImported => "fem_imported_closure",
+                StageOperation::CadMesh => "cad_mesh_closure",
+                StageOperation::ThermalReference => "thermal_closure",
+                StageOperation::FemReference => "fem_closure",
+                _ => continue,
+            };
+            files.insert(
+                closure_key.into(),
+                runtime
+                    .solver_closure(&stage.operation)?
+                    .to_str()
+                    .ok_or_else(|| invalid("FEM closure path"))?
+                    .into(),
+            );
+        }
+    }
+    ExecutionBinding::capture(plan, profile, &std::env::current_exe()?, files)
+}
+
 fn dispatch(
     store: &Store,
     profile: &HostExecutionProfile,
@@ -460,6 +562,53 @@ fn dispatch(
     op: Operation,
 ) -> Result<serde_json::Value> {
     match op {
+        Operation::PrepareStudy { request } => Ok(serde_json::to_value(crate::study::prepare(
+            &request,
+            &profile.policy,
+        )?)?),
+        Operation::StudyStatus { study_id } => Ok(serde_json::to_value(crate::study::status(
+            store, &study_id,
+        )?)?),
+        Operation::SubmitStudy {
+            request,
+            idempotency_key,
+        } => {
+            crate::study::prepare(&request, &profile.policy)?;
+            let bindings = request
+                .cases
+                .iter()
+                .map(|case| {
+                    let binding = submission_binding(store, profile, authority, &case.plan)?;
+                    let authorization = authority
+                        .map(|authority| {
+                            ExecutionAuthorization::capture(
+                                &case.plan, profile, &binding, authority,
+                            )
+                        })
+                        .transpose()?;
+                    Ok((binding, authorization))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let intent = crate::study::retain_intent(
+                store,
+                &request,
+                &idempotency_key,
+                profile,
+                &digest(&bindings)?,
+            )?;
+            for ((case, key), (binding, authorization)) in
+                request.cases.iter().zip(&intent.child_keys).zip(bindings)
+            {
+                if let Some(authorization) = authorization {
+                    store.submit_authorized(&case.plan, key, profile, &binding, &authorization)?;
+                } else {
+                    store.submit_for_execution(&case.plan, key, profile, &binding)?;
+                }
+            }
+            Ok(serde_json::to_value(crate::study::status(
+                store, &intent.id,
+            )?)?)
+        }
         Operation::Doctor {} => doctor(),
         Operation::BackendList {} => Ok(backends()),
         Operation::Validate { case } => {
@@ -592,122 +741,7 @@ fn dispatch(
             if let Some(job) = store.existing_submission(&plan, &idempotency_key, profile)? {
                 return Ok(serde_json::to_value(job)?);
             }
-            if plan.source.is_some() && authority.is_none() {
-                return Err(Error::Unqualified(
-                    "standalone presentation requires authoritative admission".into(),
-                ));
-            }
-            if (plan.fem.is_some()
-                || plan.thermal.is_some()
-                || plan.cad_source.is_some()
-                || plan.wetting.is_some()
-                || plan.freezing.is_some()
-                || plan.spectral.is_some()
-                || plan.atmosphere.is_some()
-                || plan.atmospheric_transport.is_some()
-                || plan.thermal_contact.is_some()
-                || plan.contact.is_some())
-                && authority.is_none()
-            {
-                return Err(Error::Unqualified(
-                    "CPU native recipe submission requires authoritative same-user admission"
-                        .into(),
-                ));
-            }
-            if authority.is_none()
-                && plan.stages.iter().any(|s| {
-                    s.selection
-                        .as_ref()
-                        .is_some_and(|g| g.role == Role::Compute && g.backend == "hip")
-                })
-            {
-                return Err(Error::Unqualified(
-                    "HIP submission requires authoritative same-user admission".into(),
-                ));
-            }
-            check_plan(&plan, profile)?;
-            if let Some(spec) = &plan.atmospheric_transport {
-                crate::atmospheric_transport::registered_source(store, spec)?;
-            }
-            if let Some(authority) = authority {
-                authority.authorize(&plan, profile)?;
-            }
-            let mut files = BTreeMap::new();
-            if let Some(path) = &profile.native_runtime {
-                let runtime = NativeRuntime::load(Path::new(path))?;
-                files.insert("bwrap".into(), runtime.bwrap.clone());
-                for stage in &plan.stages {
-                    if !matches!(
-                        stage.operation,
-                        StageOperation::Bundle
-                            | StageOperation::ChannelReference
-                            | StageOperation::ThermalProjection
-                    ) {
-                        files.insert(
-                            serde_json::to_string(&stage.operation)?,
-                            runtime.executable(&stage.operation)?.into(),
-                        );
-                        if matches!(
-                            stage.operation,
-                            StageOperation::CadInspect | StageOperation::CadFixture
-                        ) {
-                            files.insert(
-                                "cad_closure".into(),
-                                runtime
-                                    .importer_closure()?
-                                    .to_str()
-                                    .ok_or_else(|| invalid("importer closure path"))?
-                                    .into(),
-                            );
-                        }
-                        if matches!(
-                            stage.operation,
-                            StageOperation::FemReference
-                                | StageOperation::ThermalReference
-                                | StageOperation::WettingReference
-                                | StageOperation::FreezingReference
-                                | StageOperation::SpectralReference
-                                | StageOperation::AtmosphericReference
-                                | StageOperation::AtmosphericTransport
-                                | StageOperation::ContactReference
-                                | StageOperation::CadMesh
-                                | StageOperation::FemImported
-                        ) {
-                            files.insert(
-                                if stage.operation == StageOperation::ContactReference {
-                                    "contact_closure"
-                                } else if stage.operation == StageOperation::WettingReference {
-                                    "wetting_closure"
-                                } else if stage.operation == StageOperation::FreezingReference {
-                                    "freezing_closure"
-                                } else if stage.operation == StageOperation::SpectralReference {
-                                    "spectral_closure"
-                                } else if stage.operation == StageOperation::AtmosphericReference {
-                                    "atmosphere_closure"
-                                } else if stage.operation == StageOperation::AtmosphericTransport {
-                                    "atmospheric_spectral_closure"
-                                } else if stage.operation == StageOperation::FemImported {
-                                    "fem_imported_closure"
-                                } else if stage.operation == StageOperation::CadMesh {
-                                    "cad_mesh_closure"
-                                } else if stage.operation == StageOperation::ThermalReference {
-                                    "thermal_closure"
-                                } else {
-                                    "fem_closure"
-                                }
-                                .into(),
-                                runtime
-                                    .solver_closure(&stage.operation)?
-                                    .to_str()
-                                    .ok_or_else(|| invalid("FEM closure path"))?
-                                    .into(),
-                            );
-                        }
-                    }
-                }
-            }
-            let binding =
-                ExecutionBinding::capture(&plan, profile, &std::env::current_exe()?, files)?;
+            let binding = submission_binding(store, profile, authority, &plan)?;
             let job = if let Some(authority) = authority {
                 let authorization =
                     ExecutionAuthorization::capture(&plan, profile, &binding, authority)?;

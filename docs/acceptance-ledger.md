@@ -174,6 +174,24 @@ remains independently failed. Build 55 timed out behind another Canix operation'
 evaluation guard. The repaired libRadtran evaluation and all other current
 native/worker campaigns continue independently.
 
+## Bounded immutable studies
+
+The first F study slice provides at most 16 explicitly named, independently
+approved CPU plans through Rust CLI and simulation/all MCP. One durable SQLite
+intent binds the original collection, profile and preflight execution identities;
+stable child keys recover partial submission through ordinary worker jobs. All
+case approvals and effective admission limits are checked before any intent or
+child is written. Changed collections or execution identities reject; cancelled,
+failed and foreground-interrupted children keep their original terminal jobs.
+
+The complete CPU gate in `source-verification-12` passes Rust tests, strict Clippy,
+locked build, formatting/Ruff and 173 Python tests, including real CLI/MCP study
+parity, all-case preflight refusal, restart identity and checksum exports. The
+initial study contract was observed red, and intermediate formatting/lint/test
+attempts remain separate scratch records. [Study contract](studies.md) describes
+the bounded collection and weaker foreground guarantees. Exact packaged native
+study execution and equal-accuracy optimization remain independent gates.
+
 | Slice | Acceptance | State |
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |

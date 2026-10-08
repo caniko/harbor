@@ -498,7 +498,8 @@ impl Store {
             PRIMARY KEY(job,path));
           CREATE TABLE IF NOT EXISTS job_profiles(job TEXT PRIMARY KEY, digest TEXT NOT NULL, profile TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS job_executions(job TEXT PRIMARY KEY, digest TEXT NOT NULL, binding TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS job_authorizations(job TEXT PRIMARY KEY, digest TEXT NOT NULL, authorization TEXT NOT NULL);")?;
+          CREATE TABLE IF NOT EXISTS job_authorizations(job TEXT PRIMARY KEY, digest TEXT NOT NULL, authorization TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS studies(id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL, intent TEXT NOT NULL);")?;
         Ok(Self {
             connection,
             root: root.into(),

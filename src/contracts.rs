@@ -2056,6 +2056,16 @@ pub struct HostExecutionProfile {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
+    PrepareStudy {
+        request: Box<crate::study::StudyRequest>,
+    },
+    SubmitStudy {
+        request: Box<crate::study::StudyRequest>,
+        idempotency_key: String,
+    },
+    StudyStatus {
+        study_id: String,
+    },
     Doctor {},
     BackendList {},
     Validate {
@@ -2243,6 +2253,9 @@ pub fn schemas() -> serde_json::Value {
         "ColdRestartSpec": schemars::schema_for!(crate::recipes::ColdRestartSpec),
         "ValidationReport": schemars::schema_for!(ValidationReport), "WorkerRequest": schemars::schema_for!(WorkerRequest)});
     // Keep individual expansions below the macro recursion bound as contracts grow.
+    schemas["StudyRequest"] = serde_json::json!(schemars::schema_for!(crate::study::StudyRequest));
+    schemas["PreparedStudy"] =
+        serde_json::json!(schemars::schema_for!(crate::study::PreparedStudy));
     schemas["AtmosphericReferenceSpec"] = serde_json::json!(schemars::schema_for!(
         crate::atmosphere::AtmosphericReferenceSpec
     ));

@@ -41,6 +41,7 @@ pub mod science;
 pub mod snow;
 mod spectral_fields;
 pub mod storage;
+pub mod study;
 pub mod thermal;
 pub mod thermal_contact;
 pub mod thermal_results;

@@ -101,6 +101,12 @@ and exposed read-only; subsequent changes to the original file cannot alter the
 importer's input. Every native stage requires a fresh matching adapter/backend
 receipt with actual execution and no software fallback.
 
+`study prepare REQUEST.json --policy POLICY`, `study submit REQUEST.json
+--idempotency-key KEY` and `study status ID` expose bounded explicit collections
+of independently approved CPU cases through the same durable worker. Simulation/all
+MCP profiles use the same study operations. See [bounded studies](docs/studies.md)
+for partial-submission recovery, resource admission and qualification boundaries.
+
 `filter REQUEST.json` plans an independently approved HIP point-gradient job
 from registered retained science. Its version-4 compute-only DAG, native package
 and qualification boundaries are described in [numerical filters](docs/numerical-filters.md).

@@ -56,6 +56,11 @@ enum Commands {
         #[command(subcommand)]
         command: Job,
     },
+    /// Bounded explicit collections over ordinary immutable worker jobs.
+    Study {
+        #[command(subcommand)]
+        command: Study,
+    },
     Results {
         #[command(subcommand)]
         command: Results,
@@ -95,6 +100,25 @@ enum Backend {
     List,
     HipIdentity { pci: String },
 }
+#[derive(Subcommand)]
+enum Study {
+    /// Check complete per-case approvals and the aggregate output allowance.
+    Prepare {
+        file: PathBuf,
+        #[arg(long, default_value = "research")]
+        policy: String,
+    },
+    /// Persist a collection intent and submit each approved case to the worker.
+    Submit {
+        file: PathBuf,
+        #[arg(long)]
+        idempotency_key: String,
+    },
+    Status {
+        id: String,
+    },
+}
+
 #[derive(Subcommand)]
 enum Case {
     /// Prepare explicit pinned UV atmospheric angular observations, without executing.
@@ -392,6 +416,19 @@ fn run(cli: Cli) -> Result<()> {
         Commands::RunJob { state, profile, id } => {
             return worker::run_job(&state, &profile, &id);
         }
+        Commands::Study { command } => match command {
+            Study::Prepare { file, policy } => {
+                return print(&harbor_cad::study::prepare(&read(&file)?, &policy)?);
+            }
+            Study::Submit {
+                file,
+                idempotency_key,
+            } => Operation::SubmitStudy {
+                request: Box::new(read(&file)?),
+                idempotency_key,
+            },
+            Study::Status { id } => Operation::StudyStatus { study_id: id },
+        },
         Commands::Case { command } => match command {
             Case::PlanThermalReference { file, policy } => {
                 let plan = ExecutionPlan::thermal_reference(read(&file)?, policy)?;

@@ -44,6 +44,29 @@ def build_server(profile: str) -> MCPServer:
             """Validate explicit units, named regions and applicability."""
             return await request("validate", case=case)
 
+    if profile in {"simulation", "all"}:
+
+        @server.tool()
+        async def study_prepare(study: dict[str, Any]) -> dict[str, Any]:
+            """Check up to 16 explicit CPU case approvals and total output allowance; no solve."""
+            return await request("prepare_study", request=study)
+
+        @server.tool()
+        async def study_submit(
+            study: dict[str, Any], idempotency_key: str
+        ) -> dict[str, Any]:
+            """Persist an immutable study intent and submit each case through ordinary worker jobs."""
+            return await request(
+                "submit_study", request=study, idempotency_key=idempotency_key
+            )
+
+        @server.tool()
+        async def study_status(study_id: str) -> dict[str, Any]:
+            """Read original case identities and current job states; completion is not numerical qualification."""
+            return await request("study_status", study_id=study_id)
+
+    if profile in {"cad", "simulation", "all"}:
+
         @server.tool()
         async def case_plan(case: dict[str, Any]) -> dict[str, Any]:
             """Prepare a CPU analytical-reference plan; never solve implicitly."""
