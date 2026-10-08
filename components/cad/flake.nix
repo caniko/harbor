@@ -247,7 +247,7 @@
         env -i HOME=$PWD/home ${mcp}/bin/harbor-cad-mcp --help > mcp.txt
         mkdir $out; cp doctor.json schemas.json mcp.txt $out/
       '';
-      python = pkgs.runCommand "harbor-cad-python-tests" {} ''
+      python = pkgs.runCommand "harbor-cad-python-tests" {nativeBuildInputs = [pkgs.stdenv.cc];} ''
         export HOME=$TMPDIR
         export HARBOR_CAD_TEST_BINARY=${cli}/bin/harbor-cad
         cp -r ${self}/python ./python
@@ -255,6 +255,9 @@
         cp -r ${self}/adapters ./adapters
         cp -r ${self}/scripts ./scripts
         cp -r ${self}/examples ./examples
+        # The native CLI/MCP parity fixtures use the same project environment
+        # layout as uv; expose the declared test environment in the sandbox.
+        ln -s ${testEnv} .venv
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
       '';
