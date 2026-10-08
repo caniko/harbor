@@ -206,5 +206,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-tex/local/heads",
     "remoteRefs": "refs/imports/harbor-tex/remote/heads"
+  },
+  {
+    "id": "js-harbor",
+    "origin": "ssh://git@codeberg.org/caniko/js-harbor.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "f779d72155431b6a6d110ccb078204369f998e9e",
+    "prefix": "sources/js-harbor",
+    "sourceTree": "97739c709d020ef91c2ab21b1ca80dc564219a1a",
+    "baseline": "3a3d911a51421dffe712be9e1db04a5b9ebfd8ac",
+    "preservedLocalHead": "703393f08b21ff165593519e9dffa458cfc5daa3",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/js-harbor/local/heads",
+    "remoteRefs": "refs/imports/js-harbor/remote/heads"
   }
 ]
