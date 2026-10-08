@@ -6,6 +6,7 @@ import copy
 import importlib.util
 import json
 import math
+import os
 import subprocess
 from pathlib import Path
 
@@ -21,6 +22,20 @@ from verify_systemd import (
     wait_admission_release,
     wait_retention_release,
 )
+
+
+def verify_effective_controls(controls, approved_ram_bytes, page_size):
+    # systemd preserves the requested byte count; Linux memory.max rounds down
+    # to whole pages. Verify that exact stricter kernel bound, not a tolerance.
+    if page_size <= 0 or controls != {
+        "memory.max": str(approved_ram_bytes // page_size * page_size),
+        "memory.swap.max": "0",
+        "pids.max": "128",
+        "cpu.max": "200000 100000",
+    }:
+        raise ValueError(
+            "exact approved page-granular RAM, CPU, task and no-swap kernel controls required"
+        )
 
 
 def main():
@@ -443,12 +458,10 @@ def main():
                     controls = json.loads((bundle / "service-owner.json").read_text())[
                         "kernel_resources"
                     ]["controls"]
-                    assert (
-                        controls["memory.max"]
-                        == str(planned["plan"]["stages"][0]["ram_bytes"])
-                        and controls["memory.swap.max"] == "0"
-                        and controls["pids.max"] == "128"
-                        and controls["cpu.max"] == "200000 100000"
+                    verify_effective_controls(
+                        controls,
+                        max(s["ram_bytes"] for s in planned["plan"]["stages"]),
+                        os.sysconf("SC_PAGE_SIZE"),
                     )
                     resources = json.loads(
                         (bundle / "service-resources.json").read_text()

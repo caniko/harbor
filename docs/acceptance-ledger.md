@@ -338,6 +338,16 @@ copying. Source gate 39 passes complete Rust/Clippy/build and 199 Python tests;
 the retained gate-38 Ruff failure was repaired using a nonblocking async process
 call. Fresh exact-package worker campaigns remain required.
 
+Source gate 40 passes complete Rust/Clippy/locked-build, formatting/lints and
+200 Python tests. The `c8-21` resource refusal is retained: systemd records the
+approved 664,859,648-byte request while Linux `memory.max` is the exact stricter
+whole-page 664,858,624-byte bound. The qualifier now reconstructs that bound from
+the host page size and independently checks the original systemd request; tests
+refuse nearby substituted bounds, swap, excessive tasks and changed CPU quotas.
+The `c8-20` optical campaign also preserves a CLI invocation error after original
+receipt/packet/association checks; its qualification request now uses the exact
+worker socket and command grammar. Matching campaigns remain required.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
