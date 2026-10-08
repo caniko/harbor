@@ -223,6 +223,14 @@ complete-scene projected-area power error is `0.013427734375 < 0.02`. The optica
 source overlay remains package-unqualified. Both reports and resource peaks are
 retained in [query and triangle evidence](evidence/coupled-queries-and-triangle-diagnostic-20261008.json).
 
+The exact build-69 native triangle package then passes all ten manufactured
+cases and 30 observations in guarded `c8-11/native-optical`, with the same
+`0.013427734375 < 0.02` maximum complete-scene projected-area power error.
+The operation-only sandbox and original read-only source mount pass. This is
+the direct-only native reference scope, independently of registered-source
+worker approval/lifecycle, sampling convergence, interreflection and physical
+validation. See [exact triangle native evidence](evidence/cad-triangle-native-20261008.json).
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
