@@ -465,6 +465,7 @@ fn submission_binding(
         ));
     }
     if (plan.fem.is_some()
+        || plan.cad_transport.is_some()
         || plan.cad_variant.is_some()
         || plan.thermal.is_some()
         || plan.cad_source.is_some()
@@ -494,6 +495,9 @@ fn submission_binding(
         ));
     }
     check_plan(plan, profile)?;
+    if let Some(spec) = &plan.cad_transport {
+        crate::cad_transport::source(store, spec)?;
+    }
     if let Some(spec) = &plan.atmospheric_transport {
         crate::atmospheric_transport::registered_source(store, spec)?;
     }
@@ -723,6 +727,16 @@ fn dispatch(
             let plan = crate::fem_imported::plan(store, *request, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::PlanCadSpectralTransport { request } => {
+            if authority.is_none() {
+                return Err(Error::Unqualified(
+                    "CAD optical transport requires authoritative same-user admission".into(),
+                ));
+            }
+            let spec = crate::cad_transport::resolve(store, *request)?;
+            let plan = ExecutionPlan::cad_spectral_transport(spec, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanPresentation { request } => {
             if authority.is_none() {
                 return Err(Error::Unqualified(
@@ -819,6 +833,25 @@ fn dispatch(
                     {
                         return Err(Error::Resource(
                             "insufficient state-root capacity for immutable CAD source staging"
+                                .into(),
+                        ));
+                    }
+                    Admission::open(&crate::admission::shared_root()?, authority)?
+                        .retain_inputs(store, bytes, submit)?
+                } else if let Some(spec) = &plan.cad_transport {
+                    let bytes = crate::cad_transport::originals(spec)?.values().try_fold(
+                        16 * 1024 * 1024u64,
+                        |sum, (_, bytes, _)| {
+                            sum.checked_add(*bytes)
+                                .ok_or_else(|| invalid("CAD optical input budget overflow"))
+                        },
+                    )?;
+                    if bytes
+                        .checked_add(disk_bytes(&store.root, false)?)
+                        .is_none_or(|n| n > profile.max_disk_bytes)
+                    {
+                        return Err(Error::Resource(
+                            "insufficient state-root capacity for immutable CAD optical inputs"
                                 .into(),
                         ));
                     }
@@ -1406,6 +1439,11 @@ fn native_stage(
                 "HARBOR_CAD_FREEZING_POLICY",
                 crate::freezing::SANDBOX_POLICY,
             ),
+            StageOperation::SpectralReference if plan.cad_transport.is_some() => (
+                "/spectral-runtime-closure.txt",
+                "HARBOR_CAD_CAD_SPECTRAL_POLICY",
+                crate::cad_transport::SANDBOX_POLICY,
+            ),
             StageOperation::SpectralReference => (
                 "/spectral-runtime-closure.txt",
                 "HARBOR_CAD_SPECTRAL_POLICY",
@@ -1453,6 +1491,12 @@ fn native_stage(
             .arg(fs::read_link("/proc/self/ns/net")?);
     } else {
         command.args(["--ro-bind", "/nix/store", "/nix/store"]);
+    }
+    if stage.operation == StageOperation::SpectralReference && plan.cad_transport.is_some() {
+        command
+            .args(["--ro-bind"])
+            .arg(crate::cad_transport::registered(store, id, plan)?)
+            .arg("/source");
     }
     if matches!(stage.operation, StageOperation::NumericalFilter) {
         let (root, _, _) = crate::fields::registered(store, id)?;
@@ -1615,6 +1659,10 @@ fn native_stage(
             "verified-wetting-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::FreezingReference) {
             "freezing-receipt.json".into()
+        } else if stage.operation == StageOperation::SpectralReference
+            && plan.cad_transport.is_some()
+        {
+            "cad-spectral-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::SpectralReference) {
             "spectral-receipt.json".into()
         } else if stage.operation == StageOperation::AtmosphericReference {
@@ -1654,6 +1702,10 @@ fn native_stage(
                 "native-wetting-request.json".into()
             } else if matches!(stage.operation, StageOperation::FreezingReference) {
                 "native-freezing-request.json".into()
+            } else if stage.operation == StageOperation::SpectralReference
+                && plan.cad_transport.is_some()
+            {
+                "native-cad-spectral-request.json".into()
             } else if matches!(stage.operation, StageOperation::SpectralReference) {
                 "native-spectral-request.json".into()
             } else if stage.operation == StageOperation::AtmosphericReference {
@@ -1740,7 +1792,17 @@ fn native_stage(
     }
     let evidence = read_native_receipt(&receipt)?;
     validate_native_receipt(stage, &evidence)?;
-    if stage.operation == StageOperation::SpectralReference {
+    if stage.operation == StageOperation::SpectralReference && plan.cad_transport.is_some() {
+        let source = crate::cad_transport::registered(store, id, plan)?;
+        crate::cad_transport_fields::verify_receipt(
+            plan.cad_transport
+                .as_ref()
+                .ok_or_else(|| invalid("approved CAD optical recipe required"))?,
+            &source,
+            dir,
+            &evidence,
+        )?;
+    } else if stage.operation == StageOperation::SpectralReference {
         crate::spectral_fields::verify(
             plan.spectral
                 .as_ref()
@@ -2415,6 +2477,19 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                     store.add_artifact(id, &commit_artifact(&dir, "native-freezing-request.json",
                         &serde_json::to_vec(spec)?, "json", "exact synthetic SI total-enthalpy solidification inputs, nodal control volumes and retained physical times")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if stage.operation == StageOperation::SpectralReference
+                    && plan.cad_transport.is_some()
+                {
+                    let working =
+                        native_work.join(format!("stages/{}", crate::cad_transport::STAGE));
+                    private_dir(&working)?;
+                    crate::cad_transport::registered(store, id, &plan)?;
+                    let spec = plan
+                        .cad_transport
+                        .as_ref()
+                        .ok_or_else(|| invalid("approved original-CAD optical recipe required"))?;
+                    store.add_artifact(id,&commit_artifact(&dir,"native-cad-spectral-request.json",&serde_json::to_vec(&spec.native_request()?)?,"json","exact independently approved original CAD materials, collimated spectral source, geometry budget and prescribed history")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if stage.operation == StageOperation::SpectralReference {
                     let working = native_work.join("stages/spectral");
                     private_dir(&working)?;
@@ -2498,6 +2573,7 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
         crate::freezing::annotate_fields(&plan, &mut artifacts)?;
         crate::radiation::annotate_fields(&plan, &mut artifacts)?;
         crate::atmosphere::annotate_fields(&plan, &mut artifacts)?;
+        crate::cad_transport_fields::annotate(&plan, &mut artifacts)?;
         crate::atmospheric_transport::annotate_fields(&plan, &mut artifacts)?;
         crate::contact::annotate_fields(&plan, &mut artifacts);
         for artifact in artifacts {

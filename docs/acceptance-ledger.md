@@ -252,6 +252,15 @@ version separation, distinct source inodes, post-acknowledgment source mutation,
 terminal idempotency and rejection of changed acknowledged copies. Native
 worker dispatch and registered-source qualification remain subsequent gates.
 
+Source gate 29 passes complete Rust tests, strict Clippy, the locked build,
+Treefmt/Ruff, Nix syntax, pinned Simit drift and 196 Python tests with the v17
+worker/CLI/MCP path. Rust now independently verifies complete original facet
+packets, original-area optical power/dose, native geometry conversion and
+full-scene visibility. Manufactured replays refuse rehashed position, direction,
+normal, PDF, spectral/material and facet-association mutations, altered
+reductions and invented evidence statuses. Exact registered-source worker and
+lifecycle measurements still require the newly packaged runtime.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

@@ -13,6 +13,7 @@ pub mod cad_mesh;
 pub mod cad_source;
 pub mod cad_spectral;
 pub mod cad_transport;
+pub mod cad_transport_fields;
 pub mod cad_triangles;
 pub mod cad_variant;
 pub mod contact;

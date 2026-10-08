@@ -2256,6 +2256,9 @@ pub enum Operation {
     PlanCadVariant {
         request: Box<crate::cad_variant::CadVariantRequest>,
     },
+    PlanCadSpectralTransport {
+        request: Box<crate::cad_transport::CadSpectralTransportRequest>,
+    },
     PrepareCadSpectralScene {
         request: Box<crate::cad_spectral::CadSpectralSceneRequest>,
     },

@@ -259,6 +259,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             StageOperation::FreezingReference => {
                 ("stages/freezing/freezing-receipt.json", Some("OpenLB"))
             }
+            StageOperation::SpectralReference if plan.cad_transport.is_some() => {
+                (crate::cad_transport::RECEIPT_PATH, Some("Mitsuba"))
+            }
             StageOperation::SpectralReference => {
                 ("stages/spectral/spectral-receipt.json", Some("Mitsuba"))
             }
@@ -607,6 +610,14 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     )?);
                     capability.numerical_verification = EvidenceState::ReportedPass;
                     capability.convergence = "one declared grid; equal-physical-time native spatial refinement assessed separately".into();
+                } else if stage.operation == StageOperation::SpectralReference
+                    && plan.cad_transport.is_some()
+                {
+                    capability.numerical_evidence = Some(
+                        crate::cad_transport_fields::verify_registered(store, id, &plan, &value)?,
+                    );
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                    capability.convergence = "three declared seeds; original-point verification; sampling convergence not_assessed".into();
                 } else if stage.operation == StageOperation::SpectralReference {
                     capability.numerical_evidence = Some(crate::radiation::verify_registered(
                         store, id, &plan, &value,

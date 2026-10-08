@@ -121,6 +121,16 @@ in {
     render = null;
     video = null;
   });
+  runtime-cad-spectral-direct-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    spectral = "${cadAdapter}/bin/harbor-cad-cad-spectral-direct";
+    spectral_closure = "${cadClosure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+  });
   runtime-spectral-reference-cpu = pkgs.writeText "harbor-cad-spectral-reference-runtime.json" (builtins.toJSON {
     schema_version = 1;
     bwrap = "${pkgs.bubblewrap}/bin/bwrap";

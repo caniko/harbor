@@ -767,6 +767,7 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
     assert_eq!(std::fs::read(copied.join("solid.stl")).unwrap(), data);
     std::fs::write(root.join("solid.stl"), b"original source later changed").unwrap();
     harbor_cad::cad_transport::registered(&store, &optical_job.id, &optical_plan).unwrap();
+    optical_packet_fixture(&bound, &data);
     assert_eq!(
         store
             .submit_with_profile(&optical_plan, "original-optical", &profile)
@@ -816,6 +817,162 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
         )
         .unwrap();
     prepare(&store, request).unwrap();
+}
+
+fn optical_packet_fixture(
+    approved: &harbor_cad::cad_transport::CadSpectralTransportSpec,
+    data: &[u8],
+) {
+    // Manufactured original-point replay only. These constructed packets claim
+    // no native execution; native/worker evidence comes from guarded campaigns.
+    use harbor_cad::cad_transport_fields::verify_numerical;
+    use sha2::{Digest, Sha256};
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    let output = temp.path().join("output");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::create_dir(&output).unwrap();
+    let mut spec = approved.clone();
+    let mut data = data.to_vec();
+    // Move the manufactured original down by 250 mm, with the source context
+    // updated explicitly so its Float32 metre storage meets the same budget.
+    for facet in data[84..].as_chunks_mut::<50>().0 {
+        for vertex in 0..3 {
+            let at = 20 + vertex * 12;
+            let z = f32::from_le_bytes(facet[at..at + 4].try_into().unwrap());
+            facet[at..at + 4].copy_from_slice(&(z - 250.).to_le_bytes());
+        }
+    }
+    let region = &mut spec.scene.regions[0];
+    for axis in [4, 5] {
+        region.source.geometry.bounds_m[axis] -= 0.25;
+    }
+    region.source.geometry.source_transform[11] -= 250.;
+    region.original_triangles.sha256 = format!("{:x}", Sha256::digest(&data));
+    let mesh =
+        harbor_cad::cad_triangles::verify_binary_box(&data, &region.source.geometry).unwrap();
+    region.geometry = mesh.assessment;
+    std::fs::write(source.join("solid.stl"), &data).unwrap();
+    spec.scene.scene_id.clear();
+    spec.scene.scene_id = digest(&spec.scene).unwrap();
+    spec.validate().unwrap();
+    let header = "region,facet,sample,knot_offset,x_m,y_m,z_m,normal_x,normal_y,normal_z,towards_source_x,towards_source_y,towards_source_z,native_cosine,native_pdf,native_weight_w_m2_nm_0,native_weight_w_m2_nm_1,native_weight_w_m2_nm_2,native_weight_w_m2_nm_3,native_reflectance_0,native_reflectance_1,native_reflectance_2,native_reflectance_3\n";
+    let mut csv = header.to_owned();
+    let mut conversions = Vec::new();
+    let mut results = Vec::new();
+    for (index, facet) in mesh.triangles.iter().enumerate() {
+        let native = facet.vertices_m.map(|p| p.map(|v| f64::from(v as f32)));
+        let rounding = facet
+            .vertices_m
+            .into_iter()
+            .flatten()
+            .zip(native.into_iter().flatten())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0_f64, f64::max);
+        let a: [f64; 3] = std::array::from_fn(|i| native[1][i] - native[0][i]);
+        let b: [f64; 3] = std::array::from_fn(|i| native[2][i] - native[0][i]);
+        let cross = [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ];
+        let area = cross.iter().map(|v| v * v).sum::<f64>().sqrt() / 2.;
+        conversions.push(serde_json::json!({"region":"solid","facet":index,"original_area_m2":facet.area_m2,"native_area_m2":area,"native_area_relative_error":(area/facet.area_m2-1.).abs(),"maximum_vertex_rounding_error_m":rounding,"native_vertices_m":native,"original_sha256":spec.scene.regions[0].original_triangles.sha256}));
+        let point: [f64; 3] = std::array::from_fn(|axis| {
+            f64::from(((native[0][axis] + native[1][axis] + native[2][axis]) / 3.) as f32)
+        });
+        let cosine = if facet.boundary == 5 { 1. } else { 0. };
+        for sample in 0..spec.request.samples_per_triangle {
+            let values = [
+                point[0],
+                point[1],
+                point[2],
+                facet.normal[0],
+                facet.normal[1],
+                facet.normal[2],
+                0.,
+                0.,
+                1.,
+                cosine,
+                1.,
+                1.,
+                2.,
+                2.,
+                2.,
+                f64::from(0.2f32),
+                f64::from(0.4f32),
+                f64::from(0.4f32),
+                f64::from(0.4f32),
+            ];
+            csv.push_str(&format!(
+                "solid,{index},{sample},0,{}\n",
+                values.map(|v| v.to_string()).join(",")
+            ));
+        }
+        let channels = serde_json::json!({"incident":150.*cosine,"absorbed":(310./3.)*cosine,"reflected_outgoing":(140./3.)*cosine});
+        let scaled = |scale: f64| {
+            serde_json::Value::Object(
+                channels
+                    .as_object()
+                    .unwrap()
+                    .iter()
+                    .map(|(name, v)| (name.clone(), serde_json::json!(v.as_f64().unwrap() * scale)))
+                    .collect(),
+            )
+        };
+        results.push(serde_json::json!({"region":"solid","material":"synthetic_opaque","facet":index,"geometric_boundary":facet.boundary,"original_area_m2":facet.area_m2,"samples":64,"mean_spectral_irradiance_w_m2_nm":[cosine,2.*cosine],"channels_w_m2":channels,"reference_channels_w_m2":channels,"relative_errors":{"incident":0.,"absorbed":0.,"reflected_outgoing":0.},"power_w":scaled(facet.area_m2),"dose_j_m2":scaled(7200.),"energy_j":scaled(7200.*facet.area_m2),"ageing_status":"missing_inputs"}));
+    }
+    let observations=spec.request.seeds.map(|seed|{let path=format!("triangles-{seed}.csv");std::fs::write(output.join(&path),&csv).unwrap();serde_json::json!({"seed":seed,"original":{"path":path,"sha256":format!("{:x}",Sha256::digest(csv.as_bytes())),"bytes":csv.len()},"facets":results})});
+    let receipt = serde_json::json!({"schema_version":1,"adapter":"Mitsuba","versions":{"mitsuba":"3.9.1","drjit":"1.5.0"},"backend":"cpu","variant":"scalar_spectral","precision":"Float32","reduction_precision":"Float64_compensated","formulation":"opaque_lambertian_direct_only","input":spec.native_request().unwrap(),"geometry_conversions":conversions,"observations":observations,"history_integral_s":7200.,"physical_validation":"unqualified","sampling_convergence":"not_assessed","interreflection":"excluded_by_explicit_direct_only_model"});
+    let evidence = verify_numerical(&spec, &source, &output, &receipt).unwrap();
+    assert!(evidence.error < 1e-12);
+    assert!(
+        harbor_cad::cad_transport_fields::verify_receipt(&spec, &source, &output, &receipt)
+            .is_err()
+    );
+    for pointer in [
+        "/observations/0/facets/0/original_area_m2",
+        "/observations/0/facets/10/channels_w_m2/incident",
+        "/observations/0/facets/10/energy_j/absorbed",
+        "/geometry_conversions/0/native_vertices_m/0/0",
+    ] {
+        let mut changed = receipt.clone();
+        *changed.pointer_mut(pointer).unwrap() = serde_json::json!(999.);
+        assert!(
+            verify_numerical(&spec, &source, &output, &changed).is_err(),
+            "{pointer}"
+        );
+    }
+    for field in [
+        "precision",
+        "physical_validation",
+        "interreflection",
+        "sampling_convergence",
+    ] {
+        let mut changed = receipt.clone();
+        changed[field] = serde_json::json!("invented_pass");
+        assert!(verify_numerical(&spec, &source, &output, &changed).is_err());
+    }
+    // Even an internally rehashed original with all reported reductions retained
+    // cannot substitute its position, direction, association or spectral weight.
+    for column in [0, 1, 2, 3, 4, 7, 10, 13, 14, 15, 19] {
+        let mut lines = csv.lines().map(str::to_owned).collect::<Vec<_>>();
+        let mut row = lines[1].split(',').map(str::to_owned).collect::<Vec<_>>();
+        row[column] = "99".into();
+        lines[1] = row.join(",");
+        let changed_csv = lines.join("\n") + "\n";
+        let mut changed = receipt.clone();
+        changed["observations"][0]["original"]["bytes"] = serde_json::json!(changed_csv.len());
+        changed["observations"][0]["original"]["sha256"] =
+            serde_json::json!(format!("{:x}", Sha256::digest(changed_csv.as_bytes())));
+        std::fs::write(output.join("triangles-17.csv"), changed_csv).unwrap();
+        assert!(
+            verify_numerical(&spec, &source, &output, &changed).is_err(),
+            "column {column}"
+        );
+    }
+    std::fs::write(output.join("triangles-17.csv"), csv).unwrap();
+    verify_numerical(&spec, &source, &output, &receipt).unwrap();
 }
 
 #[test]

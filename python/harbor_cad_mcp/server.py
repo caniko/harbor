@@ -47,6 +47,13 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"simulation", "all"}:
 
         @server.tool()
+        async def cad_plan_spectral_transport(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Independently approve direct-only original-facet CAD irradiance/power/dose; missing ageing remains unknown and no source is opened by the planner."""
+            return await request("plan_cad_spectral_transport", request=request_spec)
+
+        @server.tool()
         async def study_prepare(study: dict[str, Any]) -> dict[str, Any]:
             """Check up to 16 explicit CPU case approvals and total output allowance; no solve."""
             return await request("prepare_study", request=study)

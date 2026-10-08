@@ -62,7 +62,25 @@ retains distinct-inode STL, BREP and geometric-context copies plus the original
 CAD approvals in the durable submission transaction. Subsequent source changes
 do not change acknowledged inputs, and interrupted unpublished copies are
 removed only while the original authorized source remains verifiable. Worker
-dispatch and registered-source execution qualification follow independently.
+dispatch uses the operation-only CPU closure and read-only retained source tree.
+
+`harbor-cad cad plan-spectral-transport REQUEST.json` and the simulation-profile
+MCP `cad_plan_spectral_transport` return the same immutable plan and approval
+digest. Submit it through `job submit` or MCP `job_submit` against an authority
+that approves `runtime-cad-spectral-direct-worker`. The descriptor's request
+file is never consulted after acknowledgment. The generic native runtime's
+`spectral` slot selects the direct-only adapter in this dedicated runtime; its
+v17 sandbox/receipt contract remains distinct from the v13 sensor reference.
+
+Rust independently reconstructs every original facet/sample/spectral packet,
+including native Float32 metre conversion, original STL topology and area,
+analytical full-scene visibility, direction/normal/cosine, optical response,
+incident/absorbed/outgoing-reflected power and prescribed dose. Registered
+originals retain units and native facet-packet association, with no invented
+physical timestamp for a seed. `qualify --job ID` rechecks the original copies,
+approvals, packet metadata and numerical reductions. Manufactured receipt
+fixtures cannot establish native execution or sandbox qualification. Exact
+registered-source worker and lifecycle qualification remain separate gates.
 
 `cad prepare-spectral-scene REQUEST.json` and MCP
 `cad_prepare_spectral_scene` (`cad`, `results`, `all`) verify a registered

@@ -17,6 +17,16 @@ def test_cad_spectral_schema_retains_missing_response_and_refuses_foreign_or_nul
         subprocess.check_output([os.environ["HARBOR_CAD_TEST_BINARY"], "schema"])
     )
     validator = Draft202012Validator(schemas["CadSpectralSceneRequest"])
+    transport = json.loads((repo / "examples/cad-spectral-transport.json").read_text())
+    transport_validator = Draft202012Validator(schemas["CadSpectralTransportRequest"])
+    transport_validator.validate(transport)
+    for changed in (
+        {**transport, "execute": True},
+        {**transport, "scene": None},
+        {**transport, "samples_per_triangle": None},
+    ):
+        with pytest.raises(ValidationError):
+            transport_validator.validate(changed)
     validator.validate(request)
     for response in (
         {"availability": "missing", "reason": "unknown optics"},
@@ -99,6 +109,32 @@ def test_real_cad_spectral_cli_and_stdio_profiles_use_the_same_bounded_worker(
             for profile in ("cad", "results"):
                 refusal = campaign.mcp_call(
                     "cad_prepare_spectral_scene",
+                    {"request_spec": current},
+                    profile=profile,
+                    expect_error=True,
+                )
+                assert reply["error"]["code"] + ":" in str(refusal)
+        optical = json.loads(
+            (repo / "examples/cad-spectral-transport.json").read_text()
+        )
+        for extra in ({}, {"execute": True}):
+            current = {**optical, **extra}
+            path = tmp_path / ("optical-" + str(bool(extra)) + ".json")
+            path.write_text(json.dumps(current))
+            reply = campaign.command(
+                "--socket",
+                campaign.endpoint,
+                "cad",
+                "plan-spectral-transport",
+                path,
+                allow_error=True,
+            )
+            assert reply["ok"] is False and reply["error"]["code"] == (
+                "invalid_input" if extra else "unqualified"
+            )
+            for profile in ("simulation", "all"):
+                refusal = campaign.mcp_call(
+                    "cad_plan_spectral_transport",
                     {"request_spec": current},
                     profile=profile,
                     expect_error=True,
