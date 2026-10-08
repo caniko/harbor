@@ -10,7 +10,16 @@
       sha256 = sourceSha256;
     };
     strictDeps = true;
-    nativeBuildInputs = [pkgs.gfortran pkgs.flex pkgs.python313 pkgs.pkg-config];
+    nativeBuildInputs = [
+      pkgs.gfortran
+      pkgs.flex
+      pkgs.python313
+      pkgs.pkg-config
+      # configure executes nc-config/nf-config; strictDeps keeps target
+      # libraries off PATH, so these helpers also belong to the native inputs.
+      (pkgs.lib.getBin pkgs.netcdf)
+      (pkgs.lib.getBin pkgs.netcdffortran)
+    ];
     buildInputs = [pkgs.netcdf pkgs.netcdffortran];
     # The distribution's fixed-form legacy Fortran routines use the original
     # F77 calling convention. This compiler mode does not reduce arithmetic
