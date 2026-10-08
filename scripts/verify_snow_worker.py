@@ -161,7 +161,7 @@ def main():
                     spec = case["plan"]["snow_boundary"]["input"]
                     planned = campaign.planned("plan-snow-reference", spec, interface)
                     assert planned == await mcp_call(
-                        client, "snow_reference_plan", spec=spec
+                        client, "case_plan_snow_reference", spec=spec
                     )
                     assert (
                         planned["plan"]["schema_version"] == 6

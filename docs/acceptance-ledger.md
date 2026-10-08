@@ -136,6 +136,33 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 
 ## Ordered runnable slices
 
+### Receipt and packaging continuation — 2026-10-08
+
+Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
+the strict registered-worker request/attestation gate, and repairs the adapter's
+`reference` invocation and operation-specific preopened log. The full CPU gate
+passes with 169 Python cases; the strengthened qualification prerequisite tests
+subsequently pass the complete 171-case Python gate. Source captures and check
+logs remain under `harbor-cad-resume-20261007/source-verification-7` and `-8`.
+
+`atmospheric-receipt-replay-2` independently reconstructs all nine retained native
+manufactured-source receipts, 27 seeds and 54 original component files. All 117
+numerical mutations reject, and all nine originals continue to reject at the
+strict worker-attestation gate. This numerical-only replay does not promote
+registered source execution, a package, sandbox, worker, convergence or physical
+validation. Failed `atmospheric-receipt-replay-1` remains independent. Exact hashes
+are in [diagnostic evidence](evidence/cpu-native-diagnostics-20261007.json).
+
+Normal guarded evaluation now succeeds. Build 53 compiled the CLI but failed its
+packaged tests because the filtered source omitted `atmosphere-transfer.json`;
+`87f0a0f` retains that fixture. Build 54 then realized the current CLI and MCP but
+failed libRadtran configuration: `strictDeps` excluded the executable NetCDF
+configuration helpers from PATH. `379ec20` supplies them as native build inputs.
+Both failed build logs remain retained; exact remaining native/runtime realization
+and worker qualification are still pending. `f1c8248` exposes the transport worker
+runtime as a flake package, and `c80bd33` implements its complete registered-source
+CLI/MCP qualification campaign with independently rechecked exact prerequisites.
+
 | Slice | Acceptance | State |
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |

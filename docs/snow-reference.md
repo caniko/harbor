@@ -89,3 +89,13 @@ The descriptor kind and closure checksum are recorded. This uses the same native
 thermal executable, independent original-field checks and closure-only sandbox;
 it does not qualify worker execution or a development planner. An older
 standalone descriptor lacking its closure still refuses before output creation.
+
+`scripts/verify_snow_worker.py` requires the complete six-solve/eight-refusal
+exact-package native report. It rechecks all original DAT/mesh/field histories and
+the separate spatial/temporal refinements before creating state. CLI and real MCP
+then plan and submit the same original prescription, retain its justified dry
+moisture inapplicability, reconstruct native fields and historical qualification,
+and exercise changed-prescription approval refusal, restart/idempotency, registered
+field mutations, offline exports, complete-tree death/cancellation and final
+reservation/runtime-root release. This exact worker campaign is implemented and
+remains unexecuted.

@@ -45,6 +45,31 @@
     "service_peak_memory_reported": "236.1M; swap 0B",
     "scope": "source-captured development Rust reconstruction of manufactured-source native originals; no source, package, sandbox, worker or physical promotion"
   },
+  "independent_rust_receipt_replay": {
+    "attempt": "atmospheric-receipt-replay-2",
+    "source_revision": "f1c82487af7181d386135e26d6973100d613f8aa",
+    "report_sha256": "af3de4ac54e1eb70977271a596b2625462325a9d39db82721dc8d04b7f402402",
+    "command_sha256": "bc05aa06fd5701fe01aeaf85dd308463330b32082eb9a2ae8fbd43c9d81d5883",
+    "log_sha256": "218f16bbe80db1ed399a9b1727f5e4c530556e3887090dd836855f03ae6d2b07",
+    "original_report_sha256": "5892eb830ed68d5c0896440e1a6f9d16e6911a94243ca377dbaa6563aa1ec86e",
+    "cases": 9,
+    "seed_observations": 27,
+    "original_component_files": 54,
+    "numerical_mutation_rejections": 117,
+    "strict_worker_attestation_refusals": 9,
+    "exit_code": 0,
+    "service_runtime_s": 25.976,
+    "service_peak_memory_reported": "688.3M; swap 0B",
+    "scope": "numerical-only complete original mapping/packet/receipt reconstruction; synthetic binding scaffold authorizes no registered source, package, sandbox, worker, convergence or physical qualification",
+    "independent_failed_attempt": {
+      "attempt": "atmospheric-receipt-replay-1",
+      "source_revision": "70d6de8cb8a0bf8ee43384225fbab65d249643f7",
+      "command_sha256": "78d3d2d718cd856921f70f459b7666dc741858840884931679e3661578611b7a",
+      "log_sha256": "8f1bedd22aa00a3e63bd8f7d61e2c06bae5dc5c880c607f3839d3143e6f8f206",
+      "exit_code": 1,
+      "outcome": "strict worker gate refused retained development receipts lacking production request/sandbox attestations; preserved independently"
+    }
+  },
   "spectral": {
     "attempt": "spectral-native-diagnostic-8",
     "source_revision": "3b60b9b07da97460be1920bcc190c2b853606ba8",
