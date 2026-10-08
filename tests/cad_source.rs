@@ -71,7 +71,9 @@ fn archived_source(store: &Store) -> String {
     let mut case = CaseSpec::reference();
     case.regions = vec!["solid".into()];
     case.geometry.source = "controlled.FCStd".into();
-    case.geometry.sha256 = Some("b".repeat(64));
+    let document = b"opaque archived original CAD document";
+    use sha2::{Digest, Sha256};
+    case.geometry.sha256 = Some(format!("{:x}", Sha256::digest(document)));
     let plan = ExecutionPlan::cad_inspection(case, "research".into(), 64 * 1024 * 1024).unwrap();
     let profile = HostExecutionProfile {
         schema_version: 1,
@@ -149,6 +151,19 @@ fn archived_source(store: &Store) -> String {
             .unwrap();
     }
     let root = store.job_dir(&job.id).unwrap();
+    store
+        .add_artifact(
+            &job.id,
+            &commit_artifact(
+                &root,
+                "input.FCStd",
+                document,
+                "FCStd",
+                "persisted-record fixture; not native CAD qualification",
+            )
+            .unwrap(),
+        )
+        .unwrap();
     let brep = commit_artifact(
         &root,
         "solid.brep",
@@ -274,6 +289,339 @@ fn imported_mesh_plan_is_versioned_independent_and_cannot_be_injected_into_older
     assert!(injected.validate().is_err());
     assert!(ExecutionPlan::cad_mesh(source, "ci".into()).is_err());
     assert!(store.submit(&plan, "unauthorized-mesh").is_err());
+}
+
+#[test]
+fn controlled_variant_binds_original_document_units_and_preserved_box_placement() {
+    use harbor_cad::cad_variant::{CadVariantRequest, verify_snapshot};
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    let id = archived_source(&store);
+    let request:CadVariantRequest=serde_json::from_value(serde_json::json!({"schema_version":1,"source_job":id,"region_name":"solid",
+        "dimensions":[{"value":30.,"unit":"mm"},{"value":20.,"unit":"mm"},{"value":10.,"unit":"mm"}],
+        "geometry_tolerance":{"value":1e-6,"unit":"m"},"provenance":"explicit controlled primitive copy; no physical claim"})).unwrap();
+    let plan = harbor_cad::cad_variant::plan(&store, request.clone(), "research".into()).unwrap();
+    let spec = plan.cad_variant.as_ref().unwrap();
+    assert_eq!(plan.schema_version, 16);
+    assert_eq!(spec.request.dimensions[0].unit, "mm");
+    assert_eq!(spec.source.geometry.source_transform[3], 100.);
+    assert_eq!(
+        spec.source.geometry.bounds_m,
+        [0.1, 0.12, -0.02, -0.01, 0.3, 0.31]
+    );
+    assert_eq!(spec.bounds_m().unwrap(), [0.1, 0.13, -0.02, 0., 0.3, 0.31]);
+    assert_eq!(
+        serde_json::from_value::<ExecutionPlan>(serde_json::to_value(&plan).unwrap())
+            .unwrap()
+            .id()
+            .unwrap(),
+        plan.id().unwrap()
+    );
+    let (_, record) = harbor_cad::cad_source::source(&store, &id, "solid", 2, 1e-6).unwrap();
+    let mut region: harbor_cad::cad::RegionSnapshot = serde_json::from_slice(
+        &std::fs::read(store.job_dir(&id).unwrap().join("regions.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(verify_snapshot(spec, &region).is_err());
+    region.geometry_tolerance = request.geometry_tolerance.clone();
+    region.regions[0].bounds_m = spec.bounds_m().unwrap();
+    region.regions[0].volume_m3 = 6e-6;
+    verify_snapshot(spec, &region).unwrap();
+    assert_eq!(record.geometry.volume_m3, 2e-6);
+    let mut changed = plan.clone();
+    changed.cad_variant.as_mut().unwrap().request.dimensions[0].value = 31.;
+    changed.validate().unwrap();
+    assert_ne!(changed.science_id().unwrap(), plan.science_id().unwrap());
+    assert_ne!(changed.id().unwrap(), plan.id().unwrap());
+    region.regions[0].transform[3] = 101.;
+    assert!(verify_snapshot(spec, &region).is_err());
+    assert!(store.submit(&plan, "unbound-variant").is_err());
+    std::fs::write(
+        store.job_dir(&id).unwrap().join("input.FCStd"),
+        b"substituted original source",
+    )
+    .unwrap();
+    assert!(harbor_cad::cad_variant::plan(&store, request, "research".into()).is_err());
+}
+
+#[test]
+fn controlled_variant_rejects_old_envelopes_foreign_physics_and_understated_resources() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    let id = archived_source(&store);
+    let request=serde_json::from_value(serde_json::json!({"schema_version":1,"source_job":id,"region_name":"solid","dimensions":[{"value":0.03,"unit":"m"},{"value":0.02,"unit":"m"},{"value":0.01,"unit":"m"}],"geometry_tolerance":{"value":1e-6,"unit":"m"},"provenance":"explicit synthetic variant"})).unwrap();
+    let plan = harbor_cad::cad_variant::plan(&store, request, "research".into()).unwrap();
+    for version in 1..=15 {
+        let mut value = serde_json::to_value(&plan).unwrap();
+        value["schema_version"] = serde_json::json!(version);
+        assert!(serde_json::from_value::<ExecutionPlan>(value).is_err());
+    }
+    let baseline = ExecutionPlan::reference(CaseSpec::reference()).unwrap();
+    for injected in [
+        serde_json::Value::Null,
+        serde_json::to_value(&plan.cad_variant).unwrap(),
+    ] {
+        let mut old = serde_json::to_value(&baseline).unwrap();
+        old["cad_variant"] = injected;
+        assert!(serde_json::from_value::<ExecutionPlan>(old).is_err());
+    }
+    let mut changed = plan.clone();
+    changed.stages[0].operation = StageOperation::Openlb;
+    assert!(changed.validate().is_err());
+    let mut changed = plan.clone();
+    changed.stages[0].ram_bytes = 1;
+    assert!(changed.validate().is_err());
+    let mut changed = plan.clone();
+    changed.observation.max_artifact_bytes = 16 * 1024 * 1024;
+    assert!(changed.validate().is_err());
+    let mut changed = plan.clone();
+    changed.cad_variant.as_mut().unwrap().request.dimensions[0].unit = "kg".into();
+    assert!(changed.validate().is_err());
+    let mut changed = plan.clone();
+    changed
+        .cad_variant
+        .as_mut()
+        .unwrap()
+        .request
+        .provenance
+        .clear();
+    assert!(changed.validate().is_err());
+    let mut changed = plan.clone();
+    changed.source = baseline.source;
+    changed.schema_version = 1;
+    assert!(changed.validate().is_err());
+}
+
+#[test]
+fn variant_staging_copies_originals_before_ack_and_preserves_unverifiable_orphans() {
+    use std::os::unix::fs::MetadataExt;
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    let id = archived_source(&store);
+    let request=serde_json::from_value(serde_json::json!({"schema_version":1,"source_job":id,"region_name":"solid","dimensions":[{"value":30.,"unit":"mm"},{"value":20.,"unit":"mm"},{"value":10.,"unit":"mm"}],"geometry_tolerance":{"value":1e-6,"unit":"m"},"provenance":"storage-only controlled variant fixture; no native qualification"})).unwrap();
+    let plan = harbor_cad::cad_variant::plan(&store, request, "research".into()).unwrap();
+    let mut profile = store.job_profile(&id).unwrap();
+    profile.service_mode = "foreground".into();
+    let binding = ExecutionBinding::capture(
+        &plan,
+        &profile,
+        &std::env::current_exe().unwrap(),
+        std::collections::BTreeMap::new(),
+    )
+    .unwrap();
+    let authority = store
+        .execution_authorization(&id)
+        .unwrap()
+        .unwrap()
+        .authority;
+    let auth = ExecutionAuthorization::capture(&plan, &profile, &binding, &authority).unwrap();
+    let submit = |key| {
+        store
+            .submit_authorized(&plan, key, &profile, &binding, &auth)
+            .unwrap()
+    };
+    let first = submit("copy-before-ack");
+    let retained = harbor_cad::cad_variant::registered(&store, &first.id, &plan).unwrap();
+    let original = store.job_dir(&id).unwrap().join("input.FCStd");
+    assert_ne!(
+        std::fs::metadata(&original).unwrap().ino(),
+        std::fs::metadata(&retained).unwrap().ino()
+    );
+    assert_eq!(
+        std::fs::read(&original).unwrap(),
+        std::fs::read(&retained).unwrap()
+    );
+    assert_eq!(submit("copy-before-ack").id, first.id);
+    let intact = submit("intact-orphan");
+    store
+        .connection
+        .execute("DELETE FROM jobs WHERE id=?1", [&intact.id])
+        .unwrap();
+    store.cleanup_retention(|_| Ok(false)).unwrap();
+    assert!(!store.root.join("artifacts").join(intact.id).exists());
+    let lost = submit("lost-original-orphan");
+    store
+        .connection
+        .execute("DELETE FROM jobs WHERE id=?1", [&lost.id])
+        .unwrap();
+    std::fs::write(&original, b"changed source after submission").unwrap();
+    // The acknowledged independent copy retains the original scientific input.
+    harbor_cad::cad_variant::registered(&store, &first.id, &plan).unwrap();
+    store.cleanup_retention(|_| Ok(false)).unwrap();
+    assert!(
+        store
+            .root
+            .join("artifacts")
+            .join(lost.id)
+            .join("source-document.FCStd")
+            .exists()
+    );
+    std::fs::write(retained, b"changed private original copy").unwrap();
+    assert!(harbor_cad::cad_variant::registered(&store, &first.id, &plan).is_err());
+}
+
+#[test]
+fn variant_original_receipt_geometry_and_export_mutations_cannot_qualify_history() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    let id = archived_source(&store);
+    let request=serde_json::from_value(serde_json::json!({"schema_version":1,"source_job":id,"region_name":"solid","dimensions":[{"value":30.,"unit":"mm"},{"value":20.,"unit":"mm"},{"value":10.,"unit":"mm"}],"geometry_tolerance":{"value":1e-6,"unit":"m"},"provenance":"persisted native-shape envelope fixture; not native execution evidence"})).unwrap();
+    let plan = harbor_cad::cad_variant::plan(&store, request, "research".into()).unwrap();
+    let spec = plan.cad_variant.as_ref().unwrap();
+    let mut profile = store.job_profile(&id).unwrap();
+    profile.service_mode = "foreground".into();
+    let binding = ExecutionBinding::capture(
+        &plan,
+        &profile,
+        &std::env::current_exe().unwrap(),
+        std::collections::BTreeMap::new(),
+    )
+    .unwrap();
+    let authority = store
+        .execution_authorization(&id)
+        .unwrap()
+        .unwrap()
+        .authority;
+    let auth = ExecutionAuthorization::capture(&plan, &profile, &binding, &authority).unwrap();
+    let job = store
+        .submit_authorized(&plan, "persisted-envelope-only", &profile, &binding, &auth)
+        .unwrap();
+    let root = store.job_dir(&job.id).unwrap();
+    let save = |path: &str, data: &[u8], format| {
+        let art = commit_artifact(
+            &root,
+            path,
+            data,
+            format,
+            "persisted-byte verification fixture; no native or physical qualification",
+        )
+        .unwrap();
+        store.add_artifact(&job.id, &art).unwrap();
+        art
+    };
+    let document = save(
+        "variant.FCStd",
+        b"new distinct controlled variant document",
+        "FCStd",
+    );
+    let brep = save("solid.brep", b"opaque closed fixture variant BREP", "brep");
+    save("solid.stl", b"opaque controlled fixture variant STL", "stl");
+    let transform = spec.source.geometry.source_transform;
+    let before = serde_json::json!({"bounds_m":spec.source.geometry.bounds_m,"volume_m3":spec.source.geometry.volume_m3,"transform":transform,"dimensions_m":spec.source.geometry.lengths_m()});
+    let after = serde_json::json!({"bounds_m":spec.bounds_m().unwrap(),"volume_m3":6e-6,"transform":transform,"dimensions_m":[0.03,0.02,0.01]});
+    let report = serde_json::json!({"schema_version":1,"approved_variant":spec,"source_preserved":true,"object_type":"Part::Box","gap_healing":false,"expressions":false,"before":before,"after":after,
+        "document":{"path":"variant.FCStd","sha256":document.sha256,"bytes":document.bytes}});
+    let mut snapshot: harbor_cad::cad::RegionSnapshot = serde_json::from_slice(
+        &std::fs::read(store.job_dir(&id).unwrap().join("regions.json")).unwrap(),
+    )
+    .unwrap();
+    snapshot.geometry_tolerance = spec.request.geometry_tolerance.clone();
+    snapshot.regions[0].bounds_m = spec.bounds_m().unwrap();
+    snapshot.regions[0].volume_m3 = 6e-6;
+    save(
+        "regions.json",
+        &serde_json::to_vec(&snapshot).unwrap(),
+        "json",
+    );
+    let manifest = serde_json::json!({"schema_version":1,"synthetic":true,"gap_healing":false,"regions":[{"region_name":"solid","path":"solid.brep","sha256":brep.sha256,"bytes":brep.bytes,"source_unit":"mm","scale_to_m":0.001,"bounds_m":snapshot.regions[0].bounds_m,"volume_m3":6e-6,"source_transform":transform,"placement_translation_unit":"mm"}]});
+    save(
+        "brep-manifest.json",
+        &serde_json::to_vec(&manifest).unwrap(),
+        "json",
+    );
+    save(
+        "cad-variant-recompute.json",
+        &serde_json::to_vec(&report).unwrap(),
+        "json",
+    );
+    let receipt = serde_json::json!({"adapter":"FreeCAD","version":["1","1","4"],"executed":true,"backend":"cpu","software_fallback":false,"security_minimum":"1.1.4","sandbox_required":true,"import_policy":"harbor-cad-importer-v1"});
+    save(
+        "cad_inspect-receipt.json",
+        &serde_json::to_vec(&receipt).unwrap(),
+        "json",
+    );
+    store.finish(&job.id, 0, None).unwrap();
+    let verified =
+        || harbor_cad::cad_variant::verify_registered_outputs(&store, &job.id, &plan, &receipt);
+    verified().unwrap();
+    let record = harbor_cad::qualification::inspect(&store, &job.id).unwrap();
+    assert!(matches!(
+        record.capabilities[0].runtime_execution,
+        harbor_cad::qualification::EvidenceState::NotObserved
+    ));
+    assert!(matches!(
+        record.capabilities[0].numerical_verification,
+        harbor_cad::qualification::EvidenceState::NotAssessed
+    ));
+    // Coherently replace test-only recorded reports to exercise semantic gates
+    // beyond the independent byte-integrity check; real publication is immutable.
+    let replace_fixture = |path: &str, data: &[u8]| {
+        use sha2::{Digest, Sha256};
+        let recorded: String = store
+            .connection
+            .query_row(
+                "SELECT manifest FROM artifacts WHERE job=?1 AND path=?2",
+                rusqlite::params![job.id, path],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let mut artifact: ArtifactManifest = serde_json::from_str(&recorded).unwrap();
+        std::fs::write(root.join(path), data).unwrap();
+        artifact.sha256 = format!("{:x}", Sha256::digest(data));
+        artifact.bytes = data.len() as u64;
+        store
+            .connection
+            .execute(
+                "UPDATE artifacts SET manifest=?1 WHERE job=?2 AND path=?3",
+                rusqlite::params![serde_json::to_string(&artifact).unwrap(), job.id, path],
+            )
+            .unwrap();
+    };
+    for (key, value) in [
+        ("source_preserved", serde_json::json!(false)),
+        ("object_type", serde_json::json!("Part::Feature")),
+        ("expressions", serde_json::json!(true)),
+        ("after", before.clone()),
+        ("before", after.clone()),
+    ] {
+        let mut changed = report.clone();
+        changed[key] = value;
+        replace_fixture(
+            "cad-variant-recompute.json",
+            &serde_json::to_vec(&changed).unwrap(),
+        );
+        assert!(verified().is_err(), "{key}");
+    }
+    replace_fixture(
+        "cad-variant-recompute.json",
+        &serde_json::to_vec(&report).unwrap(),
+    );
+    let mut changed = manifest.clone();
+    changed["regions"][0]["placement_translation_unit"] = serde_json::json!("m");
+    replace_fixture("brep-manifest.json", &serde_json::to_vec(&changed).unwrap());
+    assert!(verified().is_err());
+    replace_fixture(
+        "brep-manifest.json",
+        &serde_json::to_vec(&manifest).unwrap(),
+    );
+    for path in [
+        "regions.json",
+        "cad-variant-recompute.json",
+        "variant.FCStd",
+        "brep-manifest.json",
+        "solid.brep",
+        "solid.stl",
+        "source-document.FCStd",
+        "variant-source-regions.json",
+        "cad-variant-source-execution.json",
+    ] {
+        let file = root.join(path);
+        let original = std::fs::read(&file).unwrap();
+        std::fs::write(&file, b"changed original bytes").unwrap();
+        assert!(verified().is_err(), "{path}");
+        std::fs::write(&file, original).unwrap();
+    }
+    verified().unwrap();
 }
 
 #[test]

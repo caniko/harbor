@@ -111,6 +111,11 @@ for partial-submission recovery, resource admission and qualification boundaries
 measure named planar-opening coverage by explicit prescribed snow geometry.
 See [snow openings](docs/snow-openings.md) for union-area and applicability semantics.
 
+`cad variant examples/cad-variant.json` and CAD/all MCP `cad_plan_variant`
+prepare an independently approved controlled native box-copy edit from registered
+CAD. See [CAD variants](docs/cad-variants.md) for its narrow parameter allowlist,
+original preservation and package-qualification boundaries.
+
 `filter REQUEST.json` plans an independently approved HIP point-gradient job
 from registered retained science. Its version-4 compute-only DAG, native package
 and qualification boundaries are described in [numerical filters](docs/numerical-filters.md).

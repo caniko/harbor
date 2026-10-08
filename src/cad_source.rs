@@ -37,6 +37,7 @@ impl ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: None,
+            cad_variant: None,
             source: None,
             frames: None,
             filter: None,
@@ -267,6 +268,64 @@ struct BrepRegion {
     volume_m3: f64,
     source_transform: [f64; 16],
     placement_translation_unit: String,
+}
+
+/// Check every native named BREP against independently verified world geometry
+/// before a controlled variant is published. Native execution alone cannot
+/// authorize a changed manifest or a missing/empty geometry export.
+pub(crate) fn verify_brep_outputs(
+    root: &std::path::Path,
+    snapshot: &crate::cad::RegionSnapshot,
+) -> Result<()> {
+    let manifest: BrepManifest = serde_json::from_slice(&crate::worker::read_bounded(
+        &safe_path(root, "brep-manifest.json")?,
+        256 * 1024,
+    )?)?;
+    if manifest.schema_version != 1
+        || manifest.synthetic != snapshot.synthetic
+        || manifest.gap_healing
+        || manifest.regions.len() != snapshot.regions.len()
+        || manifest.regions.is_empty()
+        || manifest.regions.len() > 256
+    {
+        return Err(invalid(
+            "complete original-unit named BREP manifest required",
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for record in manifest.regions {
+        let region = snapshot
+            .regions
+            .iter()
+            .find(|r| r.name == record.region_name)
+            .ok_or_else(|| invalid("BREP export refers to an unknown recomputed region"))?;
+        if !seen.insert(record.region_name)
+            || record.path != format!("{}.brep", region.name)
+            || record.bounds_m != region.bounds_m
+            || record.volume_m3 != region.volume_m3
+            || record.source_transform != region.transform
+            || record.source_unit != "mm"
+            || record.scale_to_m != 0.001
+            || record.placement_translation_unit != "mm"
+            || !(1..=64 * 1024 * 1024).contains(&record.bytes)
+        {
+            return Err(invalid(
+                "recomputed BREP export metadata differs from original named geometry",
+            ));
+        }
+        let original = native_manifest(
+            root,
+            &record.path,
+            64 * 1024 * 1024,
+            "verify recomputed native BREP export",
+        )?;
+        if original.sha256 != record.sha256 || original.bytes != record.bytes {
+            return Err(invalid(
+                "recomputed native BREP original differs from its closed manifest",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Resolve only a completed, originally authorized CAD job and registered solid.

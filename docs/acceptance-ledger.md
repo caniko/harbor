@@ -262,6 +262,36 @@ separate kernel measurements. This closes the bounded fixed-case CPU profile
 comparison in F; GPU/JIT optimization and other workloads remain independent
 unqualified gates. Dispatch defaults and scientific approvals are unchanged.
 
+## Controlled native CAD-copy variants
+
+Version 16 binds one original authorized native CAD source, its document and
+geometric evidence, explicit new dimensions and unchanged box placement. The
+CAD/all CLI/MCP planning path prepares a new immutable approval; the ordinary
+worker retains distinct-inode original copies and exact source execution
+provenance before acknowledgment, under shared staging admission. Only fixed
+native box dimensions are editable. Patched FreeCAD recomputes the copied
+document and Rust independently verifies original/recomputed bounds, volume,
+named regions, placement and closed originals before publication and historical
+qualification. No solver or physical-validation status is inferred.
+
+The full `source-verification-20` gate passes Rust tests, strict Clippy, locked
+build, formatting/Ruff and 186 Python tests. New storage tests cover original
+mutation, acknowledgement identity and preserved unverifiable staging orphans;
+contract tests reject older-version injection, resource understatement and
+foreign physics. Python allowlist tests refuse extra objects, formulas,
+assemblies and changed original context before recompute. Exact native variants,
+reimport correspondence and worker lifecycle remain independently unqualified
+until the rebuilt importer/CLI/MCP and matching campaign execute. See
+[controlled variants](cad-variants.md).
+
+The original/export verifier additionally rejects coherent false recompute
+metadata and substitutions of all nine bound original/provenance files. The
+persisted envelope fixtures do not claim native execution. `source-verification-19`
+retains a failed assertion using a nonexistent error-code spelling; gate 20
+confirms the real CLI/MCP worker emits the existing typed `unqualified` refusal.
+Build 61 retains the independent Canix evaluation-lock refusal; it is not a
+package-build or physics failure.
+
 | Slice | Acceptance | State |
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |

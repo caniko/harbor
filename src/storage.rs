@@ -566,6 +566,7 @@ impl Store {
     ) -> Result<Job> {
         plan.validate()?;
         if (plan.source.is_some()
+            || plan.cad_variant.is_some()
             || plan.cad_source.is_some()
             || plan.atmospheric_transport.is_some())
             && (profile.is_none() || binding.is_none() || authorization.is_none())
@@ -651,6 +652,7 @@ impl Store {
         crate::presentation::retain(self, &id, plan)?;
         crate::frames::retain(self, &id, plan)?;
         crate::cad_source::retain(self, &id, plan)?;
+        crate::cad_variant::retain(self, &id, plan)?;
         crate::atmospheric_transport::retain(self, &id, plan)?;
         tx.execute(
             "INSERT INTO events(job,time,kind,message) VALUES(?1,?2,'submitted',?3)",
@@ -744,6 +746,7 @@ impl Store {
             if !exists {
                 crate::presentation::recover_orphan(self, &id)?;
                 crate::cad_source::recover_orphan(self, &id)?;
+                crate::cad_variant::recover_orphan(self, &id)?;
                 crate::atmospheric_transport::recover_orphan(self, &id)?;
                 crate::retention::release(&self.root, &id, None)?;
             } else {

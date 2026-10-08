@@ -51,8 +51,48 @@ def main():
         doc.saveAs("/work/source.FCStd")
     elif op == "cad_inspect":
         # No inspection outside sandbox precedes this open.
+        variant = plan.get("cad_variant")
+        if variant is not None:
+            raw = Path("/input.FCStd").read_bytes()
+            if (
+                len(raw) != variant["document"]["bytes"]
+                or hashlib.sha256(raw).hexdigest() != variant["document"]["sha256"]
+            ):
+                raise ValueError("exact registered original CAD document required")
         doc = App.openDocument("/input.FCStd")
-        doc.recompute()
+        if variant is not None:
+            if plan["schema_version"] != 16:
+                raise ValueError("distinct approved variant recipe required")
+            result = importlib.import_module("harbor_cad_cad_variant").apply(
+                doc, variant, case["geometry_tolerance"]["value"]
+            )
+            doc.saveAs("/work/variant.FCStd")
+            output = Path("/work/variant.FCStd")
+            if (
+                output.is_symlink()
+                or not output.is_file()
+                or not 0 < output.stat().st_size <= 64 * 1024**2
+            ):
+                raise ValueError("bounded new closed variant document required")
+            saved = output.read_bytes()
+            if Path("/input.FCStd").read_bytes() != raw:
+                raise ValueError("original CAD bytes changed during variant execution")
+            atomic_json(
+                "/work/cad-variant-recompute.json",
+                {
+                    "schema_version": 1,
+                    "approved_variant": variant,
+                    "source_preserved": True,
+                    **result,
+                    "document": {
+                        "path": "variant.FCStd",
+                        "sha256": hashlib.sha256(saved).hexdigest(),
+                        "bytes": len(saved),
+                    },
+                },
+            )
+        else:
+            doc.recompute()
     else:
         raise ValueError("allowlisted CAD operation required")
     regions = []

@@ -162,6 +162,7 @@ impl crate::contracts::ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: None,
+            cad_variant: None,
             source: None,
             frames: None,
             filter: None,

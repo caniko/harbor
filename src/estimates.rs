@@ -48,6 +48,18 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
         )
     });
     let mut output = if native { 16 * MIB } else { MIB };
+    if let Some(variant) = &plan.cad_variant {
+        variant.validate()?;
+        // Original document/region copies plus bounded closed new FCStd, BREP
+        // and STL outputs; native document compression ratios are not assumed.
+        output = add(
+            output,
+            add(
+                add(variant.document.bytes, variant.source.region_evidence.bytes)?,
+                192 * MIB,
+            )?,
+        )?;
+    }
     if let Some(source) = &plan.cad_source {
         output = add(
             output,

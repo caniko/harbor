@@ -152,6 +152,7 @@ impl ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: Some(spec),
+            cad_variant: None,
             stages: vec![
                 Stage {
                     id: STAGE.into(),

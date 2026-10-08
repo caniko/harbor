@@ -465,6 +465,7 @@ fn submission_binding(
         ));
     }
     if (plan.fem.is_some()
+        || plan.cad_variant.is_some()
         || plan.thermal.is_some()
         || plan.cad_source.is_some()
         || plan.wetting.is_some()
@@ -495,6 +496,9 @@ fn submission_binding(
     check_plan(plan, profile)?;
     if let Some(spec) = &plan.atmospheric_transport {
         crate::atmospheric_transport::registered_source(store, spec)?;
+    }
+    if let Some(spec) = &plan.cad_variant {
+        crate::cad_variant::source(store, spec)?;
     }
     if let Some(authority) = authority {
         authority.authorize(plan, profile)?;
@@ -701,6 +705,15 @@ fn dispatch(
             let plan = crate::cad_source::plan(store, *request, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
         }
+        Operation::PlanCadVariant { request } => {
+            if authority.is_none() {
+                return Err(Error::Unqualified(
+                    "controlled CAD variants require authoritative admission".into(),
+                ));
+            }
+            let plan = crate::cad_variant::plan(store, *request, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
         Operation::PlanFemImported { request } => {
             if authority.is_none() {
                 return Err(Error::Unqualified(
@@ -770,6 +783,24 @@ fn dispatch(
                     {
                         return Err(Error::Resource(
                             "insufficient state-root capacity for immutable source staging".into(),
+                        ));
+                    }
+                    Admission::open(&crate::admission::shared_root()?, authority)?
+                        .retain_inputs(store, bytes, submit)?
+                } else if let Some(spec) = &plan.cad_variant {
+                    let bytes = spec
+                        .document
+                        .bytes
+                        .checked_add(spec.source.region_evidence.bytes)
+                        .and_then(|b| b.checked_add(16 * 1024 * 1024))
+                        .ok_or_else(|| invalid("CAD variant staging budget overflow"))?;
+                    if bytes
+                        .checked_add(disk_bytes(&store.root, false)?)
+                        .is_none_or(|n| n > profile.max_disk_bytes)
+                    {
+                        return Err(Error::Resource(
+                            "insufficient state-root capacity for immutable CAD variant staging"
+                                .into(),
                         ));
                     }
                     Admission::open(&crate::admission::shared_root()?, authority)?
@@ -1538,26 +1569,34 @@ fn native_stage(
         }
     }
     if matches!(stage.operation, StageOperation::CadInspect) {
-        let source = safe_path(
-            Path::new(&profile.allowed_input_root),
-            &plan.channel_case()?.geometry.source,
-        )?;
-        let job_dir = store.job_dir(id)?;
-        let artifact = snapshot_cad_input(
-            &source,
-            &job_dir,
-            plan.channel_case()?
-                .geometry
-                .sha256
-                .as_deref()
-                .ok_or_else(|| invalid("source CAD digest required"))?,
-            plan.observation.max_artifact_bytes,
-        )?;
-        store.add_artifact(id, &artifact)?;
-        command
-            .args(["--ro-bind"])
-            .arg(safe_path(&job_dir, &artifact.path)?)
-            .arg("/input.FCStd");
+        if let Some(spec) = &plan.cad_variant {
+            spec.validate()?;
+            command
+                .args(["--ro-bind"])
+                .arg(crate::cad_variant::registered(store, id, plan)?)
+                .arg("/input.FCStd");
+        } else {
+            let source = safe_path(
+                Path::new(&profile.allowed_input_root),
+                &plan.channel_case()?.geometry.source,
+            )?;
+            let job_dir = store.job_dir(id)?;
+            let artifact = snapshot_cad_input(
+                &source,
+                &job_dir,
+                plan.channel_case()?
+                    .geometry
+                    .sha256
+                    .as_deref()
+                    .ok_or_else(|| invalid("source CAD digest required"))?,
+                plan.observation.max_artifact_bytes,
+            )?;
+            store.add_artifact(id, &artifact)?;
+            command
+                .args(["--ro-bind"])
+                .arg(safe_path(&job_dir, &artifact.path)?)
+                .arg("/input.FCStd");
+        }
     }
     let op = serde_json::to_value(&stage.operation)?
         .as_str()
@@ -1799,6 +1838,10 @@ fn native_stage(
     if matches!(stage.operation, StageOperation::CadMesh) {
         crate::cad_source::registered(store, id, plan)?;
         crate::cad_mesh::verify_receipt(plan, dir, &evidence)?;
+    }
+    if plan.cad_variant.is_some() && stage.operation == StageOperation::CadInspect {
+        crate::cad_variant::registered(store, id, plan)?;
+        crate::cad_variant::verify_outputs(plan, dir, &evidence)?;
     }
     if matches!(stage.operation, StageOperation::FemImported) {
         crate::cad_source::registered(store, id, plan)?;

@@ -12,6 +12,7 @@
   importPolicy = pkgs.runCommand "harbor-cad-import-policy" {} ''
     mkdir -p $out
     cp ${../adapters/import_policy.py} $out/harbor_cad_import_policy.py
+    cp ${../adapters/cad_variant.py} $out/harbor_cad_cad_variant.py
   '';
   cadBridge = pkgs.replaceVars ../adapters/freecad_bridge.py {policy_dir = "${importPolicy}";};
   cad = pkgs.writeShellScriptBin "harbor-cad-import" ''

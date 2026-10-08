@@ -439,6 +439,10 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     ));
                 }
                 capability.runtime_execution = EvidenceState::Recorded;
+                if plan.cad_variant.is_some() && stage.operation == StageOperation::CadInspect {
+                    crate::cad_variant::verify_registered_outputs(store, id, &plan, &value)?;
+                    capability.formulation = "source_bound_controlled_box_variant".into();
+                }
                 if matches!(stage.operation, StageOperation::FemImported) {
                     for path in [
                         "stages/fem-imported/mesh.json",

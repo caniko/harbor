@@ -433,6 +433,8 @@ pub struct ExecutionPlan {
     pub atmosphere: Option<crate::atmosphere::AtmosphericReferenceSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub atmospheric_transport: Option<crate::atmospheric_transport::AtmosphericTransportSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cad_variant: Option<crate::cad_variant::CadVariantSpec>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -477,12 +479,19 @@ struct ExecutionPlanRecord {
     atmosphere: Option<crate::atmosphere::AtmosphericReferenceSpec>,
     #[serde(default, deserialize_with = "atmospheric_transport_spec")]
     atmospheric_transport: Option<crate::atmospheric_transport::AtmosphericTransportSpec>,
+    #[serde(default, deserialize_with = "cad_variant_spec")]
+    cad_variant: Option<crate::cad_variant::CadVariantSpec>,
 }
 
 fn atmospheric_transport_spec<'de, D: serde::Deserializer<'de>>(
     decoder: D,
 ) -> std::result::Result<Option<crate::atmospheric_transport::AtmosphericTransportSpec>, D::Error> {
     crate::atmospheric_transport::AtmosphericTransportSpec::deserialize(decoder).map(Some)
+}
+fn cad_variant_spec<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<crate::cad_variant::CadVariantSpec>, D::Error> {
+    crate::cad_variant::CadVariantSpec::deserialize(decoder).map(Some)
 }
 
 fn atmospheric_spec<'de, D: serde::Deserializer<'de>>(
@@ -570,6 +579,14 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> std::result::Result<Self, D::Error> {
         use serde::de::Error;
         let plan = ExecutionPlanRecord::deserialize(decoder)?;
+        if plan.cad_variant.is_some() {
+            if !plan.cad_variant_envelope() {
+                return Err(D::Error::custom(
+                    "strict source-bound version-16 CAD variant required",
+                ));
+            }
+            return Ok(plan);
+        }
         if plan.atmospheric_transport.is_some() {
             if !plan.atmospheric_transport_envelope() {
                 return Err(D::Error::custom(
@@ -663,7 +680,7 @@ impl JsonSchema for ExecutionPlan {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
             properties["schema_version"]["enum"] =
-                serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+                serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
         }
         schema.insert("allOf".into(), serde_json::json!([
             {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}}},
@@ -694,11 +711,31 @@ impl JsonSchema for ExecutionPlan {
             conditions.push(serde_json::json!(
                 {"if":{"properties":{"schema_version":{"const":15}}},"then":{"required":["atmospheric_transport"],"properties":{"atmospheric_transport":{"type":"object"}},"not":{"anyOf":[{"required":["case"]},{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]},{"required":["cad_source"]},{"required":["imported_fem"]},{"required":["wetting"]},{"required":["contact"]},{"required":["thermal_contact"]},{"required":["freezing"]},{"required":["spectral"]},{"required":["atmosphere"]}]}},"else":{"not":{"required":["atmospheric_transport"]}}}
             ));
+            conditions.push(serde_json::json!({"if":{"properties":{"schema_version":{"const":16}}},"then":{"required":["cad_variant","case"],"properties":{"cad_variant":{"type":"object"},"case":{"type":"object"}},"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]},{"required":["fem"]},{"required":["thermal"]},{"required":["cad_source"]},{"required":["imported_fem"]},{"required":["wetting"]},{"required":["contact"]},{"required":["thermal_contact"]},{"required":["freezing"]},{"required":["spectral"]},{"required":["atmosphere"]},{"required":["atmospheric_transport"]}]}},"else":{"not":{"required":["cad_variant"]}}}));
         }
         schema
     }
 }
 impl ExecutionPlan {
+    fn cad_variant_envelope(&self) -> bool {
+        self.schema_version == 16
+            && self.cad_variant.is_some()
+            && self.case.is_some()
+            && self.source.is_none()
+            && self.frames.is_none()
+            && self.filter.is_none()
+            && self.fem.is_none()
+            && self.thermal.is_none()
+            && self.cad_source.is_none()
+            && self.imported_fem.is_none()
+            && self.wetting.is_none()
+            && self.contact.is_none()
+            && self.thermal_contact.is_none()
+            && self.freezing.is_none()
+            && self.spectral.is_none()
+            && self.atmosphere.is_none()
+            && self.atmospheric_transport.is_none()
+    }
     fn atmospheric_transport_envelope(&self) -> bool {
         self.schema_version == 15
             && self.atmospheric_transport.is_some()
@@ -831,6 +868,12 @@ impl ExecutionPlan {
             .ok_or_else(|| invalid("fluid/CAD case required for this operation"))
     }
     pub fn science_id(&self) -> Result<String> {
+        if let Some(spec) = &self.cad_variant {
+            if !self.cad_variant_envelope() {
+                return Err(invalid("independent v16 controlled CAD variant required"));
+            }
+            return digest(&(self.channel_case()?.science_id()?, spec));
+        }
         if let Some(spec) = &self.atmospheric_transport {
             if !self.atmospheric_transport_envelope() {
                 return Err(invalid(
@@ -932,6 +975,7 @@ impl ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: None,
+            cad_variant: None,
             stages: vec![
                 Stage {
                     id: "filter".into(),
@@ -1008,6 +1052,7 @@ impl ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: None,
+            cad_variant: None,
             stages: vec![
                 Stage {
                     id: "video".into(),
@@ -1133,6 +1178,7 @@ impl ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: None,
+            cad_variant: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1181,6 +1227,7 @@ impl ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: None,
+            cad_variant: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -1241,6 +1288,7 @@ impl ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: None,
+            cad_variant: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -1317,6 +1365,7 @@ impl ExecutionPlan {
             spectral: None,
             atmosphere: None,
             atmospheric_transport: None,
+            cad_variant: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1409,41 +1458,43 @@ impl ExecutionPlan {
         if let Some(fem) = &self.fem {
             fem.validate()?;
         }
-        if !(self.atmospheric_transport_envelope()
-            || self.atmospheric_envelope()
-            || self.spectral_envelope()
-            || self.freezing_envelope()
-            || self.thermal_contact_envelope()
-            || self.contact_envelope()
-            || self.wetting_envelope()
-            || (self.atmospheric_transport.is_none()
-                && self.atmosphere.is_none()
-                && self.spectral.is_none()
-                && self.freezing.is_none()
-                && self.thermal_contact.is_none()
-                && self.contact.is_none()
-                && self.wetting.is_none()
-                && matches!(
-                    (
-                        self.schema_version,
-                        &self.source,
-                        &self.frames,
-                        &self.filter,
-                        &self.case,
-                        &self.fem,
-                        &self.thermal,
-                        &self.cad_source,
-                        &self.imported_fem,
-                    ),
-                    (1, None, None, None, Some(_), None, None, None, None)
-                        | (2, Some(_), None, None, Some(_), None, None, None, None)
-                        | (3, Some(_), Some(_), None, Some(_), None, None, None, None)
-                        | (4, Some(_), None, Some(_), Some(_), None, None, None, None)
-                        | (5, None, None, None, None, Some(_), None, None, None)
-                        | (6, None, None, None, None, None, Some(_), None, None)
-                        | (7, None, None, None, None, None, None, Some(_), None)
-                        | (8, None, None, None, None, None, None, Some(_), Some(_))
-                )))
+        if (self.cad_variant.is_some() && !self.cad_variant_envelope())
+            || !(self.cad_variant_envelope()
+                || self.atmospheric_transport_envelope()
+                || self.atmospheric_envelope()
+                || self.spectral_envelope()
+                || self.freezing_envelope()
+                || self.thermal_contact_envelope()
+                || self.contact_envelope()
+                || self.wetting_envelope()
+                || (self.atmospheric_transport.is_none()
+                    && self.atmosphere.is_none()
+                    && self.spectral.is_none()
+                    && self.freezing.is_none()
+                    && self.thermal_contact.is_none()
+                    && self.contact.is_none()
+                    && self.wetting.is_none()
+                    && matches!(
+                        (
+                            self.schema_version,
+                            &self.source,
+                            &self.frames,
+                            &self.filter,
+                            &self.case,
+                            &self.fem,
+                            &self.thermal,
+                            &self.cad_source,
+                            &self.imported_fem,
+                        ),
+                        (1, None, None, None, Some(_), None, None, None, None)
+                            | (2, Some(_), None, None, Some(_), None, None, None, None)
+                            | (3, Some(_), Some(_), None, Some(_), None, None, None, None)
+                            | (4, Some(_), None, Some(_), Some(_), None, None, None, None)
+                            | (5, None, None, None, None, Some(_), None, None, None)
+                            | (6, None, None, None, None, None, Some(_), None, None)
+                            | (7, None, None, None, None, None, None, Some(_), None)
+                            | (8, None, None, None, None, None, None, Some(_), Some(_))
+                    )))
             || self.fleetix_revision != FLEETIX_REV
             || self.fleetix_contract_digest != fleetix_digest()
         {
@@ -1466,6 +1517,39 @@ impl ExecutionPlan {
         }
         if let Some(spec) = &self.atmospheric_transport {
             spec.validate_plan(self)?;
+        }
+        if let Some(spec) = &self.cad_variant {
+            spec.validate()?;
+            let case = self.channel_case()?;
+            if self.policy == "ci"
+                || self.stages.len() != 2
+                || self.stages[0].id != "cad"
+                || self.stages[0].operation != StageOperation::CadInspect
+                || !self.stages[0].dependencies.is_empty()
+                || self.stages[1].id != "bundle"
+                || self.stages[1].operation != StageOperation::Bundle
+                || self.stages[1].dependencies != ["cad"]
+                || self.stages.iter().any(|s| {
+                    s.gpu != GpuRequirement::CpuOnly || s.selection.is_some() || s.vram_bytes != 0
+                })
+                || !self.transfers.is_empty()
+                || self.observation.metrics != ["geometry_regions"]
+                || !self.observation.probes.is_empty()
+                || !self.observation.retained_times_s.is_empty()
+                || !self.observation.preview_times_s.is_empty()
+                || !self.observation.checkpoint_times_s.is_empty()
+                || self.observation.preview_may_drop
+                || case.regions != [spec.request.region_name.clone()]
+                || case.geometry.synthetic != spec.source.geometry.synthetic
+                || case.geometry.source != "source-document.FCStd"
+                || case.geometry.sha256.as_deref() != Some(spec.document.sha256.as_str())
+                || case.geometry_tolerance.si("length")?
+                    != spec.request.geometry_tolerance.si("length")?
+            {
+                return Err(invalid(
+                    "strict source-bound controlled CPU CAD-copy variant DAG and original region context required",
+                ));
+            }
         }
         if let Some(source) = &self.cad_source {
             source.validate()?;
@@ -2084,6 +2168,9 @@ pub enum Operation {
     PlanCadMesh {
         request: Box<crate::cad_source::CadMeshRequest>,
     },
+    PlanCadVariant {
+        request: Box<crate::cad_variant::CadVariantRequest>,
+    },
     PlanFemImported {
         request: Box<crate::fem_imported::ImportedFemRequest>,
     },
@@ -2345,5 +2432,9 @@ pub fn schemas() -> serde_json::Value {
     ));
     schemas["FreezingScale"] =
         serde_json::json!(schemars::schema_for!(crate::freezing::FreezingScale));
+    schemas["CadVariantRequest"] =
+        serde_json::json!(schemars::schema_for!(crate::cad_variant::CadVariantRequest));
+    schemas["CadVariantSpec"] =
+        serde_json::json!(schemars::schema_for!(crate::cad_variant::CadVariantSpec));
     schemas
 }

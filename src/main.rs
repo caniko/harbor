@@ -263,6 +263,8 @@ enum Job {
 }
 #[derive(Subcommand)]
 enum Cad {
+    /// Plan a controlled native box-copy edit from an authorized registered CAD job.
+    Variant { request: PathBuf },
     /// Plan correspondence meshing from registered authorized BREP; requires the worker.
     Mesh { request: PathBuf },
     /// Prepare an approval-bound sandboxed inspection plan; submit with job submit.
@@ -556,6 +558,9 @@ fn run(cli: Cli) -> Result<()> {
         },
         Commands::Cad { command } => match command {
             Cad::Mesh { request } => Operation::PlanCadMesh {
+                request: Box::new(read(&request)?),
+            },
+            Cad::Variant { request } => Operation::PlanCadVariant {
                 request: Box::new(read(&request)?),
             },
             Cad::Inspect {

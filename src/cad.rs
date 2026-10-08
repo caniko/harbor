@@ -120,6 +120,9 @@ pub fn regions(store: &Store, id: &str) -> Result<RegionReport> {
         .ok_or_else(|| invalid("registered CAD regions required"))?;
     let snapshot: RegionSnapshot = serde_json::from_value(value)?;
     snapshot.verify(plan.channel_case()?, capability.operation.clone())?;
+    if let Some(spec) = &plan.cad_variant {
+        crate::cad_variant::verify_snapshot(spec, &snapshot)?;
+    }
     Ok(RegionReport {
         schema_version: 1,
         job_id: id.into(),

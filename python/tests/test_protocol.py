@@ -351,6 +351,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_openlb_reference" in names
                 assert "cad_plan_inspection" in names
                 assert "cad_regions" in names and "cad_submit" in names
+                assert "cad_plan_variant" in names
                 assert "cad_plan_mesh" in names and "cad_mesh_submit" in names
                 rejected_mesh = await client.call_tool(
                     "cad_plan_mesh",
@@ -564,6 +565,7 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 names = {t.name for t in (await client.list_tools()).tools}
                 assert "cad_plan_inspection" in names and "job_submit" not in names
                 assert "cad_regions" in names and "cad_submit" in names
+                assert "cad_plan_variant" in names
                 assert "job_status" in names and "job_logs" in names
                 assert "case_plan_fem_reference" not in names
                 assert "case_plan_thermal_reference" not in names
@@ -571,6 +573,15 @@ def test_real_mcp_client_and_rust_worker(tmp_path, monkeypatch):
                 assert "case_plan_thermal_contact" not in names
                 rejected = await client.call_tool("cad_regions", {"job_id": job["id"]})
                 assert rejected.is_error
+                variant = json.loads(
+                    (
+                        Path(__file__).parents[2] / "examples/cad-variant.json"
+                    ).read_text()
+                )
+                rejected = await client.call_tool(
+                    "cad_plan_variant", {"variant": variant}
+                )
+                assert rejected.is_error and "unqualified:" in str(rejected.content)
                 rejected = await client.call_tool(
                     "cad_submit",
                     {

@@ -127,9 +127,9 @@ def build_server(profile: str) -> MCPServer:
         async def cad_submit(
             plan: dict[str, Any], approved_digest: str, idempotency_key: str
         ) -> dict[str, Any]:
-            """Submit only an approved CAD inspection plan; return its durable job ID."""
+            """Submit only an approved CAD inspection or controlled-copy variant; return its durable job ID."""
             operations = [stage.get("operation") for stage in plan.get("stages", [])]
-            if plan.get("schema_version") != 1 or operations != [
+            if plan.get("schema_version") not in {1, 16} or operations != [
                 "cad_inspect",
                 "bundle",
             ]:
@@ -140,6 +140,11 @@ def build_server(profile: str) -> MCPServer:
                 approved_digest=approved_digest,
                 idempotency_key=idempotency_key,
             )
+
+        @server.tool()
+        async def cad_plan_variant(variant: dict[str, Any]) -> dict[str, Any]:
+            """Approve one registered native box copy with explicit dimensions and preserved placement; no source document is opened while planning."""
+            return await request("plan_cad_variant", request=variant)
 
     if profile in {"cad", "results", "all"}:
 
