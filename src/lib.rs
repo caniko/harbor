@@ -41,6 +41,7 @@ pub mod radiation;
 pub mod recipes;
 pub mod resources;
 pub mod results;
+pub mod retained_cooling;
 pub mod retention;
 pub mod sandbox;
 pub mod science;
