@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -38,7 +39,9 @@ def check_refs():
 
 def main():
     receipts = json.loads((ROOT / "migration/sources.json").read_text())
+    dispositions = (ROOT / "migration/retained-work.md").read_text()
     identities = set()
+    retained_commits = set()
     for receipt in receipts:
         identity = receipt["id"]
         if identity in identities:
@@ -57,10 +60,30 @@ def main():
         if prefix.startswith("migration/legacy/"):
             if git("rev-parse", f"HEAD:{prefix}") != receipt["sourceTree"]:
                 raise ValueError(f"legacy source tree changed: {identity}")
+        heading = f"## {identity}\n"
+        if dispositions.count(heading) != 1:
+            raise ValueError(f"missing or duplicate disposition section: {identity}")
+        section = dispositions.split(heading, 1)[1].split("\n## ", 1)[0]
+        documented = re.findall(r"`([a-f0-9]{8})`", section)
+        tips = git(
+            "for-each-ref",
+            "--format=%(objectname)",
+            f"refs/tags/imported-ref/{identity}/",
+        ).splitlines()
+        commits = set(git("rev-list", *tips, f"^{revision}").splitlines())
+        expected = {commit[:8] for commit in commits}
+        if (
+            len(expected) != len(commits)
+            or len(documented) != len(set(documented))
+            or set(documented) != expected
+        ):
+            raise ValueError(f"retained-work disposition coverage mismatch: {identity}")
+        retained_commits.update(commits)
     refs = check_refs()
     print(
         f"verified {len(identities)} source histories, legacy tree receipts, "
-        f"and {refs} retained branches/tags"
+        f"{refs} retained branches/tags, and dispositions for "
+        f"{len(retained_commits)} retained commits"
     )
 
 
