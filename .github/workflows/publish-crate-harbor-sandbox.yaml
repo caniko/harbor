@@ -456,7 +456,7 @@ jobs:
         cat plan.json
       shell: bash
     timeout-minutes: 20
-  publish-nix-harbor-rs:
+  publish-harbor-sandbox:
     env:
       CARGO_HOME: /tmp/.cargo
       NIX_CONFIG: experimental-features = nix-command flakes
@@ -479,15 +479,15 @@ jobs:
     - name: Add cargo bin to PATH
       run: echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
     - name: Package archive with verification
-      run: nix develop -c cargo package -p nix_harbor_rs --allow-dirty
+      run: nix develop -c cargo package -p harbor-sandbox --allow-dirty
     - name: Registry dry-run
-      run: nix develop -c cargo publish -p nix_harbor_rs --dry-run
+      run: nix develop -c cargo publish -p harbor-sandbox --dry-run
     - env:
         CRATES_IO_API_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
       name: Publish
       run: |
         set -euo pipefail
-        crate_name='nix_harbor_rs'
+        crate_name='harbor-sandbox'
         version="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
         version="${version#*/v}"
         if [ -z "$version" ]; then echo "Could not determine release version from tag ref" >&2; exit 1; fi
@@ -509,7 +509,7 @@ jobs:
           401|403) echo "authorization/ownership failure checking ${crate_name} ${version} (HTTP $status)" >&2; exit 1;;
           *) echo "Could not check crates.io for ${crate_name} ${version} before publishing (HTTP $status)" >&2; exit 1;;
         esac
-        nix develop -c cargo publish -p nix_harbor_rs
+        nix develop -c cargo publish -p harbor-sandbox
         # Bounded propagation wait: dependents need this version visible.
         for attempt in $(seq 1 20); do
           code="$(curl --retry 2 -sS -o /dev/null -w '%{http_code}' -A 'simit publish-workspace propagation' "https://crates.io/api/v1/crates/${crate_name}/${version}" || echo 000)"
@@ -520,7 +520,7 @@ jobs:
   publish-report:
     if: always()
     needs:
-    - publish-nix-harbor-rs
+    - publish-harbor-sandbox
     permissions:
       contents: read
       id-token: write
@@ -584,7 +584,7 @@ jobs:
       run: |
         set -euo pipefail
         tag="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
-        case "$tag" in nix_harbor_rs/v*) version="${tag#nix_harbor_rs/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
+        case "$tag" in harbor-sandbox/v*) version="${tag#harbor-sandbox/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
         if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.+-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
         test -s keys/maintainers.gpg
         GNUPGHOME="$(mktemp -d)"; export GNUPGHOME; chmod 700 "$GNUPGHOME"
@@ -594,13 +594,13 @@ jobs:
         validated_sha="$(git rev-list -n 1 "$tag")"
         test "$validated_sha" = "${GITHUB_SHA:?missing workflow event SHA}" || { echo "Signed tag commit does not match the workflow event SHA; refusing a moved tag" >&2; exit 1; }
         git checkout --detach "$validated_sha"
-        test "$(nix develop -c cargo pkgid -p nix_harbor_rs | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version" || { echo "nix_harbor_rs version does not match tag $tag" >&2; exit 1; }
+        test "$(nix develop -c cargo pkgid -p harbor-sandbox | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version" || { echo "harbor-sandbox version does not match tag $tag" >&2; exit 1; }
     timeout-minutes: 15
-name: Publish nix_harbor_rs
+name: Publish harbor-sandbox
 on:
   push:
     tags:
-    - nix_harbor_rs/v[0-9]*
+    - harbor-sandbox/v[0-9]*
   workflow_dispatch: null
 permissions:
   contents: read

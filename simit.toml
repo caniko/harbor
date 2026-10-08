@@ -17,18 +17,28 @@ id = "core"
 paths = ["components/core"]
 checks = [
   { id = "history", run = "python3 scripts/check_history.py" },
-  { id = "format", run = "treefmt --fail-on-change" },
+  { id = "format", run = "treefmt --ci" },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core", timeout_minutes = 90 },
 ]
 
 [[monorepo.components]]
 id = "rust"
 paths = ["components/rust"]
-cargo_packages = ["nix_harbor_rs", "harbor-cache", "harbor-sdk", "harbor-xtask"]
+cargo_packages = [
+  "nix_harbor_rs",
+  "harbor-cache",
+  "harbor-sdk",
+  "harbor-xtask",
+  "harbor-sandbox",
+]
 depends_on = ["core", "android", "macos-sdk"]
+systems = ["x86_64-linux", "aarch64-darwin"]
 checks = [
   { id = "test", run = "simit test --git-fixtures -- cargo test --locked --workspace --jobs 2 -- --test-threads=2", timeout_minutes = 30 },
   { id = "clippy", run = "cargo clippy --locked --workspace --all-targets --jobs 2 -- -D warnings", timeout_minutes = 30 },
+  # Namespace acceptance applies to Linux; the Darwin lane still qualifies the
+  # full native Cargo workspace and component outputs above/below this gate.
+  { id = "sandbox-runtime", run = "bash -euc 'if [ \"$(uname -s)\" = Darwin ]; then echo \"Linux namespace runtime: not applicable on Darwin\"; exit 0; fi; test \"$(uname -s)\" = Linux; test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted; if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1'", timeout_minutes = 30 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-rust", timeout_minutes = 180 },
 ]
 

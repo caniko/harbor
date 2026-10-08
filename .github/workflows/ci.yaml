@@ -22,10 +22,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-android'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-android'
       timeout-minutes: 90
     timeout-minutes: 360
   component-cad:
@@ -47,10 +47,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad'
       timeout-minutes: 90
     timeout-minutes: 360
   component-core:
@@ -72,18 +72,18 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: history
-      run: nix develop .#ci --command sh -ec 'python3 scripts/check_history.py'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/check_history.py'
       timeout-minutes: 30
     - env: {}
       name: format
-      run: nix develop .#ci --command sh -ec 'treefmt --fail-on-change'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'treefmt --ci'
       timeout-minutes: 30
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core'
       timeout-minutes: 90
     timeout-minutes: 360
   component-database:
@@ -105,14 +105,14 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: hosted-cache
-      run: nix develop .#ci --command sh -ec 'test "${RUNNER_ENVIRONMENT:-}" = github-hosted && test -r /dev/kvm && test -w /dev/kvm && sudo install -d -m 1777 -o root -g root /var/cache/sccache && test ! -L /var/cache/sccache && test "$(stat -c '\''%u:%a'\'' /var/cache/sccache)" = 0:1777 && printf '\''%s\n'\'' '\''extra-sandbox-paths = /var/cache/sccache'\'' '\''log-lines = 250'\'' | sudo tee -a /etc/nix/nix.conf && sudo systemctl restart nix-daemon.service && nix config show sandbox-paths | grep -F /var/cache/sccache'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'test "${RUNNER_ENVIRONMENT:-}" = github-hosted && test -r /dev/kvm && test -w /dev/kvm && sudo install -d -m 1777 -o root -g root /var/cache/sccache && test ! -L /var/cache/sccache && test "$(stat -c '\''%u:%a'\'' /var/cache/sccache)" = 0:1777 && printf '\''%s\n'\'' '\''extra-sandbox-paths = /var/cache/sccache'\'' '\''log-lines = 250'\'' | sudo tee -a /etc/nix/nix.conf && sudo systemctl restart nix-daemon.service && nix config show sandbox-paths | grep -F /var/cache/sccache'
       timeout-minutes: 30
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-database .#database-storage-lifecycle .#database-harbor-db-cached'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-database .#database-storage-lifecycle .#database-harbor-db-cached'
       timeout-minutes: 90
     timeout-minutes: 360
   component-evm:
@@ -134,10 +134,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-evm'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-evm'
       timeout-minutes: 90
     timeout-minutes: 360
   component-go:
@@ -159,10 +159,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-go'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-go'
       timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -195,10 +195,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-javascript'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-javascript'
       timeout-minutes: 90
     timeout-minutes: 360
   component-llm:
@@ -220,10 +220,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#llm-default'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#llm-default'
       timeout-minutes: 30
     timeout-minutes: 360
   component-macos-sdk:
@@ -245,10 +245,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: pin
-      run: nix develop .#ci --command sh -ec 'nix eval --json .#lib.pins.macosSdk | jq -e '\''(.sdkVersion | test("^[0-9]+([.][0-9]+)+$")) and (.outputHash | startswith("sha256-")) and (.storePath | startswith("/nix/store/")) and .attic.cacheName == "harbor-macos-sdk"'\'''
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix eval --json .#lib.pins.macosSdk | jq -e '\''(.sdkVersion | test("^[0-9]+([.][0-9]+)+$")) and (.outputHash | startswith("sha256-")) and (.storePath | startswith("/nix/store/")) and .attic.cacheName == "harbor-macos-sdk"'\'''
       timeout-minutes: 30
     timeout-minutes: 360
   component-ntt:
@@ -270,10 +270,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-ntt'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-ntt'
       timeout-minutes: 90
     timeout-minutes: 360
   component-projects:
@@ -295,10 +295,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-projects'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-projects'
       timeout-minutes: 90
     timeout-minutes: 360
   component-python:
@@ -320,10 +320,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-python'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-python'
       timeout-minutes: 90
     timeout-minutes: 360
   component-rust:
@@ -331,7 +331,7 @@ jobs:
       NIX_CONFIG: experimental-features = nix-command flakes
     if: ${{ contains(fromJSON(needs.plan.outputs.selected), 'rust') }}
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     steps:
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       with:
@@ -345,19 +345,32 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: test
-      run: nix develop .#ci --command sh -ec 'simit test --git-fixtures -- cargo test --locked --workspace --jobs 2 -- --test-threads=2'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'simit test --git-fixtures -- cargo test --locked --workspace --jobs 2 -- --test-threads=2'
       timeout-minutes: 30
     - env: {}
       name: clippy
-      run: nix develop .#ci --command sh -ec 'cargo clippy --locked --workspace --all-targets --jobs 2 -- -D warnings'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'cargo clippy --locked --workspace --all-targets --jobs 2 -- -D warnings'
+      timeout-minutes: 30
+    - env: {}
+      name: sandbox-runtime
+      run: 'nix develop --print-build-logs .#ci --command sh -ec ''bash -euc ''\''''if [ "$(uname -s)" = Darwin ]; then echo "Linux namespace runtime: not applicable on Darwin"; exit 0; fi; test "$(uname -s)" = Linux; test "${RUNNER_ENVIRONMENT:-}" = github-hosted; if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1''\'''''''
       timeout-minutes: 30
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-rust'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-rust'
       timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: ubuntu-24.04
+          system: x86_64-linux
+        - runner: macos-15
+          system: aarch64-darwin
+      max-parallel: 2
     timeout-minutes: 360
   component-solana:
     env:
@@ -378,10 +391,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-solana'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-solana'
       timeout-minutes: 90
     timeout-minutes: 360
   component-tex:
@@ -403,10 +416,10 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
-      run: nix develop .#ci --command simit init ci --check
+      run: nix develop --print-build-logs .#ci --command simit init ci --check
     - env: {}
       name: nix
-      run: nix develop .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-tex .#tex-anx-plugin-zenodo .#tex-anx-plugin-pandoc'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-tex .#tex-anx-plugin-zenodo .#tex-anx-plugin-pandoc'
       timeout-minutes: 90
     timeout-minutes: 360
   plan:
@@ -434,9 +447,9 @@ jobs:
       run: |
         set -euo pipefail
         if [ -n "$BASE_REVISION" ] && git cat-file -e "$BASE_REVISION^{commit}" 2>/dev/null; then
-          nix develop .#ci --command simit monorepo plan --base "$BASE_REVISION" --json > plan.json
+          nix develop --print-build-logs .#ci --command simit monorepo plan --base "$BASE_REVISION" --json > plan.json
         else
-          nix develop .#ci --command simit monorepo plan --json > plan.json
+          nix develop --print-build-logs .#ci --command simit monorepo plan --json > plan.json
         fi
         selected=$(jq -c '.selected' plan.json)
         printf 'selected=%s\n' "$selected" >> "$GITHUB_OUTPUT"
