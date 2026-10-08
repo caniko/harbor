@@ -82,6 +82,11 @@ approvals, packet metadata and numerical reductions. Manufactured receipt
 fixtures cannot establish native execution or sandbox qualification. Exact
 registered-source worker and lifecycle qualification remain separate gates.
 
+The complete approved v17 plan must leave 4 KiB inside the 64 KiB wire allowance
+for its request/approval envelope. Native three-seed facet receipts are artifacts:
+their reader uses the existing 256 KiB registered-JSON bound, independently of
+wire messages. Oversized files and symlinks refuse before numerical ingestion.
+
 ### Reading retained optical results
 
 `harbor-cad results cad-optical REQUEST.json` and results-profile MCP

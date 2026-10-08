@@ -116,7 +116,7 @@ def main():
             if index:
                 current["scene"]["materials"][0]["ageing_action"] = {
                     "availability": "known",
-                    "value": [0.5, 1.5],
+                    "value": [0.25, 0.75],
                     "provenance": "explicit manufactured action; no material lifetime calibration",
                     "synthetic": True,
                 }

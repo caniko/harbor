@@ -701,6 +701,20 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
     let mut understated = optical_plan.clone();
     understated.observation.max_artifact_bytes = 1;
     assert!(understated.validate().is_err());
+    // The scientific scene can be locally valid yet too large to carry its
+    // complete approval and submission envelope within the wire allowance.
+    let mut large = bound.clone();
+    large.scene.limitations.clear();
+    let overhead = serde_json::to_vec(&large).unwrap().len();
+    large
+        .scene
+        .limitations
+        .push("x".repeat(MAX_MESSAGE as usize - 3000 - overhead - 2));
+    large.scene.scene_id.clear();
+    large.scene.scene_id = digest(&large.scene).unwrap();
+    large.validate().unwrap();
+    assert!(serde_json::to_vec(&large).unwrap().len() < MAX_MESSAGE as usize);
+    assert!(ExecutionPlan::cad_spectral_transport(large, "research".into()).is_err());
     let mut mixed = raw;
     mixed["spectral"] = serde_json::to_value(
         serde_json::from_str::<harbor_cad::radiation::SpectralReferenceSpec>(include_str!(

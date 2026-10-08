@@ -1793,7 +1793,12 @@ fn native_stage(
     if !status.success() {
         return Err(Error::Unqualified(format!("native {op} failed: {status}")));
     }
-    let evidence = read_native_receipt(&receipt)?;
+    let evidence =
+        if stage.operation == StageOperation::SpectralReference && plan.cad_transport.is_some() {
+            crate::cad_transport_fields::read_receipt(&receipt)?
+        } else {
+            read_native_receipt(&receipt)?
+        };
     validate_native_receipt(stage, &evidence)?;
     if stage.operation == StageOperation::SpectralReference && plan.cad_transport.is_some() {
         let source = crate::cad_transport::registered(store, id, plan)?;

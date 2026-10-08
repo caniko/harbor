@@ -304,6 +304,16 @@ captured queued reimport envelopes are not treated as completion evidence;
 the copied durable database and registered importer checks establish completion
 before any new optical approval.
 
+Source gate 36 passes the full CPU gate and 198 Python tests. It reproduces and
+repairs the optical receipt-size mismatch: independent two-box native receipts
+reach 125,013 bytes, exceeding the generic 64 KiB reader. Only v17 direct-optical
+receipts use the existing 256 KiB registered-JSON artifact bound; wire responses
+retain their 64 KiB cap. Tests cover complete larger receipts, oversized/symlink
+refusal and plans that cannot carry their full approval/submission envelope.
+The campaign's explicit manufactured ageing action now stays within its original
+dimensionless `[0,1]` contract. Exact latest-package worker qualification remains
+required; build 77 predates this source repair.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

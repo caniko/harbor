@@ -18,6 +18,15 @@ pub const UNITS: &str =
     "position:m,normal:1,towards_source:1,cosine:1,pdf:1,weight:W/(m2*nm),reflectance:1";
 const HEADER: &str = "region,facet,sample,knot_offset,x_m,y_m,z_m,normal_x,normal_y,normal_z,towards_source_x,towards_source_y,towards_source_z,native_cosine,native_pdf,native_weight_w_m2_nm_0,native_weight_w_m2_nm_1,native_weight_w_m2_nm_2,native_weight_w_m2_nm_3,native_reflectance_0,native_reflectance_1,native_reflectance_2,native_reflectance_3";
 
+pub(crate) fn read_receipt(path: &Path) -> Result<Value> {
+    // Full three-seed facet reductions are a registered artifact, not a wire
+    // response. Match the existing bounded registered-JSON evidence allowance.
+    Ok(serde_json::from_slice(&crate::worker::read_bounded(
+        path,
+        256 * 1024,
+    )?)?)
+}
+
 fn number(value: &Value) -> Result<f64> {
     value
         .as_f64()
@@ -579,4 +588,22 @@ pub(crate) fn verify_registered(
         &safe_path(&store.job_dir(id)?, &format!("stages/{STAGE}"))?,
         receipt,
     )
+}
+
+#[cfg(test)]
+mod receipt_capacity_tests {
+    use super::*;
+    #[test]
+    fn original_facet_receipt_capacity_is_distinct_from_protocol_message_capacity() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        let value = json!({"original_packet_shape_description": "x".repeat(128*1024)});
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(read_receipt(&path).unwrap(), value);
+        std::fs::write(&path, " ".repeat(256 * 1024 + 1)).unwrap();
+        assert!(read_receipt(&path).is_err());
+        let link = root.path().join("alias.json");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert!(read_receipt(&link).is_err());
+    }
 }

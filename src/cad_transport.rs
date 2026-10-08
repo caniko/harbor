@@ -111,6 +111,7 @@ impl CadSpectralTransportSpec {
         if plan.policy == "ci"
             || triangles > 24
             || serde_json::to_vec(self)?.len() > 64 * 1024
+            || serde_json::to_vec(plan)?.len() as u64 > crate::contracts::MAX_MESSAGE - 4096
             || plan.stages.len() != 2
             || plan.stages[0].id != STAGE
             || plan.stages[0].operation != StageOperation::SpectralReference
