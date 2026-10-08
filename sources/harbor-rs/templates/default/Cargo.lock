@@ -1,0 +1,5 @@
+version = 3
+
+[[package]]
+name = "cross-fixture"
+version = "0.1.0"

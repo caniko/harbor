@@ -1,0 +1,14 @@
+[package]
+name = "path-patch-fixture"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "path-patch-fixture"
+path = "src/main.rs"
+
+[dependencies]
+registry-like = { path = "registry-like" }
+
+[patch.crates-io]
+fake-api = { path = "vendor/fake-api" }

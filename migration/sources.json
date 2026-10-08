@@ -167,5 +167,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-py/local/heads",
     "remoteRefs": "refs/imports/harbor-py/remote/heads"
+  },
+  {
+    "id": "harbor-rs",
+    "origin": "git@github.com:caniko/harbor-rs.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "f2ca8231d1430f6e1f55deef079fccc6fa24bb98",
+    "prefix": "sources/harbor-rs",
+    "sourceTree": "78bd44e2cf490f736dcf85d93418df7f0dde70a8",
+    "baseline": "128a330a370e89fec69f7b731e4384d7191d89ed",
+    "preservedLocalHead": "195f8a7e81d67102868631015b6794280b492c88",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-rs/local/heads",
+    "remoteRefs": "refs/imports/harbor-rs/remote/heads"
   }
 ]

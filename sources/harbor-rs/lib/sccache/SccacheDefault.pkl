@@ -1,0 +1,44 @@
+/// Canonical default values for rs-harbor's sccache compilation cache module.
+///
+/// Both the NixOS module (nix/sccache-module.nix) and the home-manager
+/// module (nix/sccache-home.nix) import the generated sidecar from
+/// lib/generated/sccache-default.nix so that defaults are declared once.
+class SccacheDefault {
+  /// System daemon Unix socket path (NixOS — RuntimeDirectory-based).
+  systemSocketPath: String = "/run/sccache/sock"
+
+  /// System daemon persistent disk cache directory.
+  systemDiskCacheDir: String = "/var/lib/sccache"
+
+  /// User daemon socket path relative to XDG_RUNTIME_DIR (or %t in systemd).
+  userSocketRel: String = "sccache/sock"
+
+  /// User daemon disk cache directory relative to XDG_CACHE_HOME.
+  userCacheRel: String = "sccache"
+
+  /// sccache connect timeout in seconds (SCCACHE_CONNECT_TIMEOUT).
+  connectTimeout: String = "2"
+
+  /// Default S3 region for custom endpoints.
+  cacheRegion: String = "auto"
+
+  /// Default SSL setting for S3 endpoints.
+  cacheUseSsl: Boolean = false
+
+  /// Daemon idle timeout in seconds (0 = never shut down).
+  idleTimeout: Int = 0
+
+  /// Maximum seconds allowed for a managed daemon to expose its socket.
+  startupTimeout: Int = 20
+
+  /// Delay between bounded managed-daemon restart attempts.
+  restartDelay: Int = 5
+
+  /// Number of managed-daemon starts permitted within the restart window.
+  restartBurst: Int = 3
+
+  /// Window, in seconds, used by systemd's restart limiter.
+  restartWindow: Int = 300
+}
+
+defaults: SccacheDefault = new SccacheDefault {}

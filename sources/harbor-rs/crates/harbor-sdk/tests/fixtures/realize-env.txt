@@ -1,0 +1,4 @@
+STORE_PATH=/nix/store/abc123-macos-sdk
+SDK_ROOT="/nix/store/abc123-macos-sdk/MacOSX26.1.sdk"
+RECURSIVE_HASH="sha256-deadbeef"
+SDK_VERSION=26.1

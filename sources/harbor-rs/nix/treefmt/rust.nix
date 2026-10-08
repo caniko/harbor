@@ -1,0 +1,3 @@
+{...}: {
+  programs.rustfmt.enable = true;
+}

@@ -1,0 +1,7 @@
+[flake]
+scope = "full"
+mode = "custom"
+backend = "rust-crane"
+toolchain_binding = "toolchain"
+crane_lib_binding = "craneLib"
+package_binding = "default"

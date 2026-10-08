@@ -1,0 +1,8 @@
+[package]
+name = "fake-api"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "fake_api"
+path = "src/lib.rs"

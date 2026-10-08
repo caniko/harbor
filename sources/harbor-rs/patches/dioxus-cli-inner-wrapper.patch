@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] dioxus-cli: allow an inner rustc cache wrapper
+
+Keep Dioxus' workspace wrapper responsible for capturing rustc arguments,
+while allowing rs-harbor to cache the actual compiler invocation.
+
+--- a/src/rustcwrapper.rs
++++ b/src/rustcwrapper.rs
+@@ -78,11 +78,19 @@
+ 
+     // Run the actual rustc command.
+     // We want all stdout/stderr to be inherited, so the user sees the compiler output.
+-    let mut cmd = std::process::Command::new("rustc");
+-
+-    // The first argument in `captured_args` is the rustc path, which we need to skip
+-    // when passing arguments to the `rustc` command we are spawning.
+-    cmd.args(captured_args.iter().skip(1));
++    // rs-harbor sets this for the Dioxus workspace wrapper.  The wrapper receives
++    // the complete Cargo invocation (`rustc [args...]`), whereas direct rustc
++    // execution needs the executable path removed.
++    let inner_wrapper = std::env::var("DX_RUSTC_INNER_WRAPPER").ok();
++    let mut cmd = if let Some(wrapper) = inner_wrapper {
++        let mut command = std::process::Command::new(wrapper);
++        command.args(&captured_args);
++        command
++    } else {
++        let mut command = std::process::Command::new("rustc");
++        command.args(captured_args.iter().skip(1));
++        command
++    };
+     cmd.envs(rustc_args.envs);

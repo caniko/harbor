@@ -1,0 +1,14 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+
+group = 'org.rs-harbor'
+version = '0.1.0'
+
+tasks.named('jar') {
+    archiveBaseName = 'gradle-fixture'
+}
