@@ -1,0 +1,105 @@
+[site]
+title = "My Project"
+description = "Replace with the project's one-line description."
+base_url = "/"
+canonical_domain = "my-project.tartanoglu.com"
+footer_note = "Replace with the project's footer note."
+
+[[nav]]
+label = "Workflow"
+href = "#workflow"
+
+[[nav]]
+label = "Docs"
+href = "/docs/"
+
+[[nav]]
+label = "Source"
+href = "https://github.com/caniko/my-project"
+
+[[footer_links]]
+label = "Source"
+href = "https://github.com/caniko/my-project"
+
+[[footer_links]]
+label = "Documentation"
+href = "/docs/"
+
+[[pages]]
+slug = "index"
+title = "My Project"
+description = "Replace with the project's one-line description."
+
+[[pages.sections]]
+type = "hero"
+title = "My Project"
+tagline = "Replace with the project's tagline."
+subtitle = "Replace with the project's subtitle."
+
+[[pages.sections.ctas]]
+label = "Read docs"
+href = "/docs/"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "promises"
+
+[[pages.sections.features]]
+title = "Replace with the first promise"
+description = "Replace with what the platform does for the user."
+highlight = true
+
+[[pages.sections.features]]
+title = "Replace with the second promise"
+description = "Replace with what the platform does for the user."
+
+[[pages.sections.features]]
+title = "Replace with the third promise"
+description = "Replace with what the platform does for the user."
+
+[[pages.sections]]
+type = "workflow_steps"
+id = "workflow"
+heading = "Replace with the workflow heading"
+intro = "Replace with one sentence describing how work moves through the platform."
+
+[[pages.sections.steps]]
+title = "Discover"
+description = "Replace with the first workflow step."
+
+[[pages.sections.steps]]
+title = "Decide"
+description = "Replace with the second workflow step."
+
+[[pages.sections.steps]]
+title = "Share"
+description = "Replace with the third workflow step."
+
+[[pages.sections]]
+type = "audience_grid"
+id = "roles"
+heading = "Replace with the audience heading"
+intro = "Replace with one sentence describing who the platform serves."
+
+[[pages.sections.audiences]]
+label = "Operator"
+description = "Replace with what this role does in the platform."
+
+[[pages.sections.audiences]]
+label = "Reviewer"
+description = "Replace with what this role does in the platform."
+
+[[pages.sections]]
+type = "trust_panel"
+id = "trust"
+heading = "Replace with the trust heading"
+intro = "Replace with why users can rely on the platform."
+
+[[pages.sections.items]]
+title = "Replace with the first trust point"
+description = "Replace with the detail behind it."
+
+[[pages.sections.items]]
+title = "Replace with the second trust point"
+description = "Replace with the detail behind it."

@@ -141,5 +141,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-ntt/local/heads",
     "remoteRefs": "refs/imports/harbor-ntt/remote/heads"
+  },
+  {
+    "id": "harbor-projects",
+    "origin": "https://github.com/caniko/harbor-projects.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "2421e9b47872c9d9a66eb01c3a42a209b8d8a324",
+    "prefix": "sources/harbor-projects",
+    "sourceTree": "16c23d17d43393b3b9cf1b8d63b9f16b212ab92a",
+    "baseline": "d34bca1ee0eb2bb5311182dfd49022290ea39d6e",
+    "preservedLocalHead": "9dab8e7a9bb8602ba47db5f7b0ffcd324741d276",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-projects/local/heads",
+    "remoteRefs": "refs/imports/harbor-projects/remote/heads"
   }
 ]

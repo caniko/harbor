@@ -1,0 +1,10 @@
+[ci]
+provider = "actions"
+platform = "github"
+runtime = "nix"
+runner = "ubuntu-24.04"
+
+[ci.pages]
+repo = "caniko/my-project"
+canonical_domain = "my-project.tartanoglu.com"
+site_output = "./site#site"

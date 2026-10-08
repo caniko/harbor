@@ -1,0 +1,15 @@
+[book]
+title = "My Project Documentation"
+authors = ["caniko"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+site-url = "/docs/"
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/caniko/my-project"
+edit-url-template = "https://github.com/caniko/my-project/edit/trunk/docs/{path}"
