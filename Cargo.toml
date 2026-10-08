@@ -5,6 +5,7 @@ members = [
   "components/rust/crates/harbor-cache",
   "components/rust/crates/harbor-sdk",
   "components/rust/crates/harbor-xtask",
+  "components/rust/crates/harbor-sandbox",
   "components/database",
   "components/cad",
   "components/tex/plugins/zenodo",

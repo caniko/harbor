@@ -290,6 +290,11 @@
           // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (import ./checks/release-archives.nix {
             inherit pkgs self system;
           })
+          // (import ./nix/checks-dev-sandbox.nix {
+            inherit pkgs;
+            harborRsCli = rsHarborCli;
+            inherit (self.lib) mkDevSandbox;
+          })
           // {
             treefmt-modules = import ./nix/treefmt/check.nix {
               inherit pkgs;

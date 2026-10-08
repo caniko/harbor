@@ -16,6 +16,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum TopCommand {
+    /// Isolated development previews and design variants (Linux).
+    #[cfg(target_os = "linux")]
+    Sandbox {
+        #[command(subcommand)]
+        command: commands::sandbox::SandboxCommand,
+    },
     /// Audit release-staged binaries for forbidden runtime dependencies.
     Audit {
         #[command(subcommand)]
@@ -58,6 +64,8 @@ enum StageCommand {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        #[cfg(target_os = "linux")]
+        TopCommand::Sandbox { command } => commands::sandbox::run(command),
         TopCommand::Audit { command } => commands::audit::run(command),
         TopCommand::Brew { command } => commands::brew::run(command),
         TopCommand::Cache { command } => commands::cache::run(command),

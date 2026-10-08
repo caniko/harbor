@@ -15,6 +15,7 @@
 - [mkCrossPackages](./api/cross-packages.md)
 - [Binary release archives](./api/binary-releases.md)
 - [mkDevShell and mkDevShells](./api/dev-shells.md)
+- [Development sandboxes](./api/dev-sandbox.md)
 - [mkGpuRenderPin](./api/gpu-render-pin.md)
 - [harbor-ci](./api/harbor-ci.md)
 
