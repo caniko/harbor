@@ -102,5 +102,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-llm/local/heads",
     "remoteRefs": "refs/imports/harbor-llm/remote/heads"
+  },
+  {
+    "id": "harbor-macos-sdk-pin",
+    "origin": "git@github.com:caniko/harbor-macos-sdk-pin.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "9762fd3652db7ebb3f92db8ad18b6e3253097f58",
+    "prefix": "sources/harbor-macos-sdk-pin",
+    "sourceTree": "7fdc2bb7e1606180d9fc0b71b4cc0f1eca33d8d6",
+    "baseline": "32f5021a3773dcb1c7e05932f1f66fa05062521c",
+    "preservedLocalHead": "458e5c61a44e7a58ed03ba6bb0a48a1eef17e258",
+    "pendingSourceChanges": false,
+    "localRefs": "refs/imports/harbor-macos-sdk-pin/local/heads",
+    "remoteRefs": "refs/imports/harbor-macos-sdk-pin/remote/heads"
   }
 ]
