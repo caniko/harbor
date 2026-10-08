@@ -26,6 +26,12 @@
     # F77 calling convention. This compiler mode does not reduce arithmetic
     # precision or enable unsafe floating-point optimization.
     env.FFLAGS = "-O2 -std=legacy";
+    # The pinned source archive ships developer-generated dependency files
+    # containing /opt/local headers. Its Makefiles regenerate these with -MM;
+    # remove both stale files before parsing rather than rebinding host paths.
+    postPatch = ''
+      rm libsrc_c/.depend src/.depend
+    '';
     enableParallelBuilding = true;
     buildPhase = ''
       runHook preBuild
