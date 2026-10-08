@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "source_revision": "12eb205a41ffd5b07f83771077cea933342ee27d",
+  "native_angular_transport": {
+    "scope": "manufactured angular-reference native spectral transport only; no libRadtran runtime, registered-source worker, convergence, GPU or physical qualification",
+    "package_qualification": "exact immutable renderer and operation sandbox",
+    "original_root": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/c8-8/native-transport",
+    "report_sha256": "7c6c6d9338d7d4ee7e76e68ed8ddb0ea6c19c2c2150d3dc7fdf2bb26dc2e120a",
+    "runtime": "/nix/store/v3s2bnxcagry62fln8skwqaq19ssmzxj-harbor-cad-atmospheric-spectral-reference-runtime.json",
+    "runtime_sha256": "51b00aec9572e0626874c6a0eba730aff1de5ae4cc43bce89fd79098cadff07d",
+    "adapter_source_sha256": "d5161a3cd36b52e843ec3f4ab81242981b81bdfbdfdf607986638f541a6e18de",
+    "cases": 9,
+    "seed_observations": 27,
+    "command_sha256": "ab8f46b0618b4db944c97954b9b9450825de5a5b55c9c692b35a17e295f6181c",
+    "log_sha256": "576ca67246948109f79e03b97049c6c3f930fa05a27e58cc16013559c73baf34",
+    "exit_code": 0,
+    "service_runtime_s": 65.579,
+    "cpu_time_s": 65.354,
+    "memory_peak_reported": "781.3M; swap 0B"
+  },
+  "coupled_results_diagnostic": {
+    "scope": "explicit lower/upper complete original thermal histories and full geometrical surface moisture assessment; no new solve or physical reliability inference",
+    "package_qualification": "unqualified source diagnostic",
+    "original_root": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/c8-7/coupled-results",
+    "report_sha256": "53a010d0dd8349e32622e4fa63605ecef75012f1c929b2ab03c88452acab3a39",
+    "source_root": "/data/scratch/tmp/opencode/harbor-cad-authority-20261005/c8-2/thermal-contact-worker",
+    "source_verification_sha256": "81ca4285781c1021f424b1ef80d46fb65c4f547d4a6289a1c45863a3ca06cb0d",
+    "binary_sha256": "48828b665f18792a03f04405175d364e662b86e0b5c6953228969b38998e5079",
+    "mcp_sha256": "0a093d478691f13743c8e341ae47486efa13bec284734d603a545f971eb69f19",
+    "two_node_reports": 12,
+    "full_surface_moisture_reports": 216,
+    "cli_mcp_refusals": 28,
+    "source_unchanged": true,
+    "command_sha256": "d10b04a4a9c9c8737e195e5c215669b37636096936ad1fa03b343933c84a8193",
+    "log_sha256": "c9119d68d39631969f0bc4fe1056ab82be83e7642724c7a1ad21d0083b6f5283",
+    "exit_code": 0,
+    "service_runtime_s": 145.319,
+    "cpu_time_s": 137.606,
+    "memory_peak_reported": "195.8M; swap 0B"
+  },
+  "physical_validation": "unqualified"
+}

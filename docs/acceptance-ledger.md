@@ -177,6 +177,16 @@ nodes are rechecked before source-temperature/whole-surface reads. Source gate
 drift and 192 Python cases. The dedicated closed-original CLI/MCP query campaign
 requires separate matching-package evidence; see [result queries](results.md).
 
+The guarded `c8-7/coupled-results` source diagnostic passes 12 two-node reports,
+216 full-surface moisture assessments and 28 refusals against both closed native
+coupling jobs. Source bytes and database job/event/artifact counts remain
+unchanged; the source-built query package stays unqualified. Independently,
+`c8-8/native-transport` passes nine manufactured angular-reference cases and 27
+seed observations with the exact immutable Mitsuba runtime and operation
+sandbox. This qualifies that native reference scope; libRadtran execution,
+registered-source workers, convergence, GPU and physical validation remain
+separate gates. See [exact scoped evidence](evidence/native-angular-and-coupled-queries-20261008.json).
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
