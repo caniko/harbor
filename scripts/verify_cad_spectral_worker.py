@@ -240,7 +240,7 @@ def main():
                 for record in fields
             )
             qualification = campaign.command(
-                "qualify", "--job", job["id"], "--state", state
+                "--socket", campaign.endpoint, "qualify", "--job", job["id"]
             )["data"]
             assert qualification == campaign.mcp_call(
                 "qualification_report", {"job_id": job["id"]}, profile="results"
