@@ -20,6 +20,7 @@ def test_native_worker_campaigns_use_existing_shared_methods_and_valid_signature
         "verify_spectral_worker.py",
         "verify_freezing_worker.py",
         "verify_atmosphere_worker.py",
+        "verify_atmospheric_transport_worker.py",
     ):
         tree = ast.parse((scripts / name).read_text())
         for node in ast.walk(tree):

@@ -243,7 +243,7 @@ submission recovery preserves the sole retained copy when its original source
 cannot be verified.
 
 The worker mounts only the spectral operation closure, read-only request and
-checksum-bound retained atmospheric original. Native execution uses `transport`.
+checksum-bound retained atmospheric original. Native execution uses `reference`.
 After the complete native process exits, Rust independently reconstructs every
 original direct/diffuse packet at each approved seed, including empty components,
 source-derived PMFs, receiver-local rectangular bounds, shared four-lane draw
@@ -264,3 +264,13 @@ report SHA-256 is
 This replay supplies numerical diagnostic evidence. Exact production packaging,
 registered libRadtran-source worker execution and lifecycle qualification remain
 pending.
+
+`scripts/verify_atmospheric_transport_worker.py` requires matching exact-package
+atmospheric and nine-case renderer prerequisites. It independently reconstructs
+all source refinements and renderer packets before creating a worker state, then
+runs a fresh registered v14 atmospheric job. With each operation's own immutable
+runtime descriptor, it exercises CLI/MCP v15 planning/submission, original source
+staging, restart/idempotency, independent packet checks, original/registered-copy
+mutation refusals, resource controls, offline exports, complete-tree forced death
+and cancellation. Development/source-overlay prerequisites reject. This campaign
+remains unexecuted pending verification and exact matching package realization.
