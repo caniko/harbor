@@ -128,5 +128,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-meta/local/heads",
     "remoteRefs": "refs/imports/harbor-meta/remote/heads"
+  },
+  {
+    "id": "harbor-ntt",
+    "origin": "git@github.com:caniko/harbor-ntt.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "207256ca248af2fc5016d090fdf6d92e58a3e923",
+    "prefix": "sources/harbor-ntt",
+    "sourceTree": "b7a9687fc7fed9dc774cd700a09ee9060748d074",
+    "baseline": "f69a668737468752f32912013d9871359f616215",
+    "preservedLocalHead": "83a7103b22e1645edf3385142d4d73fe2f3327b5",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-ntt/local/heads",
+    "remoteRefs": "refs/imports/harbor-ntt/remote/heads"
   }
 ]
