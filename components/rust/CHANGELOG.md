@@ -20,9 +20,14 @@
 - Generated Cargo configuration is installed atomically so concurrent shells
   cannot observe a partial file, and an unwritable Cargo home preserves the
   previous configuration.
+- Compiler-cache fallback qualification isolates its transport paths so a
+  host-mounted cache cannot mask the fallback and fail-closed cases.
+- Template formatting hooks use cache-independent `treefmt --ci` checks.
 
 ### Added
 
+- Retain `harbor-sandbox`, `mkDevSandbox`, and the Linux CLI lifecycle for isolated
+  warm design previews, with native namespace and nested-desktop qualification.
 - Retain named-zone shell configuration, explicit archive timezones, and portable
   release supporting files with declared modes in the shared Harbor workspace.
 - Verify archive destination collisions, whitespace-containing filenames, and

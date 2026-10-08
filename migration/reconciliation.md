@@ -50,6 +50,22 @@ component layout. Archive-timezone and portable supporting-file changes through
 mode, path-collision, whitespace-filename, and byte-reproducibility checks in
 `components/rust/checks/release-archives.nix`.
 
+Rust sandbox commits `41d6bad9ef12f3f3043009a07744bee41225e2ce` and
+`5f951111c5cb5e26725ad9c038854866807e9cc2` are incorporated into the shared
+workspace with their runtime, nested-desktop, CLI, and Nix contract checks.
+The CLI integration is Linux-scoped to retain non-Linux release builds, and
+the package retains its independent `0.1.0` version and original dual license.
+
+Core hook repair `7e53f32963efa3dd9ce492589f8a948ab2154db0` and Rust hook
+assertions `a614bf6a61201c4f3a0b434fcd245c86c30cfe4e` retain cache-independent
+`treefmt --ci` qualification. The pending OpenCode formatter-disable change is
+incorporated in the shared config producer and its existing policy contract.
+
+Python formatter commits `736e95d1e4c7f5e9edd211eea30ad5533d49ea7d` and
+`e439a521f8f99b2ee569bfa4213cda9553c4ed3f` retain the public Python treefmt
+module, packaged formatter, default-shell tool, and shared root formatting gate.
+Pending unused-argument cleanup is retained in the formatter modules.
+
 ## Preserved work and retirement gate
 
 The 2026-10-08 source snapshot contains each original checkout's HEAD/status,

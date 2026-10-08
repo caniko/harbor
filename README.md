@@ -9,7 +9,7 @@ versions, publication settings, and licenses.
 The root `flake.nix` and `flake.lock` own the input graph. Component output
 adapters are imported with those inputs and a component-local `self`; their
 former input declarations and lockfiles do not participate in root evaluation.
-The root Cargo workspace has seven members, with one lockfile and package-scoped
+The root Cargo workspace has eight members, with one lockfile and package-scoped
 Nix builds. Templates and test fixtures keep their independent project manifests.
 
 | Component                                               | Nix library namespace             |
@@ -40,7 +40,7 @@ toolchain and formatter; the CI shell also supplies the pinned Simit generator.
 simit monorepo plan --json
 simit monorepo plan --changed-path components/python/lib/default.nix --json
 simit init ci --check --diff
-treefmt --fail-on-change
+treefmt --ci
 simit test --git-fixtures -- cargo test --locked --workspace --jobs 2 -- --test-threads=2
 cargo clippy --locked --workspace --all-targets --jobs 2 -- -D warnings
 python3 scripts/check_history.py
@@ -50,7 +50,9 @@ python3 scripts/check_history.py
 selection, and qualification commands. `checks.<system>.component-<component>`
 aggregates every check exported by that component. Database qualification retains
 the hosted KVM and sandbox-cache prerequisites. Go keeps its Linux, ARM Linux,
-and ARM macOS native runners. Failed and cancelled selected jobs fail the
+and ARM macOS native runners. Rust qualifies its workspace and Nix outputs on
+x86-64 Linux and ARM macOS; namespace runtime acceptance runs on Linux.
+Failed and cancelled selected jobs fail the
 aggregate qualification gate.
 
 Shared shell constructors accept `timeZone = "Europe/Istanbul"` and default to
