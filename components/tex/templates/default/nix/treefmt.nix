@@ -6,7 +6,7 @@
   programs.taplo.enable = true;
 
   settings.formatter.latexindent = {
-    command = "${pkgs.latexindent}/bin/latexindent";
+    command = "${pkgs.texlive.withPackages (ps: [ps.latexindent])}/bin/latexindent";
     options = ["-w" "-s"];
     includes = [
       "*.tex"

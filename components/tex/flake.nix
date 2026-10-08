@@ -51,6 +51,7 @@
         });
   in {
     inherit lib;
+    treefmtModules.latex = ./nix/treefmt/latex.nix;
 
     templates.default = {
       path = ./templates/default;
