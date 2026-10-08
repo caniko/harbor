@@ -5,6 +5,7 @@ import copy
 import json
 import math
 import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import jsonschema
@@ -22,6 +23,95 @@ from verify_systemd import (
     wait_admission_release,
     wait_retention_release,
 )
+
+
+def verify_vtk(module, spec, original, root):
+    normalized = module.normalize(spec, original)
+    nx, ny = spec["source_shape"]
+    q = spec["spatial_refinement"]
+    nx, height = nx * q, (ny - 2) * q
+    reports = []
+    for step in spec["observation_steps"]:
+        csv = root / f"cooling-{step}.csv"
+        rows = sorted(
+            module.rows(csv.read_bytes(), module.COLUMNS),
+            key=lambda r: (int(r["j"]), int(r["i"])),
+        )
+        vtk = root / f"cooling-{step}.vts"
+        document = ET.fromstring(module.read_regular(vtk, 64 * 1024**2))
+        assert document.attrib == {
+            "type": "StructuredGrid",
+            "version": "1.0",
+            "byte_order": "LittleEndian",
+        }
+        grid = document.find("StructuredGrid")
+        extent = f"0 {nx - 1} 0 {height - 1} 0 0"
+        piece = grid.find("Piece")
+        assert grid.attrib["WholeExtent"] == piece.attrib["Extent"] == extent
+        assert not list(piece.find("CellData"))
+        coordinates = piece.find("Points/DataArray")
+        assert (
+            coordinates.attrib["type"] == "Float64"
+            and coordinates.attrib["unit"] == "m"
+        )
+        observed = [float(v) for v in coordinates.text.split()]
+        expected = [
+            v
+            for row in rows
+            for v in (
+                float(row["x_m"]),
+                float(row["y_m"]),
+                spec["destination_origin_m"][2],
+            )
+        ]
+        assert observed == expected
+        arrays = {
+            array.attrib["Name"]: array
+            for array in piece.findall("PointData/DataArray")
+        }
+        names = [
+            "i",
+            "j",
+            "parent_i",
+            "parent_j",
+            "water_fraction",
+            "specific_enthalpy_j_kg",
+            "temperature_k",
+            "liquid_fraction",
+        ]
+        assert set(arrays) == set(names)
+        for name, array in arrays.items():
+            assert array.attrib["type"] == ("Int32" if name in names[:4] else "Float64")
+            assert array.attrib["unit"] == {
+                "temperature_k": "K",
+                "specific_enthalpy_j_kg": "J/kg",
+            }.get(name, "1")
+            assert [float(v) for v in array.text.split()] == [
+                float(row[name]) for row in rows
+            ]
+        fields = {a.attrib["Name"]: a for a in grid.findall("FieldData/DataArray")}
+        assert set(fields) == {"physical_time_s", "extrusion_m", "subcontrol_volume_m3"}
+        assert math.isclose(
+            float(fields["physical_time_s"].text),
+            step * normalized["physical_step_s"],
+            rel_tol=5e-13,
+            abs_tol=0,
+        )
+        assert float(fields["extrusion_m"].text) == spec["extrusion_m"]
+        assert (
+            float(fields["subcontrol_volume_m3"].text)
+            == normalized["spacing_m"] ** 2 * spec["extrusion_m"]
+        )
+        reports.append(
+            {
+                "native_step": step,
+                "original_csv_sha256": checksum(csv),
+                "vtk_sha256": checksum(vtk),
+                "all_original_float64_values_equal": True,
+                "explicit_control_points_and_empty_cell_data": True,
+            }
+        )
+    return reports
 
 
 def main():
@@ -246,6 +336,9 @@ def main():
                 envelope["maximum_relative_conservation_error"],
             )
             assert reconstructed == receipt["independent_verification"]
+            portable = verify_vtk(
+                module, envelope["native_request"], original_bytes, work
+            )
             fields = [
                 m
                 for m in manifests
@@ -258,7 +351,12 @@ def main():
                 for m in fields
             )
             qualification = campaign.command(
-                "--socket", campaign.endpoint, "qualify", "--job", job["id"]
+                # Qualification independently reconstructs published VTK views.
+                "--socket",
+                campaign.endpoint,
+                "qualify",
+                "--job",
+                job["id"],
             )["data"]
             assert qualification == campaign.mcp_call(
                 "qualification_report", {"job_id": job["id"]}
@@ -296,6 +394,7 @@ def main():
                 )
                 assert (
                     observed["source"] == bound
+                    and observed["portable_field"] in manifests
                     and len(observed["complete_history"]) == 4
                     and observed["physical_validation"] == "unqualified"
                 )
@@ -335,6 +434,7 @@ def main():
                 / bound["prepared"]["retained"]["original_field"]["path"],
                 retained_root / "stages/retained-cooling/cooling-0.csv",
                 retained_root / "stages/retained-cooling/heat-exchange.csv",
+                retained_root / "stages/retained-cooling/cooling-0.vts",
             ):
                 saved = path.read_bytes()
                 try:
@@ -379,6 +479,7 @@ def main():
                     "source": bound,
                     "queries": samples,
                     "independent": reconstructed,
+                    "lossless_vtk": portable,
                     "qualification": qualification,
                     "resources": resources,
                     "roots_and_reservation_released": True,

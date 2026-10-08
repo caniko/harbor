@@ -309,7 +309,7 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                     output = add(output, record.bytes)?;
                 }
                 // Both native lattices and halo/coupling storage, independent
-                // complete-field copies and the per-step boundary ledger.
+                // complete-field CSV/XML copies and the per-step boundary ledger.
                 add(
                     add(512 * MIB, multiply(cells, 4096)?)?,
                     multiply(spec.request.native_steps(), 256)?,

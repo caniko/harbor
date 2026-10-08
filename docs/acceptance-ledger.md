@@ -446,6 +446,23 @@ source-loss/orphan/mutated-provenance and rehashed-original regressions, strict
 Clippy and locked build. Its exact-package lifecycle campaign remains pending;
 source tests and archived fixtures do not qualify native execution.
 
+Build 88 preserves its packaged-CLI compile failure: the Cargo source filter
+omitted the embedded native cooling driver. `7718403` includes that driver and
+the cooling fixture; exact build 89 passes CLI/MCP/runtime realization with
+packaged Rust tests. Campaign `c8-31` then preserves its pre-submission failure:
+the MCP simulation profile did not expose cooling planning. `1c49207` exposes
+the planner in simulation/results profiles and explicitly uses the results
+profile for nonexecuting initialization preparation. Focused gate 56 verifies
+real CLI/MCP error parity and tool discovery for those profiles.
+
+The worker additionally publishes complete lossless VTK XML StructuredGrid
+control-point views with original child/parent IDs, exact Float64 positions and
+fields, physical times, extrusion depth, subcontrol volume and empty CellData.
+Historical verification reconstructs every published view from authoritative
+CSV bytes. Source gate 57 passes the complete Rust/Clippy/build/format/lint and
+222-case Python gate; its VTK topology/Float64/unit roundtrip regression passes.
+Exact native/shared-worker qualification of this updated runtime is pending.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

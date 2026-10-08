@@ -25,6 +25,7 @@ pub mod cooling_execution;
 mod cooling_execution_tests;
 mod cooling_fields;
 pub mod cooling_results;
+mod cooling_vtk;
 pub mod devices;
 pub mod estimates;
 pub mod execution;

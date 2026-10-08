@@ -607,7 +607,9 @@ pub(crate) fn registered(
             "registered original cooling native approval envelope changed",
         ));
     }
-    verify(spec, &source, &root.join("stages/retained-cooling"), value)
+    let evidence = verify(spec, &source, &root.join("stages/retained-cooling"), value)?;
+    crate::cooling_vtk::verify(store, id, plan, &source)?;
+    Ok(evidence)
 }
 
 #[cfg(test)]

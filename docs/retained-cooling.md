@@ -147,3 +147,13 @@ Queries refuse interpolation, extrapolation, changed registered bytes and
 unsupported regions. Execution/conservation evidence does not establish
 convergence or physical applicability. Exact-worker lifecycle qualification is
 required separately from the completed `c8-30` isolated package campaign.
+
+The worker also publishes lossless VTK XML `.vts` views of every closed native
+CSV. StructuredGrid points preserve all original Float64 coordinates and fields,
+child/parent IDs and x-fastest topology. PointData represents original nodal
+controls; CellData is empty and carries no invented interpolation. FieldData
+retains the approved physical time, explicit extrusion and subcontrol volume.
+The z coordinate is the original source plane at the start of that extrusion.
+Historical qualification reconstructs each published view from its authoritative
+CSV and requires the entire declared view history. Earlier archived v18 jobs
+without these views retain their original CSV evidence.

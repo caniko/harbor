@@ -1993,6 +1993,7 @@ fn native_stage(
         let original = crate::cooling_execution::registered(store, id, plan)?;
         let bytes = read_bounded(&original, 16 * 1024 * 1024)?;
         crate::cooling_fields::verify(spec, &bytes, dir, &evidence)?;
+        crate::cooling_vtk::publish(store, id, plan, dir)?;
     } else if stage.operation == StageOperation::FreezingReference {
         crate::freezing_fields::verify(
             plan.freezing
@@ -2719,6 +2720,7 @@ fn annotate_native_artifacts(
     crate::wetting::annotate_fields(plan, artifacts)?;
     crate::freezing::annotate_fields(plan, artifacts)?;
     crate::cooling_fields::annotate(plan, artifacts)?;
+    crate::cooling_vtk::annotate(plan, artifacts)?;
     crate::radiation::annotate_fields(plan, artifacts)?;
     crate::atmosphere::annotate_fields(plan, artifacts)?;
     crate::cad_transport_fields::annotate(plan, artifacts)?;
