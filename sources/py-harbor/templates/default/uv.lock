@@ -1,0 +1,11 @@
+version = 1
+revision = 3
+requires-python = "==3.13.*"
+
+[[package]]
+name = "minimal"
+version = "0.1.0"
+source = { editable = "." }
+
+[package.optional-dependencies]
+dev = []
