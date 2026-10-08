@@ -43,3 +43,13 @@ OpenCASCADE box from their values and the native primitive preserves placement.
 The importer uses the same pinned document/placement APIs as the qualified
 original import. World-space region and BREP semantics are rechecked after the
 edit rather than relying on native property names alone.
+
+`scripts/verify_cad_variant_worker.py` is the opt-in exact-package gate. It
+generates pinned native origin/translated boxes, inspects their originals,
+checks CLI/MCP planning parity and runs controlled copies after independent
+approval. Pre-submit substitution is refused; acknowledged original copies
+survive subsequent source mutation and a worker crash under the same service
+invocation. New documents are opened by a second independent patched import to
+check saved geometry/placement, followed by owned cancellation/forced-death
+and reservation/runtime-root release. Development packages are refused before
+creating a campaign output. This gate does not pass until executed successfully.
