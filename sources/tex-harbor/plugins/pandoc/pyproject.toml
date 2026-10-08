@@ -1,0 +1,13 @@
+[project]
+name = "anx-plugin-pandoc"
+version = "0.1.0"
+description = "Pandoc ODT export plugin for the anx article toolchain"
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+anx-plugin-pandoc = "anx_plugin_pandoc:main"

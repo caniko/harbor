@@ -271,5 +271,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/rs-harbor-macos-sdk-pin/local/heads",
     "remoteRefs": "refs/imports/rs-harbor-macos-sdk-pin/remote/heads"
+  },
+  {
+    "id": "tex-harbor",
+    "origin": "ssh://git@codeberg.org/caniko/tex-harbor.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "ce6151d2dfb550692b85c70a56e5fe5012253ab2",
+    "prefix": "sources/tex-harbor",
+    "sourceTree": "0c1793ab1f59c175b4a189b91e696743cfdc3e00",
+    "baseline": "f703118037bcb6be01f2825bfdf4990a36662650",
+    "preservedLocalHead": "d2c13934fd74814ba322eb8a309de82719569bcc",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/tex-harbor/local/heads",
+    "remoteRefs": "refs/imports/tex-harbor/remote/heads"
   }
 ]
