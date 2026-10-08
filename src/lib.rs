@@ -11,6 +11,8 @@ pub mod authority;
 pub mod cad;
 pub mod cad_mesh;
 pub mod cad_source;
+pub mod cad_spectral;
+pub mod cad_triangles;
 pub mod cad_variant;
 pub mod contact;
 mod contact_fields;

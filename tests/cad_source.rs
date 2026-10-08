@@ -625,6 +625,113 @@ fn variant_original_receipt_geometry_and_export_mutations_cannot_qualify_history
 }
 
 #[test]
+fn material_triangles_bind_every_original_region_and_refuse_substitution_without_mutating_source() {
+    use harbor_cad::cad_spectral::{CadSpectralSceneRequest, prepare};
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    let id = archived_source(&store);
+    // Complete manufactured STL for the persisted-record fixture; this is not
+    // evidence that the native importer or a spectral solver executed.
+    let points = [
+        [100f32, -20., 300.],
+        [120., -20., 300.],
+        [120., -10., 300.],
+        [100., -10., 300.],
+        [100., -20., 310.],
+        [120., -20., 310.],
+        [120., -10., 310.],
+        [100., -10., 310.],
+    ];
+    let mut data = vec![0u8; 80];
+    data.extend(12u32.to_le_bytes());
+    for (face, normal) in [
+        ([0, 4, 7, 3], [-1f32, 0., 0.]),
+        ([1, 2, 6, 5], [1., 0., 0.]),
+        ([0, 1, 5, 4], [0., -1., 0.]),
+        ([3, 7, 6, 2], [0., 1., 0.]),
+        ([0, 3, 2, 1], [0., 0., -1.]),
+        ([4, 5, 6, 7], [0., 0., 1.]),
+    ] {
+        for indices in [[face[0], face[1], face[2]], [face[0], face[2], face[3]]] {
+            for value in normal
+                .into_iter()
+                .chain(indices.into_iter().flat_map(|i| points[i]))
+            {
+                data.extend(value.to_le_bytes());
+            }
+            data.extend(0u16.to_le_bytes());
+        }
+    }
+    let root = store.job_dir(&id).unwrap();
+    let original = commit_artifact(
+        &root,
+        "solid.stl",
+        &data,
+        "stl",
+        "manufactured persisted geometry fixture; not native execution",
+    )
+    .unwrap();
+    store.add_artifact(&id, &original).unwrap();
+    let mut request: CadSpectralSceneRequest =
+        serde_json::from_str(include_str!("../examples/cad-spectral-scene.json")).unwrap();
+    request.source_job = id.clone();
+    let database = std::fs::read(store.root.join("jobs.sqlite3")).unwrap();
+    let prepared = prepare(&store, request.clone()).unwrap();
+    assert!(!prepared.executed);
+    assert_eq!(prepared.physical_validation, "unqualified");
+    assert_eq!(prepared.transport_readiness, "prepared_not_executed");
+    assert_eq!(prepared.ageing_readiness, "missing_inputs");
+    assert_eq!(prepared.regions[0].geometry.triangles, 12);
+    assert_eq!(
+        prepared.regions[0].original_triangles.sha256,
+        original.sha256
+    );
+    assert_eq!(
+        prepared.regions[0].source.execution_id,
+        store.plan(&id).unwrap().id().unwrap()
+    );
+    assert_eq!(
+        prepare(&store, request.clone()).unwrap().scene_id,
+        prepared.scene_id
+    );
+    assert_eq!(
+        std::fs::read(store.root.join("jobs.sqlite3")).unwrap(),
+        database
+    );
+    let mut missing = request.clone();
+    missing.materials[0].response = harbor_cad::materials::PhysicalInput::Missing {
+        reason: "UV data unavailable".into(),
+    };
+    let missing = prepare(&store, missing).unwrap();
+    assert_eq!(missing.transport_readiness, "missing_optical_inputs");
+    assert_ne!(prepared.scene_id, missing.scene_id);
+    let mut changed = request.clone();
+    changed.assignments[0].region_name = "foreign".into();
+    assert!(prepare(&store, changed).is_err());
+    std::fs::write(root.join("solid.stl"), b"changed original triangles").unwrap();
+    assert!(prepare(&store, request.clone()).is_err());
+    std::fs::write(root.join("solid.stl"), &data).unwrap();
+    let mut artifact = original.clone();
+    artifact.units = Some("m".into());
+    store
+        .connection
+        .execute(
+            "UPDATE artifacts SET manifest=?1 WHERE job=?2 AND path='solid.stl'",
+            rusqlite::params![serde_json::to_string(&artifact).unwrap(), id],
+        )
+        .unwrap();
+    assert!(prepare(&store, request.clone()).is_err());
+    store
+        .connection
+        .execute(
+            "UPDATE artifacts SET manifest=?1 WHERE job=?2 AND path='solid.stl'",
+            rusqlite::params![serde_json::to_string(&original).unwrap(), id],
+        )
+        .unwrap();
+    prepare(&store, request).unwrap();
+}
+
+#[test]
 fn imported_static_fem_plan_binds_registered_geometry_and_explicit_material_boundary_provenance() {
     use harbor_cad::fem_imported::ImportedFemSpec;
     let temp = tempfile::tempdir().unwrap();

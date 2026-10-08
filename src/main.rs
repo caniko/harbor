@@ -263,6 +263,8 @@ enum Job {
 }
 #[derive(Subcommand)]
 enum Cad {
+    /// Verify original CAD triangles and explicit region optical properties without solving.
+    PrepareSpectralScene { request: PathBuf },
     /// Plan a controlled native box-copy edit from an authorized registered CAD job.
     Variant { request: PathBuf },
     /// Plan correspondence meshing from registered authorized BREP; requires the worker.
@@ -557,6 +559,9 @@ fn run(cli: Cli) -> Result<()> {
             request: Box::new(read(&request)?),
         },
         Commands::Cad { command } => match command {
+            Cad::PrepareSpectralScene { request } => Operation::PrepareCadSpectralScene {
+                request: Box::new(read(&request)?),
+            },
             Cad::Mesh { request } => Operation::PlanCadMesh {
                 request: Box::new(read(&request)?),
             },

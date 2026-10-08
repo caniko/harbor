@@ -116,6 +116,10 @@ prepare an independently approved controlled native box-copy edit from registere
 CAD. See [CAD variants](docs/cad-variants.md) for its narrow parameter allowlist,
 original preservation and package-qualification boundaries.
 
+Registered CAD triangles can be bound to explicit spectral materials through
+`cad prepare-spectral-scene`; see [source-bound spectral scenes](docs/cad-spectral-scenes.md)
+for geometry, precision and missing-input scope.
+
 `filter REQUEST.json` plans an independently approved HIP point-gradient job
 from registered retained science. Its version-4 compute-only DAG, native package
 and qualification boundaries are described in [numerical filters](docs/numerical-filters.md).

@@ -2171,6 +2171,9 @@ pub enum Operation {
     PlanCadVariant {
         request: Box<crate::cad_variant::CadVariantRequest>,
     },
+    PrepareCadSpectralScene {
+        request: Box<crate::cad_spectral::CadSpectralSceneRequest>,
+    },
     PlanFemImported {
         request: Box<crate::fem_imported::ImportedFemRequest>,
     },
@@ -2332,6 +2335,8 @@ pub fn schemas() -> serde_json::Value {
         "RegionReport": schemars::schema_for!(crate::cad::RegionReport),
         "CadSource": schemars::schema_for!(crate::cad_source::CadSource),
         "CadMeshRequest": schemars::schema_for!(crate::cad_source::CadMeshRequest),
+        "CadSpectralSceneRequest": schemars::schema_for!(crate::cad_spectral::CadSpectralSceneRequest),
+        "PreparedCadSpectralScene": schemars::schema_for!(crate::cad_spectral::PreparedCadSpectralScene),
         "ImportedFemRequest": schemars::schema_for!(crate::fem_imported::ImportedFemRequest),
         "ImportedFemSpec": schemars::schema_for!(crate::fem_imported::ImportedFemSpec),
         "FemReferenceSpec": schemars::schema_for!(crate::fem::FemReferenceSpec),

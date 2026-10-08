@@ -112,10 +112,10 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §3 compute/render/media identities | `src/devices.rs`, `src/authority.rs` | exact HIP PCI/UUID and initialized EGL/VAAPI identities recorded |
 | §3 shared admission, headroom and required execution | `src/admission.rs`, `src/resources.rs`, `src/estimates.rs` | RAM/disk/card contention and death retention qualified; FEM fill-in estimates pending |
 | §3 measurements, JIT and partitions | `scripts/verify_openlb_hip.py`, native receipts | scoped kernel evidence; equal-accuracy timings, VRAM peaks and multi-GPU qualification pending |
-| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v15 plans and original approval compatibility tested; broader recipe-specific contracts pending |
+| §4 schemas and Python parity | `src/contracts.rs`, `python/tests/test_protocol.py` | strict v1–v16 plans and original approval compatibility tested; source-bound spectral preparation schema/CLI/MCP verified independently |
 | §4 prepare/run/inspect/capabilities, verified resume | fixed adapters and receipts | native execution available; explicit capability keys and supported resume pending |
 | §4 units, applicability, identities, unknowns | `src/science.rs`, `src/contracts.rs`, `src/materials.rs`, `src/recipes.rs` | SI/identity/rejection, thermal property domains and missing-input preservation tested; scoped synthetic CPU contact and optical native/worker execution verified |
-| §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs` | source snapshot/import isolation qualified; parameter copies and geometric region selection pending |
+| §4 controlled CAD, tags, meshes, variants | `adapters/freecad_bridge.py`, `src/storage.rs`, `src/cad_spectral.rs` | source snapshot/import isolation and imported box correspondence qualified at recorded identities; immutable v16 parameter copies and whole-region spectral triangle preparation implemented; fresh native variant qualification pending |
 | §4 allocated solver resources, unresolved paths | `src/estimates.rs`, `adapters/openlb_channel.cpp` | channel allocation/Mach/model gates; other formulations and local-gap resolution gates pending |
 | §5 cold start and expansion/contact | recipe contracts and native FEM adapters | synthetic transient prescribed histories/heater energy, free expansion and planar contact pass scoped native/CLI/MCP gates; refined source-bound v11 thermal/contact worker passes `c8-2`; hybrid CUDA FEM and product material validation unqualified |
 | §5 airflow/wetting/snow/freezing | OpenLB recipe drivers and snow thermal adapter | synthetic single-phase flow, planar wetting, prescribed snow insulation and fixed-volume Stefan freezing pass recorded native/CLI/MCP/conservation/refinement gates; retained-distribution cooling and blocked-opening flow remain pending |
@@ -132,10 +132,41 @@ runtime roots end at zero. See [exact scoped evidence](evidence/numerical-filter
 | §7 portable provenance and retained re-render | immutable snapshot, source-bound v2/v3 plans | packaged standalone CLI/MCP rendering and independent video qualified at the recorded revision |
 | §7 Catalyst/Conduit | optional optimization | deferred until measured baseline justifies it |
 | §7 bounded studies and resource measurements | `src/study.rs`, `scripts/verify_study_worker.py` | explicit independently approved CPU collections and immutable partial submission recovery tested; exact packaged two-case thermal study/lifecycle/resource gate passes; equal-accuracy optimization acceptance remains pending |
-| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render/video/filter and CAD regions/export/mesh/imported-FEM surfaces implemented and scoped worker gates passed; v5/v8 exact native sample/signed same-mesh compare pass packaged results-3 CLI/MCP gate (eight fields, 40 rejections); CAD variants pending |
+| §8 CLI/MCP product surfaces | `src/main.rs`, official MCP profiles | job/results/render/video/filter and CAD regions/export/mesh/imported-FEM surfaces implemented and scoped worker gates passed; v5/v8 exact native sample/signed same-mesh compare pass packaged results-3 CLI/MCP gate (eight fields, 40 rejections); CAD variant/prepared spectral-scene surfaces implemented, fresh native package gates pending |
 | §9 CI and negative tests | `scripts/check_cpu.py`, generated workflow, tests | local gate green; hardware gates remain opt-in and scoped |
 
 ## Ordered runnable slices
+
+### Native CAD copies and material triangles — 2026-10-08
+
+Local commits `e0c3322` and `f8605ed` deliver v16 immutable controlled native
+box copies and the opt-in reimport/lifecycle campaign. `46f7434` repairs that
+campaign's shared MCP call and original inspection plan-only response. Gate 20
+passes complete Rust/Clippy/locked build and 186 Python cases; gate 21 passes
+all 189 Python cases and a real stdio client against the Rust worker. The
+campaign API regression now covers the CAD-copy entrypoint before native work.
+
+Builds 62 and 63 retain independent evaluation-lock refusals at
+`/run/lock/canix/nix-eval.lock`, owned by pid `2395140` running the separate
+secret-manager reconciliation. They realize no selected package. New v16
+native importer/reimport/owned-lifecycle and repaired atmosphere/registered
+transport qualification remain pending matching production packages.
+
+The source-bound spectral preparation slice binds explicit optical materials to
+every named original binary STL region. It verifies original facet order,
+Float32-to-SI precision, oriented closed topology and all six planar box
+surfaces with unchanged `1e-10` volume/area gates. Known opaque Lambertian
+response must close explicit reflectance plus absorptivity within `1e-12` at
+every wavelength; missing optical/ageing data remains missing. Preparation
+does not open a CAD document, mutate source artifacts or assert transport.
+See [source-bound spectral scenes](cad-spectral-scenes.md).
+
+Gate 22 passes complete Rust tests, strict Clippy, locked build, Treefmt and
+pinned Simit drift. Its retained failed Python assertion was a missing binary
+attribute in the new client fixture; after that focused correction gate 23
+passes all 191 Python cases, including generated Rust schema and real CLI/stdio
+MCP refusal parity. Manufactured geometry fixtures establish contracts only;
+native material-tagged surface transport remains unqualified.
 
 ### Receipt and packaging continuation — 2026-10-08
 

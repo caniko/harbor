@@ -149,6 +149,13 @@ def build_server(profile: str) -> MCPServer:
     if profile in {"cad", "results", "all"}:
 
         @server.tool()
+        async def cad_prepare_spectral_scene(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Bind explicit optical properties to all original named CAD triangles; retain missing inputs and never solve implicitly."""
+            return await request("prepare_cad_spectral_scene", request=request_spec)
+
+        @server.tool()
         async def cad_regions(job_id: str) -> dict[str, Any]:
             """Read bounded checksummed named-solid metadata from one native CAD job."""
             return await request("cad_regions", job_id=job_id)

@@ -907,6 +907,9 @@ fn dispatch(
         Operation::CadRegions { job_id } => {
             Ok(serde_json::to_value(crate::cad::regions(store, &job_id)?)?)
         }
+        Operation::PrepareCadSpectralScene { request } => Ok(serde_json::to_value(
+            crate::cad_spectral::prepare(store, *request)?,
+        )?),
         Operation::ResultsSample { request } => Ok(serde_json::to_value(crate::results::sample(
             store, &request,
         )?)?),
