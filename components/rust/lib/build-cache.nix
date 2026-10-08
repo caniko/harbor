@@ -50,6 +50,9 @@
     # (default) preserves the fail-closed behavior: an uncached build is
     # a hard error.
     ephemeralFallback ? false,
+    # Host modules may relocate the managed disk mount; fixtures use a private
+    # absent path so a real host transport cannot mask fallback behavior.
+    hostCacheRoot ? "/var/cache/sccache",
     # Atlas mounts this socket into Nix sandboxes.  The wrapper discovers it
     # at runtime so every consumer using harbor-rs gets the host transport
     # without copying host-specific Redis settings into project flakes.
@@ -100,7 +103,7 @@
         compiler_socket="$state_root/harbor-rs-sandbox-sccache-server.sock"
         configured_cache_dir=${lib.escapeShellArg wrapperCacheDir}
         ephemeral_fallback=${lib.boolToString ephemeralFallback}
-        host_cache_root=/var/cache/sccache
+        host_cache_root=${lib.escapeShellArg hostCacheRoot}
         host_cache_dir="$host_cache_root"/${lib.escapeShellArg namespace}
 
         host_cache_root_is_admissible() {
@@ -658,7 +661,7 @@
       schemaVersion = 2;
       telemetrySchemaVersion = 1;
       telemetryMarker = "RS_HARBOR_SCCACHE_STATS_V1";
-      inherit namespaceScope namespaceGeneration namespace sccacheVersion executionModel redisSocketPath;
+      inherit namespaceScope namespaceGeneration namespace sccacheVersion executionModel redisSocketPath hostCacheRoot;
       compiler = compilerName;
       rustToolchain = contractToolchain // {version = compilerName;};
     };

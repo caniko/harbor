@@ -3922,6 +3922,7 @@ in
       assert policy.contract.compiler == pkgs.buildPackages.rustc.version;
       assert policy.contract.rustToolchain.channel == "nightly-2026-09-15";
       assert policy.contract.redisSocketPath == "/run/redis-sccache/redis.sock";
+      assert policy.contract.hostCacheRoot == "/var/cache/sccache";
       assert policy.sharedCacheDir == "/tmp/sccache/test-rust-v7-sccache-${pkgs.sccache.version}";
         pkgs.runCommand "check-build-cache-policy-contract" {} "touch $out";
 
@@ -4008,14 +4009,20 @@ in
       '';
 
     build-cache-policy-ephemeral-fallback = let
-      withFallback = self.lib.mkBuildCachePolicy {
+      fixture = {
         inherit pkgs;
-        ephemeralFallback = true;
+        hostCacheRoot = "/build/absent-managed-cache";
+        redisSocketPath = "/build/absent-redis.sock";
       };
-      withoutFallback = self.lib.mkBuildCachePolicy {inherit pkgs;};
+      withFallback = self.lib.mkBuildCachePolicy (fixture // {ephemeralFallback = true;});
+      withoutFallback = self.lib.mkBuildCachePolicy fixture;
       fallbackRoot = "$NIX_BUILD_TOP/harbor-rs-sccache-cache";
     in
       pkgs.runCommand "check-build-cache-policy-ephemeral-fallback" {} ''
+        set -eux
+        unset SCCACHE_DIR SCCACHE_REDIS_ENDPOINT SCCACHE_REDIS_CLUSTER_ENDPOINTS
+        test ! -e /build/absent-managed-cache
+        test ! -e /build/absent-redis.sock
         # Fallback executes: the wrapper starts a server on a private
         # build-scoped dir and sccache answers.
         ${withFallback.wrapperPath} --version >/dev/null
