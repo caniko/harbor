@@ -10,6 +10,7 @@
       sha256 = sourceSha256;
     };
     strictDeps = true;
+    patches = [./patches/libradtran-no-scattering-albedo.patch];
     nativeBuildInputs = [
       pkgs.gfortran
       pkgs.flex

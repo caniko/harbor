@@ -1,0 +1,14 @@
+--- a/src/ancillary.c
++++ b/src/ancillary.c
+@@ -5862,7 +5862,10 @@
+       /* Set optical depth and single scattering albedo */
+       output->dtauc[lc]    = bext_tot;
+       output->dtauc_md[lc] = bext_tot_md;
+-      output->ssalb[lc]    = bsca_tot / bext_tot;
++      /* no_scattering explicitly disables scattering. The FLT_MIN guards
++         above keep divisions finite but must not turn a transparent column
++         into a medium with a nonzero single-scattering albedo. */
++      output->ssalb[lc]    = input.scattering ? bsca_tot / bext_tot : 0.0;
+ 
+       if (input.rte.solver == SOLVER_TWOMAXRND || input.rte.solver == SOLVER_DYNAMIC_TWOSTREAM ||
+           input.rte.solver == SOLVER_DYNAMIC_TENSTREAM) {
