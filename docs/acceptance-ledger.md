@@ -163,6 +163,17 @@ and worker qualification are still pending. `f1c8248` exposes the transport work
 runtime as a flake package, and `c80bd33` implements its complete registered-source
 CLI/MCP qualification campaign with independently rechecked exact prerequisites.
 
+Build 56 realizes the already-evaluated independent thermal/contact, freezing,
+spectral and atmospheric-spectral operation-only packages with one job/two cores.
+The exact current CLI/MCP planar contact worker passes its complete four-job
+campaign as `c8-1/contact-worker`: two successful native solves, forced-tree death
+and cancellation, immutable restart/idempotency, original fields, offline exports
+and final admission/runtime-root release. [Current contact evidence](evidence/current-contact-worker-20261008.json)
+binds its packages and source; the initial overlong Unix-socket startup attempt
+remains independently failed. Build 55 timed out behind another Canix operation's
+evaluation guard. The repaired libRadtran evaluation and all other current
+native/worker campaigns continue independently.
+
 | Slice | Acceptance | State |
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |
