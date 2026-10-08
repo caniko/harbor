@@ -21,7 +21,10 @@
       (pkgs.lib.getBin pkgs.netcdffortran)
     ];
     # The pinned configure.in unconditionally links both GSL and gslcblas.
-    buildInputs = [pkgs.netcdf pkgs.netcdffortran pkgs.gsl];
+    # nf-config --flibs additionally names curl/zlib/HDF5-HL directly. Under
+    # strictDeps their linker search paths must be declared, not inferred from
+    # NetCDF's runtime closure (which does not propagate build search paths).
+    buildInputs = [pkgs.netcdf pkgs.netcdffortran pkgs.gsl pkgs.curl pkgs.zlib pkgs.hdf5];
     # The distribution's fixed-form legacy Fortran routines use the original
     # F77 calling convention. This compiler mode does not reduce arithmetic
     # precision or enable unsafe floating-point optimization.
