@@ -180,5 +180,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-rs/local/heads",
     "remoteRefs": "refs/imports/harbor-rs/remote/heads"
+  },
+  {
+    "id": "harbor-sol",
+    "origin": "git@github.com:caniko/harbor-sol.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "2867481ac3f92d6ced4cec51b34f43770ee641f6",
+    "prefix": "sources/harbor-sol",
+    "sourceTree": "36cf88113e2e9eefd5a3fd0c471a72c8e242123c",
+    "baseline": "a72c9c2643f54b262cc8717323b4ec7d23c9da0e",
+    "preservedLocalHead": "b9e7619982c56b31437913c8065fd26dbdc4bf3b",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-sol/local/heads",
+    "remoteRefs": "refs/imports/harbor-sol/remote/heads"
   }
 ]
