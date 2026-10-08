@@ -402,6 +402,15 @@ lifecycle submission reused a key from the copied source campaign. New optical
 lifecycle keys are explicitly namespaced; the original source records retain
 their keys and approvals. A fresh matching lifecycle campaign remains required.
 
+Source gate 48 passes full source checks and 222 Python tests. The `c8-28`
+campaign preserved a second key mismatch in its terminal duplicate assertion;
+both initial and duplicate lifecycle submissions now share one explicit
+namespaced key. Independently reconstructed cooling diagnostics pass conserved
+source water/enthalpy/insulated-boundary checks and fine complete-history
+spatial `2/3/4` and temporal `1/2/4` assessments. Initial identity uses the
+stricter `1e-10` conservation screen separately from evolved refinement; the
+original coarse-history `0.02316` refusal remains recorded.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

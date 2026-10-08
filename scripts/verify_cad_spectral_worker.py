@@ -341,13 +341,14 @@ def main():
                 }
             )
         for name, target in (("cancel", "cancelled"), ("service-death", "failed")):
+            key = "cad-optical-" + name
             current = copy.deepcopy(request)
             current["scene"]["source_job"] = sources[0]["reimport"]["id"]
             current["samples_per_triangle"] = 4096
             planned = campaign.mcp_call(
                 "cad_plan_spectral_transport", {"request_spec": current}
             )
-            job = campaign.submit(planned, "cad-optical-" + name)
+            job = campaign.submit(planned, key)
             owner = campaign.wait(job, {"running"})
             active = retention_snapshot(state, job, str(binary))
             assert admission_record(state, job) is not None
@@ -368,7 +369,7 @@ def main():
                 )
             campaign.restart()
             outcome = campaign.wait(job, {target})
-            assert campaign.submit(planned, name)["id"] == job["id"]
+            assert campaign.submit(planned, key)["id"] == job["id"]
             wait_admission_release(state, job)
             wait_retention_release(state, job)
             lifecycle.append(
