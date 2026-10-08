@@ -1,0 +1,11 @@
+[ci]
+provider = "actions"
+platform = "github"
+runtime = "nix"
+runner = "ubuntu-24.04"
+
+[ci.pages]
+repo = "caniko/harbor-meta"
+canonical_domain = "harbor.tartanoglu.com"
+site_output = "./site#site"
+deploy_app = "./site#deploy-pages"

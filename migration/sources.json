@@ -115,5 +115,18 @@
     "pendingSourceChanges": false,
     "localRefs": "refs/imports/harbor-macos-sdk-pin/local/heads",
     "remoteRefs": "refs/imports/harbor-macos-sdk-pin/remote/heads"
+  },
+  {
+    "id": "harbor-meta",
+    "origin": "git@github.com:caniko/harbor-meta.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "e79f4feb1ce2a73855e3cb533ca6a1ebb95f560a",
+    "prefix": "sources/harbor-meta",
+    "sourceTree": "d655eac8f5e919389467dde5fc8d2c42145b0f86",
+    "baseline": "a7827aca9737cff55c959a92262f1d0a562fd8bd",
+    "preservedLocalHead": "c86dd5f7879aea4a30850af9bcbf5dfadb94e684",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-meta/local/heads",
+    "remoteRefs": "refs/imports/harbor-meta/remote/heads"
   }
 ]

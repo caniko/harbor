@@ -1,0 +1,828 @@
+[site]
+title = "Harbor"
+description = "Shared Nix flake libraries for Rust, Python, JavaScript, Android, TeX, databases, blockchains, and editor tooling."
+base_url = "/"
+canonical_domain = "harbor.tartanoglu.com"
+footer_note = "Harbor keeps language-specific Nix plumbing in dedicated flakes so projects stay thin."
+
+[theme]
+paper = "#0F172A"
+surface = "#111827"
+ink = "#F8FAFC"
+ink_soft = "#CBD5E1"
+line = "rgba(148, 163, 184, 0.22)"
+accent = "#38BDF8"
+accent_soft = "#082F49"
+secondary = "#F59E0B"
+warning = "#FB7185"
+rust = "#22C55E"
+
+[[nav]]
+label = "Flakes"
+href = "/#ecosystem"
+
+[[nav]]
+label = "Rust"
+href = "/rs/"
+
+[[nav]]
+label = "Python"
+href = "/py/"
+
+[[nav]]
+label = "JS"
+href = "/js/"
+
+[[nav]]
+label = "DB"
+href = "/db/"
+
+[[nav]]
+label = "TeX"
+href = "/tex/"
+
+[[nav]]
+label = "Meta"
+href = "/meta/"
+
+[[nav]]
+label = "Android"
+href = "/android/"
+
+[[nav]]
+label = "Eth"
+href = "/eth/"
+
+[[nav]]
+label = "Sol"
+href = "/sol/"
+
+[[nav]]
+label = "NTT"
+href = "/ntt/"
+
+[[nav]]
+label = "Source"
+href = "https://github.com/caniko/harbor-meta"
+
+[[footer_links]]
+label = "Source"
+href = "https://github.com/caniko/harbor-meta"
+
+[[footer_links]]
+label = "harbor-rs docs"
+href = "https://harbor-rs.tartanoglu.com/docs/"
+
+[[assets]]
+source = "./static/harbor-mark.svg"
+target = "/harbor-mark.svg"
+
+[[projects]]
+title = "harbor-rs"
+url = "/rs/"
+description = "Reusable Rust toolchains, cross targets, Cargo config, and packaging helpers."
+source_url = "https://github.com/caniko/harbor-rs"
+
+[[projects.links]]
+label = "Full docs"
+href = "https://harbor-rs.tartanoglu.com/docs/"
+kind = "docs"
+
+[[projects]]
+title = "harbor-py"
+url = "/py/"
+description = "uv2nix and pyproject-nix helpers for Python flakes."
+source_url = "https://github.com/caniko/harbor-py"
+
+[[projects]]
+title = "harbor-js"
+url = "/js/"
+description = "Bun toolchain and package helpers for JavaScript flakes."
+source_url = "https://github.com/caniko/harbor-js"
+
+[[projects]]
+title = "harbor-db"
+url = "/db/"
+description = "Generic lifecycle-operation plans and NixOS systemd wiring."
+source_url = "https://github.com/caniko/harbor-db"
+
+[[projects]]
+title = "harbor-tex"
+url = "/tex/"
+description = "TeX Live profiles and reproducible LaTeX document builds."
+source_url = "https://github.com/caniko/harbor-tex"
+
+[[projects]]
+title = "harbor-meta"
+url = "/meta/"
+description = "Shared editor, agent, and dev-shell fragments used by the language harbors."
+source_url = "https://github.com/caniko/harbor-meta"
+
+[[projects]]
+title = "harbor-android"
+url = "/android/"
+description = "Android SDK, NDK, and APK helpers for Nix flakes."
+source_url = "https://github.com/caniko/harbor-android"
+
+[[projects]]
+title = "harbor-eth"
+url = "/eth/"
+description = "Foundry and solc toolchains with harbor-meta dev shells; anvil as the local test backend."
+source_url = "https://github.com/caniko/harbor-eth"
+
+[[projects]]
+title = "harbor-sol"
+url = "/sol/"
+description = "Solana, Agave validator, and Anchor helpers; Rust toolchain from harbor-rs."
+source_url = "https://github.com/caniko/harbor-sol"
+
+[[projects]]
+title = "harbor-ntt"
+url = "/ntt/"
+description = "Pinned Wormhole Native Token Transfer CLI, EVM, and Solana builders."
+source_url = "https://github.com/caniko/harbor-ntt"
+
+[[projects]]
+title = "harbor-canix-llm"
+url = "/llm/"
+description = "Canix-specific harness policy: session-scoped dev-shell switching in OpenCode."
+source_url = "https://github.com/caniko/harbor-canix-llm"
+
+[[projects]]
+title = "harbor-macos-sdk-pin"
+url = "/macos-sdk-pin/"
+description = "Pure-data pin for the realized macOS SDK store path and its Attic cache."
+source_url = "https://github.com/caniko/harbor-macos-sdk-pin"
+
+[[pages]]
+slug = "index"
+title = "Harbor"
+description = "Shared Nix flake libraries for Rust, Python, JavaScript, Android, TeX, databases, blockchains, and editor tooling."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "Harbor"
+tagline = "Language flakes for Nix, without copying the plumbing."
+subtitle = "Each harbor owns one language surface. Projects keep policy local and import the helpers they need."
+
+[[pages.sections.ctas]]
+label = "Browse flakes"
+href = "#ecosystem"
+primary = true
+
+[[pages.sections.ctas]]
+label = "harbor-rs docs"
+href = "https://harbor-rs.tartanoglu.com/docs/"
+
+[[pages.sections]]
+type = "project_grid"
+id = "ecosystem"
+heading = "Harbor flakes"
+intro = "Twelve libraries. Pick the language you are packaging."
+
+[[pages.sections]]
+type = "workflow_steps"
+id = "use"
+heading = "How to consume one"
+intro = "Every harbor is a flake input. Policy stays in the project."
+
+[[pages.sections.steps]]
+title = "Add the input"
+description = "Pin the language flake you need, for example `github:caniko/harbor-rs`."
+
+[[pages.sections.steps]]
+title = "Call the helper"
+description = "Use `harbor-*.lib.mk…` for toolchains, shells, packages, or systemd units."
+
+[[pages.sections.steps]]
+title = "Keep project policy local"
+description = "Versions, profiles, and release rules stay in the consuming flake."
+
+[[pages]]
+slug = "rs"
+title = "harbor-rs"
+description = "Reusable Rust toolchain and cross-compilation infrastructure for Nix flakes."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-rs"
+tagline = "Reusable Rust toolchain and cross-compilation infrastructure for Nix flakes."
+subtitle = "Toolchains, cross targets, generated Cargo config, and packaging helpers live here instead of in every Rust workspace."
+
+[[pages.sections.ctas]]
+label = "Full reference"
+href = "https://harbor-rs.tartanoglu.com/docs/"
+primary = true
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-rs"
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "mkToolchain"
+description = "Nightly or stable Rust toolchains with crane already wired in. Optional fleet profiles pin versions centrally."
+highlight = true
+
+[[pages.sections.features]]
+title = "mkCross / mkCrossPackages"
+description = "Native, MinGW, aarch64-linux, and optional osxcross environments from one library."
+
+[[pages.sections.features]]
+title = "mkCargoConfig"
+description = "Emit linker and compiler settings once, then serve them from a cache-keyed CARGO_HOME."
+
+[[pages.sections.features]]
+title = "Packaging"
+description = "AppImage, Flatpak, Homebrew, deb, Scoop, Chocolatey, Dioxus web/fullstack, and signed GitHub archives."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "The full API, templates, and packaging notes live in the dedicated harbor-rs docs."
+guide_href = "https://harbor-rs.tartanoglu.com/docs/"
+
+[[pages.sections.primary_routes]]
+label = "Flake input"
+audience = "Nix"
+command = "inputs.harbor-rs.url = \"github:caniko/harbor-rs\";"
+href = "https://harbor-rs.tartanoglu.com/docs/#quick-start"
+recommended = true
+
+[[pages]]
+slug = "py"
+title = "harbor-py"
+description = "Reusable Python uv2nix and pyproject-nix infrastructure for Nix flakes."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-py"
+tagline = "Reusable Python uv2nix and pyproject-nix infrastructure for Nix flakes."
+subtitle = "Downstream flakes keep project policy local while sharing the boring Python/Nix plumbing."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-py"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "uv environments"
+description = "`mkUvVirtualEnv` and `mkUvCheckEnv` return immutable uv2nix environments. Use `${env}/bin/python`."
+highlight = true
+
+[[pages.sections.features]]
+title = "Dev shells"
+description = "`mkUvDevShell` extraPackages are Nix tools only. Python deps stay in pyproject.toml and uv.lock."
+
+[[pages.sections.features]]
+title = "Overrides"
+description = "Setuptools, Torch runtime, and TorchCodec FFmpeg helpers live under `pythonOverrides`."
+
+[[pages.sections.features]]
+title = "Template"
+description = "`nix flake init -t github:caniko/harbor-py` scaffolds a consumer."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Pin harbor-py and call `harbor-py.lib` from your flake."
+guide_href = "https://github.com/caniko/harbor-py"
+
+[[pages.sections.primary_routes]]
+label = "Template"
+audience = "Nix"
+command = "nix flake init -t github:caniko/harbor-py"
+href = "https://github.com/caniko/harbor-py#minimal-usage"
+recommended = true
+
+[[pages]]
+slug = "js"
+title = "harbor-js"
+description = "Reusable JavaScript and Bun infrastructure for Nix flakes."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-js"
+tagline = "Reusable JavaScript and Bun infrastructure for Nix flakes."
+subtitle = "The first maintained surface wraps bun-overlay. Node, pnpm, Yarn, and generic JS helpers can join later under `lib.bun` without a rename."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-js"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "mkBunPackage"
+description = "Keeps the upstream Bun binary unpatched on Linux and runs it through proot so `bun build --compile` works in Nix sandboxes."
+highlight = true
+
+[[pages.sections.features]]
+title = "Toolchain"
+description = "`mkBunToolchain`, `mkBunDevShell`, `mkBunWorkspaceDeps`, and `readPackageManagerVersion`."
+
+[[pages.sections.features]]
+title = "FHS runner"
+description = "`bun.passthru.fhsRunner` runs Bun-compiled Linux executables in checks or install hooks."
+
+[[pages.sections.features]]
+title = "Pinned Bun"
+description = "`packages.<system>.bun_1_3_14` plus an x86_64-linux baseline build."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Start from the template or import `lib.bun` directly."
+guide_href = "https://github.com/caniko/harbor-js"
+
+[[pages.sections.primary_routes]]
+label = "Template"
+audience = "Nix"
+command = "nix flake init -t github:caniko/harbor-js"
+href = "https://github.com/caniko/harbor-js#harbor-js"
+recommended = true
+
+[[pages]]
+slug = "db"
+title = "harbor-db"
+description = "Secure generic lifecycle-operation plans and NixOS systemd wiring."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-db"
+tagline = "Lifecycle operations without owning your database."
+subtitle = "Projects keep idempotent ensure/check commands. harbor-db owns ordering, confirmation, readiness, credentials, state directories, and the deployment envelope."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-db"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "Project surface"
+description = "`services.harbor-db.projects.<name>` generates migrate and check units, then orders runtime services after them."
+highlight = true
+
+[[pages.sections.features]]
+title = "Framework-agnostic"
+description = "No baked-in migration framework, database, or application. Schema, backfills, backups, grants, and cutovers all fit."
+
+[[pages.sections.features]]
+title = "Postgres helpers"
+description = "Optional database URL, setup units, and runtime-role grants for Postgres-backed services."
+
+[[pages.sections.features]]
+title = "Pink Raven shape"
+description = "Keep SQLx behind `raven db migrate` and let harbor-db own users, grants, and unit order."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Import the NixOS module and declare a project runner."
+guide_href = "https://github.com/caniko/harbor-db"
+
+[[pages.sections.primary_routes]]
+label = "NixOS module"
+audience = "NixOS"
+command = "imports = [inputs.harbor-db.nixosModules.default];"
+href = "https://github.com/caniko/harbor-db#project-surface"
+recommended = true
+
+[[pages]]
+slug = "tex"
+title = "harbor-tex"
+description = "Reusable Nix helpers for TeX and LaTeX projects."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-tex"
+tagline = "Reusable Nix helpers for TeX and LaTeX projects."
+subtitle = "Profiles and reproducible PDF compilation live here. Manuscript layout, engines, and publication artifacts stay with each consumer."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-tex"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "Profiles"
+description = "`cv`, `article`, `conference`, and `editor` TeX Live sets."
+highlight = true
+
+[[pages.sections.features]]
+title = "mkLatexDocument"
+description = "Named builds with engine, working directory, shell-escape, and pre/post hooks."
+
+[[pages.sections.features]]
+title = "Plugins"
+description = "Canonical anx Zenodo and Pandoc plugin packages live in this flake."
+
+[[pages.sections.features]]
+title = "Systems"
+description = "Packages and checks for x86_64/aarch64 Linux and Darwin. `lib` is system-independent."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Follow nixpkgs, pick a profile, and build the document."
+guide_href = "https://github.com/caniko/harbor-tex"
+
+[[pages.sections.primary_routes]]
+label = "Template"
+audience = "Nix"
+command = "nix flake init -t github:caniko/harbor-tex"
+href = "https://github.com/caniko/harbor-tex#consumer-example"
+recommended = true
+
+[[pages]]
+slug = "meta"
+title = "harbor-meta"
+description = "Shared harbor helpers for editor and agent tooling."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-meta"
+tagline = "Shared harbor helpers for editor and agent tooling."
+subtitle = "Cross-language policy used by the language harbors: dev-shell fragments, template tests, and Opencode LSP discovery."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-meta"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "Dev-shell fragments"
+description = "Language harbors merge `{ packages, env, shellHook }` and render with `lib.devShell.mkShell`."
+highlight = true
+
+[[pages.sections.features]]
+title = "Template tests"
+description = "`lib.devShellTests` and `lib.templateTests` import consumer `flake.nix` files with current inputs. No nested nix."
+
+[[pages.sections.features]]
+title = "Opencode LSP"
+description = "Checked-in `.opencode/opencode.jsonc` declares LSPs. The direnv harbor shell supplies the binaries."
+
+[[pages.sections.features]]
+title = "harbor-opencode"
+description = "`sync`, `check`, and `rollout` keep editor config aligned across trees."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Operator CLI"
+intro = "The package is this flake's default output."
+guide_href = "https://github.com/caniko/harbor-meta"
+
+[[pages.sections.primary_routes]]
+label = "Sync"
+audience = "Operators"
+command = "harbor-opencode sync --kind detect"
+href = "https://github.com/caniko/harbor-meta#usage"
+recommended = true
+
+[[pages]]
+slug = "android"
+title = "harbor-android"
+description = "Reusable Android SDK, NDK, and APK helpers for Nix flakes."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-android"
+tagline = "Reusable Android SDK, NDK, and APK helpers for Nix flakes."
+subtitle = "`rustToolchain` is an argument, usually from harbor-rs. This flake does not take harbor-rs as an input."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-android"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "mkAndroidSdk"
+description = "One `composeAndroidPackages` from caller pkgs. Versions are required."
+highlight = true
+
+[[pages.sections.features]]
+title = "Dev shell"
+description = "`mkAndroidDevShell` sets ANDROID_* plus cargo-ndk, JDK, and Gradle."
+
+[[pages.sections.features]]
+title = "APKs"
+description = "`mkAndroidApk`, `mkAndroidApkDevBuilder`, and `mkAndroidFlavorTable` for Rust cdylib + Gradle."
+
+[[pages.sections.features]]
+title = "Maven cache"
+description = "`findLocalMavenCache` optionally pins a host tarball by committed SHA-256."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Pass a rustToolchain from harbor-rs and compose the SDK from your pkgs."
+guide_href = "https://github.com/caniko/harbor-android"
+
+[[pages.sections.primary_routes]]
+label = "Template"
+audience = "Nix"
+command = "nix flake init -t github:caniko/harbor-android"
+href = "https://github.com/caniko/harbor-android#harbor-android"
+recommended = true
+
+[[pages]]
+slug = "eth"
+title = "harbor-eth"
+description = "Reusable Foundry and Solidity development infrastructure for Nix flakes."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-eth"
+tagline = "Reusable Foundry and Solidity development infrastructure for Nix flakes."
+subtitle = "Packaged foundry and solc toolchains with dev shells composed through harbor-meta. Foundry's anvil is the local test backend, so no service wrapper is needed."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-eth"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "Foundry toolchain"
+description = "Packaged forge, cast, and anvil. `forge test` runs against the local backend."
+highlight = true
+
+[[pages.sections.features]]
+title = "solc"
+description = "Pinned Solidity compiler alongside Foundry."
+
+[[pages.sections.features]]
+title = "Dev shells"
+description = "Shells compose through `harbor-meta` fragments."
+
+[[pages.sections.features]]
+title = "Template"
+description = "`nix flake init -t github:caniko/harbor-eth` scaffolds a consumer."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Start from the template, then run the usual Foundry commands."
+guide_href = "https://github.com/caniko/harbor-eth"
+
+[[pages.sections.primary_routes]]
+label = "Template"
+audience = "Nix"
+command = "nix flake init -t github:caniko/harbor-eth"
+href = "https://github.com/caniko/harbor-eth#harbor-eth"
+recommended = true
+
+[[pages]]
+slug = "sol"
+title = "harbor-sol"
+description = "Reusable Solana, Agave validator, and Anchor development infrastructure for Nix flakes."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-sol"
+tagline = "Reusable Solana, Agave validator, and Anchor development infrastructure for Nix flakes."
+subtitle = "Rust toolchain ownership stays in harbor-rs; shell composition comes from harbor-meta."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-sol"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "Agave and Anchor"
+description = "Validator and Anchor builds on the harbor-rs Rust toolchain."
+highlight = true
+
+[[pages.sections.features]]
+title = "solana-test-validator"
+description = "Local validator for development and tests."
+
+[[pages.sections.features]]
+title = "Dev shells"
+description = "Shell composition comes from `harbor-meta`."
+
+[[pages.sections.features]]
+title = "Template"
+description = "`nix flake init -t github:caniko/harbor-sol` scaffolds a consumer."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Start from the template, then build against the local validator."
+guide_href = "https://github.com/caniko/harbor-sol"
+
+[[pages.sections.primary_routes]]
+label = "Template"
+audience = "Nix"
+command = "nix flake init -t github:caniko/harbor-sol"
+href = "https://github.com/caniko/harbor-sol#harbor-sol"
+recommended = true
+
+[[pages]]
+slug = "ntt"
+title = "harbor-ntt"
+description = "Reusable, pinned Wormhole Native Token Transfer toolchains and offline build infrastructure for Nix flakes."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-ntt"
+tagline = "Reusable, pinned Wormhole Native Token Transfer toolchains for Nix flakes."
+subtitle = "Reproducible CLI, EVM, and Solana builders plus an isolated development shell. Consumers own all source, toolchain, and audit pins."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-ntt"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "Pinned NTT toolchains"
+description = "Wormhole Native Token Transfer CLI with pinned, reproducible builds."
+highlight = true
+
+[[pages.sections.features]]
+title = "EVM and Solana builders"
+description = "`mkNtt` supplies both builders from caller pins."
+
+[[pages.sections.features]]
+title = "Isolated dev shell"
+description = "An isolated development shell without deployment credentials."
+
+[[pages.sections.features]]
+title = "Consumer-owned policy"
+description = "Source, toolchain, audit pins, and acceptance stay with consumers."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Pin harbor-ntt and call `harbor-ntt.lib.mkNtt` from your flake."
+guide_href = "https://github.com/caniko/harbor-ntt"
+
+[[pages.sections.primary_routes]]
+label = "Flake input"
+audience = "Nix"
+command = "inputs.harbor-ntt.url = \"github:caniko/harbor-ntt\";"
+href = "https://github.com/caniko/harbor-ntt#harbor-ntt"
+recommended = true
+
+[[pages]]
+slug = "llm"
+title = "harbor-canix-llm"
+description = "Canix-specific harness orchestration for OpenCode dev-shell switching."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-canix-llm"
+tagline = "Canix-specific harness orchestration for OpenCode dev-shell switching."
+subtitle = "Session and project-scoped dev-shell selection with immutable captures. Language harbors still own compilers; harbor-meta owns generic shell composition."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-canix-llm"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "Scoped selection"
+description = "Selections are isolated by session and project. Conflicting switches fail instead of racing."
+highlight = true
+
+[[pages.sections.features]]
+title = "Explicit approval"
+description = "No `.envrc` evaluation or automatic approval; preparation runs the trusted hook visibly."
+
+[[pages.sections.features]]
+title = "Process-memory captures"
+description = "Captured environments live only in process memory. Clearing restores normal behavior."
+
+[[pages.sections.features]]
+title = "Personal policy"
+description = "Canix supplies the approved projects; this flake owns harness policy and adapters."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Adopt it"
+intro = "Canix-specific: add the flake input and read the contract in the source repo."
+guide_href = "https://github.com/caniko/harbor-canix-llm"
+
+[[pages.sections.primary_routes]]
+label = "Flake input"
+audience = "Nix"
+command = "inputs.harbor-canix-llm.url = \"github:caniko/harbor-canix-llm\";"
+href = "https://github.com/caniko/harbor-canix-llm#contract"
+recommended = true
+
+[[pages]]
+slug = "macos-sdk-pin"
+title = "harbor-macos-sdk-pin"
+description = "Single source of truth for the realized macOS SDK store path and its Attic cache."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/harbor-mark.svg"
+title = "harbor-macos-sdk-pin"
+tagline = "Single source of truth for the realized macOS SDK store path."
+subtitle = "A pure-data Nix flake: constants for the SDK version, store path, and Attic cache. No inputs, no per-system outputs, no build steps."
+
+[[pages.sections.ctas]]
+label = "Source"
+href = "https://github.com/caniko/harbor-macos-sdk-pin"
+primary = true
+
+[[pages.sections]]
+type = "feature_grid"
+id = "surface"
+
+[[pages.sections.features]]
+title = "One pin"
+description = "sdkVersion, outputHash, and storePath constants in a single place."
+highlight = true
+
+[[pages.sections.features]]
+title = "Attic pointer"
+description = "Serves the SDK from the harbor-macos-sdk Attic cache instead of rebuilding per host."
+
+[[pages.sections.features]]
+title = "Pure data"
+description = "No inputs, no per-system outputs, no build steps. The same pin serves every system."
+
+[[pages.sections.features]]
+title = "License hygiene"
+description = "Avoids carrying the license-restricted source archive on every host."
+
+[[pages.sections]]
+type = "install"
+id = "install"
+heading = "Add it"
+intro = "Pin the flake and read the SDK path and cache coordinates from its outputs."
+guide_href = "https://github.com/caniko/harbor-macos-sdk-pin"
+
+[[pages.sections.primary_routes]]
+label = "Flake input"
+audience = "Nix"
+command = "inputs.harbor-macos-sdk-pin.url = \"github:caniko/harbor-macos-sdk-pin\";"
+href = "https://github.com/caniko/harbor-macos-sdk-pin#consuming"
+recommended = true

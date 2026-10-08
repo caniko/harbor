@@ -1,0 +1,3 @@
+{...}: {
+  programs.alejandra.enable = true;
+}

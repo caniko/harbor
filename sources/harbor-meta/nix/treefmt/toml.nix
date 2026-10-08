@@ -1,0 +1,3 @@
+{...}: {
+  programs.taplo.enable = true;
+}
