@@ -420,6 +420,21 @@ threshold are recorded in
 Operation-only source-bound native reference packages and their exact-package
 campaign are exposed; package/worker execution qualification remains pending.
 
+Exact immutable build 86 and campaign `c8-29` pass the original-CAD optical
+worker lifecycle, CLI/MCP seed/region queries, before-ack distinct-inode input
+retention, unchanged source, translated-geometry refusal, restart/idempotency,
+cancellation/service death, portable exports and every root/reservation release.
+The failed `c8-25`, `c8-27` and `c8-28` originals remain preserved. See
+[optical worker evidence](evidence/cad-optical-worker-20261008.json).
+
+Exact build 87 and guarded `c8-30` pass eleven isolated native retained-cooling
+cases and four before-dispatch refusals. Complete original field, water amount,
+enthalpy and half-link boundary conservation retain `1e-10`; fine uniform
+Stefan and evolved spatial/temporal complete histories retain `0.02`. Both
+coarse failed gates are preserved. The campaign used 190.3 MiB peak/no swap;
+shared-worker and physical qualification remain separate. See
+[cooling package evidence](evidence/retained-cooling-package-20261008.json).
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
