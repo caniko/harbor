@@ -245,5 +245,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/py-harbor/local/heads",
     "remoteRefs": "refs/imports/py-harbor/remote/heads"
+  },
+  {
+    "id": "rs-harbor",
+    "origin": "ssh://git@codeberg.org/caniko/rs-harbor.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "72dc6aac2a78a45059cda87455827e1ee39a7003",
+    "prefix": "sources/rs-harbor",
+    "sourceTree": "d4aecb4f09c02d671fbf17f812f1b5badaa39ddf",
+    "baseline": "71b2f0f40229de3d4f939ecd70fe2de9c4b17dc7",
+    "preservedLocalHead": "b8427f0e33f3029a6296b6b9a2f6f4d7c14875e3",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/rs-harbor/local/heads",
+    "remoteRefs": "refs/imports/rs-harbor/remote/heads"
   }
 ]

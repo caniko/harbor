@@ -1,0 +1,20 @@
+[package]
+name = "harbor-xtask"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reusable synchronous xtask helpers for Rust workspaces"
+
+[dependencies]
+anyhow = "1"
+flate2 = "1"
+semver = "1"
+tar = "0.4"
+tempfile = "3"
+tracing = "0.1"
+ureq = "3"
+which = "6"
+
+[lints]
+workspace = true

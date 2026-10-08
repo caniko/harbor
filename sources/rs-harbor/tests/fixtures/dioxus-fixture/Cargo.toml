@@ -1,0 +1,25 @@
+[package]
+name = "dioxus-harbor-fixture"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+server = ["dioxus/server"]
+
+[dependencies]
+dioxus = { version = "=0.7.9", default-features = false, features = [
+  "asset",
+  "fullstack",
+  "html",
+  "launch",
+  "macro",
+  "router",
+] }
+
+[[bin]]
+name = "dioxus-harbor-fixture"
+path = "src/main.rs"
+
+[workspace]

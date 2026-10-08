@@ -1,0 +1,161 @@
+# mkCargoConfig :: { pkgs, channel?, ... } -> { configText, configPath }
+#
+# Generate optimized .cargo/config.toml content for fast Rust builds.
+# Configures mold linker (Linux), lld (Windows), cranelift dev backend,
+# share-generics, memory-saving dev profile defaults, and optional dev
+# codegen-units tuning. All nightly-only features auto-disable on stable.
+#
+# enableDevProfileOpts controls debug-info reductions that lower peak memory
+# without changing Cargo's codegen-unit default. devCodegenUnits is separate
+# because lowering codegen-units is a measured wall-clock/RSS tradeoff, not a
+# pure memory win for every workspace.
+{
+  pkgs,
+  channel ? "nightly",
+  crossTargets ? [
+    "x86_64-unknown-linux-gnu"
+    "aarch64-unknown-linux-gnu"
+    "x86_64-pc-windows-gnu"
+    "x86_64-apple-darwin"
+    "aarch64-apple-darwin"
+  ],
+  enableMold ? true,
+  enableCranelift ? (channel == "nightly"),
+  enableShareGenerics ? (channel == "nightly"),
+  enableParallelFrontend ? (channel == "nightly"),
+  enableDevProfileOpts ? true,
+  devCodegenUnits ? null,
+  extraConfig ? "",
+}:
+assert pkgs.lib.assertMsg (builtins.elem channel ["nightly" "stable"])
+"rs-harbor: mkCargoConfig 'channel' must be \"nightly\" or \"stable\", got \"${channel}\"";
+assert pkgs.lib.assertMsg (!enableCranelift || channel == "nightly")
+"rs-harbor: mkCargoConfig 'enableCranelift' requires channel=\"nightly\"";
+assert pkgs.lib.assertMsg (!enableShareGenerics || channel == "nightly")
+"rs-harbor: mkCargoConfig 'enableShareGenerics' requires channel=\"nightly\"";
+assert pkgs.lib.assertMsg (!enableParallelFrontend || channel == "nightly")
+"rs-harbor: mkCargoConfig 'enableParallelFrontend' requires channel=\"nightly\"";
+assert pkgs.lib.assertMsg (builtins.isList crossTargets)
+"rs-harbor: mkCargoConfig 'crossTargets' must be a list of target triples";
+assert pkgs.lib.assertMsg (devCodegenUnits == null || (builtins.isInt devCodegenUnits && devCodegenUnits > 0))
+"rs-harbor: mkCargoConfig 'devCodegenUnits' must be null or a positive integer"; let
+  inherit (pkgs.lib) concatStringsSep hasInfix optionalString;
+  inherit (builtins) filter length;
+
+  # Classify a target triple
+  isLinux = t: hasInfix "-linux-" t;
+  isWindowsGnu = t: hasInfix "-windows-gnu" t;
+  isDarwin = t: hasInfix "-apple-darwin" t;
+
+  # Build rustflags array string from a list of flag pairs/singles
+  mkRustflags = flags:
+    if length flags == 0
+    then ""
+    else "rustflags = [${concatStringsSep ", " (map (f: "\"${f}\"") flags)}]\n";
+
+  # Generate a [target.<triple>] section
+  mkTargetSection = triple: let
+    moldFlags =
+      if enableMold && isLinux triple
+      then ["-C" "link-arg=-fuse-ld=mold"]
+      else [];
+    shareGenFlags =
+      if enableShareGenerics && (isLinux triple || isDarwin triple)
+      then ["-Zshare-generics=y"]
+      else [];
+    parallelFlags =
+      if enableParallelFrontend
+      then ["-Zthreads=0"]
+      else [];
+    # Do not force `-fuse-ld=lld` for MinGW/GNU Windows targets. When Rust
+    # links through the GCC wrapper provided by pkgsCross.mingwW64, that path
+    # can inject unsupported PIE arguments into lld and fail the final link.
+    allFlags = moldFlags ++ shareGenFlags ++ parallelFlags;
+    linkerLine =
+      optionalString (enableMold && isLinux triple) "linker = \"clang\"\n";
+    flagsLine = mkRustflags allFlags;
+  in
+    if linkerLine == "" && flagsLine == ""
+    then ""
+    else "[target.${triple}]\n${linkerLine}${flagsLine}";
+
+  targetSections = concatStringsSep "\n" (filter (s: s != "") (map mkTargetSection crossTargets));
+
+  craneliftSection = concatStringsSep "\n" [
+    "[unstable]"
+    "codegen-backend = true"
+    ""
+    "[profile.dev]"
+    ''codegen-backend = "cranelift"''
+    ""
+    ''[profile.dev.package."*"]''
+    ''codegen-backend = "llvm"''
+    ""
+  ];
+
+  devProfileSection = concatStringsSep "\n" [
+    "[profile.dev]"
+    ''debug = "line-tables-only"''
+    ''split-debuginfo = "unpacked"''
+    ""
+    ''[profile.dev.package."*"]''
+    "debug = false"
+    ""
+  ];
+
+  optionalStringList = cond: list:
+    if cond
+    then list
+    else [];
+
+  codegenUnitsLines =
+    if devCodegenUnits == null
+    then []
+    else ["codegen-units = ${toString devCodegenUnits}"];
+
+  codegenUnitsSection = concatStringsSep "\n" ([
+      "[profile.dev]"
+    ]
+    ++ codegenUnitsLines
+    ++ [
+      ""
+    ]);
+
+  craneliftDevProfileSection = concatStringsSep "\n" ([
+      "[unstable]"
+      "codegen-backend = true"
+      ""
+      "[profile.dev]"
+      ''codegen-backend = "cranelift"''
+    ]
+    ++ optionalStringList enableDevProfileOpts [
+      ''debug = "line-tables-only"''
+      ''split-debuginfo = "unpacked"''
+    ]
+    ++ codegenUnitsLines
+    ++ [
+      ""
+      ''[profile.dev.package."*"]''
+      ''codegen-backend = "llvm"''
+    ]
+    ++ optionalStringList enableDevProfileOpts [
+      "debug = false"
+    ]
+    ++ [
+      ""
+    ]);
+
+  header = "# Generated by rs-harbor — https://github.com/caniko/rs-harbor\n# Optimized Cargo configuration for fast Rust builds\n";
+
+  configText =
+    header
+    + optionalString (targetSections != "") "\n${targetSections}"
+    + optionalString (enableCranelift && !enableDevProfileOpts && devCodegenUnits == null) "\n${craneliftSection}"
+    + optionalString (enableCranelift && (enableDevProfileOpts || devCodegenUnits != null)) "\n${craneliftDevProfileSection}"
+    + optionalString (!enableCranelift && enableDevProfileOpts) "\n${devProfileSection}"
+    + optionalString (!enableCranelift && devCodegenUnits != null) "\n${codegenUnitsSection}"
+    + optionalString (extraConfig != "") "\n${extraConfig}\n";
+in {
+  inherit configText;
+  configPath = pkgs.writeText "cargo-config.toml" configText;
+}

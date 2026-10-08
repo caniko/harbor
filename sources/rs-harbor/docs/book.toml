@@ -1,0 +1,15 @@
+[book]
+title = "rs-harbor Documentation"
+authors = ["caniko"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+site-url = "/rs-harbor/docs/"
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://codeberg.org/caniko/rs-harbor"
+edit-url-template = "https://codeberg.org/caniko/rs-harbor/src/branch/main/docs/{path}"

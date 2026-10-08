@@ -1,0 +1,83 @@
+[site]
+title = "rs-harbor"
+description = "Reusable Rust toolchain and cross-compilation infrastructure for Nix flakes."
+base_url = "/"
+footer_note = "rs-harbor publishes its project site with plinth-project and keeps the API/reference docs in mdBook."
+
+[theme]
+paper = "#0F172A"
+surface = "#111827"
+ink = "#F8FAFC"
+ink_soft = "#CBD5E1"
+line = "rgba(148, 163, 184, 0.22)"
+accent = "#38BDF8"
+accent_soft = "#082F49"
+secondary = "#F59E0B"
+warning = "#FB7185"
+rust = "#22C55E"
+
+[[nav]]
+label = "Overview"
+href = "#overview"
+
+[[nav]]
+label = "Docs"
+href = "/docs/"
+
+[[nav]]
+label = "Source"
+href = "https://codeberg.org/caniko/rs-harbor"
+
+[[footer_links]]
+label = "Source"
+href = "https://codeberg.org/caniko/rs-harbor"
+
+[[footer_links]]
+label = "Documentation"
+href = "/docs/"
+
+[[assets]]
+source = "./static/rs-harbor-mark.svg"
+target = "/rs-harbor-mark.svg"
+
+[[pages]]
+slug = "index"
+title = "rs-harbor"
+description = "Reusable Rust toolchain and cross-compilation infrastructure for Nix flakes."
+
+[[pages.sections]]
+type = "hero"
+logo_src = "/rs-harbor-mark.svg"
+title = "rs-harbor"
+tagline = "Reusable Rust toolchain and cross-compilation infrastructure for Nix flakes."
+subtitle = "Keep toolchains, cross targets, Cargo config generation, and packaging helpers in one flake library instead of rebuilding that plumbing in every Rust workspace."
+
+[[pages.sections.ctas]]
+label = "Read docs"
+href = "/docs/"
+primary = true
+
+[[pages.sections.ctas]]
+label = "View source"
+href = "https://codeberg.org/caniko/rs-harbor"
+
+[[pages.sections]]
+type = "feature_grid"
+id = "overview"
+
+[[pages.sections.features]]
+title = "Toolchains"
+description = "Build nightly or stable Rust toolchains with crane already wired into the result."
+highlight = true
+
+[[pages.sections.features]]
+title = "Cross targets"
+description = "Generate native, Windows, and macOS cross environments from one flake library."
+
+[[pages.sections.features]]
+title = "Cargo config"
+description = "Emit linker and compiler settings once, then let the dev shell write a consistent .cargo/config.toml."
+
+[[pages.sections.features]]
+title = "Packaging helpers"
+description = "Ship AppImages, Flatpaks, Homebrew formulas, and other release artifacts without forking the build graph."

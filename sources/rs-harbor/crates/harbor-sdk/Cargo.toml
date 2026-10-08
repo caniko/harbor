@@ -1,0 +1,16 @@
+[package]
+name = "harbor-sdk"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust helpers for realizing and publishing macOS SDK archives"
+
+[dependencies]
+anyhow = "1"
+thiserror = "2"
+tempfile = "3"
+which = "6"
+
+[lints]
+workspace = true

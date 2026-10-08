@@ -1,0 +1,35 @@
+[ci]
+runtime = "nix"
+runner = "codefloe-global"
+workspace = true
+step_runners = { cargo-clippy = "atlas-nix-trusted", cargo-doc = "atlas-nix-trusted", cargo-fmt = "atlas-nix-trusted", cargo-package = "atlas-nix-trusted", cargo-test = "atlas-nix-trusted", nix-check = "atlas-nix-trusted", quality-tools = "atlas-nix-trusted" }
+publish_crates = true
+platform = "forgejo"
+provider = "crow"
+
+[ci.pages]
+repo = "caniko/rs-harbor"
+canonical_domain = "rs-harbor.tartanoglu.com"
+site_output = "./site#site"
+deploy_app = "./site#deploy-pages"
+
+[release.github]
+repo = "caniko/rs-harbor"
+target_branch = "trunk"
+
+[release.changelog]
+auto_draft = true
+
+[release.artifacts]
+runner = "ubuntu-24.04"
+substituters = ["https://attic.candee.baby/canix", "https://cache.nixos.org"]
+nix_bundle_attrs = ["release-bundle"]
+trusted_public_keys = [
+  "canix:lPzPzKrmYqW5Rxa5r0uQWvCqD3S5nx0h2eCy7XD5JM8=",
+  "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=",
+]
+version_attr = "rs-harbor"
+build_commands = []
+checksum_globs = ["*.tar.gz"]
+minisign_pub = "keys/minisign.pub"
+sign = true
