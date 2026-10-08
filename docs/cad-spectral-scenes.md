@@ -1,5 +1,51 @@
 # Source-bound CAD spectral materials
 
+## Direct-only native triangle reference
+
+`cad-spectral-direct-reference-cpu` and
+`runtime-cad-spectral-direct-reference-cpu` provide the independent native
+candidate for `opaque_lambertian_direct_only` transport. Its strict descriptor
+binds the complete prepared scene, original region STL records, explicit
+collimated spectral irradiance, source-amplitude history, three seeds and a
+bounded per-original-facet sample budget. The native entrypoint requires the
+operation-only CPU sandbox and read-only original source mount.
+
+Each original facet becomes a separate native `Mesh` without vertex-normal
+smoothing, welding, reordering or additional placement. The original Float32 mm
+vertices are converted once to Float64 metres, then explicitly measured against
+the renderer's Float32 vertex storage. This additional conversion must satisfy
+the approved metre rounding budget and a fixed `1e-6` native area-error screen;
+the original closed-box `1e-10` area/volume gates remain unchanged. Scientific
+power and energy use the original facet areas. Every original native surface
+point, normal, collimated direction, source PDF, four-knot irradiance packet and
+native material BSDF response is retained in closed CSV shards.
+
+Independent reconstruction checks complete facet/sample/knot coverage, original
+Float32 conversions, point association, closed-prism visibility, cosine response
+and optical energy closure. It reduces exact piecewise-linear spectral products
+with compensated Float64 sums. Results distinguish incident power, absorbed
+heating, outgoing reflected power and ageing-weighted dose. Missing ageing
+inputs leave that channel absent with an explicit status; missing optics refuse
+execution. The direct-only model excludes incoming interreflection, atmosphere
+and thermal feedback. It does not claim total irradiance for general reflecting
+scenes or material lifetime.
+
+`scripts/verify_cad_spectral_cpu.py --runtime RUNTIME --output NEW_DIRECTORY`
+checks manufactured original facets in ten cases: three normal orientations,
+oblique incidence, translated geometry, full and partial occlusion, black/white
+optics and absent ageing data. Complete-scene projected-area power is checked
+independently under the unchanged `0.02` numerical gate. Its explicit development
+bridge mode is package-unqualified. Native original-point verification and
+sampling convergence are separate statuses; registered-source worker execution
+requires its own approved plan and qualification.
+
+The Mesh construction/vertex-buffer/face APIs and native visibility behavior
+follow Mitsuba 3.9.1 commit
+`478e193a183c21723f4a8251afc3ad29a8da4c5e`:
+[Mesh tests](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/render/tests/test_mesh.py),
+[Mesh storage](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/render/mesh.cpp),
+and [emitter sampling/visibility](https://github.com/mitsuba-renderer/mitsuba3/blob/478e193a183c21723f4a8251afc3ad29a8da4c5e/src/render/scene.cpp).
+
 `cad prepare-spectral-scene REQUEST.json` and MCP
 `cad_prepare_spectral_scene` (`cad`, `results`, `all`) verify a registered
 source and return a bounded preparation report. The request supplies ordered

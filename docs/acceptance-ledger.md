@@ -187,6 +187,22 @@ sandbox. This qualifies that native reference scope; libRadtran execution,
 registered-source workers, convergence, GPU and physical validation remain
 separate gates. See [exact scoped evidence](evidence/native-angular-and-coupled-queries-20261008.json).
 
+The direct-only material-tagged triangle native candidate now consumes each
+original facet with explicit native Float32 geometry-rounding and BSDF checks,
+retains complete native source/normal/visibility packets, and reduces original
+areas into separate incident/absorbed/outgoing-reflected power and prescribed
+dose. Unknown ageing stays absent; unknown optics refuse execution. Geometry and
+packet mutation regressions preserve the original `1e-10` geometry and `0.02`
+numerical gates. Its independent ten-case native qualifier and operation-only
+Nix outputs are implemented. Matching-package native execution, registered-source
+worker approval/lifecycle, sampling convergence and interreflection remain
+separate unqualified capabilities; see [native triangle reference](cad-spectral-scenes.md).
+
+The complete source gate 26 passes Rust tests, strict Clippy, locked build,
+Treefmt/Ruff and 196 Python tests. Gate 25 retains the qualifier's missing
+explicit subprocess check argument as an independent lint failure; its Nix
+syntax and pinned Simit drift checks passed before that failure.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

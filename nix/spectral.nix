@@ -64,12 +64,33 @@
     exec ${environment}/bin/python3 -B ${atmosphericBridges}/atmospheric_spectral.py "$@"
   '';
   atmosphericClosure = pkgs.closureInfo {rootPaths = [atmosphericAdapter];};
+  cadBridges = pkgs.runCommand "harbor-cad-cad-spectral-direct-bridges" {} ''
+    mkdir -p "$out"
+    cp ${bridge} "$out/spectral_reference.py"
+    cp ${femBridge} "$out/fem_reference.py"
+    cp ${../adapters/cad_spectral_transport.py} "$out/cad_spectral_transport.py"
+  '';
+  cadAdapter = pkgs.writeShellScriptBin "harbor-cad-cad-spectral-direct" ''
+    exec ${environment}/bin/python3 -B ${cadBridges}/cad_spectral_transport.py "$@"
+  '';
+  cadClosure = pkgs.closureInfo {rootPaths = [cadAdapter];};
 in {
   spectral-environment-cpu = environment;
   spectral-mitsuba = mitsuba;
   spectral-drjit = drjit;
   spectral-reference-cpu = adapter;
   atmospheric-spectral-reference-cpu = atmosphericAdapter;
+  cad-spectral-direct-reference-cpu = cadAdapter;
+  runtime-cad-spectral-direct-reference-cpu = pkgs.writeText "harbor-cad-cad-spectral-direct-reference-runtime.json" (builtins.toJSON {
+    schema_version = 1;
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    cad_spectral = "${cadAdapter}/bin/harbor-cad-cad-spectral-direct";
+    spectral_closure = "${cadClosure}/store-paths";
+    backend = "cpu";
+    precision = "Float32";
+    policy = "harbor-cad-cad-spectral-direct-cpu-v1";
+    qualification = "unqualified";
+  });
   runtime-atmospheric-spectral-reference-cpu = pkgs.writeText "harbor-cad-atmospheric-spectral-reference-runtime.json" (builtins.toJSON {
     schema_version = 1;
     bwrap = "${pkgs.bubblewrap}/bin/bwrap";
