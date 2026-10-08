@@ -228,6 +228,38 @@ pub fn sample(store: &Store, request: &ThermalSampleRequest) -> Result<ThermalSa
     Ok(verified_sample(store, request)?.report)
 }
 
+/// Historical numerical status requires every authoritative original, not only
+/// an unchanged companion receipt. This does not infer current runtime fitness.
+pub(crate) fn verify_registered_originals(
+    store: &Store,
+    job_id: &str,
+    spec: &crate::thermal::ThermalReferenceSpec,
+    prefix: &str,
+    receipt: &serde_json::Value,
+) -> Result<crate::qualification::NumericalEvidence> {
+    let evidence = crate::thermal::verify_spec(spec, receipt)?;
+    let (mesh_record, mesh) = results::registered(store, job_id, &format!("{prefix}/mesh.json"))?;
+    let (_, fields) = results::registered(store, job_id, &format!("{prefix}/thermal-fields.json"))?;
+    let (native_record, native) =
+        results::registered_bytes(store, job_id, &format!("{prefix}/reference.dat"), "dat")?;
+    if receipt["mesh_sha256"] != mesh_record.sha256
+        || receipt["native_field_sha256"] != native_record.sha256
+    {
+        return Err(invalid(
+            "registered original thermal mesh/DAT differ from verified receipt",
+        ));
+    }
+    verify_native_state(
+        spec,
+        job_id,
+        spec.observation_times_s[0],
+        &mesh,
+        &fields,
+        std::str::from_utf8(&native).map_err(|_| invalid("native thermal DAT text required"))?,
+    )?;
+    Ok(evidence)
+}
+
 pub(crate) fn verified_sample(
     store: &Store,
     request: &ThermalSampleRequest,

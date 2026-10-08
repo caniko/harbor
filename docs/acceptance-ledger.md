@@ -192,6 +192,26 @@ attempts remain separate scratch records. [Study contract](studies.md) describes
 the bounded collection and weaker foreground guarantees. Exact packaged native
 study execution and equal-accuracy optimization remain independent gates.
 
+## Exact native/worker continuation and thermal-original repair
+
+[Current native/worker evidence](evidence/current-native-worker-20261008.json)
+records six successful exact-package native campaigns (contact, thermal,
+freezing, spectral, atmospheric-spectral and snow) and the complete thermal,
+freezing and spectral CLI/MCP worker gates. Both enclosing attempts retain exit
+1: libRadtran was unavailable in the native selection; thermal/contact failed its
+original energy gate; snow failed the historical DAT-mutation-refusal assertion.
+Build 57 independently refused behind the existing Canix evaluation guard.
+
+The coupling fixture now explicitly refines its native integration to 1.25
+seconds. Separate exact-driver diagnostics pass both blocks at that step and
+0.625 seconds with decreasing original temperature/energy errors and unchanged
+`0.02` gates. The historical thermal verifier now requires registered original
+mesh/DAT/JSON bytes and complete native/retained schedules; changed/missing
+original and receipt-substitution regressions pass. The complete CPU gate in
+`source-verification-13` passes Rust tests, strict Clippy, locked build,
+formatting/Ruff and 173 Python tests. These source repairs require fresh packaged
+snow/coupling worker campaigns before their acceptance.
+
 | Slice | Acceptance | State |
 |---|---|---|
 | P0 | baseline locks/tests/generated-workflow drift; requirement/prerequisite ledger | complete |

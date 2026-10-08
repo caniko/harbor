@@ -138,6 +138,15 @@ stages. Submit it through the same `job submit`/`job_submit` explicit approval
 surface as other native jobs. `runtime-thermal-contact-worker` combines the
 exact thermal and contact adapters with their separately mounted CPU closures.
 
+The 2026-10-08 exact-package coupling attempt failed its original energy gate at
+a 2.5-second integration step (relative error `0.027909769575547243 > 0.02`).
+The same packaged driver, physical histories, mesh and gates pass separate native
+diagnostics at 1.25 seconds (`0.016145056827222688`) and 0.625 seconds
+(`0.010119141175997898`). The example now explicitly approves eight integration
+substeps, producing the 1.25-second step while preserving the 10-second energy
+output intervals and 10/60/120-second retained times. Full worker coupling remains
+a separate exact-package gate; the failed attempt is preserved.
+
 The worker independently checks the complete original thermal DAT/JSON schedules,
 positive affine C3D8 geometry, capacitance weights, loss and conservation before
 launching contact. Its derived contact descriptor and projection report bind the

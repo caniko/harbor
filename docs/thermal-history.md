@@ -66,6 +66,13 @@ is a numerical verification reference, not a new physics execution backend.
 
 ## Evidence and resources
 
+Historical `qualify --job` now rechecks the registered mesh, authoritative DAT
+and retained temperature JSON, receipt byte identities, complete native output
+schedule and exact retained DAT/JSON values for independent and coupled thermal
+stages. An unchanged receipt alone cannot retain a numerical pass after original
+data is changed or removed. This preserves historical recipe inputs and does not
+promote the currently installed runtime.
+
 The native bridge retains its Gmsh mesh, native deck, `.dat` node temperatures,
 `.frd` temperature/heat-flux output, closed SI retained-field descriptors,
 physical-time metrics and request/mesh/field hashes. `.frd` heat-flux association

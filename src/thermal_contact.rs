@@ -598,6 +598,81 @@ mod tests {
     }
 
     #[test]
+    fn registered_thermal_originals_reject_changed_missing_and_receipt_substitution() {
+        let coupling: ThermalContactSpec =
+            serde_json::from_str(include_str!("../examples/thermal-contact.json")).unwrap();
+        let spec = &coupling.thermal[0];
+        let plan = ExecutionPlan::thermal_reference(spec.clone(), "research".into()).unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let store = crate::storage::Store::open(&temp.path().join("state")).unwrap();
+        let job = store
+            .submit(&plan, "unexecuted-thermal-original-parser")
+            .unwrap();
+        let root = store.job_dir(&job.id).unwrap();
+        source_fixture(&root, spec, "lower", 283.15);
+        let prefix = "stages/thermal-lower";
+        for name in [
+            "mesh.json",
+            "thermal-fields.json",
+            "reference.dat",
+            "thermal-receipt.json",
+        ] {
+            let path = format!("{prefix}/{name}");
+            let record = crate::storage::native_manifest(
+                &root,
+                &path,
+                32 * 1024 * 1024,
+                "unexecuted synthetic parser fixture",
+            )
+            .unwrap();
+            store.add_artifact(&job.id, &record).unwrap();
+        }
+        let receipt: Value = serde_json::from_slice(
+            &fs::read(root.join(format!("{prefix}/thermal-receipt.json"))).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            crate::thermal_results::verify_registered_originals(
+                &store, &job.id, spec, prefix, &receipt
+            )
+            .is_ok()
+        );
+        for name in ["mesh.json", "thermal-fields.json", "reference.dat"] {
+            let path = root.join(format!("{prefix}/{name}"));
+            let original = fs::read(&path).unwrap();
+            let mut changed = original.clone();
+            changed.extend_from_slice(b"changed");
+            fs::write(&path, &changed).unwrap();
+            assert!(
+                crate::thermal_results::verify_registered_originals(
+                    &store, &job.id, spec, prefix, &receipt
+                )
+                .is_err(),
+                "{name}"
+            );
+            fs::remove_file(&path).unwrap();
+            assert!(
+                crate::thermal_results::verify_registered_originals(
+                    &store, &job.id, spec, prefix, &receipt
+                )
+                .is_err(),
+                "{name}"
+            );
+            fs::write(&path, original).unwrap();
+        }
+        let mut changed = receipt;
+        changed["native_field_sha256"] = json!("a".repeat(64));
+        assert!(
+            crate::thermal_results::verify_registered_originals(
+                &store, &job.id, spec, prefix, &changed
+            )
+            .is_err()
+        );
+        // These manufactured records never establish an executed solver.
+        assert_eq!(store.job(&job.id).unwrap().state, "queued");
+    }
+
+    #[test]
     fn derived_contact_uses_native_capacitance_weighting_and_original_surface_moisture() {
         let mut spec: ThermalContactSpec =
             serde_json::from_str(include_str!("../examples/thermal-contact.json")).unwrap();

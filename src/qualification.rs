@@ -535,16 +535,22 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     capability.numerical_evidence =
                         Some(crate::thermal_contact::verify_registered(store, id, &plan)?.1);
                     capability.numerical_verification = EvidenceState::ReportedPass;
-                } else if stage.operation == StageOperation::ThermalReference
-                    && plan.thermal_contact.is_some()
-                {
-                    capability.numerical_evidence = Some(crate::thermal::verify_spec(
-                        plan.thermal_contact
+                } else if stage.operation == StageOperation::ThermalReference {
+                    let spec = if let Some(coupling) = &plan.thermal_contact {
+                        coupling.thermal_stage(&stage.id)?
+                    } else {
+                        plan.thermal
                             .as_ref()
-                            .ok_or_else(|| invalid("native coupling"))?
-                            .thermal_stage(&stage.id)?,
-                        &value,
-                    )?);
+                            .ok_or_else(|| invalid("native thermal recipe required"))?
+                    };
+                    capability.numerical_evidence =
+                        Some(crate::thermal_results::verify_registered_originals(
+                            store,
+                            id,
+                            spec,
+                            &format!("stages/{}", stage.id),
+                            &value,
+                        )?);
                     capability.numerical_verification = EvidenceState::ReportedPass;
                 } else if matches!(stage.operation, StageOperation::WettingReference) {
                     let fields = value["independent_fields"]
