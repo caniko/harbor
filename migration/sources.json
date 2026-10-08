@@ -37,5 +37,18 @@
     "pendingSourceChanges": false,
     "localRefs": "refs/imports/harbor-cad/local/heads",
     "remoteRefs": "refs/imports/harbor-cad/remote/heads"
+  },
+  {
+    "id": "harbor-db",
+    "origin": "git@github.com:caniko/harbor-db.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "38ebf2cfbca678cc1ab79a96d6968002fb382b5e",
+    "prefix": "sources/harbor-db",
+    "sourceTree": "a2bf95d42b0efea5385c6be31c7a28f08d240566",
+    "baseline": "43a23075ab12a83706970f7040608ff96f9bb8ea",
+    "preservedLocalHead": "8391efd3e8ea5c81af955e193b64ec1b92d85370",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-db/local/heads",
+    "remoteRefs": "refs/imports/harbor-db/remote/heads"
   }
 ]

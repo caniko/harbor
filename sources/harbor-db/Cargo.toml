@@ -1,0 +1,30 @@
+[package]
+name = "harbor-db"
+version = "0.1.0"
+description = "Secure generic lifecycle plans and deployment orchestration for Rust services"
+edition = "2024"
+rust-version = "1.88"
+license = "Apache-2.0"
+publish = false
+repository = "https://github.com/caniko/harbor-db"
+homepage = "https://github.com/caniko/harbor-db"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "harbor-db"
+path = "src/main.rs"
+
+[[bin]]
+name = "home-manager-backup"
+path = "src/bin/home-manager-backup.rs"
+
+[dependencies]
+chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-multi-thread"] }
+toml = "0.9"
