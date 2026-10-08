@@ -175,3 +175,59 @@ def test_entrypoint_refuses_unbound_or_writable_originals_before_native_outputs(
     with pytest.raises(ValueError):
         native.main()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_entrypoint_accepts_only_owned_transport_capture_before_native_dispatch(
+    monkeypatch, tmp_path
+):
+    native = adapter(monkeypatch)
+    atmosphere, receiver, original = fixture()
+    request = {
+        "schema_version": 1,
+        "atmosphere": atmosphere,
+        "receiver": receiver,
+        "original_path": "/inputs/atmosphere-original.txt",
+        "original_sha256": hashlib.sha256(original.encode()).hexdigest(),
+    }
+    raw = json.dumps(request).encode()
+    monkeypatch.setattr(
+        native.sandbox_foundation,
+        "read_regular",
+        lambda path, limit: (
+            raw if str(path) == "/inputs/request.json" else original.encode()
+        ),
+    )
+    monkeypatch.setattr(
+        native.sandbox_foundation, "cpu_sandbox", lambda *args: {"checks": {}}
+    )
+    monkeypatch.setattr(
+        native.os, "statvfs", lambda path: SimpleNamespace(f_flag=native.os.ST_RDONLY)
+    )
+    monkeypatch.setattr(
+        native.sys,
+        "argv",
+        ["harbor-cad-atmospheric-spectral", "reference", "/inputs/request.json"],
+    )
+    monkeypatch.chdir(tmp_path)
+    capture = tmp_path / "atmospheric-transport.log"
+    capture.write_bytes(b"owned worker capture")
+
+    class NativeDispatchReached(Exception):
+        pass
+
+    def dispatched(*args):
+        raise NativeDispatchReached
+
+    monkeypatch.setattr(native, "execute", dispatched)
+    with pytest.raises(NativeDispatchReached):
+        native.main()
+    assert capture.read_bytes() == b"owned worker capture"
+    extra = tmp_path / "original.csv"
+    extra.write_bytes(b"retained scientific original")
+    with pytest.raises(ValueError, match="new bounded native reference"):
+        native.main()
+    extra.unlink()
+    capture.unlink()
+    capture.symlink_to(tmp_path / "absent.log")
+    with pytest.raises(ValueError, match="new bounded native reference"):
+        native.main()

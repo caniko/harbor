@@ -470,7 +470,7 @@ def main():
     if hashlib.sha256(original).hexdigest() != spec["original_sha256"]:
         raise ValueError("unchanged complete original atmospheric checksum required")
     root = Path.cwd()
-    spectral_bridge.require_new_work(root)
+    spectral_bridge.require_new_work(root, capture_log="atmospheric-transport.log")
     sandbox = sandbox_foundation.cpu_sandbox(
         "HARBOR_CAD_ATMOSPHERIC_SPECTRAL_POLICY",
         "harbor-cad-atmospheric-spectral-cpu-v1",

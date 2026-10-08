@@ -348,6 +348,23 @@ The `c8-20` optical campaign also preserves a CLI invocation error after origina
 receipt/packet/association checks; its qualification request now uses the exact
 worker socket and command grammar. Matching campaigns remain required.
 
+Exact build-82 `c8-23` now passes the native and registered atmospheric CLI/MCP
+worker campaign, including all three separate refinements, preserved native
+angular/direct/diffuse originals, four receiver orientations, field/receipt
+mutation refusal, exact service controls, restart/idempotency, complete-tree
+death/cancellation, exports and final runtime-root/reservation release. Its
+scoped report hashes are in [atmospheric worker evidence](evidence/atmosphere-worker-20261008.json).
+The separate transport attempt `c8-24` retains an entrypoint fresh-directory
+refusal of its own worker capture log. The entrypoint now selects the already
+allowlisted `atmospheric-transport.log`, as its execution function does; the
+regression reproduces refusal and checks scientific leftovers and symlinks
+still refuse before native dispatch. `c8-22` optical original/query checks pass
+before a wrong release-helper argument; that campaign call now uses the actual
+helper signature. Source gate 42 passes all Rust/Clippy/build checks and 203
+Python tests, including new source-bound cooling preparation schema and real
+CLI/MCP refusals. Gate 41 retains its independent missing-artifact-directory
+test assertion; the repaired assertion verifies that no artifacts are created.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

@@ -292,7 +292,7 @@ def main():
                 planned, f"approval-drift-{index}", approval="0" * 64, allow_error=True
             )["ok"]
             wait_admission_release(state, job)
-            wait_retention_release(state, job, str(binary))
+            wait_retention_release(state, job)
             assert tree_identity(source_tree) == unchanged
             resources = json.loads((bundle / "service-resources.json").read_text())
             results.append(
@@ -341,7 +341,7 @@ def main():
             outcome = campaign.wait(job, {target})
             assert campaign.submit(planned, name)["id"] == job["id"]
             wait_admission_release(state, job)
-            wait_retention_release(state, job, str(binary))
+            wait_retention_release(state, job)
             lifecycle.append(
                 {
                     "kind": name,
