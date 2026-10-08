@@ -193,6 +193,64 @@ fn lockfile_mutation_and_build_timeout_fail_closed() {
 }
 
 #[test]
+#[ignore = "requires explicitly provisioned Bubblewrap and Linux user namespaces"]
+fn a_failed_private_service_invalidates_an_otherwise_live_preview() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = source(tmp.path());
+    let mut profile = profile();
+    profile.services = vec![vec!["bash".into(), "-c".into(), "sleep 0.5; exit 1".into()]];
+    let session = Session::open(
+        &profile,
+        &source,
+        &tmp.path().join("state"),
+        "service-failure",
+    )
+    .unwrap();
+    let started = Instant::now();
+    assert_eq!(
+        run(
+            session,
+            RunOptions {
+                watch: false,
+                parent_wayland: None,
+                cancel: Arc::new(AtomicBool::new(false))
+            }
+        )
+        .unwrap(),
+        1
+    );
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[test]
+#[ignore = "requires explicitly provisioned Bubblewrap and Linux user namespaces"]
+fn readiness_failure_retries_without_a_source_edit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = source(tmp.path());
+    let mut profile = profile();
+    profile.ready_timeout_seconds = 1;
+    profile.command = vec!["bash".into(), "-c".into(),
+        "n=$(cat \"$CARGO_TARGET_DIR/attempts\" 2>/dev/null || printf 0); printf '%s' $((n+1)) > \"$CARGO_TARGET_DIR/attempts\"; while :; do sleep 0.1; done".into()];
+    profile.ready = Some(vec![
+        "bash".into(),
+        "-c".into(),
+        "test \"$(cat \"$CARGO_TARGET_DIR/attempts\")\" -gt 1".into(),
+    ]);
+    let session = Session::open(
+        &profile,
+        &source,
+        &tmp.path().join("state"),
+        "readiness-retry",
+    )
+    .unwrap();
+    let directory = session.directory().to_owned();
+    let worker = Supervisor::start(session, None);
+    wait_for(&directory, |r| r.phase == "running");
+    assert_eq!(status(&directory).unwrap().preview_generation, Some(2));
+    worker.finish();
+}
+
+#[test]
 #[ignore = "requires explicitly provisioned Rust compiler, linker and Linux namespaces"]
 fn cargo_preview_reuses_incremental_artifacts_with_private_mock_services() {
     let tmp = tempfile::tempdir().unwrap();

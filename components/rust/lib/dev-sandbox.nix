@@ -27,6 +27,8 @@
     then environment
     else if devShell != null && devShell ? devShellSpec
     then devShell.devShellSpec
+    else if devShell != null && devShell ? passthru && devShell.passthru ? devShellSpec
+    then devShell.passthru.devShellSpec
     else throw "harbor-rs mkDevSandbox: supply environment or a Harbor devShell";
   shellPackages =
     if devShell == null
