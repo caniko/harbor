@@ -16,6 +16,11 @@ default; Rust passes a `craneLib.devShell` builder). `lib.devShellTests` and
 `lib.templateTests` evaluate harbor templates by importing their `flake.nix`
 with the current flake inputs — no nested `nix` and no template lockfiles.
 
+`lib.devShell.mkShell` includes interactive Bash ahead of consumer packages so
+starting `bash` inside a direnv environment supports Readline, programmable
+completion, and prompt nonprinting markers (`\[` / `\]`). This baseline also
+applies to custom builders that consume the shell specification.
+
 `lib.flake.mkDerivationManifest` records exact derivation paths and selected
 outputs without retaining string context. Orchestrators can serialize that
 manifest and realize the same derivations locally or on an explicitly selected

@@ -47,7 +47,9 @@ _: rec {
     spec =
       merged
       // {
-        packages = merged.packages ++ timezone.packages;
+        # stdenv's build-only Bash lacks Readline and programmable completion.
+        # Keep an interactive Bash first for nested shells entered via direnv.
+        packages = [pkgs.bashInteractive] ++ merged.packages ++ timezone.packages;
         env = timezone.env // merged.env;
         shellHook = timezone.shellHook + merged.shellHook;
       };
