@@ -193,5 +193,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-sol/local/heads",
     "remoteRefs": "refs/imports/harbor-sol/remote/heads"
+  },
+  {
+    "id": "harbor-tex",
+    "origin": "git@github.com:caniko/harbor-tex.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "a974e248be7de5af3b48c1c11d70e7564c057233",
+    "prefix": "sources/harbor-tex",
+    "sourceTree": "a8ee6aab20fca7138df4605abd723b9046b43537",
+    "baseline": "3d0f038ddb47f2f1a6b34cd7bfe3d77c8db77468",
+    "preservedLocalHead": "4b887714e627559a45597fc3b61b0f09d615c1f2",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-tex/local/heads",
+    "remoteRefs": "refs/imports/harbor-tex/remote/heads"
   }
 ]
