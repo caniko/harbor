@@ -1,0 +1,3 @@
+{...}: {
+  programs.ktfmt.enable = true;
+}

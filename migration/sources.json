@@ -11,5 +11,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/db-harbor/local/heads",
     "remoteRefs": "refs/imports/db-harbor/remote/heads"
+  },
+  {
+    "id": "harbor-android",
+    "origin": "git@github.com:caniko/harbor-android.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "765979c91cab1a0e5f0e80d5d9df4a090c5b7021",
+    "prefix": "sources/harbor-android",
+    "sourceTree": "3c287f04a2eeb3072c9da1097abe05fc28fed42e",
+    "baseline": "3c3c7b5350970d3dcc5c77bc14c7d486e26b4792",
+    "preservedLocalHead": "9f6d0db5780800a5743ac22fd6bd90e16503f8de",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/harbor-android/local/heads",
+    "remoteRefs": "refs/imports/harbor-android/remote/heads"
   }
 ]
