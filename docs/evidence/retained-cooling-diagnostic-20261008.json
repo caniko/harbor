@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "scope": "Independent synthetic native original-control numerical diagnostics; packaged execution, common-worker lifecycle and physical validation remain separate",
+  "openlb_revision": "145cd54810b468f4b6fd3ed86b10644264841578",
+  "native_driver_sha256": "9cecde305ef0fe754ccd2d8055a44306766b2f8022afc170a9f1d57ea7dad5bf",
+  "native_report": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/retained-cooling-probe-8/verification.json",
+  "native_report_sha256": "721a6fbc4b4e4857a2863b3c490b00f1e33f1027a5d1e9a10f0b9df3ad2866c0",
+  "independent_report": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/retained-cooling-independent-4.json",
+  "independent_report_sha256": "f6d4bfc4c0f5071cfd00b960e54a0945d231423ffbfd5a4a960f77e8309bb616",
+  "maximum_independent_conservation_errors": {
+    "water_mass_relative_error": 2.220446049250313e-16,
+    "initial_enthalpy_relative_error": 2.220446049250313e-16,
+    "energy_balance_relative_error": 2.4820273387449445e-12,
+    "reflecting_exchange_relative_error": 5.019688408492862e-21,
+    "phase_enthalpy_normalized_error": 3.3626380883296605e-16
+  },
+  "conservation_tolerance": 1e-10,
+  "complete_history_refinements": {
+    "original_parent_spatial_factors": [2, 3, 4],
+    "temporal_substeps_at_spatial_factor_2": [1, 2, 4],
+    "base_observation_steps": [0, 256, 1024, 8192],
+    "evolved_tolerance": 0.02,
+    "initial_identity_tolerance": 1e-10,
+    "spatial_passed": true,
+    "temporal_passed": true,
+    "coarse_spatial_passed": false
+  },
+  "uniform_reference": "/data/scratch/tmp/opencode/harbor-cad-resume-20261007/retained-cooling-uniform-2/verification.json",
+  "uniform_reference_sha256": "1931b50eb2f4de02755fdc9d0e3359f75c216ab23954061167d15ebbf11a51ec",
+  "uniform_maximum_span_temperature_errors": [0.009696599083828361, 0.008181747813931217],
+  "uniform_coarse_maximum_span_temperature_error": 0.03753748987599481,
+  "refused_prior_models": ["BGK temporal overheat without clipping", "full-way insulated ghost energy loss", "coarse partially frozen retained enthalpy refinement above 0.02"],
+  "physical_validation": "unqualified"
+}
