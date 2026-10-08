@@ -19,17 +19,30 @@ inputs @ {
   # valid without evaluating component flakes or their former lockfiles.
   components = nixlib.genAttrs componentNames (name: let
     source = ../components + "/${name}";
-    componentInputs = inputs // aliases // {self = component;};
+    # A lexical path converted with toString has no store reference context.
+    # Materialize the subtree so ${component} in builders retains an inputSrcs
+    # dependency, including on fresh hosted runners with an empty local store.
+    componentSource = builtins.path {
+      path = source;
+      name = "harbor-${name}-source";
+    };
+    componentInputs =
+      inputs
+      // aliases
+      // {
+        self = component;
+        harborFormatting = system: formatters.${system}.config.build.check self;
+      };
     component =
       outputs
       // {
-        outPath = source;
+        outPath = componentSource;
         inputs = componentInputs;
-        sourceInfo = (self.sourceInfo or {}) // {outPath = source;};
+        sourceInfo = (self.sourceInfo or {}) // {outPath = componentSource;};
         rev = self.rev or null;
         lastModified = self.lastModified or 0;
         narHash = self.narHash or "";
-        __toString = _: toString source;
+        __toString = _: toString componentSource;
       };
     outputs = (import (source + "/flake.nix")).outputs componentInputs;
   in
@@ -90,11 +103,22 @@ in {
     });
   checks = nixlib.genAttrs systems (system: let
     pkgs = pkgsFor system {};
+    sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
+      pkgs.runCommand "harbor-component-source-materialization" {} ''
+        set -euo pipefail
+        ${nixlib.concatMapStringsSep "\n" (name: ''
+            test -d ${components.${name}}
+            test -f ${components.${name}}/flake.nix
+          '')
+          componentNames}
+        touch "$out"
+      '';
     groups = nixlib.listToAttrs (map (name:
       nixlib.nameValuePair "component-${name}" (pkgs.linkFarm "harbor-${name}-qualification" (nixlib.mapAttrsToList (check: path: {
-        name = check;
-        inherit path;
-      }) (components.${name}.checks.${system} or {}))))
+          name = check;
+          inherit path;
+        }) ((components.${name}.checks.${system} or {})
+          // nixlib.optionalAttrs (name == "core") {source-materialization = sourceMaterialization;}))))
     componentNames);
   in
     collect "checks" system // groups // {formatting = formatters.${system}.config.build.check self;});

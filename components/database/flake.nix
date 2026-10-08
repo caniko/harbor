@@ -12,6 +12,7 @@
     self,
     harbor-rs,
     nixpkgs,
+    harborFormatting,
     ...
   }: let
     systems = [
@@ -145,10 +146,9 @@
           touch "$out"
         '';
       harbor-db = self.packages.${pkgs.stdenv.hostPlatform.system}.harbor-db;
-      cargo-fmt = craneLib.cargoFmt {
-        inherit src;
-        pname = "harbor-db";
-      };
+      # The workspace has one formatter toolchain and policy. An independent
+      # stable cargoFmt scans every member using incompatible import ordering.
+      cargo-fmt = harborFormatting pkgs.stdenv.hostPlatform.system;
       cargo-test = craneLib.cargoTest (commonArgs
         // {
           inherit cargoArtifacts;
