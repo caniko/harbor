@@ -1566,17 +1566,17 @@
         "treefmt-nix": "treefmt-nix_3"
       },
       "locked": {
-        "lastModified": 1791489877,
-        "narHash": "sha256-RGlUfAygB4x4EV7en/sZMWQGKJHrH3k60T/iDWCYpnQ=",
+        "lastModified": 1791497604,
+        "narHash": "sha256-kO3K/t9TZ+wblt+BsEFW8s5e1uPkKejMH/DLqD05/W4=",
         "ref": "feat/harbor-monorepo-components",
-        "rev": "5dd310372a0c66d15fbc94b8e4a7173deb139368",
-        "revCount": 417,
+        "rev": "5e3f43a5097b49e46c1b71f337032a8d67f0ac46",
+        "revCount": 418,
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       },
       "original": {
         "ref": "feat/harbor-monorepo-components",
-        "rev": "5dd310372a0c66d15fbc94b8e4a7173deb139368",
+        "rev": "5e3f43a5097b49e46c1b71f337032a8d67f0ac46",
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       }

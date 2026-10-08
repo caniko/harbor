@@ -4,7 +4,7 @@
   inputs = {
     # Bootstrap the component generator against its independently qualified
     # infrastructure; consumers switch only after this candidate qualifies.
-    simit.url = "git+https://github.com/caniko/simit.git?ref=feat/harbor-monorepo-components&rev=5dd310372a0c66d15fbc94b8e4a7173deb139368";
+    simit.url = "git+https://github.com/caniko/simit.git?ref=feat/harbor-monorepo-components&rev=5e3f43a5097b49e46c1b71f337032a8d67f0ac46";
     # CAD's minimum FreeCAD version establishes the shared package-set floor.
     nixpkgs.url = "github:NixOS/nixpkgs/73e728ddb6b7a12d18808f510813a13ee1fe4cce";
     # Retained Intel macOS compatibility fixes qualified this maintained revision.

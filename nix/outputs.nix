@@ -19,13 +19,10 @@ inputs @ {
   # valid without evaluating component flakes or their former lockfiles.
   components = nixlib.genAttrs componentNames (name: let
     source = ../components + "/${name}";
-    # A lexical path converted with toString has no store reference context.
-    # Materialize the subtree so ${component} in builders retains an inputSrcs
-    # dependency, including on fresh hosted runners with an empty local store.
-    componentSource = builtins.path {
-      path = source;
-      name = "harbor-${name}-source";
-    };
+    # Retain the shared flake source's context on the component path. Builders
+    # depend on that source on fresh runners, and read-only flake evaluation
+    # does not need to register a new store copy of every component.
+    componentSource = self.outPath + "/components/${name}";
     componentInputs =
       inputs
       // aliases
