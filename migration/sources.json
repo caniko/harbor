@@ -1,0 +1,15 @@
+[
+  {
+    "id": "db-harbor",
+    "origin": "ssh://git@codeberg.org/caniko/db-harbor.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "eff1bdba2f11389bb95c51f3706c6df3a371bb6d",
+    "prefix": "sources/db-harbor",
+    "sourceTree": "afa5d98ec8652b539cccac08c886cdcabe6d8711",
+    "baseline": "3cf916c92cba2c118bd129fbe041b8220372da51",
+    "preservedLocalHead": "fc66bfd91717a4c87c0577768b2ab1b011a8aa45",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/db-harbor/local/heads",
+    "remoteRefs": "refs/imports/db-harbor/remote/heads"
+  }
+]

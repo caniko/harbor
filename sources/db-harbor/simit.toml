@@ -1,0 +1,8 @@
+[ci]
+runtime = "nix"
+runner = "codefloe-global"
+workspace = true
+with_nextest = true
+with_docs = true
+provider = "crow"
+platform = "forgejo"
