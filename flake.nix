@@ -103,6 +103,7 @@
         || pkgs.lib.hasSuffix "/examples/snow-reference.json" path
         || pkgs.lib.hasSuffix "/examples/spectral-reference.json" path
         || pkgs.lib.hasSuffix "/examples/atmosphere-reference.json" path
+        || pkgs.lib.hasSuffix "/examples/atmosphere-transfer.json" path
         || pkgs.lib.hasSuffix "/nix/patches/calculix-temperature-precision.patch" path;
     };
     common = {
