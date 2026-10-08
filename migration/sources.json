@@ -63,5 +63,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/harbor-eth/local/heads",
     "remoteRefs": "refs/imports/harbor-eth/remote/heads"
+  },
+  {
+    "id": "harbor-go",
+    "origin": "git@github.com:caniko/harbor-go.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "9818c51b9c8864fafa439c038360a383aa54da5b",
+    "prefix": "sources/harbor-go",
+    "sourceTree": "408de9452156e44d88b29d9873c3c79fc4e69a80",
+    "baseline": "2acdad8a665141235990d4c15edec6ed5585490b",
+    "preservedLocalHead": "d6761d301f76c101ba79befd55fd3f4a8cd6e437",
+    "pendingSourceChanges": false,
+    "localRefs": "refs/imports/harbor-go/local/heads",
+    "remoteRefs": "refs/imports/harbor-go/remote/heads"
   }
 ]
