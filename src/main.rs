@@ -338,6 +338,14 @@ enum Results {
     PrepareRetainedCooling {
         request: PathBuf,
     },
+    /// Plan independently approved native cooling from one exact registered stationary wetting state.
+    PlanRetainedCooling {
+        request: PathBuf,
+    },
+    /// Read original cooling subcontrols at an exact approved retained time and region.
+    SampleRetainedCooling {
+        request: PathBuf,
+    },
     /// Prepare source-bound native direct/diffuse angular midpoint transfer, without executing transport.
     TransferAtmosphere {
         request: PathBuf,
@@ -658,6 +666,12 @@ fn run(cli: Cli) -> Result<()> {
                     request: Box::new(read(&request)?),
                 }
             }
+            Results::PlanRetainedCooling { request } => Operation::PlanRetainedCooling {
+                request: Box::new(read(&request)?),
+            },
+            Results::SampleRetainedCooling { request } => Operation::ResultsSampleRetainedCooling {
+                request: Box::new(read(&request)?),
+            },
             Results::TransferAtmosphere { request } => Operation::ResultsTransferAtmosphere {
                 request: Box::new(read(&request)?),
             },

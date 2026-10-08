@@ -256,6 +256,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                 "stages/wetting/verified-wetting-receipt.json",
                 Some("OpenLB"),
             ),
+            StageOperation::FreezingReference if plan.retained_cooling.is_some() => {
+                (crate::cooling_execution::RECEIPT_PATH, Some("OpenLB"))
+            }
             StageOperation::FreezingReference => {
                 ("stages/freezing/freezing-receipt.json", Some("OpenLB"))
             }
@@ -289,7 +292,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
         let mut capability = CapabilityEvidence {
             stage_id: stage.id.clone(),
             operation: stage.operation.clone(),
-            formulation: if let Some(spec) = &plan.cad_transport {
+            formulation: if plan.retained_cooling.is_some() {
+                "stationary_equal_property_retained_phase_conduction".into()
+            } else if let Some(spec) = &plan.cad_transport {
                 spec.request.formulation.clone()
             } else if plan.atmospheric_transport.is_some() {
                 "registered_full_sphere_original_midpoint_planar_uv_transport".into()
@@ -334,7 +339,10 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
             },
             dimensions: if plan.atmosphere.is_some() {
                 1
-            } else if plan.wetting.is_some() || plan.freezing.is_some() {
+            } else if plan.wetting.is_some()
+                || plan.freezing.is_some()
+                || plan.retained_cooling.is_some()
+            {
                 2
             } else {
                 plan.case
@@ -342,7 +350,9 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     .map_or(3, |c| c.applicability.dimensionality)
             },
             precision: None,
-            refinement: if let Some(spec) = &plan.atmospheric_transport {
+            refinement: if let Some(spec) = &plan.retained_cooling {
+                spec.request.spatial_refinement
+            } else if let Some(spec) = &plan.atmospheric_transport {
                 spec.request.receiver.samples
             } else if let Some(spec) = &plan.atmosphere {
                 spec.streams
@@ -608,6 +618,13 @@ pub fn inspect(store: &Store, id: &str) -> Result<JobEvidenceReport> {
                     capability.numerical_evidence =
                         Some(crate::wetting::verify_receipt(&plan, &root, &value)?);
                     capability.numerical_verification = EvidenceState::ReportedPass;
+                } else if stage.operation == StageOperation::FreezingReference
+                    && plan.retained_cooling.is_some()
+                {
+                    capability.numerical_evidence =
+                        Some(crate::cooling_fields::registered(store, id, &plan, &value)?);
+                    capability.numerical_verification = EvidenceState::ReportedPass;
+                    capability.convergence="one independently approved original-parent grid and temporal substeps; uniform analytic and complete-history spatial/temporal gates assessed separately".into();
                 } else if stage.operation == StageOperation::FreezingReference {
                     capability.numerical_evidence = Some(crate::freezing::verify_registered(
                         store, id, &plan, &value,

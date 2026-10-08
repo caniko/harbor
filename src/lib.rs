@@ -20,6 +20,11 @@ pub mod cad_variant;
 pub mod contact;
 mod contact_fields;
 pub mod contracts;
+pub mod cooling_execution;
+#[cfg(test)]
+mod cooling_execution_tests;
+mod cooling_fields;
+pub mod cooling_results;
 pub mod devices;
 pub mod estimates;
 pub mod execution;

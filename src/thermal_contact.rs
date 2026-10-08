@@ -252,6 +252,7 @@ impl ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: None,
+            retained_cooling: None,
             fleetix_revision: FLEETIX_REV.into(),
             fleetix_contract_digest: fleetix_digest(),
             policy,

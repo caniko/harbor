@@ -566,6 +566,7 @@ impl Store {
     ) -> Result<Job> {
         plan.validate()?;
         if (plan.source.is_some()
+            || plan.retained_cooling.is_some()
             || plan.cad_variant.is_some()
             || plan.cad_source.is_some()
             || plan.atmospheric_transport.is_some())
@@ -655,6 +656,7 @@ impl Store {
         crate::cad_variant::retain(self, &id, plan)?;
         crate::cad_transport::retain(self, &id, plan)?;
         crate::atmospheric_transport::retain(self, &id, plan)?;
+        crate::cooling_execution::retain(self, &id, plan)?;
         tx.execute(
             "INSERT INTO events(job,time,kind,message) VALUES(?1,?2,'submitted',?3)",
             params![id, now(), digest],
@@ -750,6 +752,7 @@ impl Store {
                 crate::cad_variant::recover_orphan(self, &id)?;
                 crate::cad_transport::recover_orphan(self, &id)?;
                 crate::atmospheric_transport::recover_orphan(self, &id)?;
+                crate::cooling_execution::recover_orphan(self, &id)?;
                 crate::retention::release(&self.root, &id, None)?;
             } else {
                 let job = self.job(&id)?;

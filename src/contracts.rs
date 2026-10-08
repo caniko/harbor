@@ -437,6 +437,8 @@ pub struct ExecutionPlan {
     pub cad_variant: Option<crate::cad_variant::CadVariantSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cad_transport: Option<crate::cad_transport::CadSpectralTransportSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retained_cooling: Option<crate::cooling_execution::CoolingExecutionSpec>,
 }
 
 // Decode versions explicitly: v1's field set remains strict, and v2 requires
@@ -485,6 +487,14 @@ struct ExecutionPlanRecord {
     cad_variant: Option<crate::cad_variant::CadVariantSpec>,
     #[serde(default, deserialize_with = "cad_transport_spec")]
     cad_transport: Option<crate::cad_transport::CadSpectralTransportSpec>,
+    #[serde(default, deserialize_with = "cooling_execution_spec")]
+    retained_cooling: Option<crate::cooling_execution::CoolingExecutionSpec>,
+}
+
+fn cooling_execution_spec<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> std::result::Result<Option<crate::cooling_execution::CoolingExecutionSpec>, D::Error> {
+    crate::cooling_execution::CoolingExecutionSpec::deserialize(decoder).map(Some)
 }
 
 fn cad_transport_spec<'de, D: serde::Deserializer<'de>>(
@@ -589,6 +599,14 @@ impl<'de> Deserialize<'de> for ExecutionPlan {
     fn deserialize<D: serde::Deserializer<'de>>(decoder: D) -> std::result::Result<Self, D::Error> {
         use serde::de::Error;
         let plan = ExecutionPlanRecord::deserialize(decoder)?;
+        if plan.retained_cooling.is_some() {
+            if !plan.retained_cooling_envelope() {
+                return Err(D::Error::custom(
+                    "strict source-bound version-18 independently approved retained cooling required",
+                ));
+            }
+            return Ok(plan);
+        }
         if plan.cad_transport.is_some() {
             if !plan.cad_transport_envelope() {
                 return Err(D::Error::custom(
@@ -697,8 +715,9 @@ impl JsonSchema for ExecutionPlan {
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = ExecutionPlanRecord::json_schema(generator);
         if let Some(properties) = schema.get_mut("properties") {
-            properties["schema_version"]["enum"] =
-                serde_json::json!([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+            properties["schema_version"]["enum"] = serde_json::json!([
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
+            ]);
         }
         schema.insert("allOf".into(), serde_json::json!([
             {"if":{"properties":{"schema_version":{"const":1}}},"then":{"not":{"anyOf":[{"required":["source"]},{"required":["frames"]},{"required":["filter"]}]}}},
@@ -755,11 +774,39 @@ impl JsonSchema for ExecutionPlan {
             ]
             .map(|key| serde_json::json!({"required":[key]}));
             conditions.push(serde_json::json!({"if":{"properties":{"schema_version":{"const":17}}},"then":{"required":["cad_transport"],"properties":{"cad_transport":{"type":"object"}},"not":{"anyOf":prohibited}},"else":{"not":{"required":["cad_transport"]}}}));
+            let prohibited = prohibited
+                .into_iter()
+                .chain(std::iter::once(
+                    serde_json::json!({"required":["cad_transport"]}),
+                ))
+                .collect::<Vec<_>>();
+            conditions.push(serde_json::json!({"if":{"properties":{"schema_version":{"const":18}}},"then":{"required":["retained_cooling"],"properties":{"retained_cooling":{"type":"object"}},"not":{"anyOf":prohibited}},"else":{"not":{"required":["retained_cooling"]}}}));
         }
         schema
     }
 }
 impl ExecutionPlan {
+    fn retained_cooling_envelope(&self) -> bool {
+        self.schema_version == 18
+            && self.retained_cooling.is_some()
+            && self.case.is_none()
+            && self.source.is_none()
+            && self.frames.is_none()
+            && self.filter.is_none()
+            && self.fem.is_none()
+            && self.thermal.is_none()
+            && self.cad_source.is_none()
+            && self.imported_fem.is_none()
+            && self.wetting.is_none()
+            && self.contact.is_none()
+            && self.thermal_contact.is_none()
+            && self.freezing.is_none()
+            && self.spectral.is_none()
+            && self.atmosphere.is_none()
+            && self.atmospheric_transport.is_none()
+            && self.cad_variant.is_none()
+            && self.cad_transport.is_none()
+    }
     fn cad_transport_envelope(&self) -> bool {
         self.schema_version == 17
             && self.cad_transport.is_some()
@@ -931,6 +978,14 @@ impl ExecutionPlan {
             .ok_or_else(|| invalid("fluid/CAD case required for this operation"))
     }
     pub fn science_id(&self) -> Result<String> {
+        if let Some(spec) = &self.retained_cooling {
+            if !self.retained_cooling_envelope() {
+                return Err(invalid(
+                    "independent v18 source-bound retained cooling required",
+                ));
+            }
+            return digest(spec);
+        }
         if let Some(spec) = &self.cad_transport {
             if !self.cad_transport_envelope() {
                 return Err(invalid(
@@ -1048,6 +1103,7 @@ impl ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: None,
+            retained_cooling: None,
             stages: vec![
                 Stage {
                     id: "filter".into(),
@@ -1126,6 +1182,7 @@ impl ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: None,
+            retained_cooling: None,
             stages: vec![
                 Stage {
                     id: "video".into(),
@@ -1253,6 +1310,7 @@ impl ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: None,
+            retained_cooling: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1303,6 +1361,7 @@ impl ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: None,
+            retained_cooling: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -1365,6 +1424,7 @@ impl ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: None,
+            retained_cooling: None,
         };
         plan.validate()?;
         Ok(plan)
@@ -1443,6 +1503,7 @@ impl ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: None,
+            retained_cooling: None,
         };
         crate::estimates::minimum(&plan)?.apply(&mut plan);
         plan.validate()?;
@@ -1535,9 +1596,11 @@ impl ExecutionPlan {
         if let Some(fem) = &self.fem {
             fem.validate()?;
         }
-        if (self.cad_transport.is_some() && !self.cad_transport_envelope())
+        if (self.retained_cooling.is_some() && !self.retained_cooling_envelope())
+            || (self.cad_transport.is_some() && !self.cad_transport_envelope())
             || (self.cad_variant.is_some() && !self.cad_variant_envelope())
-            || !(self.cad_transport_envelope()
+            || !(self.retained_cooling_envelope()
+                || self.cad_transport_envelope()
                 || self.cad_variant_envelope()
                 || self.atmospheric_transport_envelope()
                 || self.atmospheric_envelope()
@@ -1583,6 +1646,9 @@ impl ExecutionPlan {
             return Err(invalid("policy"));
         }
         if let Some(spec) = &self.thermal_contact {
+            spec.validate_plan(self)?;
+        }
+        if let Some(spec) = &self.retained_cooling {
             spec.validate_plan(self)?;
         }
         if let Some(spec) = &self.freezing {
@@ -1900,7 +1966,10 @@ impl ExecutionPlan {
                     "atmospheric operation requires independent version-14 recipe",
                 ));
             }
-            if stage.operation == StageOperation::FreezingReference && self.freezing.is_none() {
+            if stage.operation == StageOperation::FreezingReference
+                && self.freezing.is_none()
+                && self.retained_cooling.is_none()
+            {
                 return Err(invalid(
                     "freezing operation requires independent version-12 recipe",
                 ));
@@ -2094,6 +2163,7 @@ impl ExecutionPlan {
                                     .and_then(|s| s.scale().ok())
                                     .map(|s| s.duration_s)
                             })
+                            .or_else(|| self.retained_cooling.as_ref().map(|s| s.duration_s()))
                             .is_none_or(|end| *t > end)
                 })
                 || times.windows(2).any(|p| p[0] >= p[1])
@@ -2313,6 +2383,12 @@ pub enum Operation {
     PlanFreezingReference {
         spec: Box<crate::freezing::FreezingReferenceSpec>,
     },
+    PlanRetainedCooling {
+        request: Box<crate::cooling_execution::CoolingExecutionRequest>,
+    },
+    ResultsSampleRetainedCooling {
+        request: Box<crate::cooling_results::CoolingSampleRequest>,
+    },
     PlanB1 {
         case: Box<CaseSpec>,
         selections: B1Selections,
@@ -2489,6 +2565,15 @@ pub fn schemas() -> serde_json::Value {
     ));
     schemas["PreparedRetainedCooling"] = serde_json::json!(schemars::schema_for!(
         crate::retained_cooling::PreparedRetainedCooling
+    ));
+    schemas["CoolingExecutionRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::cooling_execution::CoolingExecutionRequest
+    ));
+    schemas["CoolingExecutionSpec"] = serde_json::json!(schemars::schema_for!(
+        crate::cooling_execution::CoolingExecutionSpec
+    ));
+    schemas["CoolingSampleRequest"] = serde_json::json!(schemars::schema_for!(
+        crate::cooling_results::CoolingSampleRequest
     ));
     schemas["AtmosphericTransferRequest"] = serde_json::json!(schemars::schema_for!(
         crate::atmosphere_transfer::AtmosphericTransferRequest

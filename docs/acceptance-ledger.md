@@ -435,6 +435,17 @@ coarse failed gates are preserved. The campaign used 190.3 MiB peak/no swap;
 shared-worker and physical qualification remain separate. See
 [cooling package evidence](evidence/retained-cooling-package-20261008.json).
 
+Source gates 50 and 52 pass full Rust/Clippy/locked build/format/lint checks and
+222 Python tests. Gate 51 preserves the campaign import-order lint failure.
+The v18 shared-worker cooling slice binds complete source history and independent
+authorization, conservatively reserves input/output/native resources, retains
+distinct original inodes under the submission transaction, reconstructs every
+native subcontrol and boundary-energy history in Rust, and exposes exact-time
+CLI/MCP sampling/export provenance. Focused gate 53 additionally passes the
+source-loss/orphan/mutated-provenance and rehashed-original regressions, strict
+Clippy and locked build. Its exact-package lifecycle campaign remains pending;
+source tests and archived fixtures do not qualify native execution.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

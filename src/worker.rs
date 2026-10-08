@@ -465,6 +465,7 @@ fn submission_binding(
         ));
     }
     if (plan.fem.is_some()
+        || plan.retained_cooling.is_some()
         || plan.cad_transport.is_some()
         || plan.cad_variant.is_some()
         || plan.thermal.is_some()
@@ -495,6 +496,9 @@ fn submission_binding(
         ));
     }
     check_plan(plan, profile)?;
+    if let Some(spec) = &plan.retained_cooling {
+        crate::cooling_execution::source(store, spec)?;
+    }
     if let Some(spec) = &plan.cad_transport {
         crate::cad_transport::source(store, spec)?;
     }
@@ -522,7 +526,7 @@ fn submission_binding(
             }
             files.insert(
                 serde_json::to_string(&stage.operation)?,
-                runtime.executable(&stage.operation)?.into(),
+                runtime.executable_for(&stage.operation, plan)?.into(),
             );
             if matches!(
                 stage.operation,
@@ -540,6 +544,9 @@ fn submission_binding(
             let closure_key = match stage.operation {
                 StageOperation::ContactReference => "contact_closure",
                 StageOperation::WettingReference => "wetting_closure",
+                StageOperation::FreezingReference if plan.retained_cooling.is_some() => {
+                    "retained_cooling_closure"
+                }
                 StageOperation::FreezingReference => "freezing_closure",
                 StageOperation::SpectralReference => "spectral_closure",
                 StageOperation::AtmosphericReference => "atmosphere_closure",
@@ -553,7 +560,7 @@ fn submission_binding(
             files.insert(
                 closure_key.into(),
                 runtime
-                    .solver_closure(&stage.operation)?
+                    .solver_closure_for(&stage.operation, plan)?
                     .to_str()
                     .ok_or_else(|| invalid("FEM closure path"))?
                     .into(),
@@ -683,6 +690,21 @@ fn dispatch(
         Operation::PlanFreezingReference { spec } => {
             let plan = ExecutionPlan::freezing_reference(*spec, profile.policy.clone())?;
             Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
+        Operation::PlanRetainedCooling { request } => {
+            request.validate()?;
+            if authority.is_none() {
+                return Err(Error::Unqualified(
+                    "registered native cooling planning requires authoritative same-user admission"
+                        .into(),
+                ));
+            }
+            let spec = crate::cooling_execution::resolve(store, *request)?;
+            let plan = ExecutionPlan::retained_cooling(spec, profile.policy.clone())?;
+            Ok(serde_json::json!({"approval_digest":plan.id()?,"plan":plan}))
+        }
+        Operation::ResultsSampleRetainedCooling { request } => {
+            crate::cooling_results::sample(store, &request)
         }
         Operation::PlanOpenlbReference { case } => Ok(serde_json::to_value(
             ExecutionPlan::openlb_reference(*case, profile.policy.clone())?,
@@ -857,6 +879,23 @@ fn dispatch(
                             "insufficient state-root capacity for immutable CAD optical inputs"
                                 .into(),
                         ));
+                    }
+                    Admission::open(&crate::admission::shared_root()?, authority)?
+                        .retain_inputs(store, bytes, submit)?
+                } else if let Some(spec) = &plan.retained_cooling {
+                    let bytes = spec
+                        .originals
+                        .iter()
+                        .try_fold(16 * 1024 * 1024u64, |sum, r| {
+                            sum.checked_add(r.bytes).ok_or_else(|| {
+                                invalid("original cooling input staging budget overflow")
+                            })
+                        })?;
+                    if bytes
+                        .checked_add(disk_bytes(&store.root, false)?)
+                        .is_none_or(|n| n > profile.max_disk_bytes)
+                    {
+                        return Err(Error::Resource("insufficient state-root capacity for complete immutable cooling history".into()));
                     }
                     Admission::open(&crate::admission::shared_root()?, authority)?
                         .retain_inputs(store, bytes, submit)?
@@ -1200,6 +1239,10 @@ struct NativeRuntime {
     #[serde(default)]
     freezing_closure: Option<String>,
     #[serde(default)]
+    retained_cooling: Option<String>,
+    #[serde(default)]
+    retained_cooling_closure: Option<String>,
+    #[serde(default)]
     spectral: Option<String>,
     #[serde(default)]
     spectral_closure: Option<String>,
@@ -1225,6 +1268,33 @@ struct NativeRuntime {
     fem_imported_closure: Option<String>,
 }
 impl NativeRuntime {
+    fn executable_for(&self, operation: &StageOperation, plan: &ExecutionPlan) -> Result<&str> {
+        if *operation == StageOperation::FreezingReference && plan.retained_cooling.is_some() {
+            let path = self.retained_cooling.as_deref().ok_or_else(|| {
+                Error::Unqualified("source-bound retained cooling CPU adapter absent".into())
+            })?;
+            packaged_file(Path::new(path))?;
+            Ok(path)
+        } else {
+            self.executable(operation)
+        }
+    }
+    fn solver_closure_for(
+        &self,
+        operation: &StageOperation,
+        plan: &ExecutionPlan,
+    ) -> Result<&Path> {
+        if *operation == StageOperation::FreezingReference && plan.retained_cooling.is_some() {
+            self.retained_cooling_closure
+                .as_deref()
+                .map(Path::new)
+                .ok_or_else(|| {
+                    Error::Unqualified("source-bound cooling operation-only closure absent".into())
+                })
+        } else {
+            self.solver_closure(operation)
+        }
+    }
     fn solver_closure(&self, operation: &StageOperation) -> Result<&Path> {
         let selected = match operation {
             StageOperation::FemReference => &self.fem_closure,
@@ -1369,7 +1439,7 @@ fn native_stage(
             .as_deref()
             .ok_or_else(|| invalid("native runtime"))?,
     ))?;
-    let exe = runtime.executable(&stage.operation)?;
+    let exe = runtime.executable_for(&stage.operation, plan)?;
     let mut command = Command::new(&runtime.bwrap);
     command
         .env_clear()
@@ -1440,6 +1510,11 @@ fn native_stage(
                 "HARBOR_CAD_WETTING_POLICY",
                 crate::execution::WETTING_SANDBOX_POLICY,
             ),
+            StageOperation::FreezingReference if plan.retained_cooling.is_some() => (
+                "/retained-cooling-runtime-closure.txt",
+                "HARBOR_CAD_RETAINED_COOLING_POLICY",
+                crate::cooling_execution::SANDBOX_POLICY,
+            ),
             StageOperation::FreezingReference => (
                 "/freezing-runtime-closure.txt",
                 "HARBOR_CAD_FREEZING_POLICY",
@@ -1484,12 +1559,12 @@ fn native_stage(
         };
         crate::sandbox::mount_closure(
             &mut command,
-            runtime.solver_closure(&stage.operation)?,
+            runtime.solver_closure_for(&stage.operation, plan)?,
             Path::new(exe),
         )?;
         command
             .args(["--ro-bind"])
-            .arg(runtime.solver_closure(&stage.operation)?)
+            .arg(runtime.solver_closure_for(&stage.operation, plan)?)
             .arg(closure_path);
         command.args(["--setenv", policy_variable, policy]);
         command
@@ -1521,6 +1596,14 @@ fn native_stage(
                 "source-atmosphere-original.txt",
             )?)
             .arg("/inputs/atmosphere-original.txt");
+    }
+    if let Some(spec) = &plan.retained_cooling {
+        crate::cooling_execution::source(store, spec)?;
+        let original = crate::cooling_execution::registered(store, id, plan)?;
+        command
+            .args(["--dir", "/inputs", "--ro-bind"])
+            .arg(original)
+            .arg("/inputs/wetting-original.csv");
     }
     if matches!(
         stage.operation,
@@ -1663,6 +1746,10 @@ fn native_stage(
             "thermal-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::WettingReference) {
             "verified-wetting-receipt.json".into()
+        } else if stage.operation == StageOperation::FreezingReference
+            && plan.retained_cooling.is_some()
+        {
+            "retained-cooling-receipt.json".into()
         } else if matches!(stage.operation, StageOperation::FreezingReference) {
             "freezing-receipt.json".into()
         } else if stage.operation == StageOperation::SpectralReference
@@ -1706,6 +1793,10 @@ fn native_stage(
                 "native-thermal-request.json".into()
             } else if matches!(stage.operation, StageOperation::WettingReference) {
                 "native-wetting-request.json".into()
+            } else if stage.operation == StageOperation::FreezingReference
+                && plan.retained_cooling.is_some()
+            {
+                "native-retained-cooling-request.json".into()
             } else if matches!(stage.operation, StageOperation::FreezingReference) {
                 "native-freezing-request.json".into()
             } else if stage.operation == StageOperation::SpectralReference
@@ -1728,7 +1819,11 @@ fn native_stage(
                 "native-plan.json".into()
             },
         )?)
-        .arg("/plan.json");
+        .arg(if plan.retained_cooling.is_some() {
+            "/inputs/request.json"
+        } else {
+            "/plan.json"
+        });
     command
         .arg("--")
         .arg(exe)
@@ -1753,7 +1848,11 @@ fn native_stage(
                 &op
             },
         )
-        .arg("/plan.json");
+        .arg(if plan.retained_cooling.is_some() {
+            "/inputs/request.json"
+        } else {
+            "/plan.json"
+        });
     let log = OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -1799,6 +1898,8 @@ fn native_stage(
     let evidence =
         if stage.operation == StageOperation::SpectralReference && plan.cad_transport.is_some() {
             crate::cad_transport_fields::read_receipt(&receipt)?
+        } else if plan.retained_cooling.is_some() {
+            serde_json::from_slice(&read_bounded(&receipt, 256 * 1024)?)?
         } else {
             read_native_receipt(&receipt)?
         };
@@ -1878,7 +1979,16 @@ fn native_stage(
     if matches!(stage.operation, StageOperation::WettingReference) {
         crate::wetting::verify_receipt(plan, dir, &evidence)?;
     }
-    if stage.operation == StageOperation::FreezingReference {
+    if stage.operation == StageOperation::FreezingReference && plan.retained_cooling.is_some() {
+        let spec = plan
+            .retained_cooling
+            .as_ref()
+            .ok_or_else(|| invalid("source-bound cooling recipe required"))?;
+        crate::cooling_execution::source(store, spec)?;
+        let original = crate::cooling_execution::registered(store, id, plan)?;
+        let bytes = read_bounded(&original, 16 * 1024 * 1024)?;
+        crate::cooling_fields::verify(spec, &bytes, dir, &evidence)?;
+    } else if stage.operation == StageOperation::FreezingReference {
         crate::freezing_fields::verify(
             plan.freezing
                 .as_ref()
@@ -2475,6 +2585,17 @@ fn execute_job(store: &Store, profile: &HostExecutionProfile, id: &str) -> Resul
                         .ok_or_else(|| invalid("contact recipe required"))?;
                     store.add_artifact(id, &commit_artifact(&dir,"native-contact-request.json",&serde_json::to_vec(spec)?,"json","exact approved synthetic SI planar contact/preload/temperature inputs; two static parameters without inferred physical time")?)?;
                     native_stage(store, profile, &plan, stage, &working, id)?;
+                } else if stage.operation == StageOperation::FreezingReference
+                    && plan.retained_cooling.is_some()
+                {
+                    let working = native_work.join("stages/retained-cooling");
+                    private_dir(&working)?;
+                    let spec = plan
+                        .retained_cooling
+                        .as_ref()
+                        .ok_or_else(|| invalid("source-bound cooling recipe required"))?;
+                    store.add_artifact(id, &commit_artifact(&dir, "native-retained-cooling-request.json", &serde_json::to_vec(&spec.native_request()?)?, "json", "exact independently approved source-bound retained-water cooling native SI envelope")?)?;
+                    native_stage(store, profile, &plan, stage, &working, id)?;
                 } else if stage.operation == StageOperation::FreezingReference {
                     let working = native_work.join("stages/freezing");
                     private_dir(&working)?;
@@ -2592,6 +2713,7 @@ fn annotate_native_artifacts(
 ) -> Result<()> {
     crate::wetting::annotate_fields(plan, artifacts)?;
     crate::freezing::annotate_fields(plan, artifacts)?;
+    crate::cooling_fields::annotate(plan, artifacts)?;
     crate::radiation::annotate_fields(plan, artifacts)?;
     crate::atmosphere::annotate_fields(plan, artifacts)?;
     crate::cad_transport_fields::annotate(plan, artifacts)?;

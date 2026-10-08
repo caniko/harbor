@@ -292,6 +292,29 @@ pub fn minimum(plan: &ExecutionPlan) -> Result<MinimumResources> {
                 output = add(output, multiply(shard, 3)?)?;
                 add(512 * MIB, multiply(shard, 2)?)?
             }
+            StageOperation::FreezingReference if plan.retained_cooling.is_some() => {
+                let spec = plan.retained_cooling.as_ref().ok_or_else(|| {
+                    invalid("source-bound native cooling resource recipe required")
+                })?;
+                spec.validate()?;
+                let [nx, ny] = spec.prepared.retained.extrusion.source_grid_shape;
+                let q = u64::from(spec.request.spatial_refinement);
+                let cells = multiply(
+                    add(multiply(nx as u64, q)?, 4)?,
+                    add(multiply((ny - 2) as u64, q)?, 6)?,
+                )?;
+                output = add(output, multiply(multiply(cells, 512)?, snapshots)?)?;
+                output = add(output, multiply(spec.request.native_steps(), 128)?)?;
+                for record in &spec.originals {
+                    output = add(output, record.bytes)?;
+                }
+                // Both native lattices and halo/coupling storage, independent
+                // complete-field copies and the per-step boundary ledger.
+                add(
+                    add(512 * MIB, multiply(cells, 4096)?)?,
+                    multiply(spec.request.native_steps(), 256)?,
+                )?
+            }
             StageOperation::FreezingReference => {
                 let spec = plan
                     .freezing

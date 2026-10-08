@@ -153,7 +153,7 @@ fn sum(values: impl Iterator<Item = f64>) -> f64 {
     total
 }
 
-fn reconstruct(
+pub(crate) fn reconstruct(
     spec: &WettingReferenceSpec,
     request: &RetainedCoolingRequest,
     bytes: &[u8],

@@ -387,6 +387,20 @@ def build_server(profile: str) -> MCPServer:
             )
 
         @server.tool()
+        async def retained_cooling_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan independently approved native CPU cooling of exact stationary registered wetting originals; explicit thermal state and immutable job_submit approval required."""
+            return await request("plan_retained_cooling", request=request_spec)
+
+        @server.tool()
+        async def results_sample_retained_cooling(
+            request_spec: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Read original cooling subcontrols at one exact retained time/region with full source history and provenance; no interpolation or physical lifetime inference."""
+            return await request(
+                "results_sample_retained_cooling", request=request_spec
+            )
+
+        @server.tool()
         async def results_transfer_atmosphere(
             request_spec: dict[str, Any],
         ) -> dict[str, Any]:

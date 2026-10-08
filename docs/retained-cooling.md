@@ -114,3 +114,36 @@ at the observed `0.02316` intermediate enthalpy error. Fine uniform diagnostic
 cases have maximum normalized Stefan temperature errors `0.00970` and `0.00818`.
 Full original-history fine spatial and temporal qualification, exact packaged
 execution and independent worker approvals are separate gates.
+
+## Shared-worker execution contract
+
+`results plan-retained-cooling REQUEST` and MCP `retained_cooling_plan` resolve
+one succeeded registered native wetting job and independently approve a v18
+CPU cooling/bundle DAG. A `CoolingExecutionRequest` contains `schema_version: 1`,
+the complete existing `initialization` request, `spatial_refinement: 1|2|3|4`,
+`integration_substeps: 1|2|4`, bounded `base_steps` and complete ordered
+`observation_base_steps` including zero and the final step. Native steps are
+base steps multiplied by `q² * integration_substeps`; original-spacing thermal
+physical times remain identical across separately approved refinements. Every
+approval includes complete wetting CSV history, original/verified receipts,
+source request, execution binding and independent authorization identities.
+
+Ordinary `job submit PLAN --approve DIGEST --idempotency-key KEY` executes
+through the same authority/admission/systemd worker. Submission transactionally
+copies distinct, checksummed original inodes before acknowledgment. The native
+sandbox sees only its operation closure and read-only original/request files.
+Complete original subcontrols and per-step boundary energy are reconstructed
+again in Rust before acceptance, and originals remain available after failure.
+Unverifiable unpublished staging artifacts remain preserved during recovery.
+
+`results sample-retained-cooling REQUEST` and MCP
+`results_sample_retained_cooling` return exact original native subcontrols for
+one `job_id`, destination `region`, approved `physical_time_s` and 1–64 distinct
+`points: [[i,j], ...]`. The response retains original parent identities, SI
+positions, water fractions, Float64 enthalpy/temperature/liquid fractions,
+complete history summaries and source/approval provenance. Every exported
+cooling CSV retains its physical time, units and original-control association.
+Queries refuse interpolation, extrapolation, changed registered bytes and
+unsupported regions. Execution/conservation evidence does not establish
+convergence or physical applicability. Exact-worker lifecycle qualification is
+required separately from the completed `c8-30` isolated package campaign.

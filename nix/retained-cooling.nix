@@ -55,4 +55,15 @@ in {
     backend = "cpu";
     qualification = "unqualified";
   });
+  runtime-retained-cooling-worker = pkgs.writeText "harbor-cad-native-runtime.json" (builtins.toJSON {
+    bwrap = "${pkgs.bubblewrap}/bin/bwrap";
+    retained_cooling = "${adapter}/bin/harbor-cad-retained-cooling";
+    retained_cooling_closure = "${closure}/store-paths";
+    cad = null;
+    openlb = null;
+    openlb_backend = "cpu";
+    render = null;
+    video = null;
+    filter = null;
+  });
 }

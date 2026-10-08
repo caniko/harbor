@@ -164,6 +164,7 @@ impl crate::contracts::ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: None,
+            retained_cooling: None,
             source: None,
             frames: None,
             filter: None,

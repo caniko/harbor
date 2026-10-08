@@ -258,6 +258,7 @@ impl crate::contracts::ExecutionPlan {
             atmospheric_transport: None,
             cad_variant: None,
             cad_transport: Some(spec),
+            retained_cooling: None,
             stages: vec![
                 Stage {
                     id: STAGE.into(),
