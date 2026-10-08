@@ -126,6 +126,7 @@ id = "llm"
 paths = ["components/llm"]
 releases = [
   { manifest = "components/llm/package.json", namespace = "harbor-llm", publish = false },
+  { manifest = "components/llm/pyproject.toml", namespace = "harbor-llm-python", publish = false },
 ]
 depends_on = ["core"]
 checks = [

@@ -32,7 +32,7 @@
         npmDeps = pkgs.importNpmLock {npmRoot = ./.;};
         installPhase = ''
           mkdir -p $out/lib/harbor-llm
-          cp -r src plugins node_modules package.json $out/lib/harbor-llm/
+          cp -r src plugins contracts python node_modules package.json pyproject.toml $out/lib/harbor-llm/
         '';
       };
     });
@@ -47,15 +47,19 @@
     checks = forSystems (system: let
       pkgs = nixpkgs.legacyPackages.${system};
     in {
-      environments = pkgs.runCommand "harbor-llm-environments" {nativeBuildInputs = [pkgs.nodejs pkgs.util-linux pkgs.gnutar];} ''
+      environments = pkgs.runCommand "harbor-llm-environments" {nativeBuildInputs = [pkgs.nodejs pkgs.python3 pkgs.util-linux pkgs.gnutar];} ''
         cp -r ${./src} src
         cp -r ${./test} test
+        cp -r ${./contracts} contracts
+        cp -r ${./python} python
+        cp ${./package.json} package.json
         ln -s ${self.packages.${system}.default}/lib/harbor-llm/node_modules node_modules
         export HOME="$PWD/test-home"
         export XDG_RUNTIME_DIR="$PWD/test-runtime"
         mkdir -m 700 "$HOME" "$XDG_RUNTIME_DIR"
         DIRENV_BIN=${pkgs.direnv}/bin/direnv NIX_BIN=${pkgs.nix}/bin/nix \
           node --test test/*.test.mjs
+        python3 -I test/test_mcp_admission.py
         touch $out
       '';
       plugin = pkgs.runCommand "harbor-llm-plugin" {nativeBuildInputs = [pkgs.nodejs];} ''

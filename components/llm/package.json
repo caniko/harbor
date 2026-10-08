@@ -3,10 +3,38 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/caniko/harbor.git",
+    "directory": "components/llm"
+  },
+  "exports": {
+    "./mcp-admission": {
+      "types": "./src/mcp-admission.d.mts",
+      "import": "./src/mcp-admission.mjs"
+    },
+    "./mcp-admission-schema": {
+      "types": "./src/mcp-admission-schema.d.mts",
+      "import": "./src/mcp-admission-schema.mjs"
+    },
+    "./contracts/*": "./contracts/*",
+    "./src/*": "./src/*",
+    "./plugins/*": "./plugins/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "plugins",
+    "contracts"
+  ],
   "scripts": {
+    "typecheck": "tsc --noEmit --strict --module NodeNext --target ES2023 test/mcp-admission.types.mts",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.18.30"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
   }
 }
