@@ -90,6 +90,10 @@ def test_cli_real_results_mcp_preserve_explicit_inputs_and_refuse_unregistered_s
             async with Client(parameters) as client:
                 names = {tool.name for tool in (await client.list_tools()).tools}
                 assert "results_prepare_retained_cooling" in names
+                assert {
+                    "retained_cooling_plan",
+                    "results_sample_retained_cooling",
+                } <= names
                 for changed in changes:
                     cli = await asyncio.to_thread(
                         subprocess.run,
@@ -108,6 +112,36 @@ def test_cli_real_results_mcp_preserve_explicit_inputs_and_refuse_unregistered_s
                     assert mcp.is_error and response["error"]["code"] in str(
                         mcp.content
                     )
+
+            execution = {
+                "schema_version": 1,
+                "initialization": original,
+                "spatial_refinement": 2,
+                "integration_substeps": 1,
+                "base_steps": 16,
+                "observation_base_steps": [0, 4, 16],
+            }
+            parameters.args[-1] = "simulation"
+            async with Client(parameters) as client:
+                names = {tool.name for tool in (await client.list_tools()).tools}
+                assert "retained_cooling_plan" in names
+                assert "results_sample_retained_cooling" not in names
+                cli = await asyncio.to_thread(
+                    subprocess.run,
+                    [binary, "results", "plan-retained-cooling", "/dev/stdin"],
+                    input=json.dumps(execution).encode(),
+                    env=environment,
+                    capture_output=True,
+                    timeout=30,
+                    check=False,
+                )
+                response = json.loads(cli.stdout)
+                mcp = await client.call_tool(
+                    "retained_cooling_plan", {"request_spec": execution}
+                )
+                assert cli.returncode != 0 and response["ok"] is False
+                assert response["error"]["code"] == "unqualified" and mcp.is_error
+                assert response["error"]["code"] in str(mcp.content)
 
         asyncio.run(exercise())
         assert not list(state.glob("artifacts/**/*"))

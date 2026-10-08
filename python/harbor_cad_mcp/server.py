@@ -44,6 +44,13 @@ def build_server(profile: str) -> MCPServer:
             """Validate explicit units, named regions and applicability."""
             return await request("validate", case=case)
 
+    if profile in {"simulation", "results", "all"}:
+
+        @server.tool()
+        async def retained_cooling_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
+            """Plan independently approved native CPU cooling of exact stationary registered wetting originals; explicit thermal state and immutable job_submit approval required."""
+            return await request("plan_retained_cooling", request=request_spec)
+
     if profile in {"simulation", "all"}:
 
         @server.tool()
@@ -385,11 +392,6 @@ def build_server(profile: str) -> MCPServer:
             return await request(
                 "results_prepare_retained_cooling", request=request_spec
             )
-
-        @server.tool()
-        async def retained_cooling_plan(request_spec: dict[str, Any]) -> dict[str, Any]:
-            """Plan independently approved native CPU cooling of exact stationary registered wetting originals; explicit thermal state and immutable job_submit approval required."""
-            return await request("plan_retained_cooling", request=request_spec)
 
         @server.tool()
         async def results_sample_retained_cooling(

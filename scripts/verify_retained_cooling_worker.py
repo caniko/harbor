@@ -166,7 +166,9 @@ def main():
                 prepared
                 == bound["prepared"]
                 == campaign.mcp_call(
-                    "results_prepare_retained_cooling", {"request_spec": initialization}
+                    "results_prepare_retained_cooling",
+                    {"request_spec": initialization},
+                    profile="results",
                 )
             )
             try:
