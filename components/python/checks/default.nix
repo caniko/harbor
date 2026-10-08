@@ -13,7 +13,8 @@
   fixture = ../templates/default;
   templateFlake = builtins.readFile (fixture + "/flake.nix");
   templateSimit = builtins.fromTOML (builtins.readFile (fixture + "/simit.toml"));
-  templateTreefmt = builtins.readFile (fixture + "/nix/treefmt.nix");
+  templateTreefmt = (treefmt-nix.lib.evalModule pkgs (import (fixture + "/nix/treefmt.nix") {harbor-py = self;})).config;
+  languageTreefmt = (treefmt-nix.lib.evalModule pkgs {imports = [self.treefmtModules.python];}).config;
   templateHooks = builtins.readFile (fixture + "/nix/pre-commit.nix");
   ffmpeg = harbor.mkFfmpegCompat {inherit pkgs;};
 
@@ -142,8 +143,10 @@ in
   assert pkgs.lib.hasInfix "git-hooks.follows" templateFlake;
   assert pkgs.lib.hasInfix "treefmtEval.config.build.check self" templateFlake;
   assert pkgs.lib.hasInfix "pre-commit-check.shellHook" templateFlake;
-  assert pkgs.lib.hasInfix "programs.alejandra.enable = true" templateTreefmt;
-  assert pkgs.lib.hasInfix "programs.taplo.enable = true" templateTreefmt;
+  assert templateTreefmt.programs.alejandra.enable;
+  assert templateTreefmt.programs.taplo.enable;
+  assert templateTreefmt.programs.ruff-format.enable;
+  assert builtins.attrNames languageTreefmt.settings.formatter == ["ruff-format"];
   assert pkgs.lib.hasInfix "treefmt =" templateHooks;
   assert pkgs.lib.hasInfix "nix-flake-check" templateHooks;
     {

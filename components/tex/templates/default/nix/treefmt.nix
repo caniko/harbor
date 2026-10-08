@@ -1,18 +1,8 @@
-{pkgs, ...}: {
+{harbor-tex}: {...}: {
+  imports = [
+    harbor-tex.inputs.harbor-meta.treefmtModules.nix
+    harbor-tex.inputs.harbor-meta.treefmtModules.toml
+    harbor-tex.treefmtModules.latex
+  ];
   projectRootFile = "flake.nix";
-
-  programs.alejandra.enable = true;
-
-  programs.taplo.enable = true;
-
-  settings.formatter.latexindent = {
-    command = "${pkgs.texlive.withPackages (ps: [ps.latexindent])}/bin/latexindent";
-    options = ["-w" "-s"];
-    includes = [
-      "*.tex"
-      "*.sty"
-      "*.cls"
-      "*.bib"
-    ];
-  };
 }

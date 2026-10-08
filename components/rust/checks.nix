@@ -2344,6 +2344,45 @@ in
       assert builtins.isString app.program;
         pkgs.runCommand "check-mkAtticPush-shape" {} "touch $out";
 
+    # mkAtticPush accepts a flake source without explicit package paths.
+    mkAtticPush-flake-shape = let
+      adapter = self.lib.mkAdapter {
+        attic = {
+          endpoint = "https://x.com";
+          cache = "c";
+        };
+      };
+      app = self.lib.mkAtticPush {
+        inherit pkgs adapter;
+        flake = ".";
+      };
+    in
+      assert app.type == "app";
+      assert builtins.isString app.program;
+        pkgs.runCommand "check-mkAtticPush-flake-shape" {} "touch $out";
+
+    # The generated publisher fails before network access when no token exists.
+    mkAtticPush-rejects-missing-token = let
+      adapter = self.lib.mkAdapter {
+        attic = {
+          endpoint = "https://x.com";
+          cache = "c";
+        };
+      };
+      app = self.lib.mkAtticPush {
+        inherit pkgs adapter;
+        paths = [pkgs.hello];
+      };
+    in
+      pkgs.runCommand "check-mkAtticPush-rejects-missing-token" {} ''
+        if ${app.program} >log 2>&1; then
+          echo "publisher unexpectedly accepted a missing token" >&2
+          exit 1
+        fi
+        grep -F "must be a nonempty Attic JWT" log
+        touch $out
+      '';
+
     # mkCoprSpec returns expected attributes with default binary-shipping layout
     mkCoprSpec-shape = let
       s = self.lib.mkCoprSpec {

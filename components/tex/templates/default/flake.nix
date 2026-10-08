@@ -26,7 +26,7 @@
     forSystem = system: let
       platformNixpkgs = if system == "x86_64-darwin" then nixpkgs-darwin else nixpkgs;
       pkgs = import platformNixpkgs {inherit system;};
-      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
+      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {inherit harbor-tex;});
       hooks = import "${git-hooks}/nix" {
         nixpkgs = platformNixpkgs;
         inherit system;

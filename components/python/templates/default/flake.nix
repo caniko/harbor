@@ -25,7 +25,7 @@
         system:
         let
           pkgs = py.mkPkgs { inherit system; };
-          treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
+           treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {inherit harbor-py;});
           hooks = import "${git-hooks}/nix" {
             nixpkgs = if system == "x86_64-darwin" then nixpkgs-darwin else nixpkgs;
             inherit system;
