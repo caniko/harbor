@@ -2,6 +2,7 @@
 
 import argparse
 import copy
+import fcntl
 import json
 import math
 import shutil
@@ -41,6 +42,24 @@ def source_records(report):
             "two independently qualified original CAD source inspections/reimports required"
         )
     return records
+
+
+def copy_closed_source_state(original, destination):
+    # The worker owns this advisory lock for its entire lifetime. Read-only
+    # exclusive acquisition proves closure even when its Unix socket remains.
+    # Never open the original SQLite connection or alter its WAL shared index.
+    with (original / "worker.lock").open("rb") as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError(
+                "closed original source worker required before database snapshot"
+            ) from error
+        shutil.copytree(original / "artifacts", destination / "artifacts")
+        for name in ("jobs.sqlite3", "jobs.sqlite3-wal", "jobs.sqlite3-shm"):
+            path = original / name
+            if path.exists():
+                shutil.copyfile(path, destination / name)
 
 
 def main():
@@ -87,15 +106,7 @@ def main():
     # shared-memory WAL index. Only the private state is opened or mutated.
     state = root / "state"
     state.mkdir(mode=0o700)
-    shutil.copytree(original / "state/artifacts", state / "artifacts")
-    if (original / "state/worker.sock").exists():
-        raise ValueError(
-            "closed original source worker required before its complete database snapshot"
-        )
-    for name in ("jobs.sqlite3", "jobs.sqlite3-wal", "jobs.sqlite3-shm"):
-        path = original / "state" / name
-        if path.exists():
-            shutil.copyfile(path, state / name)
+    copy_closed_source_state(original / "state", state)
     verifier = module(
         Path(__file__).resolve().parents[1] / "adapters/cad_spectral_transport.py"
     )

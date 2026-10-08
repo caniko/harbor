@@ -325,6 +325,19 @@ originals retain exact wavelength/solid-angle association, SI units, absence of
 invented time and pinned source provenance before registration.
 Source gate 37 passes all Rust/Clippy/locked-build checks and 198 Python tests.
 
+Guarded `c8-18` confirms latest native atmosphere and verified registered source
+and angular queries, then refuses a campaign-only resource-schema mismatch.
+The qualifier now checks kernel counter names in their nested `controls` object
+and separately captures invocation-bound systemd enforcement properties while
+the owned service runs. It checks final aggregate peaks and identity as well.
+`c8-19` refuses a stale original worker socket before planning; source copying
+now proves worker closure by read-only exclusive acquisition of its lifetime
+lock, preserving all original SQLite/WAL bytes. Tests cover stale sockets,
+distinct copied inodes, exact original bytes and active-worker refusal before
+copying. Source gate 39 passes complete Rust/Clippy/build and 199 Python tests;
+the retained gate-38 Ruff failure was repaired using a nonblocking async process
+call. Fresh exact-package worker campaigns remain required.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

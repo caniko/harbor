@@ -203,6 +203,37 @@ def main():
                     if job["unit"] not in campaign.owned:
                         campaign.owned.append(job["unit"])
                     running = campaign.wait(job, {"running"})
+                    properties = dict(
+                        line.split("=", 1)
+                        for line in (
+                            await asyncio.to_thread(
+                                subprocess.check_output,
+                                [
+                                    "systemctl",
+                                    "--user",
+                                    "show",
+                                    job["unit"],
+                                    "--property=InvocationID,MemoryMax,MemorySwapMax,TasksMax,KillMode,CPUQuotaPerSecUSec,NoNewPrivileges",
+                                ],
+                                text=True,
+                            )
+                        ).splitlines()
+                    )
+                    assert properties["InvocationID"] == running["invocation_id"]
+                    assert properties["MemoryMax"] == str(
+                        max(s["ram_bytes"] for s in planned["plan"]["stages"])
+                    )
+                    assert (
+                        properties["MemorySwapMax"] == "0"
+                        and properties["TasksMax"] == "128"
+                    )
+                    assert (
+                        properties["KillMode"] == "control-group"
+                        and properties["NoNewPrivileges"] == "yes"
+                    )
+                    (root / f"service-properties-{interface}.json").write_text(
+                        json.dumps(properties, indent=2)
+                    )
                     active = retention_snapshot(campaign.state, job, str(binary))
                     reservation = admission_record(campaign.state, job)
                     assert (
@@ -411,15 +442,25 @@ def main():
                         transfers.append(transfer)
                     controls = json.loads((bundle / "service-owner.json").read_text())[
                         "kernel_resources"
-                    ]
+                    ]["controls"]
                     assert (
-                        controls["MemoryMax"]
+                        controls["memory.max"]
                         == str(planned["plan"]["stages"][0]["ram_bytes"])
-                        and controls["MemorySwapMax"] == "0"
-                        and controls["TasksMax"] == "128"
-                        and controls["KillMode"] == "control-group"
-                        and controls["NoNewPrivileges"] == "yes"
+                        and controls["memory.swap.max"] == "0"
+                        and controls["pids.max"] == "128"
+                        and controls["cpu.max"] == "200000 100000"
                     )
+                    resources = json.loads(
+                        (bundle / "service-resources.json").read_text()
+                    )
+                    assert (
+                        resources["job_id"] == job["id"]
+                        and resources["invocation"] == running["invocation_id"]
+                    )
+                    assert resources["kernel_resources"]["controls"] == controls
+                    assert resources["kernel_resources"][
+                        "aggregate_memory_peak_bytes"
+                    ] <= int(controls["memory.max"])
                     for relative in (
                         "stages/atmosphere/uvspec-original.txt",
                         "stages/atmosphere/atmosphere-receipt.json",
