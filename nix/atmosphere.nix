@@ -66,11 +66,12 @@
       import math
       from pathlib import Path
       rows = [list(map(float, row.split())) for row in Path("transparent-original.txt").read_text().splitlines()]
-      assert len(rows) == 3
+      print("Original transparent DISORT observations:", rows, flush=True)
+      assert len(rows) == 3, ("complete original solar knots", rows)
       for row, wavelength, flux in zip(rows, (280, 320, 400), (1, 2, 3), strict=True):
-          assert len(row) == 4 and row[0] == wavelength
-          assert math.isclose(row[1], flux * math.cos(math.pi / 6), rel_tol=1e-6)
-          assert row[2:] == [0, 0]
+          assert len(row) == 4 and row[0] == wavelength, ("original knot", row, wavelength)
+          assert math.isclose(row[1], flux * math.cos(math.pi / 6), rel_tol=1e-6), ("direct solar cosine", row, flux)
+          assert row[2:] == [0, 0], ("transparent diffuse flux", row)
       PY
       runHook postCheck
     '';
