@@ -392,6 +392,16 @@ planning refuses without changing SQLite or source bytes; a separately
 prescribed small-placement fixture retains all earlier successful staging,
 approval-envelope and original-loss assertions.
 
+Source gate 47 passes the complete Rust/Clippy/build/format/lint gate and 221
+Python tests, including strict source-bound cooling envelopes, complete original
+control/subcontrol mass and enthalpy, native-receipt preservation and refusal of
+writable sources, scientific leftovers and substituted boundary summaries.
+`c8-27` optical completes both admissible original-field/query cases and the
+far-translation refusal, then preserves an idempotency conflict: its new owned
+lifecycle submission reused a key from the copied source campaign. New optical
+lifecycle keys are explicitly namespaced; the original source records retain
+their keys and approvals. A fresh matching lifecycle campaign remains required.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from

@@ -347,7 +347,7 @@ def main():
             planned = campaign.mcp_call(
                 "cad_plan_spectral_transport", {"request_spec": current}
             )
-            job = campaign.submit(planned, name)
+            job = campaign.submit(planned, "cad-optical-" + name)
             owner = campaign.wait(job, {"running"})
             active = retention_snapshot(state, job, str(binary))
             assert admission_record(state, job) is not None
