@@ -23,6 +23,26 @@ from verify_systemd import (
 )
 
 
+def source_records(report):
+    all_records = report["results"]
+    records = [row for row in all_records if "source" in row]
+    if (
+        len(records) != 2
+        or [row["source"] for row in records] != ["origin", "translated"]
+        or any(row["roots_and_reservation_released"] is not True for row in all_records)
+        or any(
+            row["job"]["state"] != "succeeded"
+            or row["job"]["exit_code"] != 0
+            or "reimport" not in row
+            for row in records
+        )
+    ):
+        raise ValueError(
+            "two independently qualified original CAD source inspections/reimports required"
+        )
+    return records
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("executable", "mcp", "runtime", "authority", "source", "output"):
@@ -45,12 +65,7 @@ def main():
         immutable(native[key])
     original = args.source.resolve(strict=True)
     report = json.loads((original / "verification.json").read_text())
-    if len(report["results"]) != 2 or any(
-        not row["roots_and_reservation_released"] for row in report["results"]
-    ):
-        raise ValueError(
-            "two independently qualified original CAD source inspections/reimports required"
-        )
+    sources = source_records(report)
     baseline = tree_identity(original)
     root = args.output.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -95,7 +110,7 @@ def main():
     with WorkerCampaign(
         binary, mcp, runtime, args.authority, root, timeout=600
     ) as campaign:
-        for index, row in enumerate(report["results"]):
+        for index, row in enumerate(sources):
             current = copy.deepcopy(request)
             current["scene"]["source_job"] = row["reimport"]["id"]
             if index:
@@ -287,7 +302,7 @@ def main():
             )
         for name, target in (("cancel", "cancelled"), ("service-death", "failed")):
             current = copy.deepcopy(request)
-            current["scene"]["source_job"] = report["results"][0]["reimport"]["id"]
+            current["scene"]["source_job"] = sources[0]["reimport"]["id"]
             current["samples_per_triangle"] = 4096
             planned = campaign.mcp_call(
                 "cad_plan_spectral_transport", {"request_spec": current}

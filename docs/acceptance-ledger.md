@@ -293,6 +293,17 @@ archive passes. Native packaging now tests original clear-sky fluxes at 16/32/64
 streams and retains both patches and original check outputs. New native and
 registered-source qualification is required for this changed closure.
 
+Source gate 35 passes the full Rust/Clippy/locked-build gate, Treefmt/Ruff and
+198 Python tests. The first registered-CAD optical campaign refused before
+creating state because the qualified variant report contains two source rows
+plus two independent lifecycle rows, rather than only two rows. The campaign
+now selects exactly the successful `origin`/`translated` source rows and still
+requires release evidence for every row. Regression fixtures refuse duplicate
+or foreign sources, failed source jobs and unreleased lifecycle entries. The
+captured queued reimport envelopes are not treated as completion evidence;
+the copied durable database and registered importer checks establish completion
+before any new optical approval.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
