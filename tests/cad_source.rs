@@ -66,6 +66,10 @@ fn imported_geometry_rejects_source_scope_units_nonrigid_placements_and_weak_gat
 }
 
 fn archived_source(store: &Store) -> String {
+    archived_source_with_geometry(store, descriptor())
+}
+
+fn archived_source_with_geometry(store: &Store, geometry: serde_json::Value) -> String {
     // Persisted-record fixture only; these opaque bytes establish no native
     // CAD execution or hardware qualification.
     let mut case = CaseSpec::reference();
@@ -173,7 +177,6 @@ fn archived_source(store: &Store) -> String {
     )
     .unwrap();
     store.add_artifact(&job.id, &brep).unwrap();
-    let geometry = descriptor();
     let region = serde_json::json!({"name":"solid","label":"solid","volume_m3":geometry["volume_m3"],"bounds_m":geometry["bounds_m"],"transform":geometry["source_transform"],"triangles":12,"source_unit":"mm","stl_scale_to_m":0.001});
     let manifest_region = serde_json::json!({"region_name":"solid","path":"solid.brep","bytes":brep.bytes,"sha256":brep.sha256,"source_unit":"mm","scale_to_m":0.001,
         "bounds_m":geometry["bounds_m"],"volume_m3":geometry["volume_m3"],"source_transform":geometry["source_transform"],"placement_translation_unit":"mm"});
@@ -624,24 +627,7 @@ fn variant_original_receipt_geometry_and_export_mutations_cannot_qualify_history
     verified().unwrap();
 }
 
-#[test]
-fn material_triangles_bind_every_original_region_and_refuse_substitution_without_mutating_source() {
-    use harbor_cad::cad_spectral::{CadSpectralSceneRequest, prepare};
-    let temp = tempfile::tempdir().unwrap();
-    let store = Store::open(&temp.path().join("state")).unwrap();
-    let id = archived_source(&store);
-    // Complete manufactured STL for the persisted-record fixture; this is not
-    // evidence that the native importer or a spectral solver executed.
-    let points = [
-        [100f32, -20., 300.],
-        [120., -20., 300.],
-        [120., -10., 300.],
-        [100., -10., 300.],
-        [100., -20., 310.],
-        [120., -20., 310.],
-        [120., -10., 310.],
-        [100., -10., 310.],
-    ];
+fn manufactured_box_triangles(points: [[f32; 3]; 8]) -> Vec<u8> {
     let mut data = vec![0u8; 80];
     data.extend(12u32.to_le_bytes());
     for (face, normal) in [
@@ -662,6 +648,75 @@ fn material_triangles_bind_every_original_region_and_refuse_substitution_without
             data.extend(0u16.to_le_bytes());
         }
     }
+    data
+}
+
+#[test]
+fn far_original_scene_prepares_but_native_float32_plan_refuses_without_source_mutation() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    let id = archived_source(&store);
+    let data = manufactured_box_triangles([
+        [100., -20., 300.],
+        [120., -20., 300.],
+        [120., -10., 300.],
+        [100., -10., 300.],
+        [100., -20., 310.],
+        [120., -20., 310.],
+        [120., -10., 310.],
+        [100., -10., 310.],
+    ]);
+    let root = store.job_dir(&id).unwrap();
+    let original = commit_artifact(
+        &root,
+        "solid.stl",
+        &data,
+        "stl",
+        "manufactured far original; no native execution",
+    )
+    .unwrap();
+    store.add_artifact(&id, &original).unwrap();
+    let mut transport: harbor_cad::cad_transport::CadSpectralTransportRequest =
+        serde_json::from_str(include_str!("../examples/cad-spectral-transport.json")).unwrap();
+    transport.scene.source_job = id;
+    harbor_cad::cad_spectral::prepare(&store, transport.scene.clone()).unwrap();
+    let database = std::fs::read(store.root.join("jobs.sqlite3")).unwrap();
+    assert!(
+        harbor_cad::cad_transport::resolve(&store, transport)
+            .unwrap_err()
+            .to_string()
+            .contains("Float32")
+    );
+    assert_eq!(std::fs::read(root.join("solid.stl")).unwrap(), data);
+    assert_eq!(
+        std::fs::read(store.root.join("jobs.sqlite3")).unwrap(),
+        database
+    );
+}
+
+#[test]
+fn material_triangles_bind_every_original_region_and_refuse_substitution_without_mutating_source() {
+    use harbor_cad::cad_spectral::{CadSpectralSceneRequest, prepare};
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("state")).unwrap();
+    // Separate admissible synthetic placement; the original far placement has
+    // its own unchanged-source refusal test. This does not rebase that source.
+    let mut geometry = descriptor();
+    geometry["bounds_m"] = serde_json::json!([0.01, 0.03, -0.002, 0.008, 0.03, 0.04]);
+    geometry["source_transform"] = serde_json::json!([
+        1., 0., 0., 10., 0., 1., 0., -2., 0., 0., 1., 30., 0., 0., 0., 1.
+    ]);
+    let id = archived_source_with_geometry(&store, geometry);
+    let data = manufactured_box_triangles([
+        [10., -2., 30.],
+        [30., -2., 30.],
+        [30., 8., 30.],
+        [10., 8., 30.],
+        [10., -2., 40.],
+        [30., -2., 40.],
+        [30., 8., 40.],
+        [10., 8., 40.],
+    ]);
     let root = store.job_dir(&id).unwrap();
     let original = commit_artifact(
         &root,

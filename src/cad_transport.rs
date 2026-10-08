@@ -11,6 +11,7 @@ use crate::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 pub const SANDBOX_POLICY: &str = "harbor-cad-cad-spectral-direct-cpu-v1";
 pub const STAGE: &str = "cad-spectral";
@@ -310,7 +311,60 @@ pub fn resolve(
         scene,
     };
     spec.validate()?;
+    let root = store.job_dir(&spec.request.scene.source_job)?;
+    for region in &spec.scene.regions {
+        let record = &region.original_triangles;
+        let bytes = crate::worker::read_bounded(
+            &crate::storage::safe_path(&root, &record.path)?,
+            record.bytes,
+        )?;
+        if bytes.len() as u64 != record.bytes
+            || format!("{:x}", Sha256::digest(&bytes)) != record.sha256
+        {
+            return Err(invalid(
+                "unchanged complete original optical geometry bytes required before approval",
+            ));
+        }
+        let original = crate::cad_triangles::verify_binary_box(&bytes, &region.source.geometry)?;
+        for facet in &original.triangles {
+            screen_native_geometry(facet, spec.request.maximum_geometry_rounding_error_m)?;
+        }
+    }
     Ok(spec)
+}
+
+/// Predict the immutable metre-to-native conversion before approving a solve.
+/// The native adapter still measures its own area and independently screens it.
+fn screen_native_geometry(facet: &crate::cad_triangles::Triangle, budget: f64) -> Result<()> {
+    let native = facet.vertices_m.map(|p| p.map(|v| f64::from(v as f32)));
+    let rounding = facet
+        .vertices_m
+        .into_iter()
+        .flatten()
+        .zip(native.into_iter().flatten())
+        .map(|(a, b)| (a - b).abs())
+        .fold(0_f64, f64::max);
+    let a: [f64; 3] = std::array::from_fn(|i| native[1][i] - native[0][i]);
+    let b: [f64; 3] = std::array::from_fn(|i| native[2][i] - native[0][i]);
+    let cross: [f64; 3] =
+        std::array::from_fn(|i| a[(i + 1) % 3] * b[(i + 2) % 3] - a[(i + 2) % 3] * b[(i + 1) % 3]);
+    let area = cross.into_iter().map(|v| v * v).sum::<f64>().sqrt() / 2.;
+    if !budget.is_finite()
+        || budget <= 0.
+        || budget > 1e-8
+        || !rounding.is_finite()
+        || rounding > budget
+        || !area.is_finite()
+        || area <= 0.
+        || !facet.area_m2.is_finite()
+        || facet.area_m2 <= 0.
+        || (area / facet.area_m2 - 1.).abs() > 1e-6
+    {
+        return Err(invalid(
+            "original metre-to-native Float32 vertex budget or fixed 1e-6 facet area screen exceeded; preserve original geometry without rebasing or repair",
+        ));
+    }
+    Ok(())
 }
 
 pub fn source(store: &Store, spec: &CadSpectralTransportSpec) -> Result<std::path::PathBuf> {
@@ -494,4 +548,42 @@ pub(crate) fn recover_orphan(store: &Store, id: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod geometry_screen_tests {
+    use super::screen_native_geometry;
+    use crate::cad_triangles::Triangle;
+
+    #[test]
+    fn far_translated_original_refuses_rounding_and_area_before_approval() {
+        let mut facet = Triangle {
+            vertices_m: [[0., 0., 0.], [0.03, 0., 0.], [0., 0., 0.01]],
+            normal: [0., -1., 0.],
+            area_m2: 0.00015,
+            boundary: 2,
+        };
+        screen_native_geometry(&facet, 1e-8).unwrap();
+        facet.vertices_m = facet
+            .vertices_m
+            .map(|p| [p[0] + 0.1, p[1] - 0.02, p[2] + 0.3]);
+        assert!(screen_native_geometry(&facet, 1e-8).is_err());
+        assert!(screen_native_geometry(&facet, 2e-8).is_err());
+        facet.vertices_m = [[0.1, 0., 0.], [0.13, 0., 0.], [0.1, 0., 0.01]];
+        screen_native_geometry(&facet, 1e-8).unwrap();
+        assert!(screen_native_geometry(&facet, 1e-10).is_err());
+    }
+
+    #[test]
+    fn finite_vertex_budget_never_authorizes_collapsed_or_nonfinite_native_area() {
+        let mut facet = Triangle {
+            vertices_m: [[0.1, 0., 0.], [0.100000001, 0., 0.], [0.1, 0., 0.01]],
+            normal: [0., -1., 0.],
+            area_m2: 5e-12,
+            boundary: 2,
+        };
+        assert!(screen_native_geometry(&facet, 1e-8).is_err());
+        facet.vertices_m[0][0] = f64::NAN;
+        assert!(screen_native_geometry(&facet, 1e-8).is_err());
+    }
 }

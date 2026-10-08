@@ -133,6 +133,35 @@ def main():
                 }
             path = root / f"request-{index}.json"
             path.write_text(json.dumps(current))
+            if row["source"] == "translated":
+                refusal = campaign.command(
+                    "--socket",
+                    campaign.endpoint,
+                    "cad",
+                    "plan-spectral-transport",
+                    path,
+                    allow_error=True,
+                )
+                assert not refusal["ok"] and "Float32" in refusal["error"]["message"]
+                mcp_refusal = campaign.mcp_call(
+                    "cad_plan_spectral_transport",
+                    {"request_spec": current},
+                    expect_error=True,
+                )
+                assert "Float32" in str(mcp_refusal)
+                rejections.append(
+                    {
+                        "source": "translated",
+                        "native_geometry_refusal": refusal,
+                        "scope": "original far translation exceeds fixed native geometry limits; no rebasing or tolerance increase",
+                    }
+                )
+                # Separately approve known material action on the admissible
+                # origin source. This is an explicit second case, not a repair
+                # or scientific substitution of the refused translated source.
+                row = {**sources[0], "source": "origin-prescribed-action"}
+                current["scene"]["source_job"] = row["reimport"]["id"]
+                path.write_text(json.dumps(current))
             planned = campaign.command(
                 "--socket", campaign.endpoint, "cad", "plan-spectral-transport", path
             )["data"]

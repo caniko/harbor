@@ -365,6 +365,33 @@ Python tests, including new source-bound cooling preparation schema and real
 CLI/MCP refusals. Gate 41 retains its independent missing-artifact-directory
 test assertion; the repaired assertion verifies that no artifacts are created.
 
+Exact build-83 `c8-26` passes the complete native atmosphere, independent native
+transport, registered atmospheric worker and registered-source v15 transport
+chain. Two CLI/MCP transport successes retain distinct original inodes before
+acknowledgment, preserve source execution/approval identity, survive restart
+with exact idempotency/invocation identity and independently reconstruct all
+original optical packets. Six refusals include changed originals/metadata,
+weakened approval and source-loss orphan preservation. Owned service death and
+complete-tree cancellation release roots/reservations. Report hashes are in
+[registered atmospheric transport evidence](evidence/atmospheric-transport-worker-20261008.json);
+physical validation remains unqualified.
+
+The independent `c8-25` optical attempt completes its origin case but refuses
+the original far translation: Float32 metre rounding reaches `1.1921e-8 m` and
+facet area error `1.1623e-6`, above the fixed `1e-8 m`/`1e-6` screens. Planning
+now predicts those original conversions before approval; the native adapter
+still measures its own unchanged screen. The campaign explicitly records that
+translated refusal and separately approves a known-action origin case. No
+rebasing, CAD edit or increased geometry tolerance qualifies the refused input.
+
+Source gate 46 passes complete Rust/Clippy/build/format/lint checks and 217
+Python tests. Gates 43–45 preserve their respective unused import, test-module
+ordering and formerly admissible far-geometry fixture failures. The persisted
+far-source regression now proves scene preparation succeeds while optical
+planning refuses without changing SQLite or source bytes; a separately
+prescribed small-placement fixture retains all earlier successful staging,
+approval-envelope and original-loss assertions.
+
 ### Receipt and packaging continuation — 2026-10-08
 
 Commit `413fe00` separates numerical-only atmospheric receipt reconstruction from
