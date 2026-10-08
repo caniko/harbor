@@ -20,7 +20,8 @@
       (pkgs.lib.getBin pkgs.netcdf)
       (pkgs.lib.getBin pkgs.netcdffortran)
     ];
-    buildInputs = [pkgs.netcdf pkgs.netcdffortran];
+    # The pinned configure.in unconditionally links both GSL and gslcblas.
+    buildInputs = [pkgs.netcdf pkgs.netcdffortran pkgs.gsl];
     # The distribution's fixed-form legacy Fortran routines use the original
     # F77 calling convention. This compiler mode does not reduce arithmetic
     # precision or enable unsafe floating-point optimization.
