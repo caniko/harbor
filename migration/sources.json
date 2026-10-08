@@ -219,5 +219,18 @@
     "pendingSourceChanges": true,
     "localRefs": "refs/imports/js-harbor/local/heads",
     "remoteRefs": "refs/imports/js-harbor/remote/heads"
+  },
+  {
+    "id": "meta-harbor",
+    "origin": "ssh://git@codefloe.com/caniko/meta-harbor.git",
+    "sourceRef": "refs/heads/trunk",
+    "sourceRevision": "002e03a4b602249adbc312ca6f3d89d6fa41f5c6",
+    "prefix": "sources/meta-harbor",
+    "sourceTree": "cc012b7c23455b4620cf903b4673492c1c52486c",
+    "baseline": "22cb13e179e0dfd956141daaa208becb1105b2d4",
+    "preservedLocalHead": "358e6d8a5f7bb99b19c7e4a26a6dd9a529df02e5",
+    "pendingSourceChanges": true,
+    "localRefs": "refs/imports/meta-harbor/local/heads",
+    "remoteRefs": "refs/imports/meta-harbor/remote/heads"
   }
 ]
