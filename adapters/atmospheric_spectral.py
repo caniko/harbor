@@ -288,7 +288,7 @@ def measure(scene, receiver, normalized, seed, path, mi, dr):
 
 def execute(atmosphere, receiver, original, root):
     normalized = normalize_source(atmosphere, receiver, original)
-    spectral_bridge.require_new_work(root)
+    spectral_bridge.require_new_work(root, capture_log="atmospheric-transport.log")
     import drjit as dr
     import mitsuba as mi
 

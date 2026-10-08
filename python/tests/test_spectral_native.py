@@ -44,6 +44,27 @@ def test_native_directory_accepts_worker_capture_log_but_never_reuses_scientific
         native.require_new_work(tmp_path)
 
 
+def test_atmospheric_worker_capture_is_operation_specific_and_rejects_stale_packets(
+    tmp_path,
+):
+    native = adapter()
+    path = tmp_path / "atmospheric-transport.log"
+    path.write_text("owned atmospheric worker launch diagnostics\n")
+    native.require_new_work(tmp_path, capture_log="atmospheric-transport.log")
+    with pytest.raises(ValueError):
+        native.require_new_work(tmp_path)
+    (tmp_path / "direct-1.csv").write_text("old original packet\n")
+    with pytest.raises(ValueError):
+        native.require_new_work(tmp_path, capture_log="atmospheric-transport.log")
+    with pytest.raises(ValueError):
+        native.require_new_work(tmp_path, capture_log="direct-1.csv")
+    (tmp_path / "direct-1.csv").unlink()
+    path.unlink()
+    path.symlink_to(tmp_path / "absent")
+    with pytest.raises(ValueError):
+        native.require_new_work(tmp_path, capture_log="atmospheric-transport.log")
+
+
 def test_independent_uv_quadrature_preserves_absorbed_power_dose_and_original_si_units():
     native = adapter()
     normalized = native.normalize(fixture())

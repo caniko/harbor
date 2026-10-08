@@ -223,6 +223,26 @@ fn transport_receipt_is_reconstructed_from_exact_original_components() {
     )
     .unwrap();
     assert!(evidence.error < 1e-14);
+    let mut diagnostic = receipt.clone();
+    diagnostic.as_object_mut().unwrap().remove("sandbox");
+    diagnostic.as_object_mut().unwrap().remove("request_sha256");
+    let independent = harbor_cad::atmospheric_transport::reconstruct_transport_receipt(
+        &spec,
+        &original,
+        root.path(),
+        &diagnostic,
+    )
+    .unwrap();
+    assert_eq!(independent.error, evidence.error);
+    assert!(
+        harbor_cad::atmospheric_transport::verify_original_transport(
+            &spec,
+            &original,
+            root.path(),
+            &diagnostic
+        )
+        .is_err()
+    );
     for pointer in [
         "/observations/0/components/direct/native_channels_w_m2/incident",
         "/observations/0/native_channels_w_m2/incident",

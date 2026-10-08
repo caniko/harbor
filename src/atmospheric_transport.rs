@@ -246,6 +246,19 @@ pub fn verify_original_transport(
 ) -> Result<crate::qualification::NumericalEvidence> {
     verify_receipt(spec, original, root, receipt)
 }
+
+/// Independently reduce original native packets and compare the numerical receipt.
+/// This permits retained standalone diagnostics lacking production execution
+/// attestations. Registration, request-byte hash, sandbox and runtime checks are
+/// performed separately by the worker's strict `verify_original_transport` gate.
+pub fn reconstruct_transport_receipt(
+    spec: &AtmosphericTransportSpec,
+    original: &str,
+    root: &std::path::Path,
+    receipt: &serde_json::Value,
+) -> Result<crate::qualification::NumericalEvidence> {
+    crate::atmospheric_transport_receipt::verify_numerical(spec, original, root, receipt)
+}
 pub(crate) fn registered_source(store: &Store, spec: &AtmosphericTransportSpec) -> Result<PathBuf> {
     spec.validate()?;
     let original = resolve(store, spec.request.clone())?;

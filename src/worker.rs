@@ -1595,26 +1595,27 @@ fn native_stage(
     command
         .arg("--")
         .arg(exe)
-        .arg(if stage.operation == StageOperation::AtmosphericTransport {
-            "transport"
-        } else if matches!(
-            stage.operation,
-            StageOperation::FemReference
-                | StageOperation::FemImported
-                | StageOperation::WettingReference
-                | StageOperation::FreezingReference
-                | StageOperation::SpectralReference
-                | StageOperation::AtmosphericReference
-                | StageOperation::ContactReference
-        ) {
-            "reference"
-        } else if matches!(stage.operation, StageOperation::ThermalReference) {
-            "run"
-        } else if matches!(stage.operation, StageOperation::CadMesh) {
-            "mesh"
-        } else {
-            &op
-        })
+        .arg(
+            if matches!(
+                stage.operation,
+                StageOperation::FemReference
+                    | StageOperation::FemImported
+                    | StageOperation::WettingReference
+                    | StageOperation::FreezingReference
+                    | StageOperation::SpectralReference
+                    | StageOperation::AtmosphericReference
+                    | StageOperation::AtmosphericTransport
+                    | StageOperation::ContactReference
+            ) {
+                "reference"
+            } else if matches!(stage.operation, StageOperation::ThermalReference) {
+                "run"
+            } else if matches!(stage.operation, StageOperation::CadMesh) {
+                "mesh"
+            } else {
+                &op
+            },
+        )
         .arg("/plan.json");
     let log = OpenOptions::new()
         .create_new(true)

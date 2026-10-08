@@ -94,18 +94,7 @@ pub(crate) fn verify_receipt(
     receipt: &Value,
 ) -> Result<NumericalEvidence> {
     spec.validate()?;
-    let surface = reference(&spec.atmosphere, &spec.request, original)?;
-    let source = spec.atmosphere.prepare()?;
-    let receiver = &spec.request.receiver;
-    if receipt["schema_version"] != 1
-        || receipt["adapter"] != "Mitsuba"
-        || receipt["mitsuba_version"] != "3.9.1"
-        || receipt["drjit_version"] != "1.5.0"
-        || receipt["backend"] != "cpu"
-        || receipt["variant"] != "scalar_spectral"
-        || receipt["precision"] != "Float32"
-        || receipt["reduction_precision"] != "Float64"
-        || receipt["executed"] != true
+    if receipt["executed"] != true
         || receipt["software_fallback"] != false
         || receipt["physical_validation"] != "unqualified"
         || receipt["source_runtime_evidence"]
@@ -113,10 +102,7 @@ pub(crate) fn verify_receipt(
         || receipt["worker_execution"] != "not_qualified_by_standalone_adapter"
         || receipt["convergence"] != "not_assessed"
         || receipt["source_input"] != serde_json::to_value(&spec.atmosphere)?
-        || receipt["receiver_input"] != serde_json::to_value(receiver)?
-        || receipt["original_atmosphere_sha256"] != spec.source.original.sha256
-        || format!("{:x}", Sha256::digest(original.as_bytes())) != spec.source.original.sha256
-        || original.len() as u64 != spec.source.original.bytes
+        || receipt["receiver_input"] != serde_json::to_value(&spec.request.receiver)?
         || receipt["request_sha256"] != digest(&spec.native_request()?)?
     {
         return Err(invalid(
@@ -142,6 +128,41 @@ pub(crate) fn verify_receipt(
     {
         return Err(invalid(
             "all operation-specific CPU and read-only original-source sandbox canaries required",
+        ));
+    }
+    verify_numerical(spec, original, root, receipt)
+}
+
+pub(crate) fn verify_numerical(
+    spec: &AtmosphericTransportSpec,
+    original: &str,
+    root: &Path,
+    receipt: &Value,
+) -> Result<NumericalEvidence> {
+    spec.validate()?;
+    let surface = reference(&spec.atmosphere, &spec.request, original)?;
+    let source = spec.atmosphere.prepare()?;
+    let receiver = &spec.request.receiver;
+    let atmospheric_input: crate::atmosphere::AtmosphericReferenceSpec =
+        serde_json::from_value(receipt["source_input"].clone())?;
+    let receiver_input: crate::radiation::SpectralReferenceSpec =
+        serde_json::from_value(receipt["receiver_input"].clone())?;
+    if receipt["schema_version"] != 1
+        || receipt["adapter"] != "Mitsuba"
+        || receipt["mitsuba_version"] != "3.9.1"
+        || receipt["drjit_version"] != "1.5.0"
+        || receipt["backend"] != "cpu"
+        || receipt["variant"] != "scalar_spectral"
+        || receipt["precision"] != "Float32"
+        || receipt["reduction_precision"] != "Float64"
+        || digest(&atmospheric_input)? != digest(&spec.atmosphere)?
+        || digest(&receiver_input)? != digest(receiver)?
+        || receipt["original_atmosphere_sha256"] != spec.source.original.sha256
+        || format!("{:x}", Sha256::digest(original.as_bytes())) != spec.source.original.sha256
+        || original.len() as u64 != spec.source.original.bytes
+    {
+        return Err(invalid(
+            "unchanged numerical ABI, original source/receiver prescriptions and source bytes required",
         ));
     }
     let expected = json!({"direct":channels(&source,spec,&surface.direct_w_m2_nm),"diffuse":channels(&source,spec,&surface.diffuse_w_m2_nm),"incident":channels(&source,spec,&surface.incident_w_m2_nm)});

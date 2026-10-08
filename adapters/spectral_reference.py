@@ -648,13 +648,15 @@ def execute(spec, root):
     }
 
 
-def require_new_work(root):
+def require_new_work(root, capture_log="spectral.log"):
     # The worker opens its stage capture before spawning the native adapter.
     # Only that regular log may already exist; scientific observations/receipts
     # are create-new and a failed diagnostic tree can never be reused.
+    if capture_log not in {"spectral.log", "atmospheric-transport.log"}:
+        raise ValueError("fixed native operation capture log required")
     entries = list(root.iterdir())
     if any(
-        path.name != "spectral.log" or path.is_symlink() or not path.is_file()
+        path.name != capture_log or path.is_symlink() or not path.is_file()
         for path in entries
     ):
         raise ValueError(
