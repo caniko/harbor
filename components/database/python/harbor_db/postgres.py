@@ -26,7 +26,8 @@ class LifecycleError(RuntimeError):
 
 def run(argv, **kwargs):
     return subprocess.run(
-        [str(arg) for arg in argv], check=True,
+        [str(arg) for arg in argv],
+        check=True,
         env={**kwargs.pop("env", os.environ), "LC_ALL": "C"},
         **kwargs,
     )
@@ -65,12 +66,15 @@ def inspect_cluster(package, data_dir, major):
     try:
         version = (data / "PG_VERSION").read_text().strip()
     except FileNotFoundError as error:
-        raise LifecycleError(f"cluster is missing at {data}; initialization is forbidden") from error
+        raise LifecycleError(
+            f"cluster is missing at {data}; initialization is forbidden"
+        ) from error
     if data.is_symlink() or version != str(major):
         raise LifecycleError(f"cluster major mismatch at {data}")
     output = run(
         [Path(package) / "bin/pg_controldata", data],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     ).stdout
     match = re.search(r"^Database system identifier:\s*([0-9]+)$", output, re.MULTILINE)
     if not match:
@@ -85,11 +89,15 @@ def inspect_live(config, expected_identifier, socket_dir, port):
     It creates no authority state and never connects through ambient PG routing.
     """
     validate_config(config)
-    if (not re.fullmatch(r"[1-9][0-9]*", expected_identifier)
-            or not Path(socket_dir).is_absolute()
-            or "," in socket_dir
-            or not 1 <= port <= 65535):
-        raise LifecycleError("live inspection requires an identifier and local socket/port")
+    if (
+        not re.fullmatch(r"[1-9][0-9]*", expected_identifier)
+        or not Path(socket_dir).is_absolute()
+        or "," in socket_dir
+        or not 1 <= port <= 65535
+    ):
+        raise LifecycleError(
+            "live inspection requires an identifier and local socket/port"
+        )
     sql = """
         SELECT json_build_object(
             'data_dir', current_setting('data_directory'),
@@ -103,21 +111,44 @@ def inspect_live(config, expected_identifier, socket_dir, port):
     """
     env = {key: value for key, value in os.environ.items() if not key.startswith("PG")}
     env["PGCONNECT_TIMEOUT"] = "5"
-    output = run([
-        Path(config["package"]) / "bin/psql", "--no-psqlrc", "--no-password",
-        f"--host={socket_dir}", f"--port={port}", "--username=postgres",
-        "--dbname=postgres", "--set=ON_ERROR_STOP=1", "--tuples-only", "--no-align",
-        "--command", sql,
-    ], env=env, capture_output=True, text=True, timeout=15).stdout
+    output = run(
+        [
+            Path(config["package"]) / "bin/psql",
+            "--no-psqlrc",
+            "--no-password",
+            f"--host={socket_dir}",
+            f"--port={port}",
+            "--username=postgres",
+            "--dbname=postgres",
+            "--set=ON_ERROR_STOP=1",
+            "--tuples-only",
+            "--no-align",
+            "--command",
+            sql,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    ).stdout
     observed = json.loads(output)
     expected = {
-        "data_dir": config["data_dir"], "major": str(config["major"]),
-        "system_identifier": expected_identifier, "fsync": "on",
-        "full_page_writes": "on", "synchronous_commit": "on", "in_recovery": False,
+        "data_dir": config["data_dir"],
+        "major": str(config["major"]),
+        "system_identifier": expected_identifier,
+        "fsync": "on",
+        "full_page_writes": "on",
+        "synchronous_commit": "on",
+        "in_recovery": False,
     }
     if observed != expected:
-        raise LifecycleError("live endpoint differs from the declared durable primary identity")
-    if inspect_cluster(config["package"], config["data_dir"], config["major"]) != expected_identifier:
+        raise LifecycleError(
+            "live endpoint differs from the declared durable primary identity"
+        )
+    if (
+        inspect_cluster(config["package"], config["data_dir"], config["major"])
+        != expected_identifier
+    ):
         raise LifecycleError("live endpoint and physical cluster identifiers differ")
     return observed
 
@@ -136,10 +167,14 @@ def registered(config):
     try:
         record = read_json(Path(config["state_dir"]) / "identity.json")
     except FileNotFoundError as error:
-        raise LifecycleError("cluster is not adopted; explicit adoption is required") from error
+        raise LifecycleError(
+            "cluster is not adopted; explicit adoption is required"
+        ) from error
     expected = identity(config, record.get("system_identifier"))
     if record != expected:
-        raise LifecycleError("registered cluster identity mismatch (including rollback target)")
+        raise LifecycleError(
+            "registered cluster identity mismatch (including rollback target)"
+        )
     return record
 
 
@@ -160,6 +195,7 @@ def recovery_admission(config):
     if config.get("recovery") is None:
         return contextlib.nullcontext()
     from .recovery import admission
+
     return admission(config)
 
 
@@ -173,9 +209,13 @@ def adopt(config, expected_identifier):
     # hold an unlinked inode; replacing it would bypass its authority lease.
     with recovery_admission(config), lock(state / "lock", create=not path.exists()):
         reject_upgrade(config)
-        observed = inspect_cluster(config["package"], config["data_dir"], config["major"])
+        observed = inspect_cluster(
+            config["package"], config["data_dir"], config["major"]
+        )
         if observed != expected_identifier:
-            raise LifecycleError("independently supplied system identifier does not match")
+            raise LifecycleError(
+                "independently supplied system identifier does not match"
+            )
         if path.exists():
             verify_identity(config)
         else:
@@ -189,7 +229,14 @@ def adopt_live(config, expected_identifier, socket_dir, port):
     path = Path(config["state_dir"]) / "identity.json"
     # Later activations must coexist with the writer's shared lifetime lease.
     already_adopted = path.exists()
-    with recovery_admission(config), lock(Path(config["state_dir"]) / "lock", shared=already_adopted, create=not already_adopted):
+    with (
+        recovery_admission(config),
+        lock(
+            Path(config["state_dir"]) / "lock",
+            shared=already_adopted,
+            create=not already_adopted,
+        ),
+    ):
         reject_upgrade(config)
         if already_adopted or path.exists():
             verify_identity(config)
@@ -227,26 +274,43 @@ def serve(config):
         executable = str(Path(config["package"]) / "bin/postgres")
         # PGDATA or data_directory in postgresql.conf must never select a
         # different cluster from the one just checked under the authority lease.
-        os.execv(executable, [
-            executable, "-D", config["data_dir"], "-c", f"data_directory={config['data_dir']}",
-            # ALTER SYSTEM settings survive generations and override the generated
-            # configuration. Server-wide durability must outrank those settings.
-            "-c", "fsync=on", "-c", "full_page_writes=on",
-            "-c", "synchronous_commit=on",
-        ])
+        os.execv(
+            executable,
+            [
+                executable,
+                "-D",
+                config["data_dir"],
+                "-c",
+                f"data_directory={config['data_dir']}",
+                # ALTER SYSTEM settings survive generations and override the generated
+                # configuration. Server-wide durability must outrank those settings.
+                "-c",
+                "fsync=on",
+                "-c",
+                "full_page_writes=on",
+                "-c",
+                "synchronous_commit=on",
+            ],
+        )
 
 
 def require_stopped(package, data):
     if (Path(data) / "postmaster.pid").exists():
-        raise LifecycleError(f"cluster has a postmaster.pid; verify it is stopped: {data}")
+        raise LifecycleError(
+            f"cluster has a postmaster.pid; verify it is stopped: {data}"
+        )
     result = subprocess.run(
         [str(Path(package) / "bin/pg_ctl"), "-D", str(data), "status"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
     )
     if result.returncode == 0:
         raise LifecycleError(f"cluster is running: {data}")
     if result.returncode != 3:
-        raise LifecycleError(f"cluster status is indeterminate (code {result.returncode}): {data}")
+        raise LifecycleError(
+            f"cluster status is indeterminate (code {result.returncode}): {data}"
+        )
 
 
 def control_digest(data):
@@ -264,8 +328,12 @@ def upgrade(config, *, retry_incomplete=False):
     """
     validate_config(config)
     settings = config["upgrade"]
-    source = dict(config, data_dir=settings["data_dir"], major=str(settings["major"]),
-                  package=settings["package"])
+    source = dict(
+        config,
+        data_dir=settings["data_dir"],
+        major=str(settings["major"]),
+        package=settings["package"],
+    )
     validate_config(source)
     if int(source["major"]) >= int(config["major"]):
         raise LifecycleError("upgrade requires a newer PostgreSQL major")
@@ -288,43 +356,64 @@ def upgrade(config, *, retry_incomplete=False):
         if journal is None:
             source_record = verify_identity(source)
         else:
-            source_record = identity(source, inspect_cluster(
-                source["package"], source["data_dir"], source["major"],
-            ))
+            source_record = identity(
+                source,
+                inspect_cluster(
+                    source["package"],
+                    source["data_dir"],
+                    source["major"],
+                ),
+            )
             current = read_json(state / "identity.json")
             if current != source_record and current != journal.get("identity"):
                 raise LifecycleError("registered identity changed during upgrade")
         digest = control_digest(source["data_dir"])
         if any((Path(source["data_dir"]) / "pg_tblspc").iterdir()):
-            raise LifecycleError("external tablespaces are unsupported for staged upgrades")
+            raise LifecycleError(
+                "external tablespaces are unsupported for staged upgrades"
+            )
         if (Path(source["data_dir"]) / "pg_wal").is_symlink():
-            raise LifecycleError("external WAL storage is unsupported for staged upgrades")
+            raise LifecycleError(
+                "external WAL storage is unsupported for staged upgrades"
+            )
         intent = {
-            "version": 1, "source": source_record, "source_control": digest,
-            "target": {k: config[k] for k in ("resource", "data_dir", "major", "package")},
+            "version": 1,
+            "source": source_record,
+            "source_control": digest,
+            "target": {
+                k: config[k] for k in ("resource", "data_dir", "major", "package")
+            },
             "staging": str(staging),
             "source_copy": str(source_copy),
         }
         if journal is not None:
             if any(journal.get(k) != v for k, v in intent.items()):
-                raise LifecycleError("upgrade source or contract changed; cannot resume")
+                raise LifecycleError(
+                    "upgrade source or contract changed; cannot resume"
+                )
             if journal["phase"] == "ready":
                 publish(config, journal)
                 return
             if journal["phase"] != "building" or not retry_incomplete:
-                raise LifecycleError("incomplete upgrade; use --retry-incomplete after inspection")
+                raise LifecycleError(
+                    "incomplete upgrade; use --retry-incomplete after inspection"
+                )
             if staging.exists():
                 # Preserve interrupted output. Never remove a cluster automatically.
                 abandoned = staging.with_name(staging.name + ".interrupted")
                 if abandoned.exists():
-                    raise LifecycleError(f"inspect preserved incomplete cluster: {abandoned}")
+                    raise LifecycleError(
+                        f"inspect preserved incomplete cluster: {abandoned}"
+                    )
                 require_stopped(config["package"], staging)
                 staging.rename(abandoned)
                 sync_directory(staging.parent)
             if source_copy.exists():
                 abandoned = source_copy.with_name(source_copy.name + ".interrupted")
                 if abandoned.exists() or (source_copy / "postmaster.pid").exists():
-                    raise LifecycleError(f"inspect preserved source copy: {source_copy}")
+                    raise LifecycleError(
+                        f"inspect preserved source copy: {source_copy}"
+                    )
                 source_copy.rename(abandoned)
                 sync_directory(source_copy.parent)
         # NixOS tmpfiles may provision an empty data directory. Removing only an
@@ -333,33 +422,53 @@ def upgrade(config, *, retry_incomplete=False):
             target.rmdir()
             sync_directory(target.parent)
         if target.exists() or staging.exists() or source_copy.exists():
-            raise LifecycleError("unregistered destination exists; explicit inspection required")
+            raise LifecycleError(
+                "unregistered destination exists; explicit inspection required"
+            )
         journal = {**intent, "phase": "building"}
         write_json(journal_path, journal)
         # pg_upgrade starts/stops the old server and changes its control file.
         # Give it a disposable offline copy; never modify the registered source.
         if settings.get("copy_command"):
-            run([*settings["copy_command"], source["data_dir"], source_copy], pass_fds=(lease,))
+            run(
+                [*settings["copy_command"], source["data_dir"], source_copy],
+                pass_fds=(lease,),
+            )
         else:
             shutil.copytree(source["data_dir"], source_copy)
         # Resolve NixOS' configuration symlinks inside the copy; external database
         # storage (tablespaces or WAL) was rejected above.
-        run([Path(config["package"]) / "bin/initdb", "-D", staging,
-             *settings.get("initdb_args", [])], pass_fds=(lease,))
+        run(
+            [
+                Path(config["package"]) / "bin/initdb",
+                "-D",
+                staging,
+                *settings.get("initdb_args", []),
+            ],
+            pass_fds=(lease,),
+        )
         with (staging / "postgresql.conf").open("a") as stream:
             stream.write("\n" + settings.get("extra_config", "") + "\n")
-        run([
-            Path(config["package"]) / "bin/pg_upgrade",
-            f"--old-bindir={source['package']}/bin", f"--new-bindir={config['package']}/bin",
-            f"--old-datadir={source_copy}", f"--new-datadir={staging}",
-            # Socket directory is private and cannot contact the production instance.
-            f"--socketdir={state}", "--old-port=55438", "--new-port=55439",
-            # A copied config (including postgresql.auto.conf) may explicitly
-            # point data_directory at the registered source. Temporary servers
-            # must use only the disposable trees, just like the normal launcher.
-            f"--old-options=-c listen_addresses='' -c data_directory={shlex.quote(str(source_copy))}",
-            f"--new-options=-c listen_addresses='' -c data_directory={shlex.quote(str(staging))}",
-        ], cwd=staging, pass_fds=(lease,))
+        run(
+            [
+                Path(config["package"]) / "bin/pg_upgrade",
+                f"--old-bindir={source['package']}/bin",
+                f"--new-bindir={config['package']}/bin",
+                f"--old-datadir={source_copy}",
+                f"--new-datadir={staging}",
+                # Socket directory is private and cannot contact the production instance.
+                f"--socketdir={state}",
+                "--old-port=55438",
+                "--new-port=55439",
+                # A copied config (including postgresql.auto.conf) may explicitly
+                # point data_directory at the registered source. Temporary servers
+                # must use only the disposable trees, just like the normal launcher.
+                f"--old-options=-c listen_addresses='' -c data_directory={shlex.quote(str(source_copy))}",
+                f"--new-options=-c listen_addresses='' -c data_directory={shlex.quote(str(staging))}",
+            ],
+            cwd=staging,
+            pass_fds=(lease,),
+        )
         require_stopped(config["package"], staging)
         validator = settings["validate_command"]
         if not validator:
@@ -369,7 +478,8 @@ def upgrade(config, *, retry_incomplete=False):
         if control_digest(source["data_dir"]) != digest:
             raise LifecycleError("registered source changed during offline upgrade")
         journal["identity"] = identity(
-            config, inspect_cluster(config["package"], staging, config["major"]),
+            config,
+            inspect_cluster(config["package"], staging, config["major"]),
         )
         sync_tree(staging)
         journal["phase"] = "ready"
@@ -405,22 +515,37 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check", help="read-only startup identity check")
     commands.add_parser("serve", help="exec PostgreSQL with its authority lease")
-    adoption = commands.add_parser("adopt", help="explicitly register an existing cluster")
+    adoption = commands.add_parser(
+        "adopt", help="explicitly register an existing cluster"
+    )
     adoption.add_argument("--system-identifier", required=True)
     for command in ("inspect-live", "adopt-live"):
-        live = commands.add_parser(command, help="verify the live local primary" + (
-            " and explicitly adopt it" if command == "adopt-live" else " without writes"
-        ))
+        live = commands.add_parser(
+            command,
+            help="verify the live local primary"
+            + (
+                " and explicitly adopt it"
+                if command == "adopt-live"
+                else " without writes"
+            ),
+        )
         live.add_argument("--system-identifier", required=True)
         live.add_argument("--socket-dir", default="/run/postgresql")
         live.add_argument("--port", type=int, default=5432)
-    commands.add_parser("inspect-recovery", help="read-only backup and record-level recovery admission")
-    preparation = commands.add_parser("prepare-recovery", help="explicit managed backup/snapshot/restore preparation before adoption")
+    commands.add_parser(
+        "inspect-recovery", help="read-only backup and record-level recovery admission"
+    )
+    preparation = commands.add_parser(
+        "prepare-recovery",
+        help="explicit managed backup/snapshot/restore preparation before adoption",
+    )
     preparation.add_argument("--preparation-config", type=Path, required=True)
     preparation.add_argument("--socket-dir", required=True)
     preparation.add_argument("--port", type=int, required=True)
     for command in ("snapshot-records", "certify-recovery"):
-        recovery_parser = commands.add_parser(command, help="execute record checks and publish bound recovery evidence")
+        recovery_parser = commands.add_parser(
+            command, help="execute record checks and publish bound recovery evidence"
+        )
         recovery_parser.add_argument("--socket-dir", required=True)
         recovery_parser.add_argument("--port", type=int, required=True)
         if command == "certify-recovery":
@@ -434,26 +559,51 @@ def main():
             adopt(config, args.system_identifier)
         elif args.command in ("inspect-live", "adopt-live"):
             operation = inspect_live if args.command == "inspect-live" else adopt_live
-            print(json.dumps(operation(config, args.system_identifier, args.socket_dir, args.port)))
+            print(
+                json.dumps(
+                    operation(
+                        config, args.system_identifier, args.socket_dir, args.port
+                    )
+                )
+            )
         elif args.command == "check":
             check(config)
         elif args.command == "serve":
             return serve(config)
-        elif args.command in ("inspect-recovery", "snapshot-records", "certify-recovery", "prepare-recovery"):
+        elif args.command in (
+            "inspect-recovery",
+            "snapshot-records",
+            "certify-recovery",
+            "prepare-recovery",
+        ):
             from . import recovery
+
             if args.command == "inspect-recovery":
                 result = recovery.check(config)
             elif args.command == "prepare-recovery":
-                result = recovery.prepare(config, json.loads(args.preparation_config.read_text()), args.socket_dir, args.port)
+                result = recovery.prepare(
+                    config,
+                    json.loads(args.preparation_config.read_text()),
+                    args.socket_dir,
+                    args.port,
+                )
             elif args.command == "snapshot-records":
                 result = recovery.snapshot(config, args.socket_dir, args.port)
             else:
-                result = recovery.certify(config, args.data_dir, args.socket_dir, args.port)
+                result = recovery.certify(
+                    config, args.data_dir, args.socket_dir, args.port
+                )
             # Receipts expose digests, never private query results or records.
             print(json.dumps(result, sort_keys=True))
         else:
             upgrade(config, retry_incomplete=args.retry_incomplete)
-    except (LifecycleError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+    except (
+        LifecycleError,
+        OSError,
+        ValueError,
+        KeyError,
+        subprocess.SubprocessError,
+    ) as error:
         print(f"harbor-db-postgres: {error}", file=sys.stderr)
         return 1
     return 0

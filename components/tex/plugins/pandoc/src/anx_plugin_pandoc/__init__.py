@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 # Context parsing
 # ---------------------------------------------------------------------------
 
+
 def parse_context(argv: list[str] | None = None) -> dict:
     """Return the ``--plugin-context`` JSON parsed into a dict."""
     parser = argparse.ArgumentParser(
@@ -71,6 +72,7 @@ def parse_context(argv: list[str] | None = None) -> dict:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve(article_dir: Path, path_str: str | None) -> Path | None:
     """Resolve a relative path against *article_dir*, or return ``None``."""
     if not path_str:
@@ -82,6 +84,7 @@ def _resolve(article_dir: Path, path_str: str | None) -> Path | None:
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
+
 
 def export_odt(context: dict) -> dict:
     """Convert a LaTeX manuscript to ODT via pandoc.
@@ -108,9 +111,12 @@ def export_odt(context: dict) -> dict:
     cmd = [
         pandoc_binary,
         str(tex_path),
-        "--from", "latex",
-        "--to", "odt",
-        "--output", str(output_path),
+        "--from",
+        "latex",
+        "--to",
+        "odt",
+        "--output",
+        str(output_path),
     ]
 
     # Bibliography  (optional; missing file is a warning, not a hard error)
@@ -153,8 +159,7 @@ def export_odt(context: dict) -> dict:
         return {
             "status": "error",
             "error": (
-                f"pandoc failed (exit {proc.returncode}):\n"
-                f"{proc.stderr.strip()}"
+                f"pandoc failed (exit {proc.returncode}):\n{proc.stderr.strip()}"
             ),
         }
 
@@ -167,6 +172,7 @@ def export_odt(context: dict) -> dict:
 # ---------------------------------------------------------------------------
 # CLI entry point  (also invoked via ``python -m anx_plugin_pandoc``)
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point.

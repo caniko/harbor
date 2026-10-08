@@ -71,13 +71,13 @@
     };
   in
     {
-        inherit lib;
+      inherit lib;
 
-        templates.default = {
-          path = ./templates/default;
-          description = "Python uv project with harbor-py";
-        };
-      }
+      templates.default = {
+        path = ./templates/default;
+        description = "Python uv project with harbor-py";
+      };
+    }
     // flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = lib.mkPkgs {inherit system;};

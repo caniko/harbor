@@ -25,12 +25,12 @@ should lock a qualified Harbor revision before building.
 All helpers take a consumer-owned `pkgs` argument; Harbor does not introduce a
 second package set or a global overlay.
 
-| Helper | Contract |
-| --- | --- |
-| `mkGoToolchain { pkgs; go?; gopls?; golangciLint?; }` | Returns `go`, `gopls`, `golangciLint`, and `buildGoModule`. Default tools are built with the selected compiler. |
-| `mkGoDevShellFragment { pkgs; toolchain?; cgo?; }` | Returns `{ packages, env, shellHook }` for `harbor-meta.lib.devShell.mkShell`. CGO defaults to enabled with a C compiler and pkg-config. |
-| `mkGoDevShell { pkgs; toolchain?; cgo?; packages?; env?; extraShellHook?; mkShellArgs?; }` | Convenience shell; extra environment values override the fragment defaults. Use `mkShellArgs.buildInputs` for native libraries. |
-| `mkGoPackage { pkgs; toolchain?; ... }` | Delegates remaining arguments to the toolchain's Nixpkgs `buildGoModule`. Sets `env.GOTOOLCHAIN = "local"` by default. |
+| Helper                                                                                     | Contract                                                                                                                                 |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `mkGoToolchain { pkgs; go?; gopls?; golangciLint?; }`                                      | Returns `go`, `gopls`, `golangciLint`, and `buildGoModule`. Default tools are built with the selected compiler.                          |
+| `mkGoDevShellFragment { pkgs; toolchain?; cgo?; }`                                         | Returns `{ packages, env, shellHook }` for `harbor-meta.lib.devShell.mkShell`. CGO defaults to enabled with a C compiler and pkg-config. |
+| `mkGoDevShell { pkgs; toolchain?; cgo?; packages?; env?; extraShellHook?; mkShellArgs?; }` | Convenience shell; extra environment values override the fragment defaults. Use `mkShellArgs.buildInputs` for native libraries.          |
+| `mkGoPackage { pkgs; toolchain?; ... }`                                                    | Delegates remaining arguments to the toolchain's Nixpkgs `buildGoModule`. Sets `env.GOTOOLCHAIN = "local"` by default.                   |
 
 `mkGoPackage` accepts the upstream builder's argument form, including attribute
 sets for `env`, `vendorHash`, `proxyVendor`, `modRoot`, `subPackages`, `tags`,

@@ -4,17 +4,17 @@ Harbor exports plain treefmt-nix modules under `treefmtModules`. Import only
 the languages you need. Language modules do not import a base module, select
 a project root, install toolchain overlays, or exclude consumer directories.
 
-| Owner | Export | Formatter |
-| --- | --- | --- |
-| harbor-meta | `treefmtModules.nix` | Alejandra |
-| harbor-meta | `treefmtModules.toml` | Taplo |
-| harbor-rs | `treefmtModules.rust` | rustfmt |
-| harbor-js | `treefmtModules.javascript` | Prettier for JS, TS, and JSON |
-| harbor-py | `treefmtModules.python` | Ruff format, not lint/fix |
-| harbor-android | `treefmtModules.java` | google-java-format |
-| harbor-android | `treefmtModules.kotlin` | ktfmt |
-| harbor-eth | `treefmtModules.solidity` | Forge fmt |
-| harbor-tex | `treefmtModules.latex` | latexindent |
+| Owner          | Export                      | Formatter                     |
+| -------------- | --------------------------- | ----------------------------- |
+| harbor-meta    | `treefmtModules.nix`        | Alejandra                     |
+| harbor-meta    | `treefmtModules.toml`       | Taplo                         |
+| harbor-rs      | `treefmtModules.rust`       | rustfmt                       |
+| harbor-js      | `treefmtModules.javascript` | Prettier for JS, TS, and JSON |
+| harbor-py      | `treefmtModules.python`     | Ruff format, not lint/fix     |
+| harbor-android | `treefmtModules.java`       | google-java-format            |
+| harbor-android | `treefmtModules.kotlin`     | ktfmt                         |
+| harbor-eth     | `treefmtModules.solidity`   | Forge fmt                     |
+| harbor-tex     | `treefmtModules.latex`      | latexindent                   |
 
 `harbor-db` and `harbor-sol` compose the Rust module, not copies of it.
 `harbor-ntt` formats its Nix/TOML infrastructure; NTT consumers explicitly
@@ -145,35 +145,35 @@ The `ruff check *--fix*` rule is argument-aware: a plain `ruff check .` lint
 stays allowed. Multi-purpose tools are denied only at their formatting
 subcommand, so build, test, plan, and lint invocations are unaffected.
 
-| Denied pattern | Owner |
-| --- | --- |
-| `alejandra *` | harbor-meta `treefmtModules.nix` (Alejandra) |
-| `taplo *` | harbor-meta `treefmtModules.toml` (Taplo) |
-| `rustfmt *` | harbor-rs `treefmtModules.rust` (rustfmt) |
-| `cargo fmt *` | harbor-rs `treefmtModules.rust` (rustfmt via cargo) |
-| `prettier *` | harbor-js `treefmtModules.javascript` (Prettier) |
-| `npx prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
-| `pnpm exec prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
-| `pnpm dlx prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
-| `yarn dlx prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
-| `bunx prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
-| `ruff format *` | harbor-py `treefmtModules.python` (Ruff format) |
-| `ruff check *--fix*` | harbor-py `treefmtModules.python` (lint fix writes) |
-| `google-java-format *` | harbor-android `treefmtModules.java` |
-| `ktfmt *` | harbor-android `treefmtModules.kotlin` |
-| `forge fmt *` | harbor-eth `treefmtModules.solidity` (Forge fmt) |
-| `latexindent *` | harbor-tex `treefmtModules.latex` |
-| `deadnix *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
-| `gofmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
-| `just --fmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
-| `statix *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
-| `statix-fix *` | fleet treefmt programs (treefmt invokes statix via the `statix-fix` wrapper binary) |
-| `terraform fmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
-| `shfmt *` | root policy (`agent_safety.nix`; treefmt `--fail-on-change` is the gate) |
-| `shfmt -d *` | root policy (the globally allowed read-only shape) |
-| `tofu fmt *` | root policy (OpenTofu formatting) |
-| `go fmt *` | root policy (Go formatting) |
-| `nix fmt *` | root policy (`nix fmt` realises arbitrary flake outputs) |
+| Denied pattern         | Owner                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `alejandra *`          | harbor-meta `treefmtModules.nix` (Alejandra)                                        |
+| `taplo *`              | harbor-meta `treefmtModules.toml` (Taplo)                                           |
+| `rustfmt *`            | harbor-rs `treefmtModules.rust` (rustfmt)                                           |
+| `cargo fmt *`          | harbor-rs `treefmtModules.rust` (rustfmt via cargo)                                 |
+| `prettier *`           | harbor-js `treefmtModules.javascript` (Prettier)                                    |
+| `npx prettier *`       | harbor-js `treefmtModules.javascript` (exec twin)                                   |
+| `pnpm exec prettier *` | harbor-js `treefmtModules.javascript` (exec twin)                                   |
+| `pnpm dlx prettier *`  | harbor-js `treefmtModules.javascript` (exec twin)                                   |
+| `yarn dlx prettier *`  | harbor-js `treefmtModules.javascript` (exec twin)                                   |
+| `bunx prettier *`      | harbor-js `treefmtModules.javascript` (exec twin)                                   |
+| `ruff format *`        | harbor-py `treefmtModules.python` (Ruff format)                                     |
+| `ruff check *--fix*`   | harbor-py `treefmtModules.python` (lint fix writes)                                 |
+| `google-java-format *` | harbor-android `treefmtModules.java`                                                |
+| `ktfmt *`              | harbor-android `treefmtModules.kotlin`                                              |
+| `forge fmt *`          | harbor-eth `treefmtModules.solidity` (Forge fmt)                                    |
+| `latexindent *`        | harbor-tex `treefmtModules.latex`                                                   |
+| `deadnix *`            | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`)              |
+| `gofmt *`              | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`)              |
+| `just --fmt *`         | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`)              |
+| `statix *`             | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`)              |
+| `statix-fix *`         | fleet treefmt programs (treefmt invokes statix via the `statix-fix` wrapper binary) |
+| `terraform fmt *`      | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`)              |
+| `shfmt *`              | root policy (`agent_safety.nix`; treefmt `--fail-on-change` is the gate)            |
+| `shfmt -d *`           | root policy (the globally allowed read-only shape)                                  |
+| `tofu fmt *`           | root policy (OpenTofu formatting)                                                   |
+| `go fmt *`             | root policy (Go formatting)                                                         |
+| `nix fmt *`            | root policy (`nix fmt` realises arbitrary flake outputs)                            |
 
 Every Harbor-rendered config also carries the top-level marker
 `"harbor.meta/opencode-config": "1"`. `harbor-opencode sync` refuses to

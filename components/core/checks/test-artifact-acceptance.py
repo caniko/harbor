@@ -9,8 +9,11 @@ import unittest
 
 
 spec = importlib.util.spec_from_file_location(
-    "acceptance", os.environ.get("HARBOR_ACCEPTANCE_MODULE",
-                               Path(__file__).parent.parent / "lib/artifact-acceptance.py")
+    "acceptance",
+    os.environ.get(
+        "HARBOR_ACCEPTANCE_MODULE",
+        Path(__file__).parent.parent / "lib/artifact-acceptance.py",
+    ),
 )
 acceptance = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(acceptance)
@@ -18,11 +21,13 @@ spec.loader.exec_module(acceptance)
 
 class AcceptanceContract(unittest.TestCase):
     def test_report_requires_every_test_and_rejects_skips_and_duplicates(self):
-        for tests in [[], [{"id": "other", "status": "passed"}],
-                      [{"id": "review", "status": "skipped"}],
-                      [{"id": "review", "status": "passed"}] * 2,
-                      [{"id": "review", "status": "passed"},
-                       {"id": "other", "status": "failed"}]]:
+        for tests in [
+            [],
+            [{"id": "other", "status": "passed"}],
+            [{"id": "review", "status": "skipped"}],
+            [{"id": "review", "status": "passed"}] * 2,
+            [{"id": "review", "status": "passed"}, {"id": "other", "status": "failed"}],
+        ]:
             with self.subTest(tests=tests), self.assertRaises(ValueError):
                 acceptance.validate_report({"tests": tests}, ["review"])
         acceptance.validate_report(
@@ -63,8 +68,9 @@ class AcceptanceContract(unittest.TestCase):
             (root / "index.html").write_text("landing")
             (root / "app/bundle.wasm").write_bytes(b"correct")
             identity = acceptance.snapshot({"artifact": directory})
-            server = ThreadingHTTPServer(("127.0.0.1", 0),
-                                         partial(SimpleHTTPRequestHandler, directory=directory))
+            server = ThreadingHTTPServer(
+                ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=directory)
+            )
             thread = Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
@@ -82,7 +88,9 @@ class AcceptanceContract(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "index.html").write_text("correct")
-            identity = acceptance.snapshot({"artifact": directory, "backend": directory})
+            identity = acceptance.snapshot(
+                {"artifact": directory, "backend": directory}
+            )
             with self.assertRaisesRegex(ValueError, "backend does not match"):
                 acceptance.verify_local(identity, root, root / "old-backend")
 

@@ -100,10 +100,14 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     write = commands.add_parser("write", help="durably publish stdin to a file")
     write.add_argument("destination", type=Path)
-    publish = commands.add_parser("publish-tree", help="flush and publish an offline tree")
+    publish = commands.add_parser(
+        "publish-tree", help="flush and publish an offline tree"
+    )
     publish.add_argument("source", type=Path)
     publish.add_argument("destination", type=Path)
-    publish_file_parser = commands.add_parser("publish-file", help="flush and publish an immutable file")
+    publish_file_parser = commands.add_parser(
+        "publish-file", help="flush and publish an immutable file"
+    )
     publish_file_parser.add_argument("source", type=Path)
     publish_file_parser.add_argument("destination", type=Path)
     args = parser.parse_args()

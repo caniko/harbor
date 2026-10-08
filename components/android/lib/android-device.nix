@@ -15,7 +15,8 @@
   lib ? pkgs.lib,
 }: let
   validPackage = value:
-    value == null
+    value
+    == null
     || (builtins.isAttrs value
       && builtins.hasAttr "type" value
       && value.type == "derivation");

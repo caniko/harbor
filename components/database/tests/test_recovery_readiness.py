@@ -27,24 +27,40 @@ class RecoveryReadinessTest(unittest.TestCase):
         (self.backup / "LAST_SUCCESS").write_text("base-1\n")
         (self.base / "PG_VERSION").write_text("18\n")
         (self.base / "backup_manifest").write_text('{"WAL-Ranges": []}\n')
-        write_json(self.backup / "base/base-1.meta.json", {
-            "backup_id": "base-1", "system_identifier": "12345", "pg_major": 18,
-            "epoch_id": "epoch-1", "backup_stop_lsn": "0/100", "post_backup_lsn": "0/200",
-        })
+        write_json(
+            self.backup / "base/base-1.meta.json",
+            {
+                "backup_id": "base-1",
+                "system_identifier": "12345",
+                "pg_major": 18,
+                "epoch_id": "epoch-1",
+                "backup_stop_lsn": "0/100",
+                "post_backup_lsn": "0/200",
+            },
+        )
         self.config = {
-            "data_dir": str(self.root / "primary"), "major": "18", "package": "/postgres18",
+            "data_dir": str(self.root / "primary"),
+            "major": "18",
+            "package": "/postgres18",
             "recovery": {
-                "system_identifier": "12345", "backup_root": str(self.backup),
+                "system_identifier": "12345",
+                "backup_root": str(self.backup),
                 "snapshot_file": str(self.backup / "evidence/records.json"),
                 "receipt_file": str(self.backup / "evidence/recovery.json"),
-                "off_host_receipt_file": None, "source_hostname": "primary-host",
-                "max_age_seconds": 3600, "verify_timeout_seconds": 900,
-                "record_checks": [{"name": "reviews", "database": "app", "sql": "SELECT records"}],
+                "off_host_receipt_file": None,
+                "source_hostname": "primary-host",
+                "max_age_seconds": 3600,
+                "verify_timeout_seconds": 900,
+                "record_checks": [
+                    {"name": "reviews", "database": "app", "sql": "SELECT records"}
+                ],
             },
         }
         self.now = 10000
         os.utime(self.base / "backup_manifest", (self.now, self.now))
-        self.live = patch.object(postgres, "inspect_live", return_value={"system_identifier": "12345"})
+        self.live = patch.object(
+            postgres, "inspect_live", return_value={"system_identifier": "12345"}
+        )
         self.live.start()
         self.addCleanup(self.live.stop)
         self.probe = patch.object(postgres, "inspect_cluster", return_value="12345")
@@ -59,8 +75,12 @@ class RecoveryReadinessTest(unittest.TestCase):
         self.restored = self.root / "restored"
         self.restored.mkdir()
         self.observed = {
-            "data_dir": str(self.restored), "major": "18", "system_identifier": "12345",
-            "read_only": "on", "in_recovery": False, "replay_lsn": "0/200",
+            "data_dir": str(self.restored),
+            "major": "18",
+            "system_identifier": "12345",
+            "read_only": "on",
+            "in_recovery": False,
+            "replay_lsn": "0/200",
         }
 
     def snapshot(self):
@@ -68,21 +88,35 @@ class RecoveryReadinessTest(unittest.TestCase):
 
     def certify(self, **kwargs):
         with patch.object(recovery, "inspect_restored", return_value=self.observed):
-            return recovery.certify(self.config, str(self.restored), "/restore/socket", 55432,
-                                    now=self.now, hostname="primary-host", **kwargs)
+            return recovery.certify(
+                self.config,
+                str(self.restored),
+                "/restore/socket",
+                55432,
+                now=self.now,
+                hostname="primary-host",
+                **kwargs,
+            )
 
     def test_missing_evidence_is_not_recovery_readiness(self):
         with self.assertRaisesRegex(ValueError, "snapshot"):
             recovery.check(self.config, now=self.now)
         self.assertFalse(Path(self.config["recovery"]["receipt_file"]).exists())
 
-    def test_preflight_requires_executed_receipts_but_defers_backup_byte_verification(self):
+    def test_preflight_requires_executed_receipts_but_defers_backup_byte_verification(
+        self,
+    ):
         self.snapshot()
         with self.assertRaisesRegex(ValueError, "acceptance"):
             recovery.preflight(self.config, now=self.now)
         self.certify()
-        with patch.object(recovery, "verify_backup", side_effect=ValueError("backup bytes corrupted")) as verifier:
-            self.assertEqual(recovery.preflight(self.config, now=self.now)["status"], "preflight-ready")
+        with patch.object(
+            recovery, "verify_backup", side_effect=ValueError("backup bytes corrupted")
+        ) as verifier:
+            self.assertEqual(
+                recovery.preflight(self.config, now=self.now)["status"],
+                "preflight-ready",
+            )
             verifier.assert_not_called()
             with self.assertRaisesRegex(ValueError, "corrupted"):
                 recovery.check(self.config, now=self.now)
@@ -92,7 +126,9 @@ class RecoveryReadinessTest(unittest.TestCase):
         self.certify()
         with self.assertRaisesRegex(ValueError, "stale"):
             recovery.preflight(self.config, now=self.now + 3601)
-        self.config["recovery"]["record_checks"][0]["sql"] = "SELECT incompatible_schema"
+        self.config["recovery"]["record_checks"][0]["sql"] = (
+            "SELECT incompatible_schema"
+        )
         with self.assertRaisesRegex(ValueError, "contract"):
             recovery.preflight(self.config, now=self.now)
 
@@ -109,12 +145,20 @@ class RecoveryReadinessTest(unittest.TestCase):
         self.snapshot()
         result = self.certify()
         self.assertEqual(result["status"], "ready")
-        self.assertEqual(result["manifest_sha256"], hashlib.sha256((self.base / "backup_manifest").read_bytes()).hexdigest())
-        self.assertEqual(recovery.check(self.config, now=self.now)["backup_id"], "base-1")
+        self.assertEqual(
+            result["manifest_sha256"],
+            hashlib.sha256((self.base / "backup_manifest").read_bytes()).hexdigest(),
+        )
+        self.assertEqual(
+            recovery.check(self.config, now=self.now)["backup_id"], "base-1"
+        )
 
     def test_record_loss_refuses_publication(self):
         self.snapshot()
-        with patch.object(recovery, "query", return_value="2:missing-review\n"), self.assertRaisesRegex(ValueError, "records differ"):
+        with (
+            patch.object(recovery, "query", return_value="2:missing-review\n"),
+            self.assertRaisesRegex(ValueError, "records differ"),
+        ):
             self.certify()
         self.assertFalse(Path(self.config["recovery"]["receipt_file"]).exists())
 
@@ -153,14 +197,27 @@ class RecoveryReadinessTest(unittest.TestCase):
 
     def test_primary_writable_or_incomplete_restore_cannot_be_certified(self):
         self.snapshot()
-        for changes in ({"data_dir": self.config["data_dir"]}, {"read_only": "off"},
-                        {"in_recovery": True}, {"replay_lsn": "0/100"},
-                        {"system_identifier": "99999"}):
+        for changes in (
+            {"data_dir": self.config["data_dir"]},
+            {"read_only": "off"},
+            {"in_recovery": True},
+            {"replay_lsn": "0/100"},
+            {"system_identifier": "99999"},
+        ):
             with self.subTest(changes=changes):
                 observed = {**self.observed, **changes}
-                with patch.object(recovery, "inspect_restored", return_value=observed), self.assertRaises(ValueError):
-                    recovery.certify(self.config, str(self.restored), "/restore/socket", 55432,
-                                     now=self.now, hostname="primary-host")
+                with (
+                    patch.object(recovery, "inspect_restored", return_value=observed),
+                    self.assertRaises(ValueError),
+                ):
+                    recovery.certify(
+                        self.config,
+                        str(self.restored),
+                        "/restore/socket",
+                        55432,
+                        now=self.now,
+                        hostname="primary-host",
+                    )
         self.assertFalse(Path(self.config["recovery"]["receipt_file"]).exists())
 
     def test_off_host_acceptance_must_be_independent_and_same_backup(self):
@@ -178,10 +235,20 @@ class RecoveryReadinessTest(unittest.TestCase):
         # make an unrelated copy of the local receipt establish remote recovery.
         self.config["recovery"]["receipt_file"] = str(off_host)
         with patch.object(recovery, "inspect_restored", return_value=self.observed):
-            recovery.certify(self.config, str(self.restored), "/restore/socket", 55432,
-                             now=self.now, hostname="recovery-host")
-        self.config["recovery"]["receipt_file"] = str(self.backup / "evidence/recovery.json")
-        self.assertEqual(recovery.check(self.config, now=self.now)["off_host"], "recovery-host")
+            recovery.certify(
+                self.config,
+                str(self.restored),
+                "/restore/socket",
+                55432,
+                now=self.now,
+                hostname="recovery-host",
+            )
+        self.config["recovery"]["receipt_file"] = str(
+            self.backup / "evidence/recovery.json"
+        )
+        self.assertEqual(
+            recovery.check(self.config, now=self.now)["off_host"], "recovery-host"
+        )
 
     def test_readiness_never_creates_a_missing_backup_lock(self):
         (self.backup / "locks/mutate").unlink()
@@ -192,7 +259,10 @@ class RecoveryReadinessTest(unittest.TestCase):
     def test_concurrent_backup_and_evidence_publication_are_rejected(self):
         self.snapshot()
         self.certify()
-        for path in (self.backup / "locks/mutate", self.backup / "evidence/recovery.lock"):
+        for path in (
+            self.backup / "locks/mutate",
+            self.backup / "evidence/recovery.lock",
+        ):
             with self.subTest(path=path), lock(path):
                 with self.assertRaises(BlockingIOError):
                     recovery.check(self.config, now=self.now)
@@ -212,18 +282,36 @@ class RecoveryReadinessTest(unittest.TestCase):
                 self.config["state_dir"] = str(state)
 
                 def publish(path, value):
-                    for anchor in (self.backup / "locks/mutate", self.backup / "evidence/recovery.lock"):
+                    for anchor in (
+                        self.backup / "locks/mutate",
+                        self.backup / "evidence/recovery.lock",
+                    ):
                         with self.assertRaises(BlockingIOError), lock(anchor):
-                            self.fail("recovery evidence changed before authority publication")
+                            self.fail(
+                                "recovery evidence changed before authority publication"
+                            )
                     write_json(path, value)
 
-                with patch.object(recovery.time, "time", return_value=self.now), patch.object(postgres, "write_json", side_effect=publish):
+                with (
+                    patch.object(recovery.time, "time", return_value=self.now),
+                    patch.object(postgres, "write_json", side_effect=publish),
+                ):
                     if operation == "offline":
                         postgres.adopt(self.config, "12345")
                     else:
-                        postgres.adopt_live(self.config, "12345", "/run/postgresql", 5432)
-                self.assertEqual(json.loads((state / "identity.json").read_text())["system_identifier"], "12345")
-                for anchor in (self.backup / "locks/mutate", self.backup / "evidence/recovery.lock"):
+                        postgres.adopt_live(
+                            self.config, "12345", "/run/postgresql", 5432
+                        )
+                self.assertEqual(
+                    json.loads((state / "identity.json").read_text())[
+                        "system_identifier"
+                    ],
+                    "12345",
+                )
+                for anchor in (
+                    self.backup / "locks/mutate",
+                    self.backup / "evidence/recovery.lock",
+                ):
                     with lock(anchor):
                         pass
 
@@ -237,8 +325,27 @@ class RecoveryReadinessTest(unittest.TestCase):
 
     def test_record_queries_scrub_routing_and_normalize_session_output(self):
         self.query.stop()
-        with patch.dict(os.environ, {"PGHOST": "unrelated", "PGOPTIONS": "-c TimeZone=Pacific/Auckland", "PGSERVICE": "other"}), patch.object(postgres, "run", return_value=subprocess.CompletedProcess([], 0, "record-digest\n")) as execute:
-            self.assertEqual(recovery.query(self.config, "/restore/socket", 55432, "app", "SELECT records"), "record-digest\n")
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "PGHOST": "unrelated",
+                    "PGOPTIONS": "-c TimeZone=Pacific/Auckland",
+                    "PGSERVICE": "other",
+                },
+            ),
+            patch.object(
+                postgres,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0, "record-digest\n"),
+            ) as execute,
+        ):
+            self.assertEqual(
+                recovery.query(
+                    self.config, "/restore/socket", 55432, "app", "SELECT records"
+                ),
+                "record-digest\n",
+            )
         args, kwargs = execute.call_args
         self.assertIn("--host=/restore/socket", args[0])
         self.assertNotIn("PGHOST", kwargs["env"])
@@ -258,7 +365,11 @@ class RecoveryReadinessTest(unittest.TestCase):
             self.certify()
 
     def test_managed_preparation_creates_first_evidence_and_reuses_it_on_retry(self):
-        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"], "restore_command": ["/fixture/restore"]}
+        preparation = {
+            "readiness_command": ["/fixture/readiness"],
+            "backup_command": ["/fixture/backup"],
+            "restore_command": ["/fixture/restore"],
+        }
         off_host = self.backup / "evidence/off-host.json"
         self.config["recovery"]["off_host_receipt_file"] = str(off_host)
 
@@ -266,11 +377,20 @@ class RecoveryReadinessTest(unittest.TestCase):
             if argv == preparation["restore_command"]:
                 self.certify()
 
-        with patch.object(recovery.time, "time", return_value=self.now), patch.object(postgres, "run", side_effect=run) as execute:
+        with (
+            patch.object(recovery.time, "time", return_value=self.now),
+            patch.object(postgres, "run", side_effect=run) as execute,
+        ):
             with self.assertRaisesRegex(ValueError, "off-host"):
                 recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
-            self.assertEqual([call.args[0] for call in execute.call_args_list],
-                             [preparation["readiness_command"], preparation["backup_command"], preparation["restore_command"]])
+            self.assertEqual(
+                [call.args[0] for call in execute.call_args_list],
+                [
+                    preparation["readiness_command"],
+                    preparation["backup_command"],
+                    preparation["restore_command"],
+                ],
+            )
             execute.reset_mock()
             with self.assertRaisesRegex(ValueError, "off-host"):
                 recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
@@ -279,25 +399,57 @@ class RecoveryReadinessTest(unittest.TestCase):
 
     def test_preparation_refuses_stale_snapshot_without_replacing_backup(self):
         self.snapshot()
-        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"], "restore_command": ["/fixture/restore"]}
-        with patch.object(recovery.time, "time", return_value=self.now + 3601), patch.object(postgres, "run") as execute:
+        preparation = {
+            "readiness_command": ["/fixture/readiness"],
+            "backup_command": ["/fixture/backup"],
+            "restore_command": ["/fixture/restore"],
+        }
+        with (
+            patch.object(recovery.time, "time", return_value=self.now + 3601),
+            patch.object(postgres, "run") as execute,
+        ):
             with self.assertRaisesRegex(ValueError, "timestamp"):
                 recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
             execute.assert_called_once_with(preparation["readiness_command"])
 
     def test_interrupted_snapshot_resumes_the_same_backup_without_recapture(self):
-        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"], "restore_command": ["/fixture/restore"]}
-        with patch.object(recovery.time, "time", return_value=self.now), patch.object(postgres, "run") as execute:
-            with patch.object(recovery, "snapshot", side_effect=RuntimeError("interrupted")), self.assertRaisesRegex(RuntimeError, "interrupted"):
+        preparation = {
+            "readiness_command": ["/fixture/readiness"],
+            "backup_command": ["/fixture/backup"],
+            "restore_command": ["/fixture/restore"],
+        }
+        with (
+            patch.object(recovery.time, "time", return_value=self.now),
+            patch.object(postgres, "run") as execute,
+        ):
+            with (
+                patch.object(
+                    recovery, "snapshot", side_effect=RuntimeError("interrupted")
+                ),
+                self.assertRaisesRegex(RuntimeError, "interrupted"),
+            ):
                 recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
             execute.reset_mock()
-            with patch.object(recovery, "snapshot", side_effect=RuntimeError("resumed")), self.assertRaisesRegex(RuntimeError, "resumed"):
+            with (
+                patch.object(recovery, "snapshot", side_effect=RuntimeError("resumed")),
+                self.assertRaisesRegex(RuntimeError, "resumed"),
+            ):
                 recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
             execute.assert_called_once_with(preparation["readiness_command"])
 
     def test_failed_wal_readiness_does_not_capture_a_backup(self):
-        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"], "restore_command": ["/fixture/restore"]}
-        with patch.object(postgres, "run", side_effect=subprocess.CalledProcessError(1, preparation["readiness_command"])) as execute:
+        preparation = {
+            "readiness_command": ["/fixture/readiness"],
+            "backup_command": ["/fixture/backup"],
+            "restore_command": ["/fixture/restore"],
+        }
+        with patch.object(
+            postgres,
+            "run",
+            side_effect=subprocess.CalledProcessError(
+                1, preparation["readiness_command"]
+            ),
+        ) as execute:
             with self.assertRaises(subprocess.CalledProcessError):
                 recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
             execute.assert_called_once_with(preparation["readiness_command"])
@@ -306,13 +458,25 @@ class RecoveryReadinessTest(unittest.TestCase):
     def test_export_runs_after_local_acceptance_before_missing_off_host_abort(self):
         self.snapshot()
         self.certify()
-        self.config["recovery"]["off_host_receipt_file"] = str(self.backup / "evidence/off-host.json")
-        preparation = {"readiness_command": ["/fixture/readiness"], "backup_command": ["/fixture/backup"],
-                       "restore_command": ["/fixture/restore"], "export_command": ["/fixture/export"]}
-        with patch.object(recovery.time, "time", return_value=self.now), patch.object(postgres, "run") as execute, self.assertRaisesRegex(ValueError, "off-host"):
+        self.config["recovery"]["off_host_receipt_file"] = str(
+            self.backup / "evidence/off-host.json"
+        )
+        preparation = {
+            "readiness_command": ["/fixture/readiness"],
+            "backup_command": ["/fixture/backup"],
+            "restore_command": ["/fixture/restore"],
+            "export_command": ["/fixture/export"],
+        }
+        with (
+            patch.object(recovery.time, "time", return_value=self.now),
+            patch.object(postgres, "run") as execute,
+            self.assertRaisesRegex(ValueError, "off-host"),
+        ):
             recovery.prepare(self.config, preparation, "/run/postgresql", 5432)
-        self.assertEqual([call.args[0] for call in execute.call_args_list],
-                         [preparation["readiness_command"], preparation["export_command"]])
+        self.assertEqual(
+            [call.args[0] for call in execute.call_args_list],
+            [preparation["readiness_command"], preparation["export_command"]],
+        )
 
     def test_managed_import_rejects_local_or_unbound_receipts_before_publication(self):
         self.snapshot()
@@ -321,15 +485,20 @@ class RecoveryReadinessTest(unittest.TestCase):
         self.config["recovery"]["off_host_receipt_file"] = str(off_host)
         incoming = self.root / "incoming.json"
         receipt = json.loads(Path(self.config["recovery"]["receipt_file"]).read_text())
-        for changes in ({}, {"executor_host": "remote", "backup_id": "other"},
-                        {"executor_host": "remote", "records": {"reviews": "0" * 64}}):
+        for changes in (
+            {},
+            {"executor_host": "remote", "backup_id": "other"},
+            {"executor_host": "remote", "records": {"reviews": "0" * 64}},
+        ):
             write_json(incoming, receipt | changes)
             with self.assertRaises(ValueError):
                 recovery.import_off_host(self.config, incoming, now=self.now)
             self.assertFalse(off_host.exists())
         write_json(incoming, receipt | {"executor_host": "independent-fixture"})
         recovery.import_off_host(self.config, incoming, now=self.now)
-        self.assertEqual(recovery.check(self.config, now=self.now)["off_host"], "independent-fixture")
+        self.assertEqual(
+            recovery.check(self.config, now=self.now)["off_host"], "independent-fixture"
+        )
 
 
 if __name__ == "__main__":

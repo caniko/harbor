@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use clap::Parser;
-use miette::{miette, Context, IntoDiagnostic, Result};
-use reqwest::blocking::{Client, Response};
+use miette::{Context, IntoDiagnostic, Result, miette};
 use reqwest::StatusCode;
+use reqwest::blocking::{Client, Response};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const PRODUCTION_API_BASE: &str = "https://zenodo.org/api";
 const PRODUCTION_AUTH: &str = "https://zenodo.org/oauth/authorize";

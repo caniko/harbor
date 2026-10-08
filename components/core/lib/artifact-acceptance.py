@@ -20,16 +20,25 @@ def files(root):
         if relative.split("/")[0] == ".harbor":
             continue
         if path.is_file():
-            result.append({"path": relative, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+            result.append(
+                {
+                    "path": relative,
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
+            )
     if not result:
         raise ValueError(f"artifact has no files: {root}")
     return result
 
 
 def snapshot(roots):
-    return {"schema_version": 1, "artifacts": {
-        name: {"root": str(root), "files": files(root)} for name, root in roots.items()
-    }}
+    return {
+        "schema_version": 1,
+        "artifacts": {
+            name: {"root": str(root), "files": files(root)}
+            for name, root in roots.items()
+        },
+    }
 
 
 def validate_report(report, required):
@@ -43,7 +52,9 @@ def validate_report(report, required):
             raise ValueError(f"invalid or duplicate acceptance test: {identifier}")
         seen.add(identifier)
         if test.get("status") != "passed":
-            raise ValueError(f"required acceptance run did not pass: {identifier}: {test.get('status')}")
+            raise ValueError(
+                f"required acceptance run did not pass: {identifier}: {test.get('status')}"
+            )
     missing = set(required) - seen
     if missing:
         raise ValueError(f"missing required acceptance tests: {sorted(missing)}")
@@ -66,8 +77,11 @@ def verify_local(manifest, root, backend=None):
 def verify_http(manifest, base_url, prefix):
     if urlsplit(base_url).scheme not in ("http", "https"):
         raise ValueError("HTTP verification requires an http(s) origin")
-    selected = [entry for entry in manifest["artifacts"]["artifact"]["files"]
-                if entry["path"] == "index.html" or entry["path"].startswith(prefix)]
+    selected = [
+        entry
+        for entry in manifest["artifacts"]["artifact"]["files"]
+        if entry["path"] == "index.html" or entry["path"].startswith(prefix)
+    ]
     if not selected or not any(entry["path"].startswith(prefix) for entry in selected):
         raise ValueError(f"manifest has no deployed assets under {prefix}")
     for entry in selected:
@@ -77,12 +91,16 @@ def verify_http(manifest, base_url, prefix):
                 raise ValueError(f"asset redirected or unavailable: {url}")
             digest = hashlib.sha256(response.read()).hexdigest()
         if digest != entry["sha256"]:
-            raise ValueError(f"served asset differs from accepted artifact: {entry['path']}")
+            raise ValueError(
+                f"served asset differs from accepted artifact: {entry['path']}"
+            )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["snapshot", "accept", "verify-local", "verify-http"])
+    parser.add_argument(
+        "action", choices=["snapshot", "accept", "verify-local", "verify-http"]
+    )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--roots", type=Path)
     parser.add_argument("--report", type=Path)
@@ -94,14 +112,21 @@ def main():
     parser.add_argument("--attempts", type=int, default=1)
     args = parser.parse_args()
     if args.action == "snapshot":
-        args.manifest.write_text(json.dumps(snapshot(json.loads(args.roots.read_text())), sort_keys=True))
+        args.manifest.write_text(
+            json.dumps(snapshot(json.loads(args.roots.read_text())), sort_keys=True)
+        )
         return
     manifest = json.loads(args.manifest.read_text())
     if args.action == "accept":
         report = json.loads(args.report.read_text())
         required = json.loads(args.required.read_text())
         validate_report(report, required)
-        if snapshot({name: value["root"] for name, value in manifest["artifacts"].items()}) != manifest:
+        if (
+            snapshot(
+                {name: value["root"] for name, value in manifest["artifacts"].items()}
+            )
+            != manifest
+        ):
             raise ValueError("artifacts changed during acceptance")
         manifest.update(required_tests=required, tests=report["tests"])
         args.manifest.write_text(json.dumps(manifest, sort_keys=True))

@@ -34,7 +34,8 @@ cores = 2
 kvm = true
 capture_results = true
 artifact_retention_days = 14
-extra_setup = ['''
+extra_setup = [
+  '''
 test "${RUNNER_ENVIRONMENT:-}" = github-hosted
 sudo install -d -m 1777 -o root -g root /var/cache/sccache
 test ! -L /var/cache/sccache
@@ -42,4 +43,5 @@ test "$(stat -c '%u:%a' /var/cache/sccache)" = 0:1777
 printf '%s\n' 'extra-sandbox-paths = /var/cache/sccache' 'log-lines = 250' | sudo tee -a /etc/nix/nix.conf
 sudo systemctl restart nix-daemon.service
 nix config show sandbox-paths | grep -F /var/cache/sccache
-''']
+''',
+]

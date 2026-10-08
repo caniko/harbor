@@ -35,14 +35,15 @@ in
       ]
       ++ lib.optional (rustToolchain != null) rustToolchain
       ++ extraPackages;
-    hook = ''
-      export ANDROID_NDK_HOME="${ndkRoot}"
-      export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
-      export ANDROID_SDK_ROOT="${sdkRoot}"
-      export ANDROID_AVD_HOME="''${ANDROID_AVD_HOME:-$HOME/.config/.android/avd}"
-      echo "[android] ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
-    ''
-    + extraShellHook;
+    hook =
+      ''
+        export ANDROID_NDK_HOME="${ndkRoot}"
+        export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
+        export ANDROID_SDK_ROOT="${sdkRoot}"
+        export ANDROID_AVD_HOME="''${ANDROID_AVD_HOME:-$HOME/.config/.android/avd}"
+        echo "[android] ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+      ''
+      + extraShellHook;
   in
     if base != null
     then
