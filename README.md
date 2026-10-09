@@ -58,6 +58,7 @@ its dedicated Linux component and runtime checks.
 ELF audit contracts use a deterministic ELF fixture on every native platform;
 Linux also audits the cargo-built executable, and resolver tests check both
 `--skip-ldd` isolation and the missing-library failure path.
+Resolver fixtures use the build environment's shell, including in Nix sandboxes.
 Failed and cancelled selected jobs fail the
 aggregate qualification gate.
 
