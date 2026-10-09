@@ -26,6 +26,9 @@
 
 ### Added
 
+- Expose `rust-harbor-rs` and `rust-harbor-ci` production packages on both
+  native macOS systems, with the Intel-compatible package pin and native tests
+  included in the Rust component's qualification aggregate.
 - Retain `harbor-sandbox`, `mkDevSandbox`, and the Linux CLI lifecycle for isolated
   warm design previews, with native namespace and nested-desktop qualification.
 - Retain named-zone shell configuration, explicit archive timezones, and portable

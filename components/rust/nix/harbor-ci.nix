@@ -24,9 +24,6 @@ in
     doCheck = true;
     cargoBuildCommand = "cargo build --release -p harbor-xtask --bin harbor-ci";
     cargoInstallCommand = "install -Dm755 target/release/harbor-ci $out/bin/harbor-ci";
-    nativeBuildInputs = [
-      pkgs.clang
-      pkgs.mold
-    ];
+    nativeBuildInputs = [pkgs.clang] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [pkgs.mold];
     nativeCheckInputs = [pkgs.git];
   }

@@ -77,8 +77,23 @@
           nixBundle = nix-bundle;
           harbor-android = harbor-android.lib;
         };
+        darwinTools =
+          if inputs ? harborRoot
+          then
+            import ./nix/darwin-tools.nix {
+              harbor = self;
+              inherit (inputs) harborRoot;
+              inherit nixpkgs;
+              nixpkgsDarwin = inputs.nixpkgs-darwin;
+              rustOverlay = rust-overlay;
+            }
+          else {
+            packages = {};
+            checks = {};
+          };
       in {
         inherit lib;
+        inherit (darwinTools) packages checks;
         treefmtModules.rust = ./nix/treefmt/rust.nix;
 
         sccache = sccacheLib;

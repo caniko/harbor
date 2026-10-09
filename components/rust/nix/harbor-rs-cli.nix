@@ -22,10 +22,7 @@ in
     cargoExtraArgs = "-p nix_harbor_rs";
     strictDeps = true;
     doCheck = true;
-    nativeBuildInputs = [
-      pkgs.clang
-      pkgs.mold
-    ];
+    nativeBuildInputs = [pkgs.clang] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [pkgs.mold];
     nativeCheckInputs = [
       pkgs.git
     ];
