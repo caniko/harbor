@@ -55,6 +55,9 @@ x86-64 Linux and ARM macOS; namespace runtime acceptance runs on Linux. Linux
 qualifies all eight Cargo members. macOS qualifies the seven portable members
 with `--workspace --exclude harbor-cad`: CAD's worker is Linux-only and retains
 its dedicated Linux component and runtime checks.
+ELF audit contracts use a deterministic ELF fixture on every native platform;
+Linux also audits the cargo-built executable, and resolver tests check both
+`--skip-ldd` isolation and the missing-library failure path.
 Failed and cancelled selected jobs fail the
 aggregate qualification gate.
 

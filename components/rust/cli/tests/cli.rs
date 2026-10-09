@@ -2,11 +2,13 @@
 //! interface. Each test invokes the cargo-built binary via `assert_cmd`.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
 use tempfile::tempdir;
 
+#[path = "fixtures/elf.rs"]
+mod elf_fixture;
 #[path = "fixtures/macho.rs"]
 mod macho_fixture;
 
@@ -210,15 +212,16 @@ fn steam_runtime_exec_fails_when_runner_missing() {
     );
 }
 
-/// The dev-built `harbor-rs` binary itself is a real ELF DYN with real
-/// `DT_NEEDED` entries, so we can use it as a fixture to exercise goblin
-/// parsing + regex matching + Report semantics end-to-end.
-fn rs_harbor_path() -> String {
-    env!("CARGO_BIN_EXE_harbor-rs").to_string()
+fn elf_path(directory: &Path) -> PathBuf {
+    let path = directory.join("fixture.so");
+    fs::write(&path, elf_fixture::build_shared_object()).unwrap();
+    path
 }
 
 #[test]
 fn audit_elf_passes_with_permissive_allowlist() {
+    let directory = tempdir().unwrap();
+    let path = elf_path(directory.path());
     let assert = rs_harbor()
         .args([
             "audit",
@@ -228,8 +231,8 @@ fn audit_elf_passes_with_permissive_allowlist() {
             ".*",
             "--forbid-path-regex",
             "harbor-rs-never-matches-this-path",
-            &rs_harbor_path(),
         ])
+        .arg(path)
         .assert()
         .success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
@@ -239,8 +242,27 @@ fn audit_elf_passes_with_permissive_allowlist() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn audit_elf_passes_on_the_native_linux_binary() {
+    let output = rs_harbor()
+        .args([
+            "audit",
+            "elf",
+            "--skip-ldd",
+            "--forbid-path-regex",
+            "harbor-rs-never-matches-this-path",
+            env!("CARGO_BIN_EXE_harbor-rs"),
+        ])
+        .assert()
+        .success();
+    assert!(String::from_utf8_lossy(&output.get_output().stdout).contains("checked 1 file(s)"));
+}
+
 #[test]
 fn audit_elf_fails_when_needed_lib_does_not_match_allowlist() {
+    let directory = tempdir().unwrap();
+    let path = elf_path(directory.path());
     let assert = rs_harbor()
         .args([
             "audit",
@@ -250,22 +272,31 @@ fn audit_elf_fails_when_needed_lib_does_not_match_allowlist() {
             "^libxyz_definitely_not_a_real_dependency\\.so$",
             "--forbid-path-regex",
             "harbor-rs-never-matches",
-            &rs_harbor_path(),
         ])
+        .arg(path)
         .assert()
         .failure();
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).unwrap();
     assert!(
-        stderr.contains("disallowed DT_NEEDED"),
+        stderr.contains("disallowed DT_NEEDED") && stderr.contains("libharbor-fixture.so"),
         "expected DT_NEEDED rejection: {stderr}"
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn audit_elf_skip_ldd_does_not_invoke_resolver() {
-    // Use a permissive allowlist with --skip-ldd; should pass regardless
-    // of whether ldd is on PATH or how it would resolve libraries.
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempdir().unwrap();
+    let path = elf_path(directory.path());
+    let ldd = directory.path().join("ldd");
+    let marker = directory.path().join("resolver-ran");
+    fs::write(&ldd, "#!/bin/sh\nprintf ran > \"$HARBOR_ELF_RESOLVER_MARKER\"\nprintf 'libharbor-fixture.so => not found\\n'\n").unwrap();
+    fs::set_permissions(&ldd, fs::Permissions::from_mode(0o755)).unwrap();
     rs_harbor()
+        .env("PATH", directory.path())
+        .env("HARBOR_ELF_RESOLVER_MARKER", &marker)
         .args([
             "audit",
             "elf",
@@ -274,10 +305,21 @@ fn audit_elf_skip_ldd_does_not_invoke_resolver() {
             ".*",
             "--forbid-path-regex",
             "harbor-rs-never-matches",
-            &rs_harbor_path(),
         ])
+        .arg(&path)
         .assert()
         .success();
+    assert!(!marker.exists(), "--skip-ldd invoked the resolver");
+
+    let output = rs_harbor()
+        .env("PATH", directory.path())
+        .env("HARBOR_ELF_RESOLVER_MARKER", &marker)
+        .args(["audit", "elf"])
+        .arg(path)
+        .assert()
+        .failure();
+    assert!(marker.exists(), "resolver control was not executed");
+    assert!(String::from_utf8_lossy(&output.get_output().stderr).contains("missing library"));
 }
 
 #[test]
