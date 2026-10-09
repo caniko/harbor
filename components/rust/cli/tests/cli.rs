@@ -292,7 +292,8 @@ fn audit_elf_skip_ldd_does_not_invoke_resolver() {
     let path = elf_path(directory.path());
     let ldd = directory.path().join("ldd");
     let marker = directory.path().join("resolver-ran");
-    fs::write(&ldd, "#!/bin/sh\nprintf ran > \"$HARBOR_ELF_RESOLVER_MARKER\"\nprintf 'libharbor-fixture.so => not found\\n'\n").unwrap();
+    let shell = which::which("sh").expect("resolver fixture requires a shell");
+    fs::write(&ldd, format!("#!{}\nprintf ran > \"$HARBOR_ELF_RESOLVER_MARKER\"\nprintf 'libharbor-fixture.so => not found\\n'\n", shell.display())).unwrap();
     fs::set_permissions(&ldd, fs::Permissions::from_mode(0o755)).unwrap();
     rs_harbor()
         .env("PATH", directory.path())
