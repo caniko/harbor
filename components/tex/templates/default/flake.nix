@@ -2,18 +2,18 @@
   description = "LaTeX project — powered by harbor-tex";
 
   inputs = {
-    harbor-tex.url = "github:caniko/harbor-tex";
-    nixpkgs.follows = "harbor-tex/nixpkgs";
-    nixpkgs-darwin.follows = "harbor-tex/nixpkgs-darwin";
-    treefmt-nix.follows = "harbor-tex/treefmt-nix";
-    git-hooks.follows = "harbor-tex/git-hooks";
+    harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=7d99eb50c52d0a941e2996b97c469b32a7657ef4";
+    nixpkgs.follows = "harbor/nixpkgs";
+    nixpkgs-darwin.follows = "harbor/nixpkgs-darwin";
+    treefmt-nix.follows = "harbor/treefmt-nix";
+    git-hooks.follows = "harbor/git-hooks";
   };
 
   outputs = {
     self,
     nixpkgs,
     nixpkgs-darwin,
-    harbor-tex,
+    harbor,
     treefmt-nix,
     git-hooks,
   }: let
@@ -24,9 +24,12 @@
       "aarch64-darwin"
     ];
     forSystem = system: let
-      platformNixpkgs = if system == "x86_64-darwin" then nixpkgs-darwin else nixpkgs;
+      platformNixpkgs =
+        if system == "x86_64-darwin"
+        then nixpkgs-darwin
+        else nixpkgs;
       pkgs = import platformNixpkgs {inherit system;};
-      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {inherit harbor-tex;});
+      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {inherit harbor;});
       hooks = import "${git-hooks}/nix" {
         nixpkgs = platformNixpkgs;
         inherit system;
@@ -41,7 +44,7 @@
       };
     in {
       inherit pkgs treefmtEval pre-commit-check;
-      default = harbor-tex.lib.mkLatexDocument {
+      default = harbor.lib.tex.mkLatexDocument {
         inherit pkgs;
         name = "harbor-tex-template";
         src = ./.;
@@ -49,7 +52,7 @@
         engine = "pdflatex";
         profile = "cv";
       };
-      shell = harbor-tex.lib.mkTexDevShell {
+      shell = harbor.lib.tex.mkTexDevShell {
         inherit pkgs;
         profile = "cv";
         extraPackages = pre-commit-check.enabledPackages;

@@ -30,7 +30,15 @@ in
       then harbor-meta.lib.opencode
       else throw "harbor-py: opencode helpers require the harbor-meta flake input";
 
-    allSystems = nixLib.systems.flakeExposed;
+    # Keep the shell contract aligned with the four maintained native Harbor
+    # systems. nixpkgs flakeExposed also includes experimental platforms whose
+    # Python/tooling package sets are not valid development environments.
+    allSystems = [
+      "x86_64-linux"
+      "aarch64-linux"
+      "x86_64-darwin"
+      "aarch64-darwin"
+    ];
     packageSystems = [
       "x86_64-linux"
       "aarch64-darwin"

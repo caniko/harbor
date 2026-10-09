@@ -1,8 +1,8 @@
-{harbor-py}: {...}: {
+{harbor}: {...}: {
   imports = [
-    harbor-py.inputs.harbor-meta.treefmtModules.nix
-    harbor-py.inputs.harbor-meta.treefmtModules.toml
-    harbor-py.treefmtModules.python
+    harbor.treefmtModules.core-nix
+    harbor.treefmtModules.core-toml
+    harbor.treefmtModules.python-python
   ];
   projectRootFile = "flake.nix";
 }

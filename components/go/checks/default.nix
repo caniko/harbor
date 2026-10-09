@@ -9,7 +9,7 @@
   template = templateTests.eval {
     flakeNix = ../templates/default/flake.nix;
     inputs = {
-      harbor-go = self;
+      harbor = self.inputs.harborRoot;
       inherit nixpkgs;
       treefmt-nix = self.inputs.treefmt-nix;
     };
@@ -49,12 +49,12 @@ in {
     inherit pkgs system devShellTests;
     flakeNix = ../templates/default/flake.nix;
     inputs = {
-      harbor-go = self;
+      harbor = self.inputs.harborRoot;
       inherit nixpkgs;
       treefmt-nix = self.inputs.treefmt-nix;
     };
     requiredFiles = ["flake.nix" "go.mod" "main.go" "main_test.go" "greeting.txt"];
-    requiredInputs = ["harbor-go"];
+    requiredInputs = ["harbor"];
     commands = ["go" "gopls" "golangci-lint"];
     env.GOTOOLCHAIN = "local";
   };

@@ -21,7 +21,7 @@
     system = pkgs.stdenv.hostPlatform.system;
     flakeNix = ../templates/default/flake.nix;
     inputs = {
-      harbor-sol = self;
+      harbor = self.inputs.harborRoot;
       inherit nixpkgs nixpkgs-darwin;
       inherit (self.inputs) treefmt-nix;
     };
@@ -33,7 +33,7 @@
       "programs/counter/Cargo.toml"
       "programs/counter/src/lib.rs"
     ];
-    requiredInputs = ["harbor-sol" "nixpkgs-darwin"];
+    requiredInputs = ["harbor" "nixpkgs-darwin"];
     commands = ["anchor" "cargo" "cargo-build-sbf" "solana" "solana-test-validator"];
     env = {
       ANCHOR_VERSION = pkgs.anchor.version;

@@ -2,18 +2,16 @@
   description = "My Project docs — powered by harbor-projects";
 
   inputs = {
-    harbor-projects.url = "github:caniko/harbor-projects";
+    harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=7d99eb50c52d0a941e2996b97c469b32a7657ef4";
 
-    nixpkgs.follows = "harbor-projects/nixpkgs";
-    harbor-meta.follows = "harbor-projects/harbor-meta";
-    treefmt-nix.follows = "harbor-projects/treefmt-nix";
+    nixpkgs.follows = "harbor/nixpkgs";
+    treefmt-nix.follows = "harbor/treefmt-nix";
   };
 
   outputs = {
     self,
     nixpkgs,
-    harbor-projects,
-    harbor-meta,
+    harbor,
     treefmt-nix,
     ...
   }: let
@@ -22,10 +20,10 @@
       pkgs = import nixpkgs {inherit system;};
       packages = import ./nix/docs.nix {
         inherit pkgs;
-        harborProjects = harbor-projects.lib;
+        harborProjects = harbor.lib.docs;
       };
       treefmt = treefmt-nix.lib.evalModule pkgs {
-        imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml];
+        imports = [harbor.treefmtModules.core-nix harbor.treefmtModules.core-toml];
         projectRootFile = "flake.nix";
       };
     in {inherit pkgs packages treefmt;};
@@ -49,7 +47,7 @@
       env = forSystem system;
     in {
       docs = env.packages.docs;
-      summary = harbor-projects.lib.mkSummaryCheck {
+      summary = harbor.lib.docs.mkSummaryCheck {
         pkgs = env.pkgs;
         src = ./docs;
       };

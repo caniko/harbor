@@ -2,18 +2,18 @@
   description = "Bun project — powered by harbor-js";
 
   inputs = {
-    harbor-js.url = "github:caniko/harbor-js";
-    nixpkgs.follows = "harbor-js/nixpkgs";
-    nixpkgs-darwin.follows = "harbor-js/nixpkgs-darwin";
-    treefmt-nix.follows = "harbor-js/treefmt-nix";
-    git-hooks.follows = "harbor-js/git-hooks";
+    harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=7d99eb50c52d0a941e2996b97c469b32a7657ef4";
+    nixpkgs.follows = "harbor/nixpkgs";
+    nixpkgs-darwin.follows = "harbor/nixpkgs-darwin";
+    treefmt-nix.follows = "harbor/treefmt-nix";
+    git-hooks.follows = "harbor/git-hooks";
   };
 
   outputs = {
     self,
     nixpkgs,
     nixpkgs-darwin,
-    harbor-js,
+    harbor,
     treefmt-nix,
     git-hooks,
   }: let
@@ -24,13 +24,20 @@
       "aarch64-darwin"
     ];
     forSystem = system: let
-      platformNixpkgs = if system == "x86_64-darwin" then nixpkgs-darwin else nixpkgs;
+      platformNixpkgs =
+        if system == "x86_64-darwin"
+        then nixpkgs-darwin
+        else nixpkgs;
       pkgs = import platformNixpkgs {
         inherit system;
         overlays = nixpkgs.lib.optionals (system == "x86_64-darwin") [(_: prev: {pnpm_10 = prev.pnpm_10_latest;})];
       };
-      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {inherit harbor-js;});
-      hooks = import "${git-hooks}/nix" {nixpkgs = platformNixpkgs; inherit system; isFlakes = true;};
+      treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix {inherit harbor;});
+      hooks = import "${git-hooks}/nix" {
+        nixpkgs = platformNixpkgs;
+        inherit system;
+        isFlakes = true;
+      };
       pre-commit-check = hooks.run {
         src = ./.;
         hooks = import ./nix/pre-commit.nix {
@@ -40,7 +47,7 @@
       };
     in {
       inherit treefmtEval pre-commit-check;
-      default = harbor-js.lib.mkBunDevShell {
+      default = harbor.lib.javascript.mkBunDevShell {
         inherit pkgs;
         packageJson = ./package.json;
         extraPackages = pre-commit-check.enabledPackages;

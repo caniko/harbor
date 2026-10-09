@@ -13,27 +13,27 @@
         src = root;
         system = pkgs.stdenv.hostPlatform.system;
       }).outputs;
-    inherit (template.inputs) harbor-rs;
+    inherit (template.inputs) harbor;
     templatePkgs = import template.inputs.nixpkgs {
       system = pkgs.stdenv.hostPlatform.system;
       overlays = [(import template.inputs.rust-overlay)];
     };
-    toolchain = harbor-rs.lib.mkToolchain {
+    toolchain = harbor.lib.rust.mkToolchain {
       pkgs = templatePkgs;
       toolchainProfile = "nightly";
     };
     treefmt = template.inputs.treefmt-nix.lib.evalModule templatePkgs (import (root + "/nix/treefmt.nix") {
-      inherit harbor-rs;
+      inherit harbor;
       rustfmtPackage = toolchain.rustToolchain;
     });
     wrapper = template.formatter.${pkgs.stdenv.hostPlatform.system};
     hooks = import (root + "/nix/pre-commit.nix") {
-      inherit harbor-rs;
+      inherit harbor;
       pkgs = templatePkgs;
       inherit (toolchain) rustToolchain;
       treefmtWrapper = wrapper;
     };
-    context = "template-own-lock ${name}: pinned harbor-rs ${harbor-rs.rev}";
+    context = "template-own-lock ${name}: pinned Harbor ${harbor.rev}";
   in
     assert pkgs.lib.assertMsg (!builtins.hasAttr "cargo-fmt" hooks)
     "${context} still enables cargo-fmt alongside treefmt";

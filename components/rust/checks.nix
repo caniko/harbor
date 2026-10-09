@@ -1261,13 +1261,13 @@ in
     assert pkgs.lib.hasInfix "..." defaultTemplateFlake;
     assert pkgs.lib.hasInfix "edition = \"2021\"" defaultTemplateTreefmt;
     assert pkgs.lib.hasInfix "mkRustHooks" defaultTemplateHooks;
-    assert pkgs.lib.hasInfix "inherit pkgs harbor-rs" defaultTemplateFlake;
+    assert pkgs.lib.hasInfix "inherit pkgs harbor" defaultTemplateFlake;
       self.lib.templateTests.mkCheck {
         inherit pkgs system;
         flakeNix = ./templates/default/flake.nix;
         inputs = {
           inherit nixpkgs rust-overlay crane treefmt-nix git-hooks;
-          harbor-rs = self;
+          harbor = self.inputs.harborRoot;
         };
         requiredFiles = [
           "flake.nix"
@@ -1278,7 +1278,7 @@ in
           "nix/treefmt.nix"
           "nix/pre-commit.nix"
         ];
-        requiredInputs = ["harbor-rs" "treefmt-nix" "git-hooks"];
+        requiredInputs = ["harbor" "treefmt-nix" "git-hooks"];
         commands = ["cargo" "rustc" "rust-analyzer"];
         hookContains = ["cargo config at"];
         inherit (self.lib) devShellTests;
@@ -1289,7 +1289,7 @@ in
         flakeNix = ./templates/default/flake.nix;
         inputs = {
           inherit nixpkgs rust-overlay crane treefmt-nix git-hooks;
-          harbor-rs = self;
+          harbor = self.inputs.harborRoot;
         };
       };
     in
@@ -1314,17 +1314,18 @@ in
     assert pkgs.lib.hasInfix "..." bevyTemplateFlake;
     assert pkgs.lib.hasInfix "edition = \"2024\"" bevyTemplateTreefmt;
     assert pkgs.lib.hasInfix "mkRustHooks" bevyTemplateHooks;
-    assert pkgs.lib.hasInfix "inherit pkgs harbor-rs" bevyTemplateFlake;
+    assert pkgs.lib.hasInfix "inherit pkgs harbor" bevyTemplateFlake;
       self.lib.templateTests.mkCheck {
         inherit pkgs system;
         flakeNix = ./templates/bevy/flake.nix;
         inputs = {
           inherit nixpkgs rust-overlay crane treefmt-nix git-hooks;
-          harbor-rs = self;
+          harbor = self.inputs.harborRoot;
         };
         requiredFiles = [
           "flake.nix"
           "Cargo.toml"
+          "Cargo.lock"
           "src/main.rs"
           "nix/package.nix"
           "nix/dev-shells.nix"
@@ -1333,7 +1334,7 @@ in
           "nix/treefmt.nix"
           "nix/pre-commit.nix"
         ];
-        requiredInputs = ["harbor-rs" "treefmt-nix" "git-hooks"];
+        requiredInputs = ["harbor" "treefmt-nix" "git-hooks"];
         commands = ["cargo" "rustc" "rust-analyzer"];
         hookContains = ["cargo config at"];
         inherit (self.lib) devShellTests;
@@ -1349,7 +1350,7 @@ in
           inherit pkgs;
           inherit (toolchain) rustToolchain;
           treefmtWrapper = pkgs.treefmt;
-          harbor-rs = self;
+          harbor = self.inputs.harborRoot;
         };
       hooks = mkHooks ./templates/default/nix/pre-commit.nix;
       bevyHooks = mkHooks ./templates/bevy/nix/pre-commit.nix;

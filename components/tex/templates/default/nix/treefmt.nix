@@ -1,8 +1,8 @@
-{harbor-tex}: {...}: {
+{harbor}: {...}: {
   imports = [
-    harbor-tex.inputs.harbor-meta.treefmtModules.nix
-    harbor-tex.inputs.harbor-meta.treefmtModules.toml
-    harbor-tex.treefmtModules.latex
+    harbor.treefmtModules.core-nix
+    harbor.treefmtModules.core-toml
+    harbor.treefmtModules.tex-latex
   ];
   projectRootFile = "flake.nix";
 }

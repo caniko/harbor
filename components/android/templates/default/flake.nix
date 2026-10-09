@@ -2,14 +2,14 @@
   description = "Android project — powered by harbor-android";
 
   inputs = {
-    harbor-android.url = "github:caniko/harbor-android/trunk";
-    nixpkgs.follows = "harbor-android/nixpkgs";
-    treefmt-nix.follows = "harbor-android/treefmt-nix";
+    harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=7d99eb50c52d0a941e2996b97c469b32a7657ef4";
+    nixpkgs.follows = "harbor/nixpkgs";
+    treefmt-nix.follows = "harbor/treefmt-nix";
   };
 
   outputs = {
     nixpkgs,
-    harbor-android,
+    harbor,
     treefmt-nix,
     ...
   }: let
@@ -20,14 +20,15 @@
     forSystem = system: let
       pkgs = import nixpkgs {inherit system;};
       androidNdkVersion = "29.0.14206865";
-      androidSdk = harbor-android.lib.mkAndroidSdk {
-        inherit pkgs;
-        platformVersions = ["34"];
-        buildToolsVersions = ["34.0.0"];
-        ndkVersions = [androidNdkVersion];
-      };
+      androidSdk =
+        (harbor.lib.android.mkAndroidSdk {
+          inherit pkgs;
+          platformVersions = ["34"];
+          buildToolsVersions = ["34.0.0"];
+          ndkVersions = [androidNdkVersion];
+        }).androidsdk;
     in {
-      android = harbor-android.lib.mkAndroidDevShell {
+      android = harbor.lib.android.mkAndroidDevShell {
         inherit pkgs androidSdk;
         ndkVersion = androidNdkVersion;
       };
@@ -36,10 +37,10 @@
     formatter = nixpkgs.lib.genAttrs systems (system:
       (treefmt-nix.lib.evalModule nixpkgs.legacyPackages.${system} {
         imports = [
-          harbor-android.inputs.harbor-meta.treefmtModules.nix
-          harbor-android.inputs.harbor-meta.treefmtModules.toml
-          harbor-android.treefmtModules.java
-          harbor-android.treefmtModules.kotlin
+          harbor.treefmtModules.core-nix
+          harbor.treefmtModules.core-toml
+          harbor.treefmtModules.android-java
+          harbor.treefmtModules.android-kotlin
         ];
         projectRootFile = "flake.nix";
       }).config.build.wrapper);

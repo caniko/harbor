@@ -59,6 +59,14 @@ ELF audit contracts use a deterministic ELF fixture on every native platform;
 Linux also audits the cargo-built executable, and resolver tests check both
 `--skip-ldd` isolation and the missing-library failure path.
 Resolver fixtures use the build environment's shell, including in Nix sandboxes.
+All twelve project templates consume one revision-qualified Harbor input and its
+namespaced libraries and formatter modules. `checks.<system>.template-contract`
+evaluates their native Linux packages, shells and formatters; the core aggregate
+includes that gate. Template lockfiles preserve their own project input graphs,
+and the Rust hook checks also evaluate those pinned graphs independently.
+Python development shells advertise the four maintained Harbor systems,
+including Intel macOS through `nixpkgs-darwin`; experimental nixpkgs platforms
+are not included in the Python shell inventory.
 Failed and cancelled selected jobs fail the
 aggregate qualification gate.
 

@@ -1,11 +1,11 @@
 {
-  harbor-rs,
+  harbor,
   rustfmtPackage,
 }: {pkgs, ...}: {
   imports = [
-    harbor-rs.inputs.harbor-meta.treefmtModules.nix
-    harbor-rs.inputs.harbor-meta.treefmtModules.toml
-    harbor-rs.treefmtModules.rust
+    harbor.treefmtModules.core-nix
+    harbor.treefmtModules.core-toml
+    harbor.treefmtModules.rust-rust
   ];
   projectRootFile = "flake.nix";
 

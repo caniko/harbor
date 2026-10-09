@@ -13,7 +13,7 @@
   templateRoot = ../templates/default;
   templateFlake = builtins.readFile (templateRoot + "/flake.nix");
   templateSimit = builtins.fromTOML (builtins.readFile (templateRoot + "/simit.toml"));
-  templateTreefmt = (treefmt-nix.lib.evalModule pkgs (import (templateRoot + "/nix/treefmt.nix") {harbor-js = self;})).config;
+  templateTreefmt = (treefmt-nix.lib.evalModule pkgs (import (templateRoot + "/nix/treefmt.nix") {harbor = self.inputs.harborRoot;})).config;
   languageTreefmt = (treefmt-nix.lib.evalModule pkgs {imports = [self.treefmtModules.javascript];}).config;
   templateHooks = builtins.readFile (templateRoot + "/nix/pre-commit.nix");
 in
@@ -58,7 +58,7 @@ in
         flakeNix = ../templates/default/flake.nix;
         inputs = {
           inherit nixpkgs nixpkgs-darwin treefmt-nix git-hooks;
-          harbor-js = self;
+          harbor = self.inputs.harborRoot;
         };
         requiredFiles = [
           "flake.nix"
@@ -68,7 +68,7 @@ in
           "nix/treefmt.nix"
           "nix/pre-commit.nix"
         ];
-        requiredInputs = ["harbor-js" "nixpkgs-darwin" "treefmt-nix" "git-hooks"];
+        requiredInputs = ["harbor" "nixpkgs-darwin" "treefmt-nix" "git-hooks"];
         commands = ["bun"];
         env.BUN_VERSION = "1.3.14";
         inherit (meta) devShellTests;

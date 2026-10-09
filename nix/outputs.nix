@@ -28,6 +28,7 @@ inputs @ {
       // aliases
       // {
         self = component;
+        harborRoot = self;
         harborFormatting = system: formatters.${system}.config.build.check self;
       };
     component =
@@ -100,6 +101,7 @@ in {
     });
   checks = nixlib.genAttrs systems (system: let
     pkgs = pkgsFor system {};
+    templateContract = import ./template-contract.nix {inherit self inputs pkgs;};
     sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
       pkgs.runCommand "harbor-component-source-materialization" {} ''
         set -euo pipefail
@@ -115,10 +117,18 @@ in {
           name = check;
           inherit path;
         }) ((components.${name}.checks.${system} or {})
-          // nixlib.optionalAttrs (name == "core") {source-materialization = sourceMaterialization;}))))
+          // nixlib.optionalAttrs (name == "core") {
+            source-materialization = sourceMaterialization;
+            template-contract = templateContract;
+          }))))
     componentNames);
   in
-    collect "checks" system // groups // {formatting = formatters.${system}.config.build.check self;});
+    collect "checks" system
+    // groups
+    // {
+      template-contract = templateContract;
+      formatting = formatters.${system}.config.build.check self;
+    });
   formatter = nixlib.genAttrs systems (system: formatters.${system}.config.build.wrapper);
   apps = nixlib.genAttrs systems (collect "apps");
   devShells = nixlib.genAttrs systems (system: let

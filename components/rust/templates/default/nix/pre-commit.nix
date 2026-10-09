@@ -4,8 +4,8 @@
   pkgs,
   treefmtWrapper,
   rustToolchain ? null,
-  harbor-rs,
+  harbor,
 }:
-harbor-rs.lib.hooks.mkRustHooks {
+harbor.lib.rust.hooks.mkRustHooks {
   inherit pkgs treefmtWrapper rustToolchain;
 }

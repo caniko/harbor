@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
-    harbor-projects.url = "github:caniko/harbor-projects";
+    harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=7d99eb50c52d0a941e2996b97c469b32a7657ef4";
 
     plinth = {
       url = "git+https://github.com/caniko/plinth.git?ref=refs/heads/trunk";
@@ -13,7 +13,7 @@
 
   outputs = {
     nixpkgs,
-    harbor-projects,
+    harbor,
     plinth,
     ...
   }: let
@@ -29,7 +29,7 @@
       packages = import ../nix/site.nix {
         inherit pkgs projectSiteLib;
         lib = nixpkgs.lib;
-        harborProjects = harbor-projects.lib;
+        harborProjects = harbor.lib.docs;
       };
     in {inherit pkgs projectSiteLib packages;};
   in {
@@ -38,7 +38,7 @@
     devShells = nixpkgs.lib.genAttrs systems (system: let
       env = forSystem system;
     in {
-      default = harbor-projects.lib.mkDocsDevShell {
+      default = harbor.lib.docs.mkDocsDevShell {
         pkgs = env.pkgs;
         plinthProject = plinth.packages.${system}.plinth-project;
       };
