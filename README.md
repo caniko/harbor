@@ -51,7 +51,10 @@ selection, and qualification commands. `checks.<system>.component-<component>`
 aggregates every check exported by that component. Database qualification retains
 the hosted KVM and sandbox-cache prerequisites. Go keeps its Linux, ARM Linux,
 and ARM macOS native runners. Rust qualifies its workspace and Nix outputs on
-x86-64 Linux and ARM macOS; namespace runtime acceptance runs on Linux.
+x86-64 Linux and ARM macOS; namespace runtime acceptance runs on Linux. Linux
+qualifies all eight Cargo members. macOS qualifies the seven portable members
+with `--workspace --exclude harbor-cad`: CAD's worker is Linux-only and retains
+its dedicated Linux component and runtime checks.
 Failed and cancelled selected jobs fail the
 aggregate qualification gate.
 
