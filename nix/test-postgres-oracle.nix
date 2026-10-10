@@ -7,6 +7,6 @@ import ./test-python-regressions.nix {
   testSource = pkgs.runCommand "harbor-db-pr14-frozen-tests" {} ''
     cp -r ${../tests} "$out"
     chmod -R u+w "$out"
-    cp ${../tests/oracles/pr14/tests/test_application_provision.py} "$out/test_application_provision.py"
+    cp ${../tests/oracles/pr14/tests}/*.py "$out/"
   '';
 }

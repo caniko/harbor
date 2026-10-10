@@ -19,6 +19,19 @@
 
 ### Fixed
 
+- Bind the hard-link regression's Python peer to the immutable machine-ID
+  fixture used by packaged Cargo tests, including isolated AArch64 execution.
+- Recheck every complete retained external WAL segment through the post-target
+  carrier when selecting source-local recovery evidence, and require local
+  acceptance to have executed on the declared source host.
+- Keep reactive restore operations out of normal apply, and admit confirmed
+  prerequisites before any dependent or unrelated operation can write.
+- Reject externally hard-linked custody files and database-query root overrides
+  in both cutover and transition inventory.
+- Run transition captures as the validated backup-root owner with an aggregate
+  deadline covering all separately bounded backup stages and retry cleanup.
+- Reject transition-only project names outside the runtime resource grammar
+  during NixOS evaluation.
 - Reject hard-linked application backup artifacts before publication permission
   changes and during restore-point inspection in both engines.
 - Reject ancestor/descendant backup roots and overlapping transition barriers,

@@ -173,14 +173,22 @@ pub fn capture_source(
     leases: &[RawFd],
 ) -> Result<(PathBuf, Value)> {
     let backup_config = durable::read_config_json(Path::new(string(config, "backup_manifest")?))?;
-    let (source, _) = manifest::validate(config)?;
+    manifest::validate(config)?;
+    let root = application_backup::validate(&backup_config, true)?;
     let hash = codec::digest(&codec::encode(&record["intent"], true)?);
     let attempt = format!("transition-{}", &hash[..32]);
-    let backup = Path::new(string(&backup_config, "root")?).join(&attempt);
+    let backup = root.join(&attempt);
     if !backup.exists() {
+        // A retry can clean an interrupted workspace before the four normal
+        // stages. Keep their own deadlines, plus bounded termination/IO slack.
+        let capture_limit = backup_config["timeout_seconds"]
+            .as_u64()
+            .ok_or_else(|| invalid("invalid backup timeout"))?
+            * 5
+            + 60;
         manifest::worker(
-            config,
-            &json!({"user":owner(Path::new(string(&source,"state_dir")?))?,"argv":[Path::new(string(config,"storage_package")?).join("harbor-db-application-backup"),"--config",config["backup_manifest"],"capture","--attempt",attempt,"--retry-incomplete"]}),
+            &json!({"timeout_seconds":capture_limit}),
+            &json!({"user":owner(&root)?,"argv":[Path::new(string(config,"storage_package")?).join("harbor-db-application-backup"),"--config",config["backup_manifest"],"capture","--attempt",attempt,"--retry-incomplete"]}),
             &BTreeMap::new(),
             leases,
         )?;
@@ -345,14 +353,7 @@ pub fn target_custody(
             .as_array()
             .ok_or_else(|| invalid("database corpus query did not produce a path array"))?
         {
-            let mut requirement = json!({"root":check["root"]});
-            for (k, v) in item
-                .as_object()
-                .ok_or_else(|| invalid("invalid corpus path"))?
-            {
-                requirement[k] = v.clone();
-            }
-            requirements.push(requirement);
+            requirements.push(custody::database_entry(&check["root"], item)?);
         }
     }
     let contents = custody::inventory(&entry, true)?;

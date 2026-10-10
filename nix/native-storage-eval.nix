@@ -76,6 +76,20 @@
   in
     rejected == [];
   boundaryName = count: pkgs.lib.concatStrings (builtins.genList (_: "a") count);
+  transitionNameAccepted = name: let
+    configured = evaluate [
+      module
+      ({config, ...}: {
+        services.harbor-db.projects.${name}.transition =
+          (builtins.removeAttrs config.services.harbor-db.projects.fixture.transition ["manifest"])
+          // {
+            barrierDirectory = "/var/lib/named-transition";
+            runtimeUnits = ["named.service"];
+          };
+      })
+    ];
+  in
+    builtins.filter (assertion: !assertion.assertion && pkgs.lib.hasInfix "transition project name" assertion.message) configured.config.assertions == [];
   backupPolicyAccepted = backup: let
     configured = evaluate [module {services.harbor-db.projects.fixture.backup = backup;}];
     rejected = builtins.filter (assertion: !assertion.assertion && pkgs.lib.hasPrefix "Harbor DB fixture backup " assertion.message) configured.config.assertions;
@@ -155,6 +169,13 @@ in
     name = "harbor-db-native-storage-eval";
     resultMessage = "Native storage package is selected through the module argument";
     assertions = [
+      {
+        name = "transition-only-resource-name-boundaries";
+        message = "Transition-only projects must use the runtime's bounded resource-name grammar.";
+        assertion =
+          pkgs.lib.all transitionNameAccepted ["valid_Name-0" (boundaryName 128)]
+          && pkgs.lib.all (name: !transitionNameAccepted name) ["" "with.dot" "with@instance" "non-ascii-é" (boundaryName 129)];
+      }
       {
         name = "backup-roots-are-exclusive-normalized-namespaces";
         message = "Enabled projects must have distinct normalized backup roots, regardless of owner; disabled projects do not reserve a namespace.";

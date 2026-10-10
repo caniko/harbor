@@ -104,15 +104,17 @@ def plan(config, candidate, writer_fence_token):
 
 def capture_source(config, record, leases):
     backup_config = read_json(config["backup_manifest"])
-    source, _ = validate(config)
-    account = Path(source["state_dir"]).stat().st_uid
+    validate(config)
+    root = application_backup.validate(backup_config)
+    account = root.stat().st_uid
     user = pwd.getpwuid(account).pw_name
     attempt = "transition-" + application_backup.identity(record["intent"])[:32]
     command = {"user": user, "argv": [str(Path(config["storage_package"]) / "harbor-db-application-backup"),
                "--config", config["backup_manifest"], "capture", "--attempt", attempt, "--retry-incomplete"]}
-    backup = Path(backup_config["root"]) / attempt
+    backup = root / attempt
     if not backup.exists():
-        worker(config, command, {}, leases)
+        # One retry cleanup plus capture/restore/verify/cleanup and bounded slack.
+        worker({"timeout_seconds": backup_config["timeout_seconds"] * 5 + 60}, command, {}, leases)
     # A completed tree whose pointer publication was interrupted may be reused
     # only after complete byte, tool and freshness verification.
     result = application_backup.inspect(backup_config, backup)
@@ -201,7 +203,7 @@ def target_custody(config, record, target, leases):
         paths = worker(config, command, {}, leases)
         if not isinstance(paths, list):
             raise ValueError("database corpus query did not produce a path array")
-        requirement.extend({"root": check["root"], **item} for item in paths)
+        requirement.extend(cutover.database_entry(check["root"], item) for item in paths)
     contents = cutover.inventory(entry, contents=True)
     cutover.require_database_paths(contents, requirement, roots=target["directories"], git_executable=entry.get("git_executable"))
     return {"version": 1, "resource": target["resource"], "identity": record["source_authority"]["identity"],

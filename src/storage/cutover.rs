@@ -303,14 +303,7 @@ pub fn check_resource(
                     for item in paths.as_array().ok_or_else(|| {
                         invalid("database corpus query must return a JSON array of paths")
                     })? {
-                        let mut entry = json!({"root":check["root"]});
-                        for (key, value) in item
-                            .as_object()
-                            .ok_or_else(|| invalid("database corpus path must be an object"))?
-                        {
-                            entry[key] = value.clone();
-                        }
-                        entries.push(entry);
+                        entries.push(super::custody::database_entry(&check["root"], item)?);
                     }
                 }
                 requirements.insert(name.clone(), json!(entries));

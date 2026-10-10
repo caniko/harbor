@@ -21,6 +21,69 @@ struct Fixture {
     config: Value,
     now: i64,
 }
+
+#[test]
+fn local_acceptance_cannot_reuse_an_independent_host_receipt_in_both_engines() {
+    let f = Fixture::new();
+    f.accepted();
+    let mut receipt = f.receipt();
+    let source = f.source();
+    let binding = json!({"recovery_target_lsn":"0/200"});
+    for executor in [json!("independent-host"), json!(null), json!("")] {
+        receipt["executor_host"] = executor;
+        assert!(
+            recovery::validate_receipt(
+                &f.config,
+                &f.config["recovery"],
+                &source,
+                &binding,
+                &receipt,
+                "restore acceptance"
+            )
+            .is_err()
+        );
+    }
+    receipt["executor_host"] = json!("independent-host");
+    recovery::validate_receipt(
+        &f.config,
+        &f.config["recovery"],
+        &source,
+        &binding,
+        &receipt,
+        "off-host restore acceptance",
+    )
+    .unwrap();
+    durable::write_json(&f.p("backup/evidence/recovery.json"), &receipt).unwrap();
+    assert!(recovery::check(&f.config, Some(f.now)).is_err());
+    let script = r#"import json,sys
+from harbor_db import recovery
+c,source,binding,receipt=map(json.loads,sys.argv[1:])
+for executor in ('independent-host',None,''):
+    try: recovery.validate_receipt(c,c['recovery'],source,binding,receipt|{'executor_host':executor},'restore acceptance')
+    except ValueError: pass
+    else: raise AssertionError('local evidence reused a remote receipt')
+recovery.validate_receipt(c,c['recovery'],source,binding,receipt|{'executor_host':'primary-host'},'restore acceptance')
+recovery.validate_receipt(c,c['recovery'],source,binding,receipt,'off-host restore acceptance')
+"#;
+    let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        f.config.to_string(),
+        source.to_string(),
+        binding.to_string(),
+        receipt.to_string(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    harbor_db::storage::process::execute(&spec).unwrap();
+}
 impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().unwrap();

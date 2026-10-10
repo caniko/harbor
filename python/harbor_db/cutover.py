@@ -108,6 +108,8 @@ def inventory(config, *, contents):
                     "size": info.st_size if stat.S_ISREG(info.st_mode) else 0,
                 }
                 if stat.S_ISREG(info.st_mode):
+                    if info.st_nlink != 1:
+                        raise ValueError("custody corpus files must not have hard links or shared-inode aliases")
                     if contents:
                         files[key]["sha256"] = digest(path)
                         after = path.lstat()
@@ -129,6 +131,12 @@ def writer_active(unit):
         check=True, capture_output=True, text=True, timeout=5,
     )
     return result.stdout.strip() not in ("inactive", "failed")
+
+
+def database_entry(root, item):
+    if not isinstance(item, dict) or "root" in item:
+        raise ValueError("database corpus query must be an object without a root")
+    return {"root": root, **item}
 
 
 def require_database_paths(inventories, requirements, *, roots=(), git_executable=None):
@@ -308,7 +316,7 @@ def check_resource(config, *, phase, now=None, candidate=None):
                                                      config.get("port", 5432), check["database"], check["sql"]))
                     if not isinstance(paths, list):
                         raise TypeError("database corpus query must return a JSON array of paths")
-                    requirements[name].extend({"root": check["root"], **item} for item in paths)
+                    requirements[name].extend(database_entry(check["root"], item) for item in paths)
             return {"database_snapshot_sha256": digest(snapshot_path), "corpus_requirements": requirements}
 
 

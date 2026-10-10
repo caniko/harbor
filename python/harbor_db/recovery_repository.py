@@ -116,6 +116,16 @@ def select(config, settings, now):
         raise ValueError("backup identity does not match the declared primary")
     if recovery.lsn(meta["post_backup_lsn"]) <= recovery.lsn(meta["backup_stop_lsn"]):
         raise ValueError("backup recovery point must follow its stop LSN")
+    first = min(recovery.lsn(entry["Start-LSN"]) // segment for entry in ranges)
+    last = (recovery.lsn(meta["post_backup_lsn"]) - 1) // segment + 1
+    if not 1 <= last - first + 1 <= 1_000_000:
+        raise ValueError("capture WAL range exceeds supported segment limit")
+    per_log = 2**32 // segment
+    for number in range(first, last + 1):
+        carrier = recovery.absolute(root / "wal" / f"{timeline:08X}{number // per_log:08X}{number % per_log:08X}")
+        with os.fdopen(_regular(carrier), "rb") as stream:
+            if os.fstat(stream.fileno()).st_size != segment:
+                raise ValueError("retained WAL carrier is not a complete regular segment")
     recovery.fresh(meta.get("completed_at"), int(time.time()), settings["max_age_seconds"])
     recovery.fresh(int(manifest.stat().st_mtime), now, settings["max_age_seconds"])
     binding = {"backup_id":meta["backup_id"], "system_identifier":settings["system_identifier"], "major":str(config["major"]),

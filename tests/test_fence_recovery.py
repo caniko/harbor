@@ -28,6 +28,7 @@ class FenceRecoveryTest(unittest.TestCase):
                 "require_writer_fence": True, "system_identifier": "12345",
                 "snapshot_file": str(self.snapshot), "receipt_file": str(self.root / "receipt.json"),
                 "backup_root": str(self.root / "backup"), "max_age_seconds": 3600,
+                "source_hostname": "primary-host",
                 "record_checks": [{"name": "record", "database": "app", "sql": "SELECT 1"}],
             },
         }
@@ -45,6 +46,7 @@ class FenceRecoveryTest(unittest.TestCase):
                   "records": {"record": "c" * 64}, "writer_fence_token": fence_token}
         write_json(self.snapshot, source)
         receipt = source | {"status": "ready", "snapshot_sha256": recovery.digest(self.snapshot),
+                            "executor_host": settings["source_hostname"],
                             "restored_data_dir": str(self.root / "restored"), "replay_lsn": "0/200"}
         write_json(Path(settings["receipt_file"]), receipt)
 

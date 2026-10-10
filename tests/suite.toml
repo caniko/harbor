@@ -26,6 +26,91 @@ operation = "harbor-db.apply"
 dimension = "rejection"
 evidence = "Unfiltered apply, confirmation without selection, and selected dependents without confirmation reject manual prerequisites before any write. Selecting the dependent with confirmation executes its prerequisite exactly once and first."
 
+[[inventories]]
+origin = "rust"
+id_prefix = "native.cutover_storage."
+selector_prefix = ""
+source = "tests/cutover_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "cutover_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+selectors = ["hardlinked_custody_corpus_rejects_metadata_and_content_admission_in_both_engines", "database_corpus_query_cannot_replace_the_policy_root_in_both_engines"]
+
+[[coverage]]
+case = "native.cutover_storage.hardlinked_custody_corpus_rejects_metadata_and_content_admission_in_both_engines"
+capability = "cutover"
+operation = "harbor-db-cutover.certify"
+dimension = "rejection"
+evidence = "An actual external hard link rejects read-only content and metadata inventory in both engines. Removing only the alias restores successful inventory and independent certification."
+
+[[coverage]]
+case = "native.cutover_storage.database_corpus_query_cannot_replace_the_policy_root_in_both_engines"
+capability = "cutover"
+operation = "harbor-db-cutover.check.activate"
+dimension = "rejection"
+evidence = "Shared database-entry admission, consumed by cutover and transition inventory, rejects any query-supplied root including equal and null indices; allowed paths retain the configured root in both engines."
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.recovery_repository."
+selector_prefix = ""
+source = "tests/recovery_repository.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "recovery_repository"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+selectors = ["selected_capture_requires_complete_retained_wal_through_post_target_in_both_engines"]
+
+[[coverage]]
+case = "native.recovery_repository.selected_capture_requires_complete_retained_wal_through_post_target_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.inspect-recovery"
+dimension = "rejection"
+evidence = "Selected-capture readers reject missing and truncated required external WAL carriers, including the following segment containing a recovery-stop record, while valid sparse complete fixture carriers preserve admission in both engines."
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.recovery_storage."
+selector_prefix = ""
+source = "tests/recovery_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "recovery_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+selectors = ["local_acceptance_cannot_reuse_an_independent_host_receipt_in_both_engines"]
+
+[[coverage]]
+case = "native.recovery_storage.local_acceptance_cannot_reuse_an_independent_host_receipt_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.inspect-recovery"
+dimension = "rejection"
+evidence = "Complete independent-host evidence cannot satisfy local acceptance or readiness; absent/empty host identity rejects too. The source host satisfies only local evidence and the independent host satisfies off-host evidence in both engines."
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.transition_storage."
+selector_prefix = ""
+source = "tests/transition_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "transition_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+selectors = ["transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines", "transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines"]
+
+[[coverage]]
+case = "native.transition_storage.transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.prepare"
+dimension = "positive"
+evidence = "Real nested backup capture takes longer than the transition deadline but each stage stays within the backup limit; both coordinators publish deterministic acceptance and LAST_SUCCESS."
+
+[[coverage]]
+case = "native.transition_storage.transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.prepare"
+dimension = "positive"
+evidence = "A root-owned immutable authority-state fixture and independently user-owned backup root exercise distinct accounts without privilege changes. Both coordinators execute the actual backup under the namespace owner and publish acceptance."
 
 [[inventories]]
 origin = "rust"
@@ -111,7 +196,7 @@ case = "nix.x86_64-linux.native-storage-eval"
 capability = "nixos"
 operation = "nixos.application-transition"
 dimension = "rejection"
-evidence = "nix/native-storage-eval.nix rejects empty argv, an empty executable and a relative executable independently for each transition worker. Cross-project active/retired writer overlap, duplicate writer declarations and shared, nested, aliased or backup-overlapping barrier roots reject too. Valid disjoint projects and disabled-project overlap are admitted."
+evidence = "nix/native-storage-eval.nix rejects empty argv, an empty executable and a relative executable independently for each transition worker. Cross-project active/retired writer overlap, duplicate writer declarations and shared, nested, aliased or backup-overlapping barrier roots reject too. Transition-only project names reject dots, @, non-ASCII, empty and overlong names; valid ASCII and the 128-byte boundary pass. Valid disjoint projects and disabled-project overlap are admitted."
 
 [[coverage]]
 case = "native.supervisor.detached_nix_case_retains_launcher_path_without_service_manager_environment"

@@ -26,6 +26,7 @@ impl Fixture {
             "package/bin",
             "backup/evidence",
             "backup/locks",
+            "backup/wal",
             "data",
             "restored",
             "state",
@@ -78,6 +79,12 @@ impl Fixture {
         )
         .unwrap();
         fs::write(root.path().join("backup/recovery/SELECTED"), "capture-1\n").unwrap();
+        for name in ["000000010000000000000000", "000000010000000000000001"] {
+            fs::File::create(root.path().join("backup/wal").join(name))
+                .unwrap()
+                .set_len(16777216)
+                .unwrap();
+        }
         Self {
             root,
             config,
@@ -111,6 +118,43 @@ impl Fixture {
         )
         .unwrap();
     }
+}
+
+#[test]
+fn selected_capture_requires_complete_retained_wal_through_post_target_in_both_engines() {
+    let mut f = Fixture::new();
+    f.copied_source();
+    recovery_repository::select(&f.config, &f.config["recovery"], f.now).unwrap();
+    assert!(f.python().get("error").is_none());
+    for name in ["000000010000000000000000", "000000010000000000000001"] {
+        let path = f.p("backup/wal").join(name);
+        fs::rename(&path, path.with_extension("partial")).unwrap();
+        assert!(recovery_repository::select(&f.config, &f.config["recovery"], f.now).is_err());
+        assert!(f.python().get("error").is_some());
+        assert!(recovery::check(&f.config, Some(f.now)).is_err());
+        assert!(f.python_action("check").get("error").is_some());
+        fs::rename(path.with_extension("partial"), &path).unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_len(16777215)
+            .unwrap();
+        assert!(recovery_repository::select(&f.config, &f.config["recovery"], f.now).is_err());
+        assert!(f.python().get("error").is_some());
+        assert!(recovery::check(&f.config, Some(f.now)).is_err());
+        assert!(f.python_action("check").get("error").is_some());
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_len(16777216)
+            .unwrap();
+    }
+    recovery_repository::select(&f.config, &f.config["recovery"], f.now).unwrap();
+    assert!(f.python().get("error").is_none());
+    assert!(recovery::check(&f.config, Some(f.now)).is_ok());
+    assert!(f.python_action("check").get("error").is_none());
 }
 
 #[test]
@@ -377,7 +421,7 @@ impl Fixture {
             std::path::Path::new("/restore/socket"),
             55432,
             Some(self.now),
-            Some("independent-host"),
+            Some("primary-host"),
         )
         .unwrap();
         assert!(recovery::check(&self.config, Some(self.now)).is_ok());
@@ -390,7 +434,7 @@ impl Fixture {
         json!({"readiness_command":[self.p("noop")],"backup_command":[self.p("noop")],"restore_command":[self.p("noop")]})
     }
     fn python_action(&self, action: &str) -> Value {
-        let script = "import json,sys; from pathlib import Path; from harbor_db import recovery\nc=json.loads(sys.argv[1]); a=sys.argv[2]; now=int(sys.argv[3]); root=Path(c['data_dir']).parent\ntry:\n if a=='certify': r=recovery.certify(c,root/'restored','/restore/socket',55432,now=now,hostname='independent-host')\n elif a=='snapshot': r=recovery.snapshot(c,'/run/postgresql',5432,now=now)\n elif a=='import': r=recovery.import_off_host(c,root/'incoming.json',now=now)\n elif a=='prepare': r=recovery.prepare(c,{k:[str(root/'noop')] for k in ('readiness_command','backup_command','restore_command')},'/run/postgresql',5432)\n elif a=='live': r=recovery.live_check(c,'/run/postgresql',5432,now=now)\n else: r=recovery.check(c,now=now)\n print(json.dumps(r))\nexcept Exception as e: print(json.dumps({'error':str(e)}))";
+        let script = "import json,sys; from pathlib import Path; from harbor_db import recovery\nc=json.loads(sys.argv[1]); a=sys.argv[2]; now=int(sys.argv[3]); root=Path(c['data_dir']).parent\ntry:\n if a=='certify': r=recovery.certify(c,root/'restored','/restore/socket',55432,now=now,hostname='primary-host')\n elif a=='snapshot': r=recovery.snapshot(c,'/run/postgresql',5432,now=now)\n elif a=='import': r=recovery.import_off_host(c,root/'incoming.json',now=now)\n elif a=='prepare': r=recovery.prepare(c,{k:[str(root/'noop')] for k in ('readiness_command','backup_command','restore_command')},'/run/postgresql',5432)\n elif a=='live': r=recovery.live_check(c,'/run/postgresql',5432,now=now)\n else: r=recovery.check(c,now=now)\n print(json.dumps(r))\nexcept Exception as e: print(json.dumps({'error':str(e)}))";
         let mut spec = process::CommandSpec::new(vec![
             "python3".into(),
             "-B".into(),
@@ -508,7 +552,7 @@ fn selected_generation_ignores_global_snapshot_and_uncommitted_capture() {
         std::path::Path::new("/restore/socket"),
         55432,
         Some(f.now),
-        Some("independent-host"),
+        Some("primary-host"),
     )
     .unwrap();
     assert_eq!(native, old_receipt);
@@ -546,7 +590,7 @@ fn primary_snapshot_retry_returns_frozen_generation_without_republishing() {
         std::path::Path::new("/restore/socket"),
         55432,
         Some(f.now),
-        Some("independent-host"),
+        Some("primary-host"),
     )
     .unwrap();
     let before = unchanged_files(f.root.path());

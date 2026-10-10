@@ -71,6 +71,78 @@ impl Fixture {
 }
 
 #[test]
+fn hardlinked_custody_corpus_rejects_metadata_and_content_admission_in_both_engines() {
+    let f = Fixture::new();
+    let external = f.temp.path().join("external-history");
+    fs::hard_link(f.source.join("history"), &external).unwrap();
+    for contents in [false, true] {
+        let error = custody::inventory(&f.config, contents).unwrap_err();
+        assert!(error.to_string().contains("hard link"), "{error}");
+    }
+    let script = r#"import json,sys
+from harbor_db import cutover
+c=json.loads(sys.argv[1])
+for contents in (False,True):
+    try: cutover.inventory(c,contents=contents)
+    except ValueError as error: assert 'hard link' in str(error)
+    else: raise AssertionError('shared inode accepted')
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        f.config.to_string(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&spec).unwrap();
+    fs::remove_file(external).unwrap();
+    custody::inventory(&f.config, true).unwrap();
+    f.certify().unwrap();
+}
+
+#[test]
+fn database_corpus_query_cannot_replace_the_policy_root_in_both_engines() {
+    let item = json!({"path":"history","directory":false});
+    assert_eq!(
+        custody::database_entry(&json!(0), &item).unwrap(),
+        json!({"root":0,"path":"history","directory":false})
+    );
+    for root in [json!(1), json!(0), json!(null)] {
+        let mut malicious = item.clone();
+        malicious["root"] = root;
+        assert!(custody::database_entry(&json!(0), &malicious).is_err());
+    }
+    let script = r#"from harbor_db import cutover
+assert cutover.database_entry(0,{'path':'history','directory':False})=={'root':0,'path':'history','directory':False}
+for root in (0,1,None):
+    try: cutover.database_entry(0,{'path':'history','root':root})
+    except ValueError: pass
+    else: raise AssertionError('query root accepted')
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&spec).unwrap();
+}
+
+#[test]
 fn deployed_cutover_policy_alias_is_read_before_login_authority_selection() {
     use harbor_db::storage::{durable, login_shell, process};
     let root = tempfile::tempdir().unwrap();

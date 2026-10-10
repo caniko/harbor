@@ -360,12 +360,16 @@ fn absent_extension_manifest_keeps_original_runtime_hash_requirement() {
             .to_string()
             .contains("Python test baseline changed")
     );
-    fs::copy(
-        root.path()
-            .join("tests/oracles/pr14/tests/test_application_provision.py"),
-        root.path().join("tests/test_application_provision.py"),
-    )
-    .unwrap();
+    for path in [
+        "tests/test_application_provision.py",
+        "tests/test_fence_recovery.py",
+    ] {
+        fs::copy(
+            root.path().join("tests/oracles/pr14").join(path),
+            root.path().join(path),
+        )
+        .unwrap();
+    }
     baseline.validate_migration(root.path(), &suite).unwrap();
 }
 

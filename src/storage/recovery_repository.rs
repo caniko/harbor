@@ -207,6 +207,7 @@ pub fn select(config: &Value, settings: &Value, now: i64) -> Result<SelectedCapt
     if recovery::lsn(&meta["post_backup_lsn"])? <= recovery::lsn(&meta["backup_stop_lsn"])? {
         return Err(invalid("backup recovery point must follow its stop LSN"));
     }
+    super::recovery_capture::retained_wal(&root.join("wal"), &manifest_value, &meta)?;
     let actual_now: i64 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| invalid("invalid system clock"))?

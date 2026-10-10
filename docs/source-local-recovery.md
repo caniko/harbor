@@ -31,6 +31,12 @@ inclusive recovery target compares WAL record start positions, so finalization
 also completes and waits for the following receiver segment containing a genuine
 post-target checkpoint record. This makes the frozen target reachable without
 depending on a partial WAL carrier or moving the target during a retry.
+Selection rechecks the manifest-derived external WAL range through that following
+segment. Every required carrier must remain a complete regular file; removal,
+truncation or redirection invalidates readiness even after certification.
+Local restore acceptance must name the declared source host, while off-host
+acceptance must name an independent host. Copying an independent receipt into
+both evidence paths cannot satisfy the two execution requirements.
 Managed source-local preparation requires `requireWriterFence = true` at module
 evaluation. Read-only independent certification and retired bootstrap enrollment
 can disable the local fence requirement while consuming the same bound capture.

@@ -21,11 +21,11 @@ sha256 = "47e441ba84dfef1a86f07d6e91f88ff09a1d22076f6c316830a20f2a6fcceac5"
 
 [[extensions]]
 path = "python/harbor_db/recovery.py"
-sha256 = "0a04cda75e3b9028746c21c720aae80b91b87de388dc0148c65844e76b7f17de"
+sha256 = "bcff9bf072da25b9a98401b776d8b5a3bd07377fae285ae9aba1c9977841f6e0"
 
 [[extensions]]
 path = "python/harbor_db/application_transition.py"
-sha256 = "1a165ac1206f3d96f37e7fbe1c0897880b4d6110c1ccf957953f4aa97ef91903"
+sha256 = "92e9cecc84913f8be3faee87c5acb370888b2735f3e2fa4e8628c8c3832d961d"
 
 [[extensions]]
 path = "python/harbor_db/transition_manifest.py"
@@ -33,7 +33,7 @@ sha256 = "8b98988cbfa68316e207544fd872b318fc8bbbe4da491338b62f50074ecbd334"
 
 [[extensions]]
 path = "python/harbor_db/cutover.py"
-sha256 = "3ddd0f233d2c2a993a2a6057f22ba093ad270406530d2b33758d3078c9a42812"
+sha256 = "8d0c933fd1ce723010a1b0dae9d58571adf8a9d1acdf4d2340c85104e1c9e985"
 
 [[extensions]]
 path = "python/harbor_db/provision.py"
@@ -42,6 +42,10 @@ sha256 = "df41d997ae9a808d895f886b0dbfe6b43c71051e20a82a06a9cf0449c51dd521"
 [[extensions]]
 path = "tests/test_application_provision.py"
 sha256 = "958f1c84f67fd46f7eab054c334dd312c851b74559c032036c08e5e5653bcc69"
+
+[[extensions]]
+path = "tests/test_fence_recovery.py"
+sha256 = "272ba7f286bcc31b4af7282076a1c79c6f7a2334cd74506d1339d12c139281a8"
 
 [[extensions]]
 path = "python/harbor_db/application_backup.py"

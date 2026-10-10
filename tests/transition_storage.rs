@@ -58,6 +58,107 @@ impl Fixture {
 }
 
 #[test]
+fn transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines() {
+    transition_capture_fixture(false);
+}
+
+#[test]
+fn transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines() {
+    transition_capture_fixture(true);
+}
+
+fn transition_capture_fixture(different_authority: bool) {
+    use std::collections::BTreeMap;
+    for python in [false, true] {
+        let mut f = Fixture::new();
+        if different_authority {
+            let immutable = env!("HARBOR_DB_TEST_CONFIG_FIXTURE");
+            assert_ne!(
+                std::os::unix::fs::MetadataExt::uid(&fs::metadata(immutable).unwrap()),
+                unsafe { libc::geteuid() }
+            );
+            f.source["state_dir"] = json!(immutable);
+            f.target["state_dir"] = json!(immutable);
+            durable::write_json(&f.temp.path().join("source.json"), &f.source).unwrap();
+            durable::write_json(&f.temp.path().join("target.json"), &f.target).unwrap();
+        } else {
+            f.config["timeout_seconds"] = json!(1);
+        }
+        let root = f.temp.path().join("backup-root");
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("lock"), b"").unwrap();
+        let adapter = f.temp.path().join("adapter.py");
+        fs::write(&adapter, r#"import json,sys,time
+from pathlib import Path
+stage,backup,workspace=sys.argv[1],Path(sys.argv[2]),Path(sys.argv[3])
+time.sleep(0.6)
+if stage=='capture':
+    backup.mkdir(); (backup/'records').write_text('stable source')
+    (backup/'capture.json').write_text(json.dumps({'version':1,'semantic_sha256':'a'*64,'consistency':'quiesced'}))
+elif stage=='cleanup': pass
+elif stage=='restore': assert (backup/'records').read_text()=='stable source'
+elif stage=='verify': print(json.dumps({'version':1,'status':'verified','semantic_sha256':'a'*64}))
+"#).unwrap();
+        let interpreter = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|path| path.join("python3"))
+            .find(|path| path.is_file())
+            .unwrap();
+        let commands: serde_json::Map<String, serde_json::Value> =
+            ["capture", "restore", "verify", "cleanup"]
+                .into_iter()
+                .map(|stage| {
+                    (
+                        stage.into(),
+                        json!([interpreter, adapter, stage, "{backup}", "{workspace}"]),
+                    )
+                })
+                .collect();
+        let backup = json!({"version":1,"resource":"demo","root":root,"commands":commands,"executable_files":[adapter],"timeout_seconds":10,"maximum_age_seconds":3600});
+        durable::write_json(&f.temp.path().join("backup.json"), &backup).unwrap();
+        let binary = f.temp.path().join("bin/harbor-db-application-backup");
+        fs::remove_file(&binary).unwrap();
+        symlink(env!("CARGO_BIN_EXE_harbor-db-application-backup"), &binary).unwrap();
+        let record = json!({"intent":transition_manifest::intent(&f.config).unwrap()});
+        if python {
+            let script = r#"import json,sys
+from unittest.mock import patch
+from harbor_db import application_backup,application_transition
+original_digest=application_backup.digest
+if sys.argv[3]: patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
+backup,receipt=application_transition.capture_source(json.loads(sys.argv[1]),json.loads(sys.argv[2]),())
+assert receipt['consistency']=='quiesced' and (backup/'acceptance.json').is_file()
+"#;
+            let mut spec = process::CommandSpec::new(vec![
+                interpreter.display().to_string(),
+                "-B".into(),
+                "-c".into(),
+                script.into(),
+                f.config.to_string(),
+                record.to_string(),
+                option_env!("HARBOR_DB_TEST_MACHINE_ID")
+                    .unwrap_or("")
+                    .into(),
+            ]);
+            spec.environment = Some(BTreeMap::from([
+                (
+                    "PYTHONPATH".into(),
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ),
+                ("PATH".into(), std::env::var("PATH").unwrap()),
+                ("TMPDIR".into(), std::env::var("TMPDIR").unwrap()),
+            ]));
+            process::execute(&spec).unwrap();
+        } else {
+            let (path, receipt) =
+                application_transition::capture_source(&f.config, &record, &[]).unwrap();
+            assert_eq!(receipt["consistency"], "quiesced");
+            assert!(path.join("acceptance.json").is_file());
+        }
+        assert!(root.join("LAST_SUCCESS").is_file());
+    }
+}
+
+#[test]
 fn operator_policy_requires_every_declared_manifest_to_be_immutable() {
     use std::os::unix::fs::PermissionsExt;
     let Some(fixture) = option_env!("HARBOR_DB_TEST_CONFIG_FIXTURE") else {

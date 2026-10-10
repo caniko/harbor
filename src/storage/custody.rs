@@ -106,6 +106,11 @@ fn walk(
             .to_owned();
         let mut value = json!({"directory":info.is_dir(),"mode":info.mode() & 0o7777,"size":if info.is_file(){info.len()}else{0}});
         if info.is_file() {
+            if info.nlink() != 1 {
+                return Err(invalid(
+                    "custody corpus files must not have hard links or shared-inode aliases",
+                ));
+            }
             if contents {
                 value["sha256"] = json!(codec::file_digest(&path)?);
                 if !stable(&info, &fs::symlink_metadata(&path)?) {
@@ -155,6 +160,19 @@ pub fn inventory(config: &Value, contents: bool) -> Result<Value> {
         result.push(Value::Object(files));
     }
     Ok(Value::Array(result))
+}
+pub fn database_entry(root: &Value, item: &Value) -> Result<Value> {
+    if item.get("root").is_some() {
+        return Err(invalid("database corpus query must not supply a root"));
+    }
+    let mut entry = json!({"root":root});
+    for (key, value) in item
+        .as_object()
+        .ok_or_else(|| invalid("database corpus path must be an object"))?
+    {
+        entry[key] = value.clone();
+    }
+    Ok(entry)
 }
 pub fn writer_active(unit: &str) -> Result<bool> {
     let mut spec = process::CommandSpec::new(vec![

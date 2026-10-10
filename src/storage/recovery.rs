@@ -687,6 +687,16 @@ pub fn validate_receipt(
             "off-host recovery must execute on an independent host",
         ));
     }
+    if !label.starts_with("off-host")
+        && (settings["source_hostname"]
+            .as_str()
+            .is_none_or(str::is_empty)
+            || receipt["executor_host"] != settings["source_hostname"])
+    {
+        return Err(invalid(
+            "local recovery must execute on the declared source host",
+        ));
+    }
     Ok(())
 }
 fn check_evidence(

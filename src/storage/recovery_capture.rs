@@ -152,6 +152,35 @@ fn wal_name(timeline: u32, number: u64, segment: u64) -> String {
     )
 }
 
+/// Read-only admission of the external carriers required by a selected capture.
+pub(crate) fn retained_wal(wal: &Path, manifest: &Value, metadata: &Value) -> Result<()> {
+    let ranges = ranges(manifest)?;
+    let segment = segment_size(&metadata["wal_segment_bytes"])?;
+    let timeline: u32 = metadata["timeline"]
+        .as_u64()
+        .and_then(|n| n.try_into().ok())
+        .filter(|n| *n > 0)
+        .ok_or_else(|| invalid("invalid capture timeline"))?;
+    if ranges.iter().any(|range| range.timeline != timeline) {
+        return Err(invalid("capture WAL timeline differs from its manifest"));
+    }
+    let (first, last) = required_segments(
+        &ranges,
+        recovery::lsn(&metadata["post_backup_lsn"])?,
+        segment,
+    )?;
+    for number in first..=last {
+        let path = strict(&wal.join(wal_name(timeline, number, segment)))?;
+        let file = durable::open_regular(&path, false)?;
+        if file.metadata()?.len() != segment {
+            return Err(invalid(
+                "retained WAL carrier is not a complete regular segment",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn wait_wal(
     wal: &Path,
     timeline: u32,

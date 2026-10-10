@@ -366,6 +366,10 @@ def validate_receipt(config, settings, source, binding, receipt, label):
         not receipt.get("executor_host") or receipt["executor_host"] == settings["source_hostname"]
     ):
         raise ValueError("off-host recovery must execute on an independent host")
+    if not label.startswith("off-host") and (
+        not settings.get("source_hostname") or receipt.get("executor_host") != settings["source_hostname"]
+    ):
+        raise ValueError("local recovery must execute on the declared source host")
 
 
 def import_off_host(config, path, *, now=None):

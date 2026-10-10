@@ -119,6 +119,10 @@ in {
       ]
       ++ lib.concatLists (lib.mapAttrsToList (name: p: [
           {
+            assertion = builtins.match "[A-Za-z0-9_-]{1,128}" name != null;
+            message = "Harbor DB ${name} transition project name must contain 1..128 ASCII letters, digits, underscores or hyphens, matching the runtime resource name.";
+          }
+          {
             assertion = builtins.attrNames p.transition.commands == ["health" "import" "verify-source" "verify-target"] && p.transition.runtimeUnits != [];
             message = "Harbor DB ${name} transitions require all semantic workers and explicit runtime units.";
           }
