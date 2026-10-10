@@ -58,6 +58,85 @@ impl Fixture {
 }
 
 #[test]
+fn operator_policy_requires_every_declared_manifest_to_be_immutable() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = std::path::Path::new(
+        option_env!("HARBOR_DB_TEST_CONFIG_FIXTURE")
+            .expect("operator qualification requires the immutable configuration fixture"),
+    );
+    let stored_alias = fixture.join("postgresql.json");
+    let mut config = json!({
+        "source_manifest":stored_alias,"target_manifest":stored_alias,"backup_manifest":stored_alias,
+        "postgres_manifest":null,"custody_manifest":null
+    });
+    transition_manifest::validate_operator_policy(&config).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let mutable = root.path().join("policy.json");
+    fs::write(&mutable, b"{}").unwrap();
+    fs::set_permissions(&mutable, fs::Permissions::from_mode(0o444)).unwrap();
+    let runtime_alias = root.path().join("runtime-alias.json");
+    symlink(&stored_alias, &runtime_alias).unwrap();
+    for key in [
+        "postgres_manifest",
+        "custody_manifest",
+        "source_manifest",
+        "target_manifest",
+        "backup_manifest",
+    ] {
+        let previous = config[key].clone();
+        for path in [&mutable, &runtime_alias] {
+            config[key] = json!(path);
+            let before = config.clone();
+            let error = transition_manifest::validate_operator_policy(&config).expect_err(key);
+            assert!(
+                error.to_string().contains("immutable store"),
+                "{key}: {error}"
+            );
+            assert_eq!(config, before);
+            assert_eq!(fs::read(&mutable).unwrap(), b"{}");
+        }
+        config[key] = json!(stored_alias);
+        let before = config.clone();
+        transition_manifest::validate_operator_policy(&config).unwrap();
+        assert_eq!(
+            config, before,
+            "immutable aliases must preserve the recorded contract"
+        );
+        config[key] = previous;
+    }
+    let script = r#"import json,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import application_transition
+config=json.loads(sys.argv[1])
+for key in ('postgres_manifest','custody_manifest'):
+    selected=config | {key:sys.argv[2]}
+    with patch.object(sys,'argv',['transition','--config',sys.argv[3],'status']), \
+         patch.object(application_transition,'read_json',return_value=selected), \
+         patch.object(application_transition,'status') as status:
+        assert application_transition.main()==1
+        status.assert_not_called()
+"#;
+    let mut command = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        mutable.to_str().unwrap().into(),
+        stored_alias.to_str().unwrap().into(),
+    ]);
+    command.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&command).unwrap();
+}
+
+#[test]
 fn python_and_rust_preserve_hash_sensitive_transition_intent_and_journal_phases() {
     use harbor_db::storage::process;
     let mut f = Fixture::new();

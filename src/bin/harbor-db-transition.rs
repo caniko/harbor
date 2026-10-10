@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use harbor_db::storage::{
-    Result, application_transition as transition, codec, durable, invalid, string,
+    Result, application_transition as transition, codec, durable, invalid, transition_manifest,
 };
 use std::path::PathBuf;
 #[derive(Parser)]
@@ -38,17 +38,7 @@ fn run(cli: Cli) -> Result<()> {
         ))
     })?;
     let config = durable::read_config_json(&path)?;
-    if ["source_manifest", "target_manifest", "backup_manifest"]
-        .iter()
-        .any(|k| match string(&config, k) {
-            Ok(p) => durable::immutable_config_path(std::path::Path::new(p)).is_err(),
-            Err(_) => true,
-        })
-    {
-        return Err(invalid(
-            "operator transition manifests must be immutable store files",
-        ));
-    }
+    transition_manifest::validate_operator_policy(&config)?;
     let result = match cli.command {
         Command::Plan {
             candidate,

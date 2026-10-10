@@ -1,6 +1,24 @@
 # Versioned static inventory. No discovery command, Nix evaluation, or pass verdict.
 version = 1
 
+[[inventories]]
+origin = "rust"
+id_prefix = "native.transition_storage."
+selector_prefix = ""
+source = "tests/transition_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "transition_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+selectors = ["operator_policy_requires_every_declared_manifest_to_be_immutable"]
+
+[[coverage]]
+case = "native.transition_storage.operator_policy_requires_every_declared_manifest_to_be_immutable"
+capability = "application-transition"
+operation = "harbor-db-transition.plan"
+dimension = "rejection"
+evidence = "The operator admission used by the native dispatcher rejects mutable regular files and mutable-location aliases for all five policies, accepts immutable store aliases and null optional policies without rewriting the contract, and checks that the Python operator rejects both mutable optional policies before dispatch."
+
 [[coverage]]
 case = "nix.x86_64-linux.native-storage-eval"
 capability = "nixos"

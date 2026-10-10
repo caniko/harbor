@@ -121,6 +121,54 @@ pub fn immutable_config_path(path: &Path) -> Result<PathBuf> {
     Ok(canonical)
 }
 
+/// A retained policy reference must have no mutable alias hop, including
+/// redirects through a runtime path that currently resolves back into the store.
+pub fn immutable_store_reference(path: &Path) -> Result<PathBuf> {
+    let canonical = immutable_config_path(path)?;
+    validate_store_reference(path, 0)?;
+    Ok(canonical)
+}
+
+fn validate_store_reference(path: &Path, depth: usize) -> Result<()> {
+    let root = Path::new("/nix/store");
+    if !path.starts_with(root) || depth > 64 {
+        return Err(invalid(
+            "policy reference contains a mutable alias or excessive redirects",
+        ));
+    }
+    let root_uid = root_owner_uid()?;
+    for selected in path.ancestors().take_while(|selected| *selected != root) {
+        let resolved = fs::canonicalize(selected)?;
+        if !resolved.starts_with(root) {
+            return Err(invalid("policy reference escapes the immutable store"));
+        }
+        if resolved == root {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(selected)?;
+        if metadata.uid() != root_uid {
+            return Err(invalid("policy reference has a non-root-owned ancestor"));
+        }
+        if metadata.file_type().is_symlink() {
+            let target = fs::read_link(selected)?;
+            let target = if target.is_absolute() {
+                target
+            } else {
+                fs::canonicalize(
+                    selected
+                        .parent()
+                        .ok_or_else(|| invalid("policy alias has no parent"))?,
+                )?
+                .join(target)
+            };
+            validate_store_reference(&target, depth + 1)?;
+        } else if metadata.mode() & 0o222 != 0 {
+            return Err(invalid("policy reference has a writable ancestor"));
+        }
+    }
+    Ok(())
+}
+
 fn open_configuration(path: &Path) -> Result<(PathBuf, File)> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()

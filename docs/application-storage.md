@@ -131,6 +131,9 @@ Commands run under explicit service accounts and receive single argv substitutio
 for `{backup}`, `{source}`, `{target}` and, after binding, `{candidate}`.
 Every worker requires nonempty argv with an absolute executable; the generated
 NixOS configuration rejects invalid workers before installing transition tooling.
+Operator policy references must be immutable store files, including non-null
+PostgreSQL and custody manifests. Store-internal aliases retain their original
+contract spelling; mutable-location aliases are rejected before dispatch.
 
 The root coordinator installs persistent systemd client barriers before stopping
 writers and taking the exclusive authority lease. Legacy service units are included

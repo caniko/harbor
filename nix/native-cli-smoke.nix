@@ -3,6 +3,16 @@
   package,
   testPackage,
 }: let
+  policy = pkgs.writeText "harbor-db-operator-policy-fixture.json" "{}";
+  rejectedPolicies = map (key:
+    pkgs.writeText "harbor-db-rejected-${key}.json" (builtins.toJSON ({
+        source_manifest = toString policy;
+        target_manifest = toString policy;
+        backup_manifest = toString policy;
+        postgres_manifest = null;
+        custody_manifest = null;
+      }
+      // {${key} = "/build/harbor-db-mutable-policy.json";}))) ["postgres_manifest" "custody_manifest"];
   binaries = [
     "harbor-db"
     "harbor-db-postgres"
@@ -25,6 +35,16 @@ in
     test ! -e ${package}/bin/harbor-db-writer-fence-fixture
     test ! -e ${package}/bin/harbor-db-backend-transition-fixture
     test ! -e ${package}/bin/harbor-db-provision-fixture
+    printf '%s\n' '{}' > /build/harbor-db-mutable-policy.json
+    chmod 0444 /build/harbor-db-mutable-policy.json
+    ${pkgs.lib.concatMapStringsSep "\n" (contract: ''
+        if ${package}/bin/harbor-db-transition --config ${contract} status > policy.stdout 2> policy.stderr; then
+          exit 1
+        fi
+        test ! -s policy.stdout
+        grep -F 'operator transition manifests must be immutable store files' policy.stderr
+      '')
+      rejectedPolicies}
     test "$(find ${package}/bin -maxdepth 1 -type f | wc -l)" -eq ${toString (builtins.length binaries + 1)}
     ${pkgs.lib.concatMapStringsSep "\n" (binary: ''
         test -x ${package}/bin/${binary}

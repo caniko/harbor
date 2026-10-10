@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Require optional PostgreSQL and custody transition policies to be immutable
+  store references before operator dispatch, preserving recorded contract bytes.
 - Reject empty or relative transition worker argv during NixOS evaluation,
   before publishing unusable transition tooling.
 - Reject ambiguous custody roots, activation directories and directory-creating

@@ -23,6 +23,28 @@ pub fn require_root() -> Result<()> {
     }
     Ok(())
 }
+/// Operator admission is stricter than the mutable library fixtures.
+pub fn validate_operator_policy(config: &Value) -> Result<()> {
+    for key in [
+        "source_manifest",
+        "target_manifest",
+        "backup_manifest",
+        "postgres_manifest",
+        "custody_manifest",
+    ] {
+        if matches!(key, "postgres_manifest" | "custody_manifest") && config[key].is_null() {
+            continue;
+        }
+        let path = string(config, key)?;
+        // Validate every alias hop without rewriting the hash-sensitive contract.
+        durable::immutable_store_reference(Path::new(path)).map_err(|error| {
+            invalid(format!(
+                "operator transition manifests must be immutable store files ({key}): {error}"
+            ))
+        })?;
+    }
+    Ok(())
+}
 pub fn generation() -> Result<String> {
     let path = Path::new("/run/current-system");
     Ok(resolve(path)?.to_string_lossy().into_owned())

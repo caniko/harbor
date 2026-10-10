@@ -462,8 +462,10 @@ def main():
     args = parser.parse_args()
     try:
         config = read_json(args.config)
+        policy_keys = ("source_manifest", "target_manifest", "backup_manifest") + tuple(
+            key for key in ("postgres_manifest", "custody_manifest") if config.get(key) is not None)
         if not str(args.config).startswith("/nix/store/") or any(not str(config[key]).startswith("/nix/store/")
-                for key in ("source_manifest", "target_manifest", "backup_manifest")):
+                for key in policy_keys):
             raise ValueError("operator transition manifests must be immutable store files")
         if args.command == "plan":
             result = plan(config, args.candidate, args.writer_fence_token)
