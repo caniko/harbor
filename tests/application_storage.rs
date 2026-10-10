@@ -85,7 +85,7 @@ fn hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chm
         durable::write_json(&config_file, &c).unwrap();
         let invoke = |operation: &str, argument: &str| {
             if python {
-                let script = "import json,sys\nfrom pathlib import Path\nfrom harbor_db import application_backup\nc=json.loads(Path(sys.argv[1]).read_text())\ntry:\n if sys.argv[2]=='capture': application_backup.capture(c,sys.argv[3])\n else: application_backup.inspect(c,Path(sys.argv[3]))\n outcome={'ok':True}\nexcept ValueError as error: outcome={'error':str(error)}\nprint(json.dumps(outcome))";
+                let script = "import json,sys\nfrom pathlib import Path\nfrom harbor_db import application_backup\nfrom unittest.mock import patch\nif sys.argv[4]:\n original_digest=application_backup.digest\n patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[4] if str(path)=='/etc/machine-id' else path)).start()\nc=json.loads(Path(sys.argv[1]).read_text())\ntry:\n if sys.argv[2]=='capture': application_backup.capture(c,sys.argv[3])\n else: application_backup.inspect(c,Path(sys.argv[3]))\n outcome={'ok':True}\nexcept ValueError as error: outcome={'error':str(error)}\nprint(json.dumps(outcome))";
                 let mut spec = process::CommandSpec::new(vec![
                     "python3".into(),
                     "-B".into(),
@@ -94,6 +94,9 @@ fn hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chm
                     config_file.display().to_string(),
                     operation.into(),
                     argument.into(),
+                    option_env!("HARBOR_DB_TEST_MACHINE_ID")
+                        .unwrap_or("")
+                        .into(),
                 ]);
                 spec.environment = Some(std::collections::BTreeMap::from([
                     (
@@ -117,7 +120,14 @@ fn hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chm
                 application_backup::verify_bytes(&c, Path::new(argument), None).map(|_| ())
             }
         };
-        invoke("capture", "first").unwrap();
+        invoke("capture", "first").unwrap_or_else(|error| panic!("python={python}: {error}"));
+        let machine_path = option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("/etc/machine-id");
+        let accepted_receipt =
+            durable::read_json(&t.path().join("backups/first/acceptance.json")).unwrap();
+        assert_eq!(
+            accepted_receipt["executor_machine_sha256"],
+            codec::file_digest(&fs::canonicalize(machine_path).unwrap()).unwrap()
+        );
         let marker = t.path().join("backups/LAST_SUCCESS");
         let previous = fs::read(&marker).unwrap();
         let marker_inode = fs::metadata(&marker).unwrap().ino();
