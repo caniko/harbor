@@ -7,6 +7,10 @@
 }: let
   inherit (lib) mkOption types;
   projects = lib.filterAttrs (_: p: p.transition.enable) config.services.harbor-db.projects;
+  writers = lib.concatMap (p: p.transition.runtimeUnits ++ p.transition.retiredUnits) (lib.attrValues projects);
+  barriers = map (p: p.transition.barrierDirectory) (lib.attrValues projects);
+  backupRoots = map (p: p.backup.directory) (lib.attrValues (lib.filterAttrs (_: p: p.backup.enable or false) config.services.harbor-db.projects));
+  storagePaths = import ./storage-paths.nix {inherit lib;};
   package = harborDbStoragePackage;
   manifest = name: p:
     pkgs.writeText "harbor-db-${name}-transition.json" (builtins.toJSON {
@@ -98,17 +102,32 @@ in {
     }));
   };
   config = lib.mkIf (projects != {}) {
-    assertions = lib.concatLists (lib.mapAttrsToList (name: p: [
+    assertions =
+      [
         {
-          assertion = builtins.attrNames p.transition.commands == ["health" "import" "verify-source" "verify-target"] && p.transition.runtimeUnits != [];
-          message = "Harbor DB ${name} transitions require all semantic workers and explicit runtime units.";
+          assertion = lib.length writers == lib.length (lib.unique writers);
+          message = "Harbor DB transition namespaces require each active or retired writer unit to have one enabled transition owner.";
         }
         {
-          assertion = lib.all (worker: worker.argv != [] && lib.hasPrefix "/" (lib.head worker.argv)) (lib.attrValues p.transition.commands);
-          message = "Harbor DB ${name} transition workers require nonempty argv with an absolute executable.";
+          assertion = lib.all (path: path != "/" && storagePaths.normalizedAbsolute path) barriers;
+          message = "Harbor DB transition namespaces require dedicated normalized absolute barrier directories.";
         }
-      ])
-      projects);
+        {
+          assertion = storagePaths.disjoint (barriers ++ backupRoots);
+          message = "Harbor DB transition namespaces require barrier and enabled backup roots to be pairwise non-overlapping.";
+        }
+      ]
+      ++ lib.concatLists (lib.mapAttrsToList (name: p: [
+          {
+            assertion = builtins.attrNames p.transition.commands == ["health" "import" "verify-source" "verify-target"] && p.transition.runtimeUnits != [];
+            message = "Harbor DB ${name} transitions require all semantic workers and explicit runtime units.";
+          }
+          {
+            assertion = lib.all (worker: worker.argv != [] && lib.hasPrefix "/" (lib.head worker.argv)) (lib.attrValues p.transition.commands);
+            message = "Harbor DB ${name} transition workers require nonempty argv with an absolute executable.";
+          }
+        ])
+        projects);
     systemd.tmpfiles.rules = lib.concatMap (p: [
       "d ${p.transition.barrierDirectory} 0700 root root -"
       "f ${p.transition.barrierDirectory}/lock 0600 root root -"

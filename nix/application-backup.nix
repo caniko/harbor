@@ -8,7 +8,7 @@
   inherit (lib) mkOption types;
   projects = lib.filterAttrs (_: p: p.backup.enable) config.services.harbor-db.projects;
   roots = map (p: p.backup.directory) (lib.attrValues projects);
-  normalizedPath = (import ./storage-paths.nix {inherit lib;}).normalizedAbsolute;
+  storagePaths = import ./storage-paths.nix {inherit lib;};
   package = harborDbStoragePackage;
   manifest = name: backup:
     pkgs.writeText "harbor-db-${name}-backup.json" (builtins.toJSON {
@@ -70,12 +70,12 @@ in {
     assertions =
       [
         {
-          assertion = lib.all normalizedPath roots;
-          message = "Harbor DB backup roots must be normalized absolute paths without '.', '..', repeated or trailing separators.";
+          assertion = lib.all (path: path != "/" && storagePaths.normalizedAbsolute path) roots;
+          message = "Harbor DB backup roots must be dedicated normalized absolute paths without '.', '..', repeated or trailing separators.";
         }
         {
-          assertion = lib.length roots == lib.length (lib.unique roots);
-          message = "Harbor DB backup roots must be unique across enabled projects so each lock and publication namespace has one owner.";
+          assertion = storagePaths.disjoint roots;
+          message = "Harbor DB backup roots must be pairwise non-overlapping across enabled projects so each lock and publication namespace has one owner.";
         }
       ]
       ++ lib.concatLists (lib.mapAttrsToList (name: p: [

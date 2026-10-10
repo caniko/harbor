@@ -63,10 +63,11 @@ of schema migration or backend selection. `lib.applicationBackup = 1` advertises
 the interface. Physical cluster backups remain a separate `pgBackup` contract.
 Enabled backup project names must match `[A-Za-z0-9_-]{1,128}`, the runtime
 resource contract. Invalid names fail NixOS evaluation before a timer is installed.
-Every enabled project must also have a distinct, normalized absolute backup
+Every enabled project must also have a dedicated, normalized absolute backup
 root, preserving exclusive lock, attempt and success-marker namespaces. Disabled
 projects do not reserve roots. Ambiguous dot/parent components and repeated or
-trailing separators are rejected before comparing roots.
+trailing separators are rejected before comparing roots. Roots must be pairwise
+non-ancestral so another project's directory ownership cannot block traversal.
 
 Backup inventories require UTF-8 relative artifact paths; non-UTF-8 file or
 directory names are rejected before acceptance publication. Regular artifact
@@ -152,6 +153,11 @@ only local OS-peer control SQL remains available. An importer must use that cont
 path, for example a `postgres`-owned worker using `SET ROLE` for the dedicated
 schema owner. It cannot open application HBA access or release the borrowed fence.
 No transition command starts PostgreSQL or application services.
+Across enabled projects, each active or retired writer unit belongs to one
+transition authority. Barrier directories are dedicated normalized namespaces,
+pairwise non-overlapping with each other and enabled backup roots, so persistent
+start policies and lock anchors cannot be shared or shadow another project's
+ownership. Disabled projects do not reserve units or namespaces.
 Every runtime writer declared by the custody policy must belong to the
 transition's active or retired unit set. Both engines enforce this in manifest
 admission before preparation and recheck it before inventory, so custody cannot

@@ -108,6 +108,27 @@
     ];
   in
     builtins.filter (assertion: !assertion.assertion && pkgs.lib.hasPrefix "Harbor DB backup roots" assertion.message) configured.config.assertions == [];
+  transitionPoliciesAccepted = {
+    peer ? {},
+    fixture ? {},
+  }: let
+    configured = evaluate [
+      module
+      ({config, ...}: {
+        services.harbor-db.projects.fixture.transition = fixture;
+        services.harbor-db.projects.peer.transition =
+          (builtins.removeAttrs config.services.harbor-db.projects.fixture.transition ["manifest"])
+          // {
+            barrierDirectory = "/var/lib/harbor-db-transitions/peer";
+            runtimeUnits = ["peer.service"];
+            retiredUnits = [];
+          }
+          // peer;
+      })
+    ];
+  in
+    builtins.filter (assertion: !assertion.assertion && pkgs.lib.hasPrefix "Harbor DB transition namespaces" assertion.message) configured.config.assertions == [];
+  transitionNamespacesAccepted = peer: transitionPoliciesAccepted {inherit peer;};
   directEval = evaluate [
     ./module.nix
     ./postgres-lifecycle.nix
@@ -144,12 +165,49 @@ in
             enable = false;
           }
           && !(backupRootsAccepted {directory = "/var/lib/fixture-backup";})
+          && !(backupRootsAccepted {directory = "/var/lib/fixture-backup/peer";})
+          && !(backupRootsAccepted {directory = "/var/lib";})
+          && backupRootsAccepted {directory = "/var/lib/fixture-backup-peer";}
           && !(backupRootsAccepted {
             directory = "/var/lib/fixture-backup";
             user = "other";
           })
           && pkgs.lib.all (directory: !(backupRootsAccepted {inherit directory;}))
           ["/var/lib/./fixture-backup" "/var/lib/peer/../fixture-backup" "/var/lib//fixture-backup" "/var/lib/fixture-backup/"];
+      }
+      {
+        name = "transition-writers-have-one-owner";
+        message = "Active and retired writers must belong to only one enabled transition.";
+        assertion =
+          transitionNamespacesAccepted {}
+          && !(transitionNamespacesAccepted {runtimeUnits = ["fixture.service"];})
+          && !(transitionNamespacesAccepted {retiredUnits = ["fixture.service"];})
+          && !(transitionNamespacesAccepted {runtimeUnits = ["peer.service" "peer.service"];})
+          && !(transitionPoliciesAccepted {
+            fixture.retiredUnits = ["legacy.service"];
+            peer.runtimeUnits = ["legacy.service"];
+          })
+          && !(transitionPoliciesAccepted {
+            fixture.retiredUnits = ["legacy.service"];
+            peer.retiredUnits = ["legacy.service"];
+          })
+          && transitionPoliciesAccepted {fixture.retiredUnits = ["legacy.service"];}
+          && transitionNamespacesAccepted {
+            enable = false;
+            runtimeUnits = ["fixture.service"];
+          };
+      }
+      {
+        name = "transition-barriers-have-dedicated-disjoint-namespaces";
+        message = "Barrier namespaces must be normalized and non-overlapping with enabled transition or backup namespaces.";
+        assertion =
+          transitionNamespacesAccepted {}
+          && transitionNamespacesAccepted {
+            enable = false;
+            barrierDirectory = "/var/lib/harbor-db-transitions/fixture";
+          }
+          && pkgs.lib.all (barrierDirectory: !(transitionNamespacesAccepted {inherit barrierDirectory;}))
+          ["/var/lib/harbor-db-transitions/fixture" "/var/lib/harbor-db-transitions/fixture/peer" "/var/lib/harbor-db-transitions" "/var/lib/./harbor-db-transitions/peer" "/var/lib/harbor-db-transitions/other/../peer" "/var/lib//harbor-db-transitions/peer" "/var/lib/harbor-db-transitions/peer/" "/var/lib/fixture-backup" "/var/lib/fixture-backup/barrier"];
       }
       {
         name = "transition-worker-argv-boundaries";
