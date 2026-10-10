@@ -12,7 +12,8 @@
   package = harborDbStoragePackage;
   manifest = name: backup:
     pkgs.writeText "harbor-db-${name}-backup.json" (builtins.toJSON {
-      version = 1;
+      version = 2;
+      worker_user = backup.user;
       resource = name;
       root = backup.directory;
       inherit (backup) commands;
@@ -84,6 +85,10 @@ in {
             message = "Harbor DB ${name} backup project name must contain 1..128 ASCII letters, digits, underscores or hyphens, matching the runtime resource name.";
           }
           {
+            assertion = p.backup.user != "root" && builtins.match "[A-Za-z0-9_-]{1,128}" p.backup.user != null;
+            message = "Harbor DB ${name} backup adapters require an unprivileged worker account.";
+          }
+          {
             assertion = builtins.attrNames p.backup.commands == ["capture" "cleanup" "restore" "verify"];
             message = "Harbor DB ${name} backup requires capture, restore, verify and cleanup.";
           }
@@ -113,10 +118,10 @@ in {
     environment.systemPackages = [package];
     environment.etc = lib.mapAttrs' (name: p: lib.nameValuePair "harbor-db/${name}-backup.json" {source = manifest name p.backup;}) projects;
     users.groups = lib.listToAttrs (map (p: lib.nameValuePair p.backup.group {}) (lib.attrValues projects));
-    users.users = lib.mkMerge (lib.concatMap (p: map (reader: {${reader}.extraGroups = [p.backup.group];}) p.backup.readers) (lib.attrValues projects));
+    users.users = lib.mkMerge (lib.concatMap (p: map (reader: {${reader}.extraGroups = [p.backup.group];}) (lib.unique ([p.backup.user] ++ p.backup.readers))) (lib.attrValues projects));
     systemd.tmpfiles.rules = lib.concatMap (p: [
-      "d ${p.backup.directory} 2750 ${p.backup.user} ${p.backup.group} -"
-      "f ${p.backup.directory}/lock 0640 ${p.backup.user} ${p.backup.group} -"
+      "d ${p.backup.directory} 2750 root ${p.backup.group} -"
+      "f ${p.backup.directory}/lock 0640 root ${p.backup.group} -"
     ]) (lib.attrValues projects);
     systemd.services = lib.mapAttrs' (name: p:
       lib.nameValuePair "harbor-db-${name}-backup" {
@@ -124,7 +129,7 @@ in {
         after = p.backup.requires;
         serviceConfig = {
           Type = "oneshot";
-          User = p.backup.user;
+          User = "root";
           Group = p.backup.group;
           UMask = "0077";
           ExecStart = "${package}/bin/harbor-db-application-backup --config ${manifest name p.backup} capture";

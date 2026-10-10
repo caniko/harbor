@@ -159,6 +159,22 @@ pub fn owned_ancestors(path: &Path) -> Result<()> {
 pub fn validate(config: &Value) -> Result<(Value, Value)> {
     let (source, target) = validate_bindings(config)?;
     validate_barrier_paths(config, &source, &target)?;
+    let source_roots = paths(&source, "directories")?;
+    let target_roots = paths(&target, "directories")?;
+    for path in source_roots.iter().chain(&target_roots) {
+        custody::validate_path(
+            path.to_str()
+                .ok_or_else(|| invalid("invalid corpus path"))?,
+        )?;
+        super::recovery::absolute(path)?;
+    }
+    if source_roots.iter().any(|source| {
+        target_roots
+            .iter()
+            .any(|target| source.starts_with(target) || target.starts_with(source))
+    }) {
+        return Err(invalid("source and target corpus roots must be disjoint"));
+    }
     validate_workers(config)?;
     custody_entry(config, &target)?;
     Ok((source, target))

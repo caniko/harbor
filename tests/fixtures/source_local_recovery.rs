@@ -403,6 +403,46 @@ fn run(args: Args) -> Result<()> {
         "retry-preserves-frozen-intent-and-legacy-marker-inodes-and-bytes",
     )?;
     g.shell("primary", format!("cmp {ROOT}/recovery/pins/new.json {ROOT}/recovery/captures/new.json; test \"$(cat {ROOT}/recovery/SELECTED)\" = new"), true, "selected-capture-exactly-matches-pin")?;
+    let selected_before = g.shell(
+        "primary",
+        format!("stat -c '%d:%i' {ROOT}/recovery/SELECTED; sha256sum {ROOT}/recovery/SELECTED"),
+        true,
+        "fresh-selection-before-slow-capture",
+    )?;
+    let slow_config = "/run/slow-capture.json";
+    let mut slow: Value = serde_json::from_str(&g.shell(
+        "primary",
+        format!("cat {CONFIG}"),
+        true,
+        "read-slow-capture-source-policy",
+    )?)?;
+    slow["recovery"]["max_age_seconds"] = json!(2);
+    slow["recovery"]["record_checks"][0]["sql"] = json!(format!(
+        "SELECT pg_sleep(4); {}",
+        field(&slow["recovery"]["record_checks"][0], "sql")?
+    ));
+    g.shell("primary", format!("printf '%s\\n' {} > {slow_config}; chown postgres:postgres {slow_config}; touch {ROOT}/base/{}/backup_manifest", q(&slow.to_string()), q(&backup)), true, "bounded-slow-record-capture-config")?;
+    let stale = g.shell("primary", format!("runuser -u postgres -- {}/bin/harbor-db-postgres --config {slow_config} capture-backup --backup-id {} --capture-id stale-slow --socket-dir /run/postgresql --port 5432 --wal-wait-seconds 30 2>&1", q(&c.native_package), q(&backup)), false, "slow-capture-expiry-rejects-selection")?;
+    g.check(
+        stale.contains("stale"),
+        "slow-capture-fails-on-freshness-not-an-unrelated-error",
+    )?;
+    let selected_after = g.shell(
+        "primary",
+        format!("stat -c '%d:%i' {ROOT}/recovery/SELECTED; sha256sum {ROOT}/recovery/SELECTED"),
+        true,
+        "fresh-selection-after-slow-capture",
+    )?;
+    g.check(
+        selected_before == selected_after,
+        "stale-capture-preserves-selected-inode-and-bytes",
+    )?;
+    g.shell(
+        "primary",
+        format!("test -f {ROOT}/recovery/pins/stale-slow.json"),
+        true,
+        "stale-capture-retains-frozen-attempt",
+    )?;
     let meta: Value = serde_json::from_str(&g.shell(
         "primary",
         format!("cat {ROOT}/recovery/captures/new.json"),
@@ -440,10 +480,11 @@ fn run(args: Args) -> Result<()> {
     ] {
         g.shell("primary",format!("install -d -m 0700 -o postgres -g postgres /srv/restore-alias; mount --bind {} /srv/restore-alias",q(&protected)),true,&format!("{name}-bind-mount-alias-created"))?;
         let rejected=g.shell("primary",format!("{pg} certify-recovery --data-dir /srv/restore-alias --socket-dir /run/postgresql --port 5432 2>&1"),false,&format!("{name}-bind-mount-certification-rejected"))?;
-        g.check(
+        require(
             rejected.contains("shared storage"),
-            &format!("{name}-rejection-is-inode-alias-check"),
+            format!("{name}-rejection-is-inode-alias-check: {rejected}"),
         )?;
+        g.check(true, &format!("{name}-rejection-is-inode-alias-check"))?;
         g.shell(
             "primary",
             "umount /srv/restore-alias; rmdir /srv/restore-alias",

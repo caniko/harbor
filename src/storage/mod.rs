@@ -1,6 +1,7 @@
 //! Storage primitives shared by lifecycle engines and qualification tooling.
 mod accounts;
 pub mod application_backup;
+mod application_publication;
 pub mod application_transition;
 pub mod backup;
 mod backup_manifest;

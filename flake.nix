@@ -95,7 +95,7 @@
     lib.postgresRecoveryPreparation = 1;
     lib.postgresWriterFence = 3;
     lib.applicationProvisioning = 2;
-    lib.applicationBackup = 1;
+    lib.applicationBackup = 2;
     lib.applicationBackendTransition = 1;
     lib.cutoverPreflight = 3;
     nixosModules.harbor-db = {

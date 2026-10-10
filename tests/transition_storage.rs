@@ -132,6 +132,66 @@ else: raise AssertionError('overlapping guarded storage accepted')
     assert!(!f.temp.path().join("old-sibling").exists());
     assert!(!f.temp.path().join("authority/transition.json").exists());
 }
+#[test]
+fn transition_source_and_target_roots_must_be_disjoint_before_any_writes_in_both_engines() {
+    let f = Fixture::new();
+    let source = f.temp.path().join("old");
+    for directory in [source.clone(), source.join("nested")] {
+        let mut target = f.target.clone();
+        target["directories"] = json!([directory]);
+        durable::write_json(&f.temp.path().join("target.json"), &target).unwrap();
+        let native = transition_manifest::validate(&f.config);
+        let script = r#"import json,sys
+from harbor_db import transition_manifest
+try: transition_manifest.validate(json.loads(sys.argv[1]))
+except ValueError as error: print(str(error))
+else: print('ACCEPTED')
+"#;
+        let mut spec = process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            f.config.to_string(),
+        ]);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        let peer = String::from_utf8(process::execute(&spec).unwrap()).unwrap();
+        assert!(native.is_err(), "overlapping import target accepted");
+        assert!(
+            native
+                .unwrap_err()
+                .to_string()
+                .contains("source and target corpus roots must be disjoint")
+        );
+        assert!(
+            peer.contains("source and target corpus roots must be disjoint"),
+            "{peer}"
+        );
+        assert!(!f.temp.path().join("authority/transition.json").exists());
+        assert!(!f.temp.path().join("barrier/inhibited.json").exists());
+    }
+    let mut nested_source = f.source.clone();
+    nested_source["directories"] = json!([source.join("nested")]);
+    durable::write_json(&f.temp.path().join("source.json"), &nested_source).unwrap();
+    let mut parent_target = f.target.clone();
+    parent_target["directories"] = json!([source]);
+    durable::write_json(&f.temp.path().join("target.json"), &parent_target).unwrap();
+    assert!(
+        transition_manifest::validate(&f.config)
+            .unwrap_err()
+            .to_string()
+            .contains("source and target corpus roots must be disjoint")
+    );
+    durable::write_json(&f.temp.path().join("source.json"), &f.source).unwrap();
+    durable::write_json(&f.temp.path().join("target.json"), &f.target).unwrap();
+    transition_manifest::validate(&f.config).unwrap();
+}
 
 #[test]
 fn transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines() {
@@ -1077,6 +1137,67 @@ fn target_corpus_evidence_cannot_hide_behind_semantic_acceptance() {
             .to_string()
             .contains("corpus evidence changed")
     );
+}
+#[test]
+fn reverified_transition_custody_returns_fresh_evidence_without_rebinding_contents_in_both_engines()
+{
+    let f = Fixture::new();
+    fs::write(
+        f.temp.path().join("new/records"),
+        b"post-import revision seven",
+    )
+    .unwrap();
+    let entry = json!({"kind":"filesystem","authority":f.target,"custody_file":f.temp.path().join("authority/custody.json"),"database_inventory_checks":[],"max_age_seconds":1});
+    let path = f.temp.path().join("custody.json");
+    durable::write_json(&path, &entry).unwrap();
+    let mut config = f.config.clone();
+    config["custody_manifest"] = json!(path);
+    let mut record = json!({"source_authority":{"identity":"retained"},"primary_snapshot_sha256":null,"source_acceptance_sha256":"a".repeat(64),"independent_sha256":"b".repeat(64),"semantic_sha256":"c".repeat(64)});
+    record["custody"] =
+        application_transition::target_custody(&config, &record, &f.target, &[]).unwrap();
+    record["custody"]["completed_at"] = json!(harbor_db::storage::custody::now() - 60);
+    let observed = serde_json::to_value(
+        application_transition::verify_custody(&config, &record, &f.target, &[]).unwrap(),
+    )
+    .unwrap();
+    let script = r#"import json,sys,time
+from harbor_db import application_transition
+c,r,t=map(json.loads,sys.argv[1:])
+observed=application_transition.verify_custody(c,r,t,())
+assert isinstance(observed,dict), 'fresh verified custody was discarded'
+assert 0 <= int(time.time())-observed['completed_at'] <= 1
+assert {k:v for k,v in observed.items() if k!='completed_at'} == {k:v for k,v in r['custody'].items() if k!='completed_at'}
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        record.to_string(),
+        f.target.to_string(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    let peer = process::execute(&spec);
+    assert!(observed.is_object(), "fresh verified custody was discarded");
+    let completed = observed["completed_at"].as_i64().unwrap();
+    assert!((0..=1).contains(&(harbor_db::storage::custody::now() - completed)));
+    let mut expected = record["custody"].clone();
+    expected["completed_at"] = json!(completed);
+    assert_eq!(observed, expected);
+    peer.unwrap();
+    fs::write(
+        f.temp.path().join("new/records"),
+        b"changed during preparation",
+    )
+    .unwrap();
+    assert!(application_transition::verify_custody(&config, &record, &f.target, &[]).is_err());
 }
 
 #[test]

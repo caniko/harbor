@@ -208,6 +208,9 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
     restores = list(map(Path, restored_roots))
     state = resource.state_directory(authority)
     if len(restores) != len(roots) or any(
+        root.is_relative_to(other) or other.is_relative_to(root)
+        for index, root in enumerate(restores) for other in restores[:index]
+    ) or any(
         not root.is_absolute() or root.resolve() != root
         or any(root == source or root.is_relative_to(source) or source.is_relative_to(root)
                for source in roots + [state]) for root in restores

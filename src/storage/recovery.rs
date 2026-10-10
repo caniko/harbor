@@ -586,8 +586,24 @@ fn hostname() -> Result<String> {
 }
 /// Reject aliases even when bind mounts leave canonical path spelling distinct.
 /// Missing authoritative storage is expected on an independent executor.
-fn storage_identities(path: &Path, identities: &mut BTreeSet<(u64, u64)>) -> Result<()> {
-    let info = fs::symlink_metadata(path)?;
+fn storage_identities(
+    path: &Path,
+    identities: &mut BTreeSet<(u64, u64)>,
+    primary: bool,
+) -> Result<()> {
+    let link = fs::symlink_metadata(path)?;
+    // NixOS generates primary configuration as links into the immutable store.
+    // Include those regular target inodes in the protected set. Copied backup
+    // and restore trees must still contain only direct regular files/directories.
+    let info = if primary && link.file_type().is_symlink() {
+        let target = fs::metadata(path)?;
+        if !target.is_file() {
+            return Err(invalid("primary configuration link is not a regular file"));
+        }
+        target
+    } else {
+        link
+    };
     if !info.is_dir() && !info.is_file() {
         return Err(invalid(
             "recovery cluster contains redirected or special storage",
@@ -598,21 +614,38 @@ fn storage_identities(path: &Path, identities: &mut BTreeSet<(u64, u64)>) -> Res
     }
     if info.is_dir() {
         for entry in fs::read_dir(path)? {
-            storage_identities(&entry?.path(), identities)?;
+            storage_identities(&entry?.path(), identities, primary)?;
         }
     }
     Ok(())
 }
 fn isolated_restore(restored: &Path, authoritative: &Path, backup: &Path) -> Result<()> {
+    let restored_root = fs::symlink_metadata(restored)?;
+    for root in [authoritative, backup] {
+        match fs::symlink_metadata(root) {
+            Ok(protected)
+                if (protected.dev(), protected.ino())
+                    == (restored_root.dev(), restored_root.ino()) =>
+            {
+                return Err(invalid(
+                    "restored cluster aliases shared storage in the authoritative primary or selected backup",
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if root == authoritative && error.kind() == std::io::ErrorKind::NotFound => {
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
     let mut protected = BTreeSet::new();
     match fs::symlink_metadata(authoritative) {
-        Ok(_) => storage_identities(authoritative, &mut protected)?,
+        Ok(_) => storage_identities(authoritative, &mut protected, true)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
-    storage_identities(backup, &mut protected)?;
+    storage_identities(backup, &mut protected, false)?;
     let mut copy = BTreeSet::new();
-    storage_identities(restored, &mut copy)?;
+    storage_identities(restored, &mut copy, false)?;
     if !protected.is_disjoint(&copy) {
         return Err(invalid(
             "restored cluster aliases shared storage in the authoritative primary or selected backup",

@@ -359,6 +359,11 @@ pub fn certify_filesystem(
         ));
     }
     if roots.len() != restored_roots.len()
+        || restored_roots.iter().enumerate().any(|(index, root)| {
+            restored_roots[..index]
+                .iter()
+                .any(|other| root.starts_with(other) || other.starts_with(root))
+        })
         || restored_roots.iter().any(|r| {
             !r.is_absolute()
                 || fs::canonicalize(r).ok().as_ref() != Some(r)

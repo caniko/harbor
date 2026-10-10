@@ -19,6 +19,18 @@
 
 ### Fixed
 
+- Publish version-2 application backups onto fresh root-owned inodes while running
+  adapters unprivileged with private credentials and workspaces. Backup accounts
+  cannot chmod or replace accepted bytes, including through retained staging handles.
+- Recheck frozen capture freshness after carrier and selector scratch synchronization,
+  preserving previous selection and immutable pins when final publication expires.
+- Reject duplicate or nested restored corpus roots and overlapping transition
+  source/target paths before identity adoption, journal publication or import.
+- Publish freshly reverified final target custody at commit while retaining every
+  prepared content and binding comparison.
+- Include required source-local loopback listeners alongside explicit addresses.
+- Protect generated primary configuration target inodes during recovery isolation
+  and reject root bind-mount aliases before scanning disposable restore storage.
 - Bind the hard-link regression's Python peer to the immutable machine-ID
   fixture used by packaged Cargo tests, including isolated AArch64 execution.
 - Recheck every complete retained external WAL segment through the post-target
@@ -122,6 +134,9 @@
 
 ### Compatibility
 
+- Generated application backups advertise contract version 2 and require a fresh
+  accepted capture under the new manifest. Version-1 library fixtures retain their
+  historical owner-controlled publication behavior.
 - Native FIFO-manifest admission remains bounded and conservatively preserves
   recovery data; Python's potentially unbounded stream behavior is an approved
   migration exception.

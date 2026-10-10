@@ -348,6 +348,72 @@ fn independent_restore_rejects_aliases_and_overlapping_roots() {
     assert!(!f.state.join("identity.json").exists());
 }
 #[test]
+fn restored_corpus_roots_must_be_pairwise_independent_in_both_engines() {
+    for nested in [false, true] {
+        let mut f = Fixture::new();
+        let other = f.temp.path().join("other-source");
+        fs::create_dir(&other).unwrap();
+        fs::create_dir(other.join("historical.git")).unwrap();
+        fs::copy(
+            f.source.join("historical.git/HEAD"),
+            other.join("historical.git/HEAD"),
+        )
+        .unwrap();
+        fs::copy(f.source.join("history"), other.join("history")).unwrap();
+        f.config["authority"]["directories"] = json!([f.source, other]);
+        let second = if nested {
+            f.restore.join("historical.git")
+        } else {
+            f.restore.clone()
+        };
+        let restores = vec![f.restore.clone(), second];
+        let native = custody::certify_filesystem(
+            &f.config,
+            &restores,
+            "independent",
+            None,
+            None,
+            &json!([]),
+        );
+        let script = r#"import json,sys
+from harbor_db import cutover
+c,roots=json.loads(sys.argv[1]),json.loads(sys.argv[2])
+try: cutover.certify_filesystem(c,roots,'independent')
+except ValueError as error: print(str(error))
+else: print('ACCEPTED')
+"#;
+        let mut spec = process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            f.config.to_string(),
+            json!(restores).to_string(),
+        ]);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        let peer = String::from_utf8(process::execute(&spec).unwrap()).unwrap();
+        assert!(
+            native.is_err(),
+            "one restore was accepted as two independent corpora"
+        );
+        assert!(
+            native
+                .unwrap_err()
+                .to_string()
+                .contains("restore roots must be independent")
+        );
+        assert!(peer.contains("restore roots must be independent"), "{peer}");
+        assert!(!f.state.join("identity.json").exists());
+        assert!(!f.state.join("custody.json").exists());
+    }
+}
+#[test]
 fn restore_root_permissions_are_bound() {
     use std::os::unix::fs::PermissionsExt;
     let f = Fixture::new();

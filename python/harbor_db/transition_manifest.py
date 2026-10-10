@@ -71,6 +71,14 @@ def validate(config):
         raise ValueError("root startup barriers must be outside application-owned authority")
     if any(barrier.is_relative_to(path) or Path(path).is_relative_to(barrier) for path in source["directories"] + target["directories"]):
         raise ValueError("startup barriers must be outside the guarded storage")
+    from . import cutover
+    for path in source["directories"] + target["directories"]:
+        cutover.validate_path(path)
+        if Path(path).resolve() != Path(path):
+            raise ValueError("recovery path must be absolute and not redirected")
+    if any(Path(s).is_relative_to(t) or Path(t).is_relative_to(s)
+           for s in source["directories"] for t in target["directories"]):
+        raise ValueError("source and target corpus roots must be disjoint")
     units = config["units"] + config["retired_units"]
     if (not units or len(set(units)) != len(units)
             or any(not re.fullmatch(r"[A-Za-z0-9_@.:-]+\.service", unit) for unit in units)

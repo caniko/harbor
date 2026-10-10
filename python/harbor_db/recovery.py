@@ -264,9 +264,13 @@ def inspect_restored(config, socket_dir, port):
     """))
 
 
-def storage_identities(path, identities):
+def storage_identities(path, identities, *, primary=False):
     import stat
     info = path.lstat()
+    if primary and stat.S_ISLNK(info.st_mode):
+        info = path.stat()
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("primary configuration link is not a regular file")
     if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
         raise ValueError("recovery cluster contains redirected or special storage")
     identity = (info.st_dev, info.st_ino)
@@ -275,17 +279,27 @@ def storage_identities(path, identities):
     identities.add(identity)
     if stat.S_ISDIR(info.st_mode):
         for entry in path.iterdir():
-            storage_identities(entry, identities)
+            storage_identities(entry, identities, primary=primary)
 
 
 def isolated_restore(restored, authoritative, backup):
+    restored_root = restored.lstat()
+    for root in (authoritative, backup):
+        try:
+            info = root.lstat()
+        except FileNotFoundError:
+            if root == authoritative:
+                continue
+            raise
+        if (info.st_dev, info.st_ino) == (restored_root.st_dev, restored_root.st_ino):
+            raise ValueError("restored cluster aliases shared storage in the authoritative primary or selected backup")
     protected = set()
     try:
         authoritative.lstat()
     except FileNotFoundError:
         pass
     else:
-        storage_identities(authoritative, protected)
+        storage_identities(authoritative, protected, primary=True)
     storage_identities(backup, protected)
     copy = set()
     storage_identities(restored, copy)

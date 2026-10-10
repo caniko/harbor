@@ -67,6 +67,15 @@
     (localEval.extendModules {
       modules = [{services.harbor-db.pgBackup.source.hostName = lib.mkForce "localhost";}];
     }).config;
+  explicitLocal = host:
+    (localEval.extendModules {
+      modules = [
+        {
+          services.harbor-db.pgBackup.source.hostName = lib.mkForce host;
+          services.harbor-db.pgBackup.sourceSettings.listenAddresses = ["10.0.0.1"];
+        }
+      ];
+    }).config;
 in
   mkEvalCheck {
     name = "harbor-db-pg-backup-eval";
@@ -131,6 +140,15 @@ in
         name = "explicit-source-listener-preserved";
         assertion = sourcePostgresql.settings.listen_addresses == "10.0.0.1";
         message = "Explicit replication listeners must remain unchanged.";
+      }
+      {
+        name = "explicit-source-local-listeners-include-selected-loopback";
+        assertion =
+          (explicitLocal "127.0.0.1").services.postgresql.settings.listen_addresses
+          == "10.0.0.1,127.0.0.1"
+          && (explicitLocal "::1").services.postgresql.settings.listen_addresses == "10.0.0.1,::1"
+          && (explicitLocal "localhost").services.postgresql.settings.listen_addresses == "10.0.0.1,127.0.0.1,::1";
+        message = "An explicit replication listener must also bind the selected source-local loopback families.";
       }
       {
         name = "source-local-persistent-mutation-before-publication";

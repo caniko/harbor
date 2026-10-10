@@ -648,7 +648,7 @@ fn run(args: Args) -> Result<()> {
             && hex(field(&snapshot["records"], "documents")?, 64),
         "physical-snapshot-binds-borrowed-fence",
     )?;
-    g.shell("primary", "cp /var/lib/postgres/18/pg_wal/0000000* /var/lib/demo-restore-wal/ && tar -C /var/lib -cf /run/physical.tar demo-primary-backup demo-restore-wal", true, "physical-recovery-archive-created")?;
+    g.shell("primary", "runuser -u postgres -- cp /var/lib/postgres/18/pg_wal/0000000* /var/lib/demo-restore-wal/ && tar -C /var/lib -cf /run/physical.tar demo-primary-backup demo-restore-wal", true, "physical-recovery-archive-created")?;
     g.transfer(
         "primary",
         "/run/physical.tar",

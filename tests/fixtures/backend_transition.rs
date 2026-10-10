@@ -496,10 +496,41 @@ fn run(args: Args) -> Result<()> {
         false,
         "activated-writer-inactive",
     )?;
-    gate.phase(
+    let prepared_at = bound["custody"]["completed_at"]
+        .as_i64()
+        .ok_or("missing prepared custody timestamp")?;
+    gate.shell(
+        "primary",
+        format!("while test \"$(date +%s)\" -le {prepared_at}; do sleep 1; done"),
+        true,
+        "preparation-timestamp-precedes-final-custody",
+    )?;
+    let committed = gate.phase(
         &format!("{python} commit"),
         "committed",
         "python-commits-native-bound-journal",
+    )?;
+    gate.check(
+        committed["custody"]["completed_at"]
+            .as_i64()
+            .is_some_and(|t| t > prepared_at),
+        "commit-publishes-freshly-verified-custody-timestamp",
+    )?;
+    let mut expected_custody = bound["custody"].clone();
+    expected_custody["completed_at"] = committed["custody"]["completed_at"].clone();
+    gate.check(
+        committed["custody"] == expected_custody,
+        "commit-refresh-preserves-all-prepared-target-content-bindings",
+    )?;
+    let published: Value = serde_json::from_str(&gate.shell(
+        "primary",
+        "cat /var/lib/demo-authority/custody.json",
+        true,
+        "read-final-published-custody",
+    )?)?;
+    gate.check(
+        published == committed["custody"],
+        "published-custody-is-the-final-verified-receipt",
     )?;
     gate.readbacks(&native, &python, "committed", "committed-readbacks", true)?;
     gate.shell(

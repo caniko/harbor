@@ -1,5 +1,7 @@
 //! Executed application captures with durable restore acceptance.
-use super::{Result, codec, durable, invalid, process, string};
+use super::{
+    Result, application_publication as publication, codec, durable, invalid, process, string,
+};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -19,20 +21,24 @@ fn exact(v: &Value, keys: &[&str]) -> bool {
         .is_some_and(|m| m.len() == keys.len() && keys.iter().all(|k| m.contains_key(*k)))
 }
 pub fn validate(c: &Value, check_root: bool) -> Result<PathBuf> {
-    if !exact(
-        c,
-        &[
-            "version",
-            "resource",
-            "root",
-            "commands",
-            "executable_files",
-            "timeout_seconds",
-            "maximum_age_seconds",
-        ],
-    ) || c["version"] != 1
-    {
+    let protected = c["version"] == 2;
+    let mut keys = vec![
+        "version",
+        "resource",
+        "root",
+        "commands",
+        "executable_files",
+        "timeout_seconds",
+        "maximum_age_seconds",
+    ];
+    if protected {
+        keys.push("worker_user");
+    }
+    if !exact(c, &keys) || (!protected && c["version"] != 1) {
         return Err(invalid("unsupported application backup manifest"));
+    }
+    if protected && !super::resource::valid_name(string(c, "worker_user")?) {
+        return Err(invalid("invalid backup worker account"));
     }
     if !super::resource::valid_name(string(c, "resource")?) {
         return Err(invalid("invalid application resource"));
@@ -155,6 +161,7 @@ fn execute(
     backup: &Path,
     workspace: &Path,
     lease: RawFd,
+    worker: Option<&publication::Worker>,
 ) -> Result<Vec<u8>> {
     let args = argv(&c["commands"][stage])?
         .into_iter()
@@ -206,6 +213,18 @@ fn execute(
         c["timeout_seconds"].to_string(),
     );
     let mut spec = process::CommandSpec::new(args);
+    if let Some(worker) = worker {
+        spec.identity = Some(worker.identity.clone());
+        env.insert("USER".into(), string(c, "worker_user")?.into());
+        env.insert("LOGNAME".into(), string(c, "worker_user")?.into());
+        env.insert("HOME".into(), workspace.to_string_lossy().into_owned());
+        if let Some(credentials) = &worker.credentials {
+            env.insert(
+                "CREDENTIALS_DIRECTORY".into(),
+                credentials.to_string_lossy().into_owned(),
+            );
+        }
+    }
     spec.environment = Some(env);
     spec.cwd = Some(workspace.to_owned());
     spec.leases = leases.into_iter().collect();
@@ -253,9 +272,16 @@ fn private_dir(p: &Path) -> Result<()> {
     fs::DirBuilder::new().mode(0o700).create(p)?;
     Ok(())
 }
-fn certification(c: &Value, b: &Path, w: &Path, l: RawFd, a: &Value) -> Result<Value> {
-    execute(c, "restore", b, w, l)?;
-    let receipt = super::codec::decode(&execute(c, "verify", b, w, l)?)?;
+fn certification(
+    c: &Value,
+    b: &Path,
+    w: &Path,
+    l: RawFd,
+    a: &Value,
+    worker: Option<&publication::Worker>,
+) -> Result<Value> {
+    execute(c, "restore", b, w, l, worker)?;
+    let receipt = super::codec::decode(&execute(c, "verify", b, w, l, worker)?)?;
     let captured = durable::read_json(&b.join("capture.json"))?;
     let semantic = captured
         .get("semantic_sha256")
@@ -317,13 +343,24 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     if !super::resource::valid_name(attempt) {
         return Err(invalid("invalid backup attempt"));
     }
+    let protected = c["version"] == 2;
+    if protected {
+        publication::require_namespace(&root)?;
+    }
     let lease = durable::lock(&root.join("lock"), false, false)?;
-    let partial = root.join(format!("{attempt}.partial"));
+    let staging = root.join(format!("{attempt}.partial"));
+    let partial = if protected {
+        staging.join("artifacts")
+    } else {
+        staging.clone()
+    };
+    let sealed = root.join(format!("{attempt}.sealed"));
+    let credentials = root.join(format!("{attempt}.credentials"));
     let destination = root.join(attempt);
     let intent = root.join(format!("{attempt}.intent.json"));
     let workspace = root.join(format!("{attempt}.restore-workspace"));
     if exists(&destination)
-        || fs::symlink_metadata(&partial).is_ok_and(|m| m.file_type().is_symlink())
+        || fs::symlink_metadata(&staging).is_ok_and(|m| m.file_type().is_symlink())
     {
         return Err(invalid(
             "backup attempt already exists; never overwrite a restore point",
@@ -331,7 +368,11 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     }
     let tools = executables(c)?;
     let attempt_intent = json!({"manifest_sha256":identity(c)?,"executables":tools});
-    if exists(&intent) || exists(&partial) || exists(&workspace) {
+    if exists(&intent)
+        || exists(&staging)
+        || exists(&workspace)
+        || (protected && (exists(&sealed) || exists(&credentials)))
+    {
         if !retry_incomplete || durable::read_json(&intent)? != attempt_intent {
             return Err(invalid(
                 "backup attempt already exists or its immutable intent changed",
@@ -341,11 +382,33 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
             if !fs::symlink_metadata(&workspace)?.is_dir() {
                 return Err(invalid("incomplete restore workspace is redirected"));
             }
-            execute(c, "cleanup", &partial, &workspace, lease.fd())?;
+            let worker = if protected {
+                Some(publication::Worker::new(
+                    string(c, "worker_user")?,
+                    &root.join(format!("{attempt}.retry-credentials-{}", unique()?)),
+                )?)
+            } else {
+                None
+            };
+            execute(
+                c,
+                "cleanup",
+                &partial,
+                &workspace,
+                lease.fd(),
+                worker.as_ref(),
+            )?;
+        }
+        if protected && exists(&credentials) {
+            fs::remove_dir_all(&credentials)?;
         }
         let abandoned = root.join(format!("{attempt}.abandoned-{}", unique()?));
         private_dir(&abandoned)?;
-        for entry in [&partial, &workspace, &intent] {
+        let mut abandoned_entries = vec![&staging, &workspace, &intent];
+        if protected {
+            abandoned_entries.push(&sealed);
+        }
+        for entry in abandoned_entries {
             if exists(entry) {
                 fs::rename(
                     entry,
@@ -361,20 +424,54 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
         durable::sync_directory(&root)?;
     }
     durable::write_json(&intent, &attempt_intent)?;
+    let worker = if protected {
+        Some(publication::Worker::new(
+            string(c, "worker_user")?,
+            &credentials,
+        )?)
+    } else {
+        None
+    };
     let captured_at = now()?;
-    private_dir(&workspace)?;
+    if let Some(worker) = &worker {
+        publication::worker_directory(&staging, &worker.identity)?;
+        publication::worker_directory(&workspace, &worker.identity)?;
+    } else {
+        private_dir(&workspace)?;
+    }
     let result = (|| {
-        execute(c, "capture", &partial, &workspace, lease.fd())?;
+        execute(
+            c,
+            "capture",
+            &partial,
+            &workspace,
+            lease.fd(),
+            worker.as_ref(),
+        )?;
         let artifacts = inventory(&partial)?;
         if artifacts.get("acceptance.json").is_some() {
             return Err(invalid(
                 "application capture must not supply its own acceptance envelope",
             ));
         }
-        let receipt = certification(c, &partial, &workspace, lease.fd(), &artifacts)?;
+        let receipt = certification(
+            c,
+            &partial,
+            &workspace,
+            lease.fd(),
+            &artifacts,
+            worker.as_ref(),
+        )?;
         Ok((artifacts, receipt))
     })();
-    execute(c, "cleanup", &partial, &workspace, lease.fd())?;
+    execute(
+        c,
+        "cleanup",
+        &partial,
+        &workspace,
+        lease.fd(),
+        worker.as_ref(),
+    )?;
     fs::remove_dir_all(&workspace)?;
     durable::sync_directory(&root)?;
     let (artifacts, mut receipt): (Value, Value) = result?;
@@ -385,9 +482,24 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
         return Err(invalid("backup executable identity changed during capture"));
     }
     for (k,v) in json!({"resource":c["resource"],"attempt":attempt,"captured_at":captured_at,"manifest_sha256":identity(c)?,"executables":tools}).as_object().unwrap() { receipt[k]=v.clone(); }
-    durable::write_json(&partial.join("acceptance.json"), &receipt)?;
-    permissions(&partial)?;
-    durable::publish_tree_checked(&partial, &destination, || {
+    let published = if protected {
+        publication::copy_tree(&partial, &sealed)?;
+        if inventory(&sealed)? != artifacts {
+            return Err(invalid(
+                "backup artifact hash changed during protected copy",
+            ));
+        }
+        &sealed
+    } else {
+        &partial
+    };
+    durable::write_json(&published.join("acceptance.json"), &receipt)?;
+    if protected {
+        publication::reader_permissions(published, fs::metadata(&root)?.gid())?;
+    } else {
+        permissions(published)?;
+    }
+    durable::publish_tree_checked(published, &destination, || {
         fresh(c, &json!(captured_at), now()?)
     })?;
     durable::write_json_mode(
@@ -395,6 +507,9 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
         &json!({"attempt":attempt,"acceptance_sha256":codec::file_digest(&destination.join("acceptance.json"))?}),
         0o640,
     )?;
+    if protected {
+        fs::remove_dir_all(&staging)?;
+    }
     Ok(receipt)
 }
 pub fn verify_bytes(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
@@ -442,6 +557,11 @@ pub fn inspect(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
 }
 pub fn certify(c: &Value, b: &Path, state: &Path) -> Result<Value> {
     validate(c, false)?;
+    if c["version"] == 2 && unsafe { libc::geteuid() } == 0 {
+        return Err(invalid(
+            "independent backup certification requires an unprivileged account",
+        ));
+    }
     if !state.is_absolute()
         || !state.is_dir()
         || fs::canonicalize(state)? != state
@@ -467,9 +587,9 @@ pub fn certify(c: &Value, b: &Path, state: &Path) -> Result<Value> {
     let tools = executables(c)?;
     let result = (|| {
         let a = inventory(b)?;
-        certification(c, b, &workspace, lease.fd(), &a)
+        certification(c, b, &workspace, lease.fd(), &a, None)
     })();
-    execute(c, "cleanup", b, &workspace, lease.fd())?;
+    execute(c, "cleanup", b, &workspace, lease.fd(), None)?;
     fs::remove_dir_all(&workspace)?;
     let mut result = result?;
     verify_bytes(c, b, None)?;

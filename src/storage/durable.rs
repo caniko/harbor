@@ -67,6 +67,23 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 pub fn atomic_write_mode(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
+    atomic_write_mode_checked(path, bytes, mode, || Ok(()))
+}
+
+pub(crate) fn atomic_write_checked(
+    path: &Path,
+    bytes: &[u8],
+    validate: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    atomic_write_mode_checked(path, bytes, 0o600, validate)
+}
+
+fn atomic_write_mode_checked(
+    path: &Path,
+    bytes: &[u8],
+    mode: u32,
+    validate: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| invalid("publication has no parent"))?;
@@ -81,6 +98,7 @@ pub fn atomic_write_mode(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
         // its name becomes the acknowledged publication.
         file.set_permissions(fs::Permissions::from_mode(mode))?;
         file.sync_all()?;
+        validate()?;
         fs::rename(&temporary, path)?;
         sync_directory(parent)
     })();

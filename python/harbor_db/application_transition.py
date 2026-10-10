@@ -229,6 +229,7 @@ def verify_custody(config, record, target, leases):
     observed = target_custody(config, record, target, leases)
     if record["custody"] is not None and any(observed[key] != value for key, value in record["custody"].items() if key != "completed_at"):
         raise ValueError("prepared target corpus evidence changed")
+    return observed
 
 
 def prepare(config):
@@ -310,8 +311,9 @@ def commit(config):
         evidence(config, record)
         primary_evidence(config, record, leases)
         semantic(run_action(config, "verify-target", record, leases), record["semantic_sha256"])
-        verify_custody(config, record, target, leases)
+        custody = verify_custody(config, record, target, leases)
         if record["phase"] != "committed":
+            record["custody"] = custody
             save(config, record, "committing")
             publish(config, target, record["target_authority"], record["source_authority"])
             if record["custody"] is not None:

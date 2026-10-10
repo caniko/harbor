@@ -394,12 +394,12 @@ pub fn verify_custody(
     record: &Value,
     target: &Value,
     leases: &[RawFd],
-) -> Result<()> {
+) -> Result<Value> {
     let observed = target_custody(config, record, target, leases)?;
     if !record["custody"].is_null() && !custody_equal(&observed, &record["custody"]) {
         return Err(invalid("prepared target corpus evidence changed"));
     }
-    Ok(())
+    Ok(observed)
 }
 pub fn prepare(config: &Value) -> Result<Value> {
     manifest::require_root()?;
@@ -519,7 +519,7 @@ pub fn publish(_config: &Value, target: &Value, expected: &Value, old: &Value) -
     }
     manifest::write_owned(&state.join("identity.json"), expected)
 }
-fn verify_prepared(config: &Value, tx: &Transaction, leases: &[RawFd]) -> Result<()> {
+fn verify_prepared(config: &Value, tx: &Transaction, leases: &[RawFd]) -> Result<Value> {
     manifest::inspect_barriers(config)?;
     evidence(config, &tx.record, leases)?;
     primary_evidence(config, &tx.record, leases)?;
@@ -542,8 +542,9 @@ pub fn commit(config: &Value) -> Result<Value> {
     if tx.record["candidate"] != manifest::generation()? {
         return Err(invalid("the exact accepted generation is not selected"));
     }
-    verify_prepared(config, &tx, &fence.fds)?;
+    let custody = verify_prepared(config, &tx, &fence.fds)?;
     if tx.record["phase"] != "committed" {
+        tx.record["custody"] = custody;
         save(config, &mut tx.record, Some("committing"))?;
         publish(
             config,

@@ -1,6 +1,97 @@
 # Versioned static inventory. No discovery command, Nix evaluation, or pass verdict.
 version = 1
 
+[[inventories]]
+origin = "rust"
+id_prefix = "native.application-publication."
+selector_prefix = "storage::application_publication::tests::"
+source = "src/storage/application_publication.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--lib"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.recovery_storage."
+selector_prefix = ""
+source = "tests/recovery_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "recovery_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["primary_configuration_links_are_protected_without_admitting_restore_redirects_in_both_engines"]
+
+[[coverage]]
+case = "native.recovery_storage.primary_configuration_links_are_protected_without_admitting_restore_redirects_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.certify-recovery"
+dimension = "compatibility"
+evidence = "The protected primary scan includes regular-file targets of generated configuration links; an independent direct-file restore admits, while a restored hard link to those protected targets and any restore-side redirect reject in both engines. Genuine NixOS primary/backup bind mounts must still reject on inode overlap."
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.cutover_storage."
+selector_prefix = ""
+source = "tests/cutover_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "cutover_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["restored_corpus_roots_must_be_pairwise_independent_in_both_engines"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.transition_storage."
+selector_prefix = ""
+source = "tests/transition_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "transition_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["transition_source_and_target_roots_must_be_disjoint_before_any_writes_in_both_engines", "reverified_transition_custody_returns_fresh_evidence_without_rebinding_contents_in_both_engines"]
+
+[[coverage]]
+case = "native.application-publication.storage::application_publication::tests::sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "rejection"
+evidence = "Both engines copy staged artifacts to independent fresh inodes. A retained writable descriptor and subsequent namespace replacement only modify the discarded staging tree. The actual backup VM transfers a writable descriptor to a separate service, denies backup-account chmod/rename on protected publications, and verifies the accepted bytes after the retained descriptor writes."
+
+[[coverage]]
+case = "native.cutover_storage.restored_corpus_roots_must_be_pairwise_independent_in_both_engines"
+capability = "cutover"
+operation = "harbor-db-cutover.certify"
+dimension = "rejection"
+evidence = "Identical source inventories cannot certify the same restored directory twice. Both engines reject duplicate and nested restore roots before identity or custody publication."
+
+[[coverage]]
+case = "native.transition_storage.transition_source_and_target_roots_must_be_disjoint_before_any_writes_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.plan"
+dimension = "rejection"
+evidence = "Identical or nested transition source/target corpus roots reject at manifest admission before journal/barrier writes or import; disjoint siblings still admit."
+
+[[coverage]]
+case = "native.transition_storage.reverified_transition_custody_returns_fresh_evidence_without_rebinding_contents_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.commit"
+dimension = "repetition"
+evidence = "Both engines return freshly timestamped post-import custody while requiring all prepared content/binding fields to match. Commit persists that exact newly verified receipt; changed target bytes continue to reject."
+
 [[coverage]]
 case = "native.transition_storage.repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines"
 capability = "application-transition"
@@ -4601,7 +4692,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["occupied_snapshot_preserves_previous_generation_then_retry_commits_once", "conflicting_snapshot_is_not_overwritten_or_selected", "switch_worker_retains_all_four_leases_after_coordinator_descriptors_close", "manifest_rejects_empty_reversed_and_multiple_timelines", "target_boundary_requires_previous_segment_and_actual_floor", "missing_wal_preserves_old_selection_and_pin_then_complete_carrier_allows_retry", "interrupted_capture_scratch_preserves_its_inode_and_allows_publication"]
+selectors = ["occupied_snapshot_preserves_previous_generation_then_retry_commits_once", "conflicting_snapshot_is_not_overwritten_or_selected", "switch_worker_retains_all_four_leases_after_coordinator_descriptors_close", "manifest_rejects_empty_reversed_and_multiple_timelines", "target_boundary_requires_previous_segment_and_actual_floor", "missing_wal_preserves_old_selection_and_pin_then_complete_carrier_allows_retry", "interrupted_capture_scratch_preserves_its_inode_and_allows_publication", "expiry_after_carrier_sync_preserves_previous_selection_and_frozen_attempt"]
 
 [[inventories]]
 origin = "rust"

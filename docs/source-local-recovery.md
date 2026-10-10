@@ -9,7 +9,8 @@ With `pgBackup.targetSettings.sourceLocalRecovery.enable`, select `role = "both"
 and a loopback `source.hostName`. The module generates SCRAM replication HBA
 rules for that address (`localhost` admits both loopback families) without adding
 a firewall opening. An empty `sourceSettings.listenAddresses` also derives TCP
-listeners for those loopback families; an explicit list remains unchanged.
+listeners for those loopback families; explicit lists also retain the required
+source-local loopbacks, without duplicate addresses.
 Source and target still require the replicator password file.
 Authenticated orchestration and artifact transport connect the source to an
 independent certifier. Fleet endpoints and credentials remain consumer policy.
@@ -29,6 +30,11 @@ preserve their bytes and the original completion timestamp. Recovery readers
 consume the selected generation's snapshot. The configured legacy snapshot path
 continues to locate the evidence lease and legacy-protocol snapshot.
 Recovery metadata and retention pins are outside `base/`.
+Final publication rechecks both the frozen completion timestamp and the physical
+manifest's age after synchronizing immutable carriers and selector scratch, just
+before replacing `SELECTED`. An expired attempt preserves the previous selector's
+bytes and inode plus its own immutable pin. Expired pins cannot be rewritten to
+refresh their timestamp; a new capture ID and a sufficiently fresh backup are needed.
 The capture target remains the first `pg_switch_wal()` ending LSN. PostgreSQL's
 inclusive recovery target compares WAL record start positions, so finalization
 also completes and waits for the following receiver segment containing a genuine
@@ -84,7 +90,10 @@ age/top-two retention. Malformed or uncertain pin state preserves the repository
    Certification inventories device/inode identities for the restored cluster and
    available authoritative/selected-backup trees. Shared files or directories reject
    even when hard links or bind mounts preserve different canonical path spelling;
-   redirected or special cluster entries reject too. The authoritative tree may be
+    redirected or special backup/restored entries reject too. Generated primary
+    configuration links may target regular files; those target inodes join the
+    protected set. Root inode aliases reject before scanning a bind-mounted primary
+    as a disposable copy. The authoritative tree may be
    absent on the independent host; the transported selected backup remains protected.
 8. Keep the retained fence until explicit stopped-primary thaw. Capture and
    certification do not start, stop or thaw the primary.

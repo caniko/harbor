@@ -22,10 +22,7 @@
         else "/32"
       ))
     loopbackAddresses);
-  listenAddresses =
-    if cfg.sourceSettings.listenAddresses != []
-    then cfg.sourceSettings.listenAddresses
-    else loopbackAddresses;
+  listenAddresses = lib.unique (cfg.sourceSettings.listenAddresses ++ loopbackAddresses);
   storagePackage = harborDbStoragePackage;
   durable = "${storagePackage}/bin/harbor-db-durable";
   pruneTool = "${storagePackage}/bin/harbor-db-backup-prune";

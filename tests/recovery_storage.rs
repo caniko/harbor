@@ -247,6 +247,86 @@ impl Fixture {
     }
 }
 
+#[test]
+fn primary_configuration_links_are_protected_without_admitting_restore_redirects_in_both_engines() {
+    let f = Fixture::new();
+    f.accepted();
+    let configuration = f.p("generated-postgresql.conf");
+    fs::write(&configuration, b"generated immutable configuration").unwrap();
+    symlink(&configuration, f.p("data/postgresql.conf")).unwrap();
+    recovery::certify(
+        &f.config,
+        &f.p("restored"),
+        Path::new("/socket"),
+        55432,
+        Some(f.now),
+        Some("independent-host"),
+    )
+    .unwrap();
+    fs::hard_link(&configuration, f.p("restored/shared-config")).unwrap();
+    assert!(
+        recovery::certify(
+            &f.config,
+            &f.p("restored"),
+            Path::new("/socket"),
+            55432,
+            Some(f.now),
+            Some("independent-host")
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("shared storage")
+    );
+    fs::remove_file(f.p("restored/shared-config")).unwrap();
+    symlink(&configuration, f.p("restored/redirected-config")).unwrap();
+    assert!(
+        recovery::certify(
+            &f.config,
+            &f.p("restored"),
+            Path::new("/socket"),
+            55432,
+            Some(f.now),
+            Some("independent-host")
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("redirected or special")
+    );
+    let script = r#"import json,sys
+from pathlib import Path
+from harbor_db import recovery
+c=json.loads(sys.argv[1]); root=Path(c['data_dir']).parent
+restored=root/'restored'; configuration=root/'generated-postgresql.conf'
+try: recovery.isolated_restore(root/'data',root/'data',root/'backup/base/base-1')
+except ValueError as error: assert 'shared storage' in str(error)
+else: raise AssertionError('primary root alias admitted')
+try: recovery.isolated_restore(restored,root/'data',root/'backup/base/base-1')
+except ValueError as error: assert 'redirected or special' in str(error)
+else: raise AssertionError('redirected restoration admitted')
+(restored/'redirected-config').unlink()
+recovery.isolated_restore(restored,root/'data',root/'backup/base/base-1')
+(restored/'shared-config').hardlink_to(configuration)
+try: recovery.isolated_restore(restored,root/'data',root/'backup/base/base-1')
+except ValueError as error: assert 'shared storage' in str(error)
+else: raise AssertionError('shared primary configuration admitted')
+"#;
+    let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        f.config.to_string(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    harbor_db::storage::process::execute(&spec).unwrap();
+}
+
 fn python_recovery(f: &Fixture, action: &str, preparation: &Value) -> Value {
     use harbor_db::storage::process;
     let script = r#"import json,sys

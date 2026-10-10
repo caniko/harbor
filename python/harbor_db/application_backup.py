@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .durable import lock, read_json, sync_directory, sync_tree, write_json
 from . import process
+from . import application_publication as publication
 
 
 def digest(path):
@@ -29,8 +30,13 @@ def identity(value):
 
 def validate(config, *, check_root=True):
     required = {"version", "resource", "root", "commands", "executable_files", "timeout_seconds", "maximum_age_seconds"}
-    if set(config) != required or config["version"] != 1:
+    protected = config.get("version") == 2
+    if protected:
+        required.add("worker_user")
+    if set(config) != required or config["version"] not in (1, 2):
         raise ValueError("unsupported application backup manifest")
+    if protected and not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", config["worker_user"]):
+        raise ValueError("invalid backup worker account")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", config["resource"]):
         raise ValueError("invalid application resource")
     root = Path(config["root"])
@@ -82,7 +88,7 @@ def inventory(path):
     return result
 
 
-def execute(config, stage, backup, workspace, lease):
+def execute(config, stage, backup, workspace, lease, worker=None):
     substitutions = {"{backup}": str(backup), "{workspace}": str(workspace)}
     argv = [substitutions.get(arg, arg) for arg in config["commands"][stage]]
     allowed = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "CREDENTIALS_DIRECTORY"}
@@ -97,12 +103,17 @@ def execute(config, stage, backup, workspace, lease):
     environment["HARBOR_DB_APPLICATION_TIMEOUT_SECONDS"] = str(config["timeout_seconds"])
     # Adapter output is a bounded receipt, never copied into diagnostics. Each
     # child retains the persistent lease if its coordinator dies unexpectedly.
-    return process.execute(argv, timeout=config["timeout_seconds"], environment=environment, leases=retained, cwd=workspace)
+    if worker is not None:
+        environment.update(USER=config["worker_user"], LOGNAME=config["worker_user"], HOME=str(workspace))
+    if worker is not None and worker.credentials is not None:
+        environment["CREDENTIALS_DIRECTORY"] = str(worker.credentials)
+    return process.execute(argv, timeout=config["timeout_seconds"], environment=environment, leases=retained, cwd=workspace,
+                           **({} if worker is None else worker.identity()))
 
 
-def certification(config, backup, workspace, lease, artifacts):
-    execute(config, "restore", backup, workspace, lease)
-    receipt = json.loads(execute(config, "verify", backup, workspace, lease))
+def certification(config, backup, workspace, lease, artifacts, worker=None):
+    execute(config, "restore", backup, workspace, lease, worker)
+    receipt = json.loads(execute(config, "verify", backup, workspace, lease, worker))
     captured = read_json(backup / "capture.json")
     if (set(captured) != {"version", "consistency", "semantic_sha256"} or captured["version"] != 1
             or captured["consistency"] not in {"quiesced", "shared_exported_mvcc_snapshot"}
@@ -122,71 +133,98 @@ def capture(config, attempt, *, retry_incomplete=False):
     root = validate(config)
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", attempt):
         raise ValueError("invalid backup attempt")
+    protected = config["version"] == 2
+    if protected:
+        publication.require_namespace(root)
     with lock(root / "lock") as lease:
-        partial, destination = root / f"{attempt}.partial", root / attempt
-        if destination.exists() or partial.is_symlink() or destination.is_symlink():
+        staging, destination = root / f"{attempt}.partial", root / attempt
+        partial = staging / "artifacts" if protected else staging
+        sealed, credentials = root / f"{attempt}.sealed", root / f"{attempt}.credentials"
+        if destination.exists() or staging.is_symlink() or destination.is_symlink():
             raise ValueError("backup attempt already exists; never overwrite a restore point")
         tools = executables(config)
         attempt_intent = {"manifest_sha256": identity(config), "executables": tools}
         intent_file = root / f"{attempt}.intent.json"
         workspace = root / f"{attempt}.restore-workspace"
-        if intent_file.exists() or partial.exists() or workspace.exists():
+        if any(p.exists() or p.is_symlink() for p in (intent_file, staging, workspace, *([sealed, credentials] if protected else []))):
             if not retry_incomplete or read_json(intent_file) != attempt_intent:
                 raise ValueError("backup attempt already exists or its immutable intent changed")
             if workspace.exists():
                 if workspace.is_symlink() or not workspace.is_dir():
                     raise ValueError("incomplete restore workspace is redirected")
-                execute(config, "cleanup", partial, workspace, lease)
+                retry_worker = publication.Worker(config["worker_user"], root / f"{attempt}.retry-credentials-{time.time_ns()}") if protected else None
+                try:
+                    execute(config, "cleanup", partial, workspace, lease, retry_worker)
+                finally:
+                    if retry_worker is not None:
+                        retry_worker.close()
+            if protected and credentials.exists():
+                shutil.rmtree(credentials)
             abandoned = root / f"{attempt}.abandoned-{time.time_ns()}"
             abandoned.mkdir(mode=0o700)
-            for entry in (partial, workspace, intent_file):
+            for entry in (staging, workspace, intent_file, *([sealed] if protected else [])):
                 if entry.exists():
                     entry.rename(abandoned / entry.name)
             sync_directory(abandoned)
             sync_directory(root)
         write_json(intent_file, attempt_intent)
-        captured_at = int(time.time())
-        # The capture adapter must create a new destination; its entire output
-        # remains as a partial attempt on failure for investigation.
-        workspace.mkdir(mode=0o700)
+        worker = publication.Worker(config["worker_user"], credentials) if protected else None
         try:
-            execute(config, "capture", partial, workspace, lease)
-            artifacts = inventory(partial)
-            if "acceptance.json" in artifacts:
-                raise ValueError("application capture must not supply its own acceptance envelope")
-            receipt = certification(config, partial, workspace, lease, artifacts)
+            return capture_attempt(config, attempt, root, staging, partial, sealed, destination, workspace, tools, lease, worker)
         finally:
-            # Cleanup is mandatory and idempotent even after failed restore. A
-            # cleanup failure retains its private workspace and prevents publish.
-            execute(config, "cleanup", partial, workspace, lease)
-            shutil.rmtree(workspace)
-            sync_directory(root)
-        if inventory(partial) != artifacts:
-            raise ValueError("backup artifact hash changed during cleanup")
-        if executables(config) != tools:
-            raise ValueError("backup executable identity changed during capture")
-        receipt.update({"resource": config["resource"], "attempt": attempt,
-                        "captured_at": captured_at, "manifest_sha256": identity(config), "executables": tools})
-        write_json(partial / "acceptance.json", receipt)
-        # Readers receive only accepted backup artifacts, never the disposable
-        # restore workspace. The service group owns all publications.
-        for entry in partial.rglob("*"):
-            metadata = entry.lstat()
-            if stat.S_ISDIR(metadata.st_mode):
-                entry.chmod(0o750)
-            elif stat.S_ISREG(metadata.st_mode):
-                if metadata.st_nlink != 1:
-                    raise ValueError("backup artifacts must not have hard links")
-                entry.chmod(0o440)
-            else:
-                raise ValueError("backup contains redirected or special files")
-        partial.chmod(0o750)
-        sync_tree(partial)
-        fresh(config, captured_at, int(time.time()))
-        partial.rename(destination)
+            if worker is not None:
+                worker.close()
+
+
+def capture_attempt(config, attempt, root, staging, partial, sealed, destination, workspace, tools, lease, worker):
+    captured_at = int(time.time())
+    if worker is not None:
+        publication.worker_directory(staging, worker.account)
+        publication.worker_directory(workspace, worker.account)
+    else:
+        workspace.mkdir(mode=0o700)
+    try:
+        execute(config, "capture", partial, workspace, lease, worker)
+        artifacts = inventory(partial)
+        if "acceptance.json" in artifacts:
+            raise ValueError("application capture must not supply its own acceptance envelope")
+        receipt = certification(config, partial, workspace, lease, artifacts, worker)
+    finally:
+        execute(config, "cleanup", partial, workspace, lease, worker)
+        shutil.rmtree(workspace)
         sync_directory(root)
-        write_json(root / "LAST_SUCCESS", {"attempt": attempt, "acceptance_sha256": digest(destination / "acceptance.json")}, mode=0o640)
-        return receipt
+    if inventory(partial) != artifacts:
+        raise ValueError("backup artifact hash changed during cleanup")
+    if executables(config) != tools:
+        raise ValueError("backup executable identity changed during capture")
+    receipt.update({"resource": config["resource"], "attempt": attempt,
+                    "captured_at": captured_at, "manifest_sha256": identity(config), "executables": tools})
+    published = partial
+    if worker is not None:
+        publication.copy_tree(partial, sealed)
+        if inventory(sealed) != artifacts:
+            raise ValueError("backup artifact hash changed during protected copy")
+        published = sealed
+    write_json(published / "acceptance.json", receipt)
+    for entry in published.rglob("*"):
+        metadata = entry.lstat()
+        if stat.S_ISDIR(metadata.st_mode):
+            entry.chmod(0o750)
+        elif stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1:
+            entry.chmod(0o440)
+        else:
+            raise ValueError("backup contains redirected, shared or special files")
+    published.chmod(0o750)
+    if worker is not None:
+        publication.reader_permissions(published, root.stat().st_gid)
+    sync_tree(published)
+    fresh(config, captured_at, int(time.time()))
+    published.rename(destination)
+    sync_directory(root)
+    write_json(root / "LAST_SUCCESS", {"attempt": attempt, "acceptance_sha256": digest(destination / "acceptance.json")}, mode=0o640)
+    if worker is not None:
+        shutil.rmtree(staging)
+    return receipt
 
 
 def inspect(config, backup, *, now=None):
@@ -218,6 +256,8 @@ def fresh(config, captured_at, now):
 def certify(config, backup, state):
     """Execute restoration of a copied point on an independent machine."""
     validate(config, check_root=False)
+    if config["version"] == 2 and os.geteuid() == 0:
+        raise ValueError("independent backup certification requires an unprivileged account")
     backup, state = Path(backup), Path(state)
     if not state.is_absolute() or state.resolve() != state or not state.is_dir() or state.is_relative_to(backup):
         raise ValueError("certifier state must be an existing private directory outside the copied backup")

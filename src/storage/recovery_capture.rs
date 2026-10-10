@@ -332,6 +332,7 @@ fn publish_generation(
     capture_id: &str,
     metadata_bytes: &[u8],
     source_snapshot: &Value,
+    validate: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
     let carrier = strict(&local.join("captures").join(format!("{capture_id}.json")))?;
     immutable(local, &carrier, metadata_bytes, capture_id)?;
@@ -344,7 +345,9 @@ fn publish_generation(
     let selector = strict(&local.join("SELECTED"))?;
     let selection = format!("{capture_id}\n");
     if optional_bytes(&selector)?.as_deref() != Some(selection.as_bytes()) {
-        durable::atomic_write(&selector, selection.as_bytes())?;
+        durable::atomic_write_checked(&selector, selection.as_bytes(), validate)?;
+    } else {
+        validate()?;
     }
     Ok(())
 }
@@ -612,7 +615,18 @@ pub fn finalize(
         "epoch_id":metadata["epoch_id"],"manifest_sha256":metadata["manifest_sha256"],"recovery_target_lsn":metadata["post_backup_lsn"],
         "metadata_sha256":codec::digest(&content),"completed_at":metadata["completed_at"],"record_contract_sha256":metadata["record_contract_sha256"],
         "records":metadata["record_hashes"],"writer_fence_token":token,"wal_inventory_sha256":codec::digest(&inventory_bytes)});
-    publish_generation(&local, capture_id, &content, &result)?;
+    publish_generation(&local, capture_id, &content, &result, || {
+        let current = now()?;
+        let maximum = settings["max_age_seconds"]
+            .as_i64()
+            .ok_or_else(|| invalid("invalid evidence age"))?;
+        recovery::fresh(&metadata["completed_at"], current, maximum)?;
+        recovery::fresh(
+            &json!(fs::metadata(&manifest_path)?.mtime()),
+            current,
+            maximum,
+        )
+    })?;
     Ok(result)
 }
 
@@ -645,7 +659,7 @@ mod tests {
         }
         let (content, source) = generation("old");
         immutable(local, &local.join("pins/old.json"), &content, "old").unwrap();
-        publish_generation(local, "old", &content, &source).unwrap();
+        publish_generation(local, "old", &content, &source, || Ok(())).unwrap();
         [
             "pins/old.json",
             "captures/old.json",
@@ -676,12 +690,12 @@ mod tests {
         fs::write(&scratch, b"interrupted publication must survive").unwrap();
         let saved = carrier_state(&scratch);
         let (content, source) = generation("new");
-        publish_generation(&local, "new", &content, &source).unwrap();
+        publish_generation(&local, "new", &content, &source, || Ok(())).unwrap();
         assert_preserved(&previous[..3]);
         assert_eq!(carrier_state(&scratch), saved);
         assert_eq!(bytes(&local.join("SELECTED")).unwrap(), b"new\n");
         let selected = carrier_state(&local.join("snapshots/new.json"));
-        publish_generation(&local, "new", &content, &source).unwrap();
+        publish_generation(&local, "new", &content, &source, || Ok(())).unwrap();
         assert_eq!(carrier_state(&local.join("snapshots/new.json")), selected);
         assert_eq!(carrier_state(&scratch), saved);
     }
@@ -697,7 +711,7 @@ mod tests {
         let pin_before = carrier_state(&pin);
         let occupied = local.join("snapshots/new.json");
         fs::create_dir(&occupied).unwrap();
-        assert!(publish_generation(&local, "new", &content, &source).is_err());
+        assert!(publish_generation(&local, "new", &content, &source, || Ok(())).is_err());
         assert_preserved(&previous);
         assert_eq!(carrier_state(&pin), pin_before);
         assert!(occupied.is_dir());
@@ -706,7 +720,7 @@ mod tests {
 
         // Explicit fixture retry removes only the directory this test created.
         fs::remove_dir(&occupied).unwrap();
-        publish_generation(&local, "new", &content, &source).unwrap();
+        publish_generation(&local, "new", &content, &source, || Ok(())).unwrap();
         assert_eq!(bytes(&local.join("SELECTED")).unwrap(), b"new\n");
         assert_eq!(carrier_state(&pending), pending_before);
         assert_eq!(carrier_state(&pin), pin_before);
@@ -723,7 +737,7 @@ mod tests {
             (path, state)
         })
         .collect::<Vec<_>>();
-        publish_generation(&local, "new", &content, &source).unwrap();
+        publish_generation(&local, "new", &content, &source, || Ok(())).unwrap();
         assert_preserved(&committed);
         assert_preserved(&previous[..3]);
     }
@@ -740,14 +754,38 @@ mod tests {
         let conflict = local.join("snapshots/new.json");
         fs::write(&conflict, b"foreign immutable bytes\n").unwrap();
         let conflict_before = carrier_state(&conflict);
-        let error = publish_generation(&local, "new", &content, &source).unwrap_err();
+        let error = publish_generation(&local, "new", &content, &source, || Ok(())).unwrap_err();
         assert!(error.to_string().contains("immutable capture bytes differ"));
         assert_preserved(&previous);
         assert_eq!(carrier_state(&conflict), conflict_before);
         assert_eq!(carrier_state(&pin), pin_before);
-        assert!(publish_generation(&local, "new", &content, &source).is_err());
+        assert!(publish_generation(&local, "new", &content, &source, || Ok(())).is_err());
         assert_preserved(&previous);
         assert_eq!(carrier_state(&conflict), conflict_before);
+    }
+
+    #[test]
+    fn expiry_after_carrier_sync_preserves_previous_selection_and_frozen_attempt() {
+        let root = tempfile::tempdir().unwrap();
+        let local = fs::canonicalize(root.path()).unwrap();
+        let previous = previous_generation(&local);
+        let (content, source) = generation("new");
+        let pin = local.join("pins/new.json");
+        immutable(&local, &pin, &content, "new").unwrap();
+        let frozen = carrier_state(&pin);
+        let mut checked = false;
+        let error = publish_generation(&local, "new", &content, &source, || {
+            checked = true;
+            // Validation runs after both immutable carriers and the selector
+            // scratch have been synced, immediately before selector rename.
+            assert!(local.join("captures/new.json").is_file());
+            assert!(local.join("snapshots/new.json").is_file());
+            recovery::fresh(&json!(100), 102, 1)
+        })
+        .unwrap_err();
+        assert!(checked && error.to_string().contains("stale"));
+        assert_preserved(&previous);
+        assert_eq!(carrier_state(&pin), frozen);
     }
 
     #[test]

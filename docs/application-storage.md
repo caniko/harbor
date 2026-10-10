@@ -58,13 +58,30 @@ PostgreSQL 18 is the qualified privilege surface, including MAINTAIN. Ordinary
 provisioning services retain the PostgreSQL fence startup condition; intentional
 maintenance under a fence uses the declared OS-peer control channel explicitly.
 
-## Executed application backups (version 1)
+## Executed application backups (version 2)
 
 `projects.<name>.backup` declares a user, a dedicated reader group, backup root,
 absolute capture/restore/verify/cleanup commands and bounded execution limits.
 The systemd service loads credentials from runtime paths. Its timer is independent
-of schema migration or backend selection. `lib.applicationBackup = 1` advertises
-the interface. Physical cluster backups remain a separate `pgBackup` contract.
+of schema migration or backend selection. `lib.applicationBackup = 2` advertises
+protected publication. Physical cluster backups remain a separate `pgBackup` contract.
+
+Generated backup manifests use version 2 and declare `worker_user`. The coordinator
+and backup namespace are root-owned; adapters run as the declared unprivileged
+account with private per-attempt credentials and workspaces. Verified artifacts
+are copied through non-following directory descriptors to fresh root-owned inodes,
+checked again, and published as `0440` files beneath `0750` reader directories. The
+backup account cannot change modes or replace entries, and a writable descriptor
+retained from staging cannot modify the published copy. `LAST_SUCCESS` and the
+persistent lease also remain root-owned. Enrolled readers retain group read access.
+
+Version-1 manifests remain compatible with self-operated library fixtures; their
+owner controls publication storage. They do not meet the protected-publication
+contract. Moving a consumer to version 2 changes the manifest binding and requires
+a fresh accepted capture; old receipts cannot be reused under the new manifest.
+Independent copied-backup certification runs as an unprivileged account on the
+certifier host. Native and Python peers implement the same versioned contract.
+
 Enabled backup project names must match `[A-Za-z0-9_-]{1,128}`, the runtime
 resource contract. Invalid names fail NixOS evaluation before a timer is installed.
 Every enabled project must also have a dedicated, normalized absolute backup
@@ -113,9 +130,9 @@ does not establish automatic cleanup.
 every regular-file artifact and executable hash and every directory path (including
 empty directories), executes restoration and verification, and flushes the accepted
 tree. Artifact and acceptance files publish with read-only `0440` owner/group
-permissions; reader directories retain `0750` traversal permissions. Changing
-accepted bytes requires an explicit permission change, and every admission still
-verifies digests. Capture freshness is rechecked immediately before publishing the
+permissions; reader directories retain `0750` traversal permissions. The worker
+cannot grant itself write access to version-2 published storage; every admission
+also verifies digests. Capture freshness is rechecked immediately before publishing the
 tree and advancing `LAST_SUCCESS`. A capture that aged past `maximumAgeSeconds` leaves
 partial evidence and preserves the previous marker, allowing an explicit retry
 of the same attempt. Publication
