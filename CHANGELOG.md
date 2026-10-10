@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Reject ambiguous custody roots, activation directories and directory-creating
+  tmpfiles paths before they can bypass historical-root protection.
 - Reject backup manifests with missing literal stage placeholders or invalid
   credential IDs during evaluation, before installing a permanently failing timer.
 - Reject non-UTF-8 application backup artifact paths in both engines, preserving

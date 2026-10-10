@@ -43,6 +43,11 @@
     if entry.kind == "filesystem"
     then entry.authority.directories
     else []) (lib.attrValues resources);
+  normalizedPath = path:
+    path
+    == "/"
+    || (lib.hasPrefix "/" path
+      && lib.all (part: !(lib.elem part ["" "." ".."])) (lib.tail (lib.splitString "/" path)));
   protectedPath = path:
     lib.any (root: let
       prefix = lib.removeSuffix "/" root;
@@ -60,7 +65,9 @@
       then builtins.elemAt matched 3
       else builtins.elemAt matched 4;
   in
-    if cfg.enable && matched != null && protectedPath path
+    if cfg.enable && matched != null && !normalizedPath path
+    then throw "Harbor-DB custody requires normalized absolute directory-creating tmpfiles paths: ${path}"
+    else if cfg.enable && matched != null && protectedPath path
     then "z ${builtins.elemAt matched 1}${builtins.elemAt matched 5}"
     else rule;
   declaredDirectories =
@@ -230,6 +237,10 @@ in {
     }
     (lib.mkIf cfg.enable {
       assertions = [
+        {
+          assertion = lib.all normalizedPath protectedDirectories && lib.all (entry: normalizedPath entry.path) declaredDirectories;
+          message = "Harbor-DB custody roots and dataDirectories must use normalized absolute paths without '.', '..', repeated or trailing separators.";
+        }
         {
           assertion = !(cfg.resources ? postgresql);
           message = "Harbor-DB reserves the postgresql cutover resource for automatic lifecycle enrollment.";

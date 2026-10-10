@@ -30,6 +30,11 @@ must be outside the corpus. Set every `dataDirectories` entry at or beneath a
 custody root to `create = false`; missing historical storage is an error. Explicit initialization
 of genuinely new state remains a separate policy choice.
 
+With custody enforcement enabled, authority roots, data directory paths and
+directory-creating tmpfiles paths must use normalized absolute spelling. Dot and
+parent components, repeated separators and trailing separators are rejected
+before creation; this comparison does not depend on the historical path existing.
+
 Database inventory queries may additionally return `size`, `sha256`,
 `git_repository = true` and `git_has_commits` for each path. Certification checks
 both source and independent restore against those requirements. Git repositories

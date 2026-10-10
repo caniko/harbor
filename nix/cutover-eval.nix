@@ -82,6 +82,11 @@
   # NixOS diagnostics may reference attributes that exist only on failure.
   # Keep successful assertions' messages lazy, as NixOS itself does.
   harborFailures = assertions: lib.filter (item: !item.assertion && lib.hasPrefix "Harbor-DB" item.message) assertions;
+  custodyAccepted = overrides: let
+    selected = (eval.extendModules {modules = [overrides];}).config;
+    result = builtins.tryEval (builtins.deepSeq selected.systemd.tmpfiles.rules (harborFailures selected.assertions == []));
+  in
+    result.success && result.value;
   succeeds = harborFailures config.assertions == [];
   commandPhases = ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload" "ExecStop" "ExecStopPost"];
   commandPhaseFixture = pkgs.writeText "harbor-db-cutover-command-phases.json" (builtins.toJSON {
@@ -97,6 +102,21 @@ in
   (import ./eval-checks.nix {inherit pkgs;}).mkEvalCheck {
     name = "harbor-db-cutover-eval";
     assertions = [
+      {
+        name = "ambiguous-custody-paths-fail-before-directory-creation";
+        assertion = lib.all (path:
+          !custodyAccepted {services.harbor-db.dataDirectories = lib.mkForce [{inherit path;}];}
+          && !custodyAccepted {systemd.tmpfiles.rules = lib.mkForce ["d '${path}' 0750 - - - -"];})
+        ["/srv/./history/cache" "/srv/other/../history/cache" "/srv//history/cache" "/srv/history/cache/"];
+        message = "non-normalized directory paths must not bypass historical custody protection";
+      }
+      {
+        name = "custody-roots-require-normalized-absolute-paths";
+        assertion = lib.all (path:
+          !custodyAccepted {services.harbor-db.cutover.resources.history.authority.directories = lib.mkForce [path];})
+        ["/srv/./history" "/srv/other/../history" "/srv//history" "/srv/history/"];
+        message = "ambiguous authority roots must fail admission rather than weakening descendant matching";
+      }
       {
         name = "adopted-descendants-cannot-be-initialized";
         assertion = lib.any (item: lib.hasInfix "dataDirectories.create = false" item.message) (harborFailures unsafeDescendant.assertions);

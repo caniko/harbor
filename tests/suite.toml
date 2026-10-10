@@ -279,7 +279,7 @@ case = "nix.x86_64-linux.cutover-eval"
 capability = "nixos"
 operation = "nixos.cutover"
 dimension = "rejection"
-evidence = "nix/cutover-eval.nix adopted-roots-cannot-be-initialized rejects automatic adopted-root creation in evaluation; runtimeScript requires the generated checker to reject the wrong host. tests/check_cutover_command_phases.py requires certification failure while each generated condition/reload payload is alive."
+evidence = "nix/cutover-eval.nix rejects automatic adopted-root creation and ambiguous dot/parent/repeated/trailing-separator paths in authority roots, activation directories and directory-creating tmpfiles rules. Its real tmpfiles execution preserves missing history and permission repair. runtimeScript requires the generated checker to reject the wrong host. tests/check_cutover_command_phases.py requires certification failure while each generated condition/reload payload is alive."
 
 [[coverage]]
 case = "nix.x86_64-linux.cutover-eval"
