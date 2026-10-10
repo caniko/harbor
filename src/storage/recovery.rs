@@ -584,6 +584,42 @@ fn hostname() -> Result<String> {
         .ok_or_else(|| invalid("hostname exceeds limit"))?;
     String::from_utf8(buffer[..end].to_vec()).map_err(|_| invalid("hostname is not UTF-8"))
 }
+/// Reject aliases even when bind mounts leave canonical path spelling distinct.
+/// Missing authoritative storage is expected on an independent executor.
+fn storage_identities(path: &Path, identities: &mut BTreeSet<(u64, u64)>) -> Result<()> {
+    let info = fs::symlink_metadata(path)?;
+    if !info.is_dir() && !info.is_file() {
+        return Err(invalid(
+            "recovery cluster contains redirected or special storage",
+        ));
+    }
+    if !identities.insert((info.dev(), info.ino())) {
+        return Ok(());
+    }
+    if info.is_dir() {
+        for entry in fs::read_dir(path)? {
+            storage_identities(&entry?.path(), identities)?;
+        }
+    }
+    Ok(())
+}
+fn isolated_restore(restored: &Path, authoritative: &Path, backup: &Path) -> Result<()> {
+    let mut protected = BTreeSet::new();
+    match fs::symlink_metadata(authoritative) {
+        Ok(_) => storage_identities(authoritative, &mut protected)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    storage_identities(backup, &mut protected)?;
+    let mut copy = BTreeSet::new();
+    storage_identities(restored, &mut copy)?;
+    if !protected.is_disjoint(&copy) {
+        return Err(invalid(
+            "restored cluster aliases shared storage in the authoritative primary or selected backup",
+        ));
+    }
+    Ok(())
+}
 pub fn certify(
     config: &Value,
     data: &Path,
@@ -603,6 +639,11 @@ pub fn certify(
     let (backup_lease, evidence_lease) = backup_evidence_leases(settings, false)?;
     let leases = [backup_lease.fd(), evidence_lease.fd()];
     let (directory, binding) = backup(config, settings, now, &leases)?;
+    isolated_restore(
+        &restored,
+        &absolute(&path(config, "data_dir")?)?,
+        &directory,
+    )?;
     let source = snapshot_evidence(config, settings, &binding, now)?;
     source_fence(settings, &source)?;
     verify_backup(config, &directory, &leases)?;

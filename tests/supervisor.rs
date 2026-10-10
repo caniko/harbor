@@ -124,6 +124,120 @@ fn observer_reattaches_and_missing_worker_is_incomplete() {
 }
 
 #[test]
+fn worker_failure_before_registration_publishes_terminal_evidence_and_forbids_retry() {
+    let tmp = tempfile::tempdir().unwrap();
+    let selection = spec(tmp.path(), "true", 5);
+    let source = selection.inputs[0].path.clone();
+    let run = supervisor::create_run(Some(tmp.path()), "early-worker-failure", selection).unwrap();
+    fs::write(source, b"changed after launch admission").unwrap();
+    assert!(supervisor::worker(&run).is_err());
+    assert!(!run.join("started.json").exists());
+    let state = supervisor::observe_once(&run).unwrap();
+    assert!(
+        state.terminal,
+        "pre-registration failure left observation waiting forever"
+    );
+    assert_ne!(state.verification.verdict, Verdict::Passed);
+    let failure = fs::read(run.join("launch-failed.json")).unwrap();
+    assert!(supervisor::worker(&run).is_err());
+    supervisor::observe_once(&run).unwrap();
+    assert_eq!(fs::read(run.join("launch-failed.json")).unwrap(), failure);
+}
+
+#[test]
+fn detached_worker_loss_before_registration_uses_the_acknowledged_unit_state() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let run = supervisor::create_run(
+        Some(tmp.path()),
+        "unregistered-detached",
+        spec(tmp.path(), "true", 5),
+    )
+    .unwrap();
+    let stub = tmp.path().join("stub-bin");
+    fs::create_dir(&stub).unwrap();
+    let shell = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|p| p.join("sh"))
+        .find(|p| p.is_file())
+        .unwrap()
+        .canonicalize()
+        .unwrap();
+    fs::write(
+        stub.join("systemctl"),
+        format!(
+            "#!{}\nprintf '%s\\n' \"$UNIT_STATE\"\nexit \"$UNIT_QUERY_CODE\"\n",
+            shell.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(stub.join("systemctl"), fs::Permissions::from_mode(0o700)).unwrap();
+    let hash = harbor_db::testing::evidence::hash(run.as_os_str().as_encoded_bytes());
+    let unit = format!(
+        "harbor-db-test-unregistered-detached-{}-worker",
+        &hash[..12]
+    );
+    let accepted = serde_json::json!({"unit":unit,"unix_seconds":0});
+    let observe = |state: &str, code: &str| {
+        let mut command = process::CommandSpec::new(vec![
+            env!("CARGO_BIN_EXE_harbor-db-test").into(),
+            "observe".into(),
+            run.display().to_string(),
+            "--once".into(),
+        ]);
+        command.environment = Some(BTreeMap::from([
+            ("PATH".into(), stub.display().to_string()),
+            ("UNIT_STATE".into(), state.into()),
+            ("UNIT_QUERY_CODE".into(), code.into()),
+        ]));
+        process::run(&command).unwrap()
+    };
+    // Before launch acknowledgement a missing unit is not proof of failure.
+    assert!(
+        observe("LoadState=not-found\nActiveState=inactive", "1")
+            .status
+            .success()
+    );
+    assert!(!supervisor::status(&run).unwrap().terminal);
+    harbor_db::storage::durable::write_json(&run.join("worker-launch-accepted.json"), &accepted)
+        .unwrap();
+    for (state, code) in [
+        ("LoadState=loaded\nActiveState=active", "0"),
+        ("diagnostic unavailable", "1"),
+    ] {
+        assert!(observe(state, code).status.success());
+        assert!(!supervisor::status(&run).unwrap().terminal);
+    }
+    let authority =
+        harbor_db::storage::durable::lock(&run.join("worker.lock"), false, false).unwrap();
+    assert!(
+        !observe("LoadState=not-found\nActiveState=inactive", "1")
+            .status
+            .success()
+    );
+    assert!(
+        !supervisor::status(&run).unwrap().terminal,
+        "an owned worker lease must not be overwritten"
+    );
+    drop(authority);
+    assert!(
+        observe("LoadState=not-found\nActiveState=inactive", "1")
+            .status
+            .success()
+    );
+    let state = supervisor::status(&run).unwrap();
+    assert!(state.terminal && state.started.is_none() && state.results.is_empty());
+    assert_eq!(state.verification.verdict, Verdict::Failed);
+    let before = fs::read(run.join("launch-failed.json")).unwrap();
+    assert!(
+        observe("LoadState=loaded\nActiveState=active", "0")
+            .status
+            .success()
+    );
+    assert_eq!(fs::read(run.join("launch-failed.json")).unwrap(), before);
+    assert!(supervisor::worker(&run).is_err());
+}
+
+#[test]
 fn argv_cases_exclude_ambient_variables_and_keep_the_retained_environment() {
     let tmp = tempfile::tempdir().unwrap();
     let mut selection = spec(

@@ -21,11 +21,11 @@ sha256 = "47e441ba84dfef1a86f07d6e91f88ff09a1d22076f6c316830a20f2a6fcceac5"
 
 [[extensions]]
 path = "python/harbor_db/recovery.py"
-sha256 = "bcff9bf072da25b9a98401b776d8b5a3bd07377fae285ae9aba1c9977841f6e0"
+sha256 = "50ccf101fdb3c94d028628906bc68bb01310e6d2acb34a3d9d5b42b0acbd744f"
 
 [[extensions]]
 path = "python/harbor_db/application_transition.py"
-sha256 = "3e65d3467df000ebe84350403a381517bafd1d7a5ed19783716d9c334bdefdc8"
+sha256 = "e9b108e3170dfe372e980acde5cbd17d5168cf8b84f10bfd090b2749e1421ba6"
 
 [[extensions]]
 path = "python/harbor_db/transition_manifest.py"
@@ -49,7 +49,7 @@ sha256 = "272ba7f286bcc31b4af7282076a1c79c6f7a2334cd74506d1339d12c139281a8"
 
 [[extensions]]
 path = "python/harbor_db/application_backup.py"
-sha256 = "e3af737ae7686299dcb94dbc8cdd8271edb9e27a37bcac4da4841f469ba6ea3e"
+sha256 = "23820e14fe131a403d266d40835ae2aa254f17a3e1f885995ffb33ee114c0cc4"
 
 [[extensions]]
 path = "python/harbor_db/durable.py"
@@ -58,3 +58,11 @@ sha256 = "6aadb28cecea0ddff75ce6fc80982816770e1e614051a51356834b566cb41053"
 [[extensions]]
 path = "python/harbor_db/postgres_drill.py"
 sha256 = "355e3c07b050033fc315903ec54c658f3bc4aba31578f831dde85946cd501a0c"
+
+[[extensions]]
+path = "python/harbor_db/process.py"
+sha256 = "0685d1e6b43c10ac8637614090f099dcbe6a5d7b859c899e07377f74841c524c"
+
+[[extensions]]
+path = "tests/test_application_backup.py"
+sha256 = "57cd96e9c83f699bf7213094d98011b2fefd6034233dafb444278bfe1b4ee730"

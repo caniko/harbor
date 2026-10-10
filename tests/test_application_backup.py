@@ -65,6 +65,8 @@ elif operation == "fail":
         with self.assertRaises(ValueError):
             application_backup.capture(self.config, "good")
         point = self.backups / "good"
+        # Explicit fault injection into a published read-only artifact.
+        (point / "records.json").chmod(0o640)
         (point / "records.json").write_text('[{"id":1,"revision":6}]')
         with self.assertRaisesRegex(ValueError, "hash"):
             application_backup.inspect(self.config, point)

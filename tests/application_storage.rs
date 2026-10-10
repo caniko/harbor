@@ -169,6 +169,34 @@ fn stale_capture_preserves_success_and_allows_the_same_attempt_to_retry_in_both_
 }
 
 #[test]
+fn published_backup_files_are_read_only_in_both_engines() {
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        if python {
+            backup_peer(&c, "capture", "point", false).unwrap();
+        } else {
+            application_backup::capture(&c, "point", false).unwrap();
+        }
+        let backup = t.path().join("backups/point");
+        let receipt = fs::read(backup.join("acceptance.json")).unwrap();
+        for name in ["records.json", "capture.json", "acceptance.json"] {
+            let path = backup.join(name);
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o440,
+                "python={python}: {name} remains writable"
+            );
+            if unsafe { libc::geteuid() } != 0 {
+                assert!(fs::OpenOptions::new().write(true).open(&path).is_err());
+            }
+        }
+        application_backup::inspect(&c, &backup, None).unwrap();
+        backup_peer(&c, "inspect", backup.to_str().unwrap(), false).unwrap();
+        assert_eq!(fs::read(backup.join("acceptance.json")).unwrap(), receipt);
+    }
+}
+
+#[test]
 fn empty_directory_changes_invalidate_accepted_artifacts_in_both_engines() {
     for python in [false, true] {
         let (t, c) = backup_fixture();
@@ -551,6 +579,13 @@ fn backup_success_preserves_prior_point_after_failure_and_detects_hash_age_and_t
             .contains("stale")
     );
     assert!(application_backup::inspect(&c, &point, Some(0)).is_err());
+    // Deliberately restore write permission to inject byte corruption into a
+    // read-only accepted artifact; ordinary service-account writes are denied.
+    fs::set_permissions(
+        point.join("records.json"),
+        fs::Permissions::from_mode(0o640),
+    )
+    .unwrap();
     fs::write(point.join("records.json"), "[]").unwrap();
     assert!(
         application_backup::inspect(&c, &point, None)

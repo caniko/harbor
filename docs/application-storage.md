@@ -108,8 +108,11 @@ does not establish automatic cleanup.
 `harbor-db-application-backup --config MANIFEST capture [--attempt ID]` records
 every regular-file artifact and executable hash and every directory path (including
 empty directories), executes restoration and verification, and flushes the accepted
-tree. It rechecks capture freshness immediately before publishing the tree and
-advancing `LAST_SUCCESS`. A capture that aged past `maximumAgeSeconds` leaves
+tree. Artifact and acceptance files publish with read-only `0440` owner/group
+permissions; reader directories retain `0750` traversal permissions. Changing
+accepted bytes requires an explicit permission change, and every admission still
+verifies digests. Capture freshness is rechecked immediately before publishing the
+tree and advancing `LAST_SUCCESS`. A capture that aged past `maximumAgeSeconds` leaves
 partial evidence and preserves the previous marker, allowing an explicit retry
 of the same attempt. Publication
 sets the marker's final `0640` reader permissions and file-syncs them before
@@ -123,7 +126,10 @@ receipt binds the original acceptance hash, actual machine identity, executables
 and semantic identity. Execution on the original machine cannot claim independence.
 Copying bytes or trusting an application's unexecuted assertion is insufficient.
 Adapters must retain inherited leases through child work and drain descendants
-before returning; generated systemd units additionally retain control-group cleanup.
+before returning. Native and Python bounded workers kill surviving process-group
+descendants before reaping even a successful leader, so silent descendants cannot
+retain leases past reported completion. Generated systemd units additionally retain
+control-group cleanup.
 The coordinator forwards its leases to every adapter through inherited descriptors
 listed in `HARBOR_DB_LEASE_FDS`; adapters forwarding work must retain them too.
 Receipt output is bounded in memory; diagnostic output is discarded rather than
@@ -185,7 +191,11 @@ post-import snapshot; the application coordinator does not create owner anchors.
 The sequence is:
 
 1. `plan --candidate CONTRACT [--writer-fence-token TOKEN]` binds a realized
-   immutable transition manifest before building the full system closure.
+   immutable transition manifest before building the full system closure. A fresh
+   128-bit `run_id` is persisted in the journal before capture. The attempt name
+   binds both intent and run identity, so intervening source writes after abort and
+   retirement are captured by the next run. Resuming an existing journal retains
+   its ID and exact attempt; pre-ID legacy journals keep their original attempt.
 2. `prepare` installs and verifies effective client barriers, drains writers,
    captures/restores the source, and waits for independently executed restore
    evidence. A repeated call uses the same immutable intent and retained snapshot.

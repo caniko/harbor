@@ -8,15 +8,18 @@ import time
 
 
 def terminate(process):
+    if process.returncode is not None:
+        return
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         pass
+    time.sleep(0.1)
     try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=5)
+    except ProcessLookupError:
+        pass
+    process.wait(timeout=5)
 
 
 def execute(argv, *, timeout, environment, leases=(), cwd=None, maximum_output=1024 * 1024, **identity):
@@ -40,7 +43,17 @@ def execute(argv, *, timeout, environment, leases=(), cwd=None, maximum_output=1
                         output.extend(chunk)
                         if len(output) > maximum_output:
                             raise ValueError("storage worker receipt exceeded its size limit")
-            result = process.wait(timeout=max(0.001, deadline - time.monotonic()))
+            # Preserve the leader's PID until group cleanup, including after EOF.
+            # A silent descendant may still own explicitly inherited leases.
+            while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+                if time.monotonic() >= deadline:
+                    raise ValueError("storage worker exceeded its execution limit")
+                time.sleep(0.005)
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            result = process.wait(timeout=5)
         if result:
             raise ValueError("storage worker failed; diagnostics suppressed")
         return bytes(output)

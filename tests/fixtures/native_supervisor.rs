@@ -507,6 +507,62 @@ fn qualify(root: &Path, cli: &Path) -> Result<()> {
     )?;
     assertions.push("unexpected worker kill, attach/re-attach incomplete, duplicate worker rejection, deterministic stale child PID never signalled");
     runs.push(json!({"run":run.path,"terminal":terminal}));
+    let mut selection: RunSpec = serde_json::from_slice(&fs::read(run.path.join("spec.json"))?)?;
+    selection.cases[0].id = "early-registration-loss".into();
+    for artifact in &mut selection.cases[0].artifacts {
+        artifact.source = "early-registration-loss".into();
+    }
+    let early = supervisor::create_run(Some(root), "early-registration-loss", selection)?;
+    let busy = durable::lock(&early.join("worker.lock"), false, false)?;
+    let units = supervisor::start_detached(&early, cli)?;
+    require(
+        units.len() == 2,
+        "early worker launch must acknowledge both units",
+    )?;
+    wait(|| {
+        let (_, bytes) = command(
+            Path::new("systemctl"),
+            &[
+                "--user",
+                "show",
+                &units[1],
+                "--property=LoadState,ActiveState",
+            ],
+            false,
+        )?;
+        let state = String::from_utf8(bytes)?;
+        Ok(state.lines().any(|line| {
+            matches!(
+                line,
+                "LoadState=not-found" | "ActiveState=failed" | "ActiveState=inactive"
+            )
+        }))
+    })?;
+    drop(busy);
+    wait(|| Ok(supervisor::status(&early)?.terminal))?;
+    let failed = supervisor::status(&early)?;
+    require(
+        failed.started.is_none()
+            && failed.results.is_empty()
+            && failed.verification.verdict == Verdict::Failed,
+        "pre-registration worker loss must be terminal without inventing execution",
+    )?;
+    let original = fs::read(early.join("launch-failed.json"))?;
+    command(
+        cli,
+        &["observe", early.to_str().ok_or("run")?, "--once"],
+        true,
+    )?;
+    require(
+        fs::read(early.join("launch-failed.json"))? == original,
+        "reattachment changed early failure evidence",
+    )?;
+    require(
+        command(cli, &["worker", early.to_str().ok_or("run")?], false)?.0 == 1,
+        "early failed worker must never rerun",
+    )?;
+    assertions.push("real detached worker lease failure before registration is terminal after unit collection, observer reattachment preserves failure and retry rejects");
+    runs.push(json!({"run":early,"terminal":failed}));
     durable::write_json(
         &root.join("qualification.json"),
         &json!({

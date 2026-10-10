@@ -81,6 +81,11 @@ age/top-two retention. Malformed or uncertain pin state preserves the repository
    unchanged to the independent certifier.
 7. Replay there, compare exact nonempty records including the post-backup changes,
    and import the bound receipt before admitting preparation.
+   Certification inventories device/inode identities for the restored cluster and
+   available authoritative/selected-backup trees. Shared files or directories reject
+   even when hard links or bind mounts preserve different canonical path spelling;
+   redirected or special cluster entries reject too. The authoritative tree may be
+   absent on the independent host; the transported selected backup remains protected.
 8. Keep the retained fence until explicit stopped-primary thaw. Capture and
    certification do not start, stop or thaw the primary.
 

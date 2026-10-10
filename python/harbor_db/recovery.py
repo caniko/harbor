@@ -264,6 +264,35 @@ def inspect_restored(config, socket_dir, port):
     """))
 
 
+def storage_identities(path, identities):
+    import stat
+    info = path.lstat()
+    if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
+        raise ValueError("recovery cluster contains redirected or special storage")
+    identity = (info.st_dev, info.st_ino)
+    if identity in identities:
+        return
+    identities.add(identity)
+    if stat.S_ISDIR(info.st_mode):
+        for entry in path.iterdir():
+            storage_identities(entry, identities)
+
+
+def isolated_restore(restored, authoritative, backup):
+    protected = set()
+    try:
+        authoritative.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        storage_identities(authoritative, protected)
+    storage_identities(backup, protected)
+    copy = set()
+    storage_identities(restored, copy)
+    if not protected.isdisjoint(copy):
+        raise ValueError("restored cluster aliases shared storage in the authoritative primary or selected backup")
+
+
 def certify(config, data_dir, socket_dir, port, *, now=None, hostname=None):
     settings = policy(config)
     now = int(time.time()) if now is None else now
@@ -272,6 +301,7 @@ def certify(config, data_dir, socket_dir, port, *, now=None, hostname=None):
         raise ValueError("cannot certify the authoritative primary as a restored copy")
     with lock(absolute(settings["backup_root"]) / "locks/mutate", shared=True), evidence_lease(settings):
         directory, binding = backup(config, settings, now)
+        isolated_restore(restored, absolute(config["data_dir"]), directory)
         source = snapshot_evidence(config, settings, binding, now)
         source_fence(settings, source)
         verify_backup(config, directory)

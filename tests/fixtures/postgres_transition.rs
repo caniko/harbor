@@ -875,6 +875,25 @@ fn run(args: Args) -> Result<()> {
         true,
         "first-aborted-terminal-history-retained",
     )?;
+    let first_record: Value = serde_json::from_str(&first_bytes)?;
+    let first_backup = field(&first_record, "backup")?;
+    let first_capture = g.shell(
+        "primary",
+        format!(
+            "sha256sum {}/records {}/acceptance.json; stat -c '%d:%i' {}/acceptance.json",
+            quoted(first_backup),
+            quoted(first_backup),
+            quoted(first_backup)
+        ),
+        true,
+        "first-capture-digest-and-inode-retained",
+    )?;
+    g.shell(
+        "primary",
+        "printf '%s' source-revision-eight > /var/lib/demo-old/records",
+        true,
+        "source-acknowledged-write-between-terminal-runs",
+    )?;
     let repeated_plan = g.phase(
         &format!(
             "{transition} plan --candidate {} --writer-fence-token {}",
@@ -885,8 +904,57 @@ fn run(args: Args) -> Result<()> {
         "same-immutable-intent-planned-after-retirement",
     )?;
     g.check(
-        repeated_plan["intent"] == planned["intent"],
-        "repeated-transition-preserves-identical-contract-intent",
+        repeated_plan["intent"] == planned["intent"]
+            && repeated_plan["run_id"]
+                .as_str()
+                .is_some_and(|id| id.len() == 32)
+            && repeated_plan["run_id"] != planned["run_id"],
+        "repeated-transition-preserves-contract-and-allocates-fresh-run-identity",
+    )?;
+    for attempt in ["second-run-fresh-capture", "second-run-deterministic-retry"] {
+        g.shell(
+            "primary",
+            format!("{transition} prepare"),
+            false,
+            &format!("{attempt}-rejects-old-independent-receipt"),
+        )?;
+        let captured = g.phase(
+            &format!("{transition} status"),
+            "captured",
+            &format!("{attempt}-awaits-new-independent-proof"),
+        )?;
+        g.check(
+            captured["backup"] != first_record["backup"]
+                && captured["run_id"] == repeated_plan["run_id"]
+                && captured["semantic_sha256"] != first_record["semantic_sha256"],
+            &format!("{attempt}-binds-new-run-and-intervening-writes"),
+        )?;
+        let new_backup = field(&captured, "backup")?;
+        g.shell(
+            "primary",
+            format!(
+                "test \"$(cat {}/records)\" = source-revision-eight",
+                quoted(new_backup)
+            ),
+            true,
+            &format!("{attempt}-retains-latest-source-bytes"),
+        )?;
+        g.imports(&format!("{attempt}-no-import-under-old-proof"))?;
+    }
+    let retained_capture = g.shell(
+        "primary",
+        format!(
+            "sha256sum {}/records {}/acceptance.json; stat -c '%d:%i' {}/acceptance.json",
+            quoted(first_backup),
+            quoted(first_backup),
+            quoted(first_backup)
+        ),
+        true,
+        "repeat-preserves-first-accepted-capture",
+    )?;
+    g.check(
+        retained_capture == first_capture,
+        "new-run-does-not-rewrite-old-capture-bytes-or-inode",
     )?;
     g.phase(
         &format!("{transition} abort"),

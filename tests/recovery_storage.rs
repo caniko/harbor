@@ -698,6 +698,66 @@ fn disposable_restore_must_be_distinct_read_only_primary_at_recovery_point() {
 }
 
 #[test]
+fn restored_clusters_cannot_share_primary_or_selected_backup_inodes_in_both_engines() {
+    let _workers = WORKERS.lock().unwrap();
+    for python in [false, true] {
+        for protected in ["data", "backup/base/base-1"] {
+            let f = Fixture::new();
+            f.snapshot();
+            fs::create_dir_all(f.p(&format!("{protected}/base/1"))).unwrap();
+            fs::create_dir_all(f.p("restored/base/9")).unwrap();
+            let source = f.p(&format!("{protected}/base/1/123"));
+            let alias = f.p("restored/base/9/456");
+            fs::write(&source, b"authoritative acknowledged record").unwrap();
+            fs::hard_link(&source, &alias).unwrap();
+            let before = fs::read(&source).unwrap();
+            let result = if python {
+                let mut spec=harbor_db::storage::process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),
+                    "import json,sys\nfrom pathlib import Path\nfrom harbor_db import recovery\nc=json.loads(sys.argv[1])\ntry: recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,now=int(sys.argv[2]),hostname='primary-host')\nexcept ValueError as e: print(json.dumps({'error':str(e)}))\nelse: print(json.dumps({'accepted':True}))".into(),f.config.to_string(),f.now.to_string()]);
+                spec.environment = Some(std::collections::BTreeMap::from([
+                    (
+                        "PYTHONPATH".into(),
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+                    ("PATH".into(), std::env::var("PATH").unwrap()),
+                ]));
+                serde_json::from_slice::<Value>(
+                    &harbor_db::storage::process::execute(&spec).unwrap(),
+                )
+                .unwrap()
+            } else {
+                match recovery::certify(
+                    &f.config,
+                    &f.p("restored"),
+                    Path::new("/restore/socket"),
+                    55432,
+                    Some(f.now),
+                    Some("primary-host"),
+                ) {
+                    Ok(value) => value,
+                    Err(error) => json!({"error":error.to_string()}),
+                }
+            };
+            assert!(
+                result["error"]
+                    .as_str()
+                    .is_some_and(|s| s.contains("shared storage")),
+                "python={python}, protected={protected}: {result}"
+            );
+            assert!(!f.p("backup/evidence/recovery.json").exists());
+            assert_eq!(fs::read(&source).unwrap(), before);
+            fs::remove_file(&alias).unwrap();
+            fs::copy(&source, &alias).unwrap();
+            if python {
+                python_recovery(&f, "certify", &json!({}));
+            } else {
+                f.certify();
+            }
+        }
+    }
+}
+
+#[test]
 fn hostile_receipts_cannot_claim_record_level_acceptance() {
     let _workers = WORKERS.lock().unwrap();
     let f = Fixture::new();

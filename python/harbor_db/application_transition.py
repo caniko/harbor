@@ -5,6 +5,7 @@ import contextlib
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import pwd
@@ -31,7 +32,13 @@ def status(config):
     record = read_json(journal_path(config))
     if record["version"] != 1 or record["intent"] != intent(config):
         raise ValueError("transition intent or executable identity changed; use the original manifest")
+    validate_run_id(record)
     return record
+
+
+def validate_run_id(record):
+    if "run_id" in record and (not isinstance(record["run_id"], str) or not re.fullmatch(r"[0-9a-f]{32}", record["run_id"])):
+        raise ValueError("invalid transition run identity")
 
 
 def release_pending(config):
@@ -85,7 +92,7 @@ def plan(config, candidate, writer_fence_token):
                 raise ValueError("transition resume candidate or fence identity differs")
             return record
         with resource.inspection(source) as authority:
-            record = {"version": 1, "phase": "planned", "intent": intent(config),
+            record = {"version": 1, "phase": "planned", "run_id": secrets.token_hex(16), "intent": intent(config),
                       "candidate": candidate if kind == "generation" else None,
                       "preparation_contract": candidate if kind == "contract" else None,
                       "barrier_candidate": candidate if kind == "generation" else None,
@@ -108,7 +115,10 @@ def capture_source(config, record, leases):
     root = application_backup.validate(backup_config)
     account = root.stat().st_uid
     user = pwd.getpwuid(account).pw_name
+    validate_run_id(record)
     attempt = "transition-" + application_backup.identity(record["intent"])[:32]
+    if "run_id" in record:
+        attempt += "-" + record["run_id"]
     command = {"user": user, "argv": [str(Path(config["storage_package"]) / "harbor-db-application-backup"),
                "--config", config["backup_manifest"], "capture", "--attempt", attempt, "--retry-incomplete"]}
     backup = root / attempt

@@ -432,6 +432,25 @@ fn run(args: Args) -> Result<()> {
             && meta["record_hashes"] == finalized["records"],
         "capture-binds-real-identity-fence-target-and-records",
     )?;
+    // These are actual alternate mount paths, not symlinks. Certification must
+    // reject them before querying an endpoint or publishing a receipt.
+    for (name, protected) in [
+        ("primary", field(&config, "data_dir")?.to_owned()),
+        ("selected-backup", format!("{ROOT}/base/{backup}")),
+    ] {
+        g.shell("primary",format!("install -d -m 0700 -o postgres -g postgres /srv/restore-alias; mount --bind {} /srv/restore-alias",q(&protected)),true,&format!("{name}-bind-mount-alias-created"))?;
+        let rejected=g.shell("primary",format!("{pg} certify-recovery --data-dir /srv/restore-alias --socket-dir /run/postgresql --port 5432 2>&1"),false,&format!("{name}-bind-mount-certification-rejected"))?;
+        g.check(
+            rejected.contains("shared storage"),
+            &format!("{name}-rejection-is-inode-alias-check"),
+        )?;
+        g.shell(
+            "primary",
+            "umount /srv/restore-alias; rmdir /srv/restore-alias",
+            true,
+            &format!("{name}-alias-unmounted-without-starting-postgres"),
+        )?;
+    }
     g.shell("primary", "systemctl stop pg-receivewal.service; tar -C /srv/pgbackup -cf /run/source-local.tar 127.0.0.1", true, "unchanged-repository-archive-created")?;
     let host = args.acceptance.with_extension("transfer.tar");
     g.transfer(

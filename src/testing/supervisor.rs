@@ -876,14 +876,29 @@ pub fn worker(run: &Path) -> Result<()> {
             "run already started or launch failed; observer may attach but worker never reruns",
         ));
     }
-    let spec = load_spec(run)?;
-    let mut started = Started {
-        worker: registration(std::process::id())?,
-        child: None,
-        case_id: None,
-        unix_seconds: now(),
+    let startup = (|| {
+        let spec = load_spec(run)?;
+        let started = Started {
+            worker: registration(std::process::id())?,
+            child: None,
+            case_id: None,
+            unix_seconds: now(),
+        };
+        publish(&run.join("started.json"), &started)?;
+        Ok((spec, started))
+    })();
+    let (spec, mut started) = match startup {
+        Ok(state) => state,
+        Err(error) => {
+            publish(
+                &run.join("launch-failed.json"),
+                &serde_json::json!({
+                    "unix_seconds":now(),"stage":"worker-registration","reason":format!("{error}")
+                }),
+            )?;
+            return Err(error);
+        }
     };
-    publish(&run.join("started.json"), &started)?;
     let _heartbeat = HeartbeatGuard::start(run);
     let mut results: Vec<CaseResult> = Vec::new();
     let mut artifact_index = 0;
@@ -1325,6 +1340,9 @@ pub fn observe_once(run: &Path) -> Result<RunStatus> {
     evidence::check_path(run)?;
     let _pass = lease(&run.join("observation.lock"), true)?;
     let (state, probe) = status_with_probe(run)?;
+    if state.started.is_none() && !state.terminal {
+        observe_unregistered_worker(run)?;
+    }
     if !state.terminal && state.started.as_ref().is_some_and(|_| !state.worker_alive) {
         // Persist the exact deciding probe, not a later retry. Diagnostic failure
         // must not alter the existing worker-loss/terminal policy or CLI stdout.
@@ -1390,6 +1408,57 @@ pub fn observe_once(run: &Path) -> Result<RunStatus> {
         notify_terminal(run, &state)?;
     }
     Ok(state)
+}
+
+fn service_unit(run: &Path, id: &str, role: &str) -> String {
+    let binding = evidence::hash(run.as_os_str().as_encoded_bytes());
+    format!("harbor-db-test-{id}-{}-{role}", &binding[..12])
+}
+
+fn observe_unregistered_worker(run: &Path) -> Result<()> {
+    let Some(accepted) = optional::<serde_json::Value>(&run.join("worker-launch-accepted.json"))?
+    else {
+        return Ok(());
+    };
+    let id = run
+        .file_name()
+        .ok_or_else(|| error("run ID unavailable"))?
+        .to_string_lossy();
+    let expected = service_unit(run, &id, "worker");
+    if accepted["unit"] != expected {
+        return Err(error("worker launch receipt names a different unit"));
+    }
+    let mut command = crate::storage::process::CommandSpec::new(vec![
+        "systemctl".into(),
+        "--user".into(),
+        "show".into(),
+        expected,
+        "--property=LoadState,ActiveState".into(),
+    ]);
+    command.timeout = Duration::from_secs(10);
+    command.maximum_output = 4096;
+    let output = crate::storage::process::run(&command)?;
+    let properties = crate::storage::process::text(&output.stdout)?;
+    // Query failure alone is not proof of worker death. A collected unit can
+    // return nonzero together with its definitive not-found state.
+    if properties.lines().any(|line| line == "LoadState=not-found")
+        || (output.status.success()
+            && properties
+                .lines()
+                .any(|line| matches!(line, "ActiveState=inactive" | "ActiveState=failed")))
+    {
+        let _authority = lease(&run.join("worker.lock"), false)?;
+        if !run.join("started.json").exists() && !run.join("launch-failed.json").exists() {
+            publish(
+                &run.join("launch-failed.json"),
+                &serde_json::json!({
+                    "unix_seconds":now(),"stage":"before-worker-registration",
+                    "reason":"accepted worker unit exited before registration","unit_state":properties
+                }),
+            )?;
+        }
+    }
+    Ok(())
 }
 
 /// Independent service: samples every 10 seconds, summarizes every 30, reports
@@ -1528,8 +1597,7 @@ pub fn start_detached(run: &Path, executable: &Path) -> Result<Vec<String>> {
     )?;
     let mut units: Vec<String> = Vec::new();
     for role in ["observe", "worker"] {
-        let binding = evidence::hash(run.as_os_str().as_encoded_bytes());
-        let unit = format!("harbor-db-test-{id}-{}-{role}", &binding[..12]);
+        let unit = service_unit(&run, &id, role);
         let mut argv: Vec<String> = [
             "systemd-run",
             "--user",
@@ -1585,6 +1653,14 @@ pub fn start_detached(run: &Path, executable: &Path) -> Result<Vec<String>> {
                 }
             }
             return Err(error(reason));
+        }
+        if role == "worker" {
+            publish(
+                &run.join("worker-launch-accepted.json"),
+                &serde_json::json!({
+                    "unix_seconds":now(),"unit":unit
+                }),
+            )?;
         }
         units.push(unit);
     }

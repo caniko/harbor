@@ -1,6 +1,55 @@
 # Versioned static inventory. No discovery command, Nix evaluation, or pass verdict.
 version = 1
 
+[[coverage]]
+case = "native.transition_storage.repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.prepare"
+dimension = "repetition"
+evidence = "Both engines retain same-run attempt bytes and inode, capture intervening acknowledged writes under a distinct run ID, and capture again despite a stale older run. Distinct semantic digests prevent reuse of old independent proof. The PostgreSQL VM executes actual plan/prepare/abort/retire twice with fresh persisted IDs and rejects the old independent receipt before reimport."
+
+[[coverage]]
+case = "native.application_storage.published_backup_files_are_read_only_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "positive"
+evidence = "Native and Python publish regular artifacts and acceptance files at 0440; unprivileged direct write opens reject, both readers still admit, and inspection preserves acceptance bytes. The backup VM confirms actual backup-account writes fail while enrolled readers can read."
+
+[[coverage]]
+case = "native.storage_primitives.successful_native_workers_terminate_silent_descendants_retaining_leases"
+capability = "suite-cli"
+operation = "harbor-db-test.worker"
+dimension = "rejection"
+evidence = "A successful native bounded worker forks a silent SIGTERM-ignoring descendant inheriting a real lock. Completion kills its still-owned process group and the original lock becomes acquirable after the parent closes its descriptor."
+
+[[coverage]]
+case = "native.storage_primitives.successful_python_workers_terminate_silent_descendants_retaining_leases"
+capability = "suite-cli"
+operation = "harbor-db-test.worker"
+dimension = "compatibility"
+evidence = "The Python bounded executor repeats the real silent descendant and inherited-lock regression, preserving an unreaped leader until group cleanup and releasing the lock after success."
+
+[[coverage]]
+case = "native.recovery_storage.restored_clusters_cannot_share_primary_or_selected_backup_inodes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.certify-recovery"
+dimension = "rejection"
+evidence = "Both engines reject differently named restored files hard-linked to either authoritative or selected-backup inodes without publishing a receipt or changing protected bytes. A separate byte copy certifies. The source-local VM rejects actual primary and selected-backup bind mounts before endpoint inspection."
+
+[[coverage]]
+case = "native.supervisor.worker_failure_before_registration_publishes_terminal_evidence_and_forbids_retry"
+capability = "suite-cli"
+operation = "harbor-db-test.worker"
+dimension = "rejection"
+evidence = "Source binding failure before started.json retains terminal nonpassing launch-failure evidence. Reattachment preserves its bytes and a second worker rejects without executing cases."
+
+[[coverage]]
+case = "native.supervisor.detached_worker_loss_before_registration_uses_the_acknowledged_unit_state"
+capability = "suite-cli"
+operation = "harbor-db-test.observe"
+dimension = "recovery"
+evidence = "Observation requires successful worker-launch acknowledgement, definitive unit loss and the free worker lease before terminalizing a missing registration. Pending/active units, unavailable diagnostics and occupied authority do not become completion; repeated observation preserves the failure. The supervisor VM executes a real detached pre-registration lease failure and collected-unit recovery."
+
 [[inventories]]
 origin = "rust"
 id_prefix = "native.plan-cli."
@@ -1627,7 +1676,7 @@ source = "tests/supervisor.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "supervisor"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["eof_is_not_exit_and_follower_has_no_authority", "timeout_and_cancel_preserve_execution_reason", "persistent_anchor_busy_and_collision", "observer_reattaches_and_missing_worker_is_incomplete", "killed_worker_cannot_relaunch_and_child_retains_authority"]
+selectors = ["eof_is_not_exit_and_follower_has_no_authority", "timeout_and_cancel_preserve_execution_reason", "persistent_anchor_busy_and_collision", "observer_reattaches_and_missing_worker_is_incomplete", "killed_worker_cannot_relaunch_and_child_retains_authority", "worker_failure_before_registration_publishes_terminal_evidence_and_forbids_retry", "detached_worker_loss_before_registration_uses_the_acknowledged_unit_state"]
 
 [[inventories]]
 origin = "rust"
@@ -1637,7 +1686,7 @@ source = "tests/application_storage.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "application_storage"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["backup_success_preserves_prior_point_after_failure_and_detects_hash_age_and_tools", "redirected_mutating_or_incomplete_capture_cannot_publish", "missing_anchor_is_never_recreated_and_cleanup_failure_retains_private_workspace", "interrupted_capture_resumes_only_immutable_intent_and_retains_evidence", "backup_children_retain_coordinator_and_inherited_leases", "independent_certification_checks_host_privacy_hashes_and_retains_receipts", "provisioning_validation", "inventory_rejects_redirects", "artifact_inventory_rejects_non_utf8_files_and_directories_without_collapsing_valid_names", "lossy_capture_paths_cannot_publish_or_replace_the_previous_restore_point_in_either_engine"]
+selectors = ["backup_success_preserves_prior_point_after_failure_and_detects_hash_age_and_tools", "redirected_mutating_or_incomplete_capture_cannot_publish", "missing_anchor_is_never_recreated_and_cleanup_failure_retains_private_workspace", "interrupted_capture_resumes_only_immutable_intent_and_retains_evidence", "backup_children_retain_coordinator_and_inherited_leases", "independent_certification_checks_host_privacy_hashes_and_retains_receipts", "provisioning_validation", "inventory_rejects_redirects", "artifact_inventory_rejects_non_utf8_files_and_directories_without_collapsing_valid_names", "lossy_capture_paths_cannot_publish_or_replace_the_previous_restore_point_in_either_engine", "published_backup_files_are_read_only_in_both_engines"]
 
 [[coverage]]
 case = "native.application_storage.lossy_capture_paths_cannot_publish_or_replace_the_previous_restore_point_in_either_engine"
@@ -1781,7 +1830,7 @@ source = "tests/recovery_storage.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "recovery_storage"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["timestamp_and_lsn_parity_are_strict", "contract_hash_matches_legacy_sorted_ascii_json", "policy_rejects_overwrites_boolean_ages_and_duplicate_records"]
+selectors = ["timestamp_and_lsn_parity_are_strict", "contract_hash_matches_legacy_sorted_ascii_json", "policy_rejects_overwrites_boolean_ages_and_duplicate_records", "restored_clusters_cannot_share_primary_or_selected_backup_inodes_in_both_engines"]
 
 [[inventories]]
 origin = "rust"
@@ -1801,7 +1850,7 @@ source = "tests/storage_primitives.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "storage_primitives"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["legacy_hash_codecs_preserve_python_spacing_and_ascii_escaping", "authority_locks_retain_the_existing_inode_and_reject_redirects", "publishing_rejects_special_storage_and_does_not_replace_a_destination", "receipt_execution_drains_diagnostics_without_persisting_them", "receipt_eof_does_not_imply_success_or_disable_the_deadline", "oversized_receipts_and_nonzero_workers_do_not_leak_diagnostics"]
+selectors = ["legacy_hash_codecs_preserve_python_spacing_and_ascii_escaping", "authority_locks_retain_the_existing_inode_and_reject_redirects", "publishing_rejects_special_storage_and_does_not_replace_a_destination", "receipt_execution_drains_diagnostics_without_persisting_them", "receipt_eof_does_not_imply_success_or_disable_the_deadline", "oversized_receipts_and_nonzero_workers_do_not_leak_diagnostics", "successful_native_workers_terminate_silent_descendants_retaining_leases", "successful_python_workers_terminate_silent_descendants_retaining_leases"]
 
 [[inventories]]
 origin = "rust"
@@ -1811,7 +1860,7 @@ source = "tests/transition_storage.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "transition_storage"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["generation_etc_contract_cannot_escape_store", "semantic_acceptance_is_exact_and_complete", "interrupted_write_enabled_release_keeps_the_source_backup_pinned", "python_interrupted_release_revalidates_and_preserves_barrier_until_retry"]
+selectors = ["generation_etc_contract_cannot_escape_store", "semantic_acceptance_is_exact_and_complete", "interrupted_write_enabled_release_keeps_the_source_backup_pinned", "python_interrupted_release_revalidates_and_preserves_barrier_until_retry", "repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines"]
 
 [[inventories]]
 origin = "rust"

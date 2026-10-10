@@ -356,6 +356,12 @@ pub fn run(spec: &CommandSpec) -> Result<Output> {
                 return Err(std::io::Error::last_os_error().into());
             }
             if unsafe { info.si_pid() } != 0 && stdout_done && stderr_done {
+                // Keep the leader unreaped while signalling the still-owned
+                // group: silent descendants must not outlive a completed worker
+                // with inherited authority descriptors, even on a zero exit.
+                unsafe {
+                    libc::kill(-pid, libc::SIGKILL);
+                }
                 return Ok(Output {
                     status: child.wait()?,
                     stdout: output,

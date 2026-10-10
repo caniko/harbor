@@ -30,7 +30,16 @@ pub fn status(config: &Value) -> Result<Value> {
             "transition intent or executable identity changed; use the original manifest",
         ));
     }
+    validate_run_id(&record)?;
     Ok(record)
+}
+fn validate_run_id(record: &Value) -> Result<()> {
+    if let Some(id) = record.get("run_id")
+        && !id.as_str().is_some_and(|id| custody::hex(id, 32))
+    {
+        return Err(invalid("invalid transition run identity"));
+    }
+    Ok(())
 }
 pub struct Transaction {
     pub record: Value,
@@ -134,7 +143,7 @@ pub fn plan(config: &Value, candidate: &str, writer_fence_token: Option<&str>) -
         return Ok(record);
     }
     let (_lease, authority) = resource::inspection(&source)?;
-    let mut record = json!({"version":1,"phase":"planned","intent":manifest::intent(config)?,"candidate":if kind=="generation"{Some(candidate)}else{None},"preparation_contract":if kind=="contract"{Some(candidate)}else{None},"barrier_candidate":if kind=="generation"{Some(candidate)}else{None},"writer_fence_token":writer_fence_token,"source_authority":authority,"source_generation":manifest::generation()?,"created_at":custody::now(),"fence":null});
+    let mut record = json!({"version":1,"phase":"planned","run_id":super::writer_fence::token()?,"intent":manifest::intent(config)?,"candidate":if kind=="generation"{Some(candidate)}else{None},"preparation_contract":if kind=="contract"{Some(candidate)}else{None},"barrier_candidate":if kind=="generation"{Some(candidate)}else{None},"writer_fence_token":writer_fence_token,"source_authority":authority,"source_generation":manifest::generation()?,"created_at":custody::now(),"fence":null});
     if !config["custody_manifest"].is_null() {
         let entry = durable::read_config_json(Path::new(string(config, "custody_manifest")?))?;
         let custody = Path::new(string(&entry, "custody_file")?);
@@ -175,8 +184,14 @@ pub fn capture_source(
     let backup_config = durable::read_config_json(Path::new(string(config, "backup_manifest")?))?;
     manifest::validate(config)?;
     let root = application_backup::validate(&backup_config, true)?;
+    validate_run_id(record)?;
     let hash = codec::digest(&codec::encode(&record["intent"], true)?);
-    let attempt = format!("transition-{}", &hash[..32]);
+    // Existing journals keep their old capture name; every new plan persists a
+    // random run ID before capture so retries are stable only within that run.
+    let attempt = match record["run_id"].as_str() {
+        Some(run) => format!("transition-{}-{run}", &hash[..32]),
+        None => format!("transition-{}", &hash[..32]),
+    };
     let backup = root.join(&attempt);
     if !backup.exists() {
         // A retry can clean an interrupted workspace before the four normal

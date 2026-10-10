@@ -37,6 +37,12 @@ start identities, bounded proc-stat data or the failing read stage and OS error,
 and caller process/thread identity. This diagnostic does not replace execution
 receipts or signal any persisted PID. Its bytes explain the loss decision;
 reattachment does not rerun the worker.
+Failures during spec validation or process registration publish `launch-failed.json`
+under the worker lease. For earlier path/lease failures, detached launch retains
+`worker-launch-accepted.json` only after systemd acknowledges the worker. The observer
+checks that exact per-run unit: a missing, inactive or failed unit with no registration
+and a free worker lease produces terminal failure evidence. Pending launch, a live
+unit and unavailable diagnostics never establish completion. No failed worker reruns.
 Registration reads `/proc/<pid>/task/<pid>/stat` to bind the process's main task
 explicitly. This preserves one start identity across worker/observer threads,
 including configured user-mode emulation that synthesizes `/proc/<pid>/stat`

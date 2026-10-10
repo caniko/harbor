@@ -177,7 +177,7 @@ def capture(config, attempt, *, retry_incomplete=False):
             elif stat.S_ISREG(metadata.st_mode):
                 if metadata.st_nlink != 1:
                     raise ValueError("backup artifacts must not have hard links")
-                entry.chmod(0o640)
+                entry.chmod(0o440)
             else:
                 raise ValueError("backup contains redirected or special files")
         partial.chmod(0o750)

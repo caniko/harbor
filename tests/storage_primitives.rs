@@ -7,6 +7,79 @@ use std::{
 };
 
 #[test]
+fn successful_native_workers_terminate_silent_descendants_retaining_leases() {
+    successful_worker_descendants(false);
+}
+
+#[test]
+fn successful_python_workers_terminate_silent_descendants_retaining_leases() {
+    successful_worker_descendants(true);
+}
+
+fn successful_worker_descendants(python: bool) {
+    let root = tempfile::tempdir().unwrap();
+    let lock = root.path().join("lock");
+    fs::write(&lock, b"").unwrap();
+    let lease = durable::lock(&lock, false, false).unwrap();
+    let script = r#"import os,signal,time
+r,w=os.pipe()
+pid=os.fork()
+if pid==0:
+    os.close(r)
+    signal.signal(signal.SIGTERM,signal.SIG_IGN)
+    os.close(1); os.close(2)
+    os.write(w,b'ready'); os.close(w)
+    time.sleep(30)
+    os._exit(0)
+os.close(w); assert os.read(r,5)==b'ready'; os.close(r)
+print(pid,flush=True)
+"#;
+    let mut spec = if python {
+        process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),
+            "import os,sys\nfrom harbor_db import process\nprint(int(process.execute(['python3','-B','-c',sys.argv[1]],timeout=5,environment=os.environ,leases=(int(sys.argv[2]),))))".into(),
+            script.into(),lease.fd().to_string()])
+    } else {
+        process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+        ])
+    };
+    let mut environment = std::env::vars().collect::<std::collections::BTreeMap<_, _>>();
+    environment.insert(
+        "PYTHONPATH".into(),
+        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+    );
+    spec.environment = Some(environment);
+    spec.leases = vec![lease.fd()];
+    spec.timeout = Duration::from_secs(10);
+    let output = process::execute(&spec).unwrap();
+    let pid: i32 = process::text(&output).unwrap().trim().parse().unwrap();
+    drop(lease);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let released = loop {
+        if durable::lock(&lock, false, false).is_ok() {
+            break true;
+        }
+        if Instant::now() >= deadline {
+            break false;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    // Clean the known still-live reproduction child on the old implementation.
+    if !released {
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+    assert!(
+        released,
+        "python={python}: a successful worker left its lease in a silent descendant"
+    );
+}
+
+#[test]
 fn failed_writer_exec_restores_flags_before_unrelated_spawn() {
     const CHILD: &str = "HARBOR_DB_EXEC_HANDOVER_CHILD";
     if std::env::var_os(CHILD).is_none() {

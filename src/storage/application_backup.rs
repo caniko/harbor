@@ -301,7 +301,7 @@ fn permissions(path: &Path) -> Result<()> {
             if fs::symlink_metadata(e.path())?.nlink() != 1 {
                 return Err(invalid("backup artifacts must not have hard links"));
             }
-            fs::set_permissions(e.path(), fs::Permissions::from_mode(0o640))?;
+            fs::set_permissions(e.path(), fs::Permissions::from_mode(0o440))?;
         } else {
             return Err(invalid("backup contains redirected or special files"));
         }

@@ -59,7 +59,13 @@ impl Fixture {
 
 #[test]
 fn transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines() {
-    transition_capture_fixture(false);
+    transition_capture_fixture(false, false);
+}
+
+#[test]
+fn repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines()
+ {
+    transition_capture_fixture(false, true);
 }
 
 #[test]
@@ -129,10 +135,10 @@ else: raise AssertionError('overlapping guarded storage accepted')
 
 #[test]
 fn transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines() {
-    transition_capture_fixture(true);
+    transition_capture_fixture(true, false);
 }
 
-fn transition_capture_fixture(different_authority: bool) {
+fn transition_capture_fixture(different_authority: bool, repeat: bool) {
     use std::collections::BTreeMap;
     for python in [false, true] {
         let mut f = Fixture::new();
@@ -153,16 +159,19 @@ fn transition_capture_fixture(different_authority: bool) {
         fs::create_dir(&root).unwrap();
         fs::write(root.join("lock"), b"").unwrap();
         let adapter = f.temp.path().join("adapter.py");
-        fs::write(&adapter, r#"import json,sys,time
+        fs::write(f.temp.path().join("source-record"), b"stable source").unwrap();
+        fs::write(&adapter, r#"import hashlib,json,sys,time
 from pathlib import Path
 stage,backup,workspace=sys.argv[1],Path(sys.argv[2]),Path(sys.argv[3])
-time.sleep(0.6)
+base=Path(__file__).parent
+if not (base/'repeat').exists(): time.sleep(0.6)
 if stage=='capture':
-    backup.mkdir(); (backup/'records').write_text('stable source')
-    (backup/'capture.json').write_text(json.dumps({'version':1,'semantic_sha256':'a'*64,'consistency':'quiesced'}))
+    backup.mkdir(); (backup/'records').write_bytes((base/'source-record').read_bytes())
+    semantic=hashlib.sha256((backup/'records').read_bytes()).hexdigest()
+    (backup/'capture.json').write_text(json.dumps({'version':1,'semantic_sha256':semantic,'consistency':'quiesced'}))
 elif stage=='cleanup': pass
-elif stage=='restore': assert (backup/'records').read_text()=='stable source'
-elif stage=='verify': print(json.dumps({'version':1,'status':'verified','semantic_sha256':'a'*64}))
+elif stage=='restore': (workspace/'records').write_bytes((backup/'records').read_bytes())
+elif stage=='verify': print(json.dumps({'version':1,'status':'verified','semantic_sha256':hashlib.sha256((workspace/'records').read_bytes()).hexdigest()}))
 "#).unwrap();
         let interpreter = std::env::split_paths(&std::env::var_os("PATH").unwrap())
             .map(|path| path.join("python3"))
@@ -183,9 +192,13 @@ elif stage=='verify': print(json.dumps({'version':1,'status':'verified','semanti
         let binary = f.temp.path().join("bin/harbor-db-application-backup");
         fs::remove_file(&binary).unwrap();
         symlink(env!("CARGO_BIN_EXE_harbor-db-application-backup"), &binary).unwrap();
-        let record = json!({"intent":transition_manifest::intent(&f.config).unwrap()});
-        if python {
-            let script = r#"import json,os,sys
+        if repeat {
+            fs::write(f.temp.path().join("repeat"), b"").unwrap();
+        }
+        let record = json!({"intent":transition_manifest::intent(&f.config).unwrap(),"run_id":"a".repeat(32)});
+        let capture = |record: &serde_json::Value| {
+            if python {
+                let script = r#"import json,os,sys
 from pathlib import Path
 from unittest.mock import patch
 from harbor_db import application_backup,application_transition
@@ -202,33 +215,87 @@ original_digest=application_backup.digest
 if sys.argv[3]: patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
 backup,receipt=application_transition.capture_source(json.loads(sys.argv[1]),json.loads(sys.argv[2]),())
 assert receipt['consistency']=='quiesced' and (backup/'acceptance.json').is_file()
+print(json.dumps({'backup':str(backup),'receipt':receipt}))
 "#;
-            let mut spec = process::CommandSpec::new(vec![
-                interpreter.display().to_string(),
-                "-B".into(),
-                "-c".into(),
-                script.into(),
-                f.config.to_string(),
-                record.to_string(),
-                option_env!("HARBOR_DB_TEST_MACHINE_ID")
-                    .unwrap_or("")
-                    .into(),
-                option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
-            ]);
-            spec.environment = Some(BTreeMap::from([
+                let mut spec = process::CommandSpec::new(vec![
+                    interpreter.display().to_string(),
+                    "-B".into(),
+                    "-c".into(),
+                    script.into(),
+                    f.config.to_string(),
+                    record.to_string(),
+                    option_env!("HARBOR_DB_TEST_MACHINE_ID")
+                        .unwrap_or("")
+                        .into(),
+                    option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+                ]);
+                spec.environment = Some(BTreeMap::from([
+                    (
+                        "PYTHONPATH".into(),
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+                    ("PATH".into(), std::env::var("PATH").unwrap()),
+                    ("TMPDIR".into(), std::env::var("TMPDIR").unwrap()),
+                ]));
+                let outcome: serde_json::Value =
+                    serde_json::from_slice(&process::execute(&spec).unwrap()).unwrap();
                 (
-                    "PYTHONPATH".into(),
-                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
-                ),
-                ("PATH".into(), std::env::var("PATH").unwrap()),
-                ("TMPDIR".into(), std::env::var("TMPDIR").unwrap()),
-            ]));
-            process::execute(&spec).unwrap();
-        } else {
-            let (path, receipt) =
-                application_transition::capture_source(&f.config, &record, &[]).unwrap();
-            assert_eq!(receipt["consistency"], "quiesced");
-            assert!(path.join("acceptance.json").is_file());
+                    std::path::PathBuf::from(outcome["backup"].as_str().unwrap()),
+                    outcome["receipt"].clone(),
+                )
+            } else {
+                let (path, receipt) =
+                    application_transition::capture_source(&f.config, record, &[]).unwrap();
+                assert_eq!(receipt["consistency"], "quiesced");
+                assert!(path.join("acceptance.json").is_file());
+                (path, receipt)
+            }
+        };
+        let (first, accepted) = capture(&record);
+        if repeat {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            let acceptance = first.join("acceptance.json");
+            let original = fs::read(&acceptance).unwrap();
+            let inode = fs::metadata(&acceptance).unwrap().ino();
+            fs::write(
+                f.temp.path().join("source-record"),
+                b"intervening acknowledged write",
+            )
+            .unwrap();
+            assert_eq!(
+                capture(&record),
+                (first.clone(), accepted.clone()),
+                "same-run retries must retain their original capture"
+            );
+            assert_eq!(fs::read(&acceptance).unwrap(), original);
+            assert_eq!(fs::metadata(&acceptance).unwrap().ino(), inode);
+            let mut second_record = record.clone();
+            second_record["run_id"] = json!("b".repeat(32));
+            let (second, new) = capture(&second_record);
+            assert_ne!(second, first, "a new run reused a previous capture");
+            assert_eq!(
+                fs::read(second.join("records")).unwrap(),
+                b"intervening acknowledged write"
+            );
+            assert_ne!(new["semantic_sha256"], accepted["semantic_sha256"]);
+            let mut stale = accepted;
+            stale["captured_at"] = json!(0);
+            fs::set_permissions(&acceptance, fs::Permissions::from_mode(0o640)).unwrap();
+            durable::write_json(&acceptance, &stale).unwrap();
+            fs::write(
+                f.temp.path().join("source-record"),
+                b"latest acknowledged write",
+            )
+            .unwrap();
+            let mut third_record = record.clone();
+            third_record["run_id"] = json!("c".repeat(32));
+            let (third, latest) = capture(&third_record);
+            assert_ne!(third, second);
+            assert_eq!(
+                fs::read(third.join("records")).unwrap(),
+                b"latest acknowledged write"
+            );
+            assert_ne!(latest["semantic_sha256"], new["semantic_sha256"]);
         }
         assert!(root.join("LAST_SUCCESS").is_file());
     }
