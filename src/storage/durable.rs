@@ -316,7 +316,18 @@ pub fn publish_file(source: &Path, destination: &Path) -> Result<()> {
 }
 
 pub fn publish_tree(source: &Path, destination: &Path) -> Result<()> {
+    publish_tree_checked(source, destination, || Ok(()))
+}
+
+/// Revalidate admission after all potentially slow durability work, immediately
+/// before the no-replace rename makes the accepted tree visible.
+pub(crate) fn publish_tree_checked(
+    source: &Path,
+    destination: &Path,
+    check: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     sync_tree(source)?;
+    check()?;
     publish(source, destination)
 }
 

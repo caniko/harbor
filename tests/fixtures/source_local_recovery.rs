@@ -489,6 +489,7 @@ fn run(args: Args) -> Result<()> {
         receipt["executor_host"] == remote_host
             && receipt["records"] == finalized["records"]
             && receipt["metadata_sha256"] == finalized["metadata_sha256"]
+            && receipt["wal_inventory_sha256"] == finalized["wal_inventory_sha256"]
             && receipt["recovery_target_lsn"] == target
             && receipt["status"] == "ready",
         "receipt-binds-actual-certifier-and-producer-hashes",
@@ -501,9 +502,42 @@ fn run(args: Args) -> Result<()> {
         &host,
         "independent-receipt-returned-byte-identically",
     )?;
-    g.shell("primary", format!("install -m 0600 -o postgres -g postgres /run/independent-receipt.json {ROOT}/evidence/receipt.json; install -m 0600 -o postgres -g postgres /run/independent-receipt.json {ROOT}/evidence/off-host.json; cmp {ROOT}/evidence/receipt.json {ROOT}/evidence/off-host.json"), true, "unchanged-independent-receipt-installed-at-both-policy-paths")?;
+    g.shell("primary", format!("install -m 0600 -o postgres -g postgres /run/independent-receipt.json {ROOT}/evidence/receipt.json; install -m 0600 -o postgres -g postgres /run/independent-receipt.json {ROOT}/evidence/off-host.json; cmp {ROOT}/evidence/receipt.json {ROOT}/evidence/off-host.json"), true, "same-independent-receipt-negative-fixture-installed")?;
     g.align("primary", "certifier", "source-clock-aligned")?;
     let admission = format!("{pg} inspect-recovery --socket-dir /run/postgresql --port 5432");
+    g.shell(
+        "primary",
+        &admission,
+        false,
+        "one-independent-restore-cannot-satisfy-local-plus-off-host-policy",
+    )?;
+    g.shell("primary", format!("install -d -m 0700 -o postgres -g postgres /srv/recovered /srv/recovery-socket; cp -a {ROOT}/base/{} /srv/recovered/18; sha256sum /srv/recovered/18/postgresql.auto.conf > /run/local-restored-auto.sha256; printf '%s' {} > /srv/recovered/18/postgresql.conf; printf 'local all postgres peer\\n' > /srv/recovered/private-hba.conf; touch /srv/recovered/private-ident.conf /srv/recovered/18/recovery.signal; chown postgres:postgres /srv/recovered/18/postgresql.conf /srv/recovered/18/recovery.signal /srv/recovered/private-*.conf; chmod 0600 /srv/recovered/private-*.conf; if ! {ctl} -p {}/bin/postgres -l /srv/recovered/local.log -t 60 -w start; then cat /srv/recovered/local.log; exit 1; fi",q(&backup),q(&restore),q(&c.postgres_package)), true, "source-host-fresh-disposable-physical-replay-started")?;
+    g.wait(
+        "primary",
+        &format!("test \"$({remote_sql} -c 'SELECT NOT pg_is_in_recovery()')\" = t"),
+        "source-host-disposable-recovery-promoted",
+    )?;
+    let local_records = g.shell(
+        "primary",
+        format!("{remote_sql} -c {}", q(RECORDS)),
+        true,
+        "source-host-restored-full-record-readback",
+    )?;
+    g.check(
+        local_records == EXPECTED,
+        "source-host-replay-preserves-postbackup-changes-and-revisions",
+    )?;
+    g.shell("primary",format!("test \"$({remote_sql} -c {})\" = t; sha256sum -c /run/local-restored-auto.sha256",q(&format!("SELECT pg_last_wal_replay_lsn() >= '{target}'::pg_lsn AND current_setting('default_transaction_read_only')='on'"))),true,"source-host-replay-target-read-only-and-auto-config-preserved")?;
+    let local_receipt:Value = serde_json::from_str(&g.shell("primary",format!("{pg} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432"),true,"native-source-host-disposable-restoration-certification")?)?;
+    g.check(
+        local_receipt["executor_host"] == source_host
+            && local_receipt["records"] == receipt["records"]
+            && local_receipt["metadata_sha256"] == receipt["metadata_sha256"]
+            && local_receipt["wal_inventory_sha256"] == receipt["wal_inventory_sha256"]
+            && local_receipt["snapshot_sha256"] == receipt["snapshot_sha256"]
+            && local_receipt["status"] == "ready",
+        "two-distinct-executors-certify-the-same-immutable-physical-capture",
+    )?;
     let admitted: Value = serde_json::from_str(&g.shell(
         "primary",
         &admission,
@@ -515,7 +549,7 @@ fn run(args: Args) -> Result<()> {
         "full-admission-requires-actual-independent-host",
     )?;
     let evidence_script = format!(
-        "sha256sum {ROOT}/recovery/snapshots/new.json {ROOT}/evidence/receipt.json {ROOT}/evidence/off-host.json; stat -c '%n:%d:%i' {ROOT}/recovery/snapshots/new.json {ROOT}/recovery/SELECTED {ROOT}/recovery/captures/new.json {ROOT}/recovery/pins/new.json"
+        "sha256sum {ROOT}/recovery/snapshots/new.json {ROOT}/recovery/captures/new.wal-inventory {ROOT}/evidence/receipt.json {ROOT}/evidence/off-host.json; stat -c '%n:%d:%i' {ROOT}/recovery/snapshots/new.json {ROOT}/recovery/SELECTED {ROOT}/recovery/captures/new.json {ROOT}/recovery/captures/new.wal-inventory {ROOT}/recovery/pins/new.json"
     );
     let evidence = g.shell(
         "primary",
@@ -558,6 +592,49 @@ fn run(args: Args) -> Result<()> {
     g.check(
         python == admitted,
         "python-native-source-admission-exact-public-result-equality",
+    )?;
+    let corrupt = format!(
+        "cp -p {ROOT}/wal/{missing} /run/original-wal; printf '\\377' | dd of={ROOT}/wal/{missing} bs=1 seek=0 conv=notrunc status=none; test \"$(stat -c %s {ROOT}/wal/{missing})\" = {size}"
+    );
+    g.shell(
+        "primary",
+        corrupt,
+        true,
+        "required-wal-corrupted-without-changing-carrier-length",
+    )?;
+    g.shell(
+        "primary",
+        &admission,
+        false,
+        "native-rejects-same-length-wal-corruption-after-both-certifications",
+    )?;
+    g.shell(
+        "primary",
+        &python_admission,
+        false,
+        "python-rejects-same-length-wal-corruption-after-both-certifications",
+    )?;
+    g.shell(
+        "primary",
+        format!("{capture} --wal-wait-seconds 1"),
+        false,
+        "accepted-capture-repeat-cannot-rebind-corrupted-wal",
+    )?;
+    let corruption_evidence = g.shell(
+        "primary",
+        &evidence_script,
+        true,
+        "wal-corruption-rejection-evidence-readback",
+    )?;
+    g.check(
+        evidence == corruption_evidence,
+        "wal-corruption-rejection-preserves-certification-and-generation-inodes",
+    )?;
+    g.shell(
+        "primary",
+        format!("cp -p /run/original-wal {ROOT}/wal/{missing}; {admission}; {python_admission}"),
+        true,
+        "exact-original-wal-restores-admission-without-recertification",
     )?;
     let mut drift = meta.clone();
     drift["record_hashes"]["full-records"] = json!("0".repeat(64));

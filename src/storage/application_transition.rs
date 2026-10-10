@@ -751,12 +751,21 @@ pub fn retire(config: &Value) -> Result<Value> {
         &tx.source
     };
     resource::verify(active, &resource::contract(active)?)?;
-    let hash = codec::digest(&codec::encode(&tx.record["intent"], true)?);
-    let archive = Path::new(string(config, "barrier_dir")?).join(format!("{hash}.history.json"));
-    if archive.exists() && durable::read_json(&archive)? != tx.record {
-        return Err(invalid("transition history conflicts"));
+    retire_record(config, &tx.record)
+}
+
+fn retire_record(config: &Value, record: &Value) -> Result<Value> {
+    let hash = codec::digest(&codec::encode(&record["intent"], true)?);
+    let run = codec::digest(&codec::encode(record, true)?);
+    let archive =
+        Path::new(string(config, "barrier_dir")?).join(format!("{hash}-{run}.history.json"));
+    if archive.exists() {
+        if durable::read_json(&archive)? != *record {
+            return Err(invalid("transition history conflicts"));
+        }
+    } else {
+        manifest::write_owned(&archive, record)?;
     }
-    durable::write_json(&archive, &tx.record)?;
     let journal = journal_path(config)?;
     fs::remove_file(&journal)?;
     durable::sync_directory(
@@ -765,4 +774,119 @@ pub fn retire(config: &Value) -> Result<Value> {
             .ok_or_else(|| invalid("missing journal parent"))?,
     )?;
     Ok(json!({"status":"retired","history":archive}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retirement_retains_distinct_runs_and_resumes_without_rewriting_history_in_both_engines() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        for name in ["authority", "source", "target", "barrier", "bin"] {
+            fs::create_dir(root.join(name)).unwrap();
+            fs::set_permissions(root.join(name), fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let source = json!({"resource":"demo","state_dir":root.join("authority"),"directories":[root.join("source")],"binding":{"backend":"files"},"required_mounts":[]});
+        let mut target = source.clone();
+        target["directories"] = json!([root.join("target")]);
+        target["binding"] = json!({"backend":"target-files"});
+        for (name, value) in [("source.json", &source), ("target.json", &target)] {
+            durable::write_json(&root.join(name), value).unwrap();
+        }
+        durable::write_json(
+            &root.join("backup.json"),
+            &json!({"root":root.join("backup"),"maximum_age_seconds":3600}),
+        )
+        .unwrap();
+        let executable = std::env::current_exe().unwrap();
+        std::os::unix::fs::symlink(&executable, root.join("bin/harbor-db-application-backup"))
+            .unwrap();
+        let command =
+            json!({"user":super::super::login_shell::current_user().unwrap(),"argv":[executable]});
+        let config = json!({"version":1,"resource":"demo","source_manifest":root.join("source.json"),"target_manifest":root.join("target.json"),"barrier_dir":root.join("barrier"),"drop_in_root":root.join("systemd"),"systemctl":executable,"busctl":executable,"units":["demo.service"],"retired_units":[],"timeout_seconds":10,"commands":{"import":command,"verify-source":command,"verify-target":command,"health":command},"executable_files":[],"postgres_manifest":null,"postgres_socket":"/run/postgresql","postgres_port":5432,"custody_manifest":null,"backup_manifest":root.join("backup.json"),"independent_receipt":root.join("independent.json"),"storage_package":root.join("bin"),"runuser":executable});
+        resource::adopt(&source, "retained").unwrap();
+        drop(durable::lock(&root.join("barrier/lock"), false, true).unwrap());
+        let intent = manifest::intent(&config).unwrap();
+        let first = json!({"version":1,"phase":"aborted","intent":intent,"created_at":123});
+        let mut second = first.clone();
+        second["created_at"] = json!(124);
+        let mut third = first.clone();
+        third["created_at"] = json!(125);
+        let journal = journal_path(&config).unwrap();
+        let retire_peer = |record: &Value| -> Value {
+            let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import application_transition
+root_uid=int(sys.argv[2])
+if root_uid:
+    original_lstat=Path.lstat
+    def mapped_lstat(path):
+        info=original_lstat(path)
+        if info.st_uid!=root_uid: return info
+        fields=list(info); fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped_lstat).start()
+try:
+ with patch.object(application_transition,'require_root'): print(json.dumps(application_transition.retire(json.loads(sys.argv[1]))))
+except ValueError as error: print(json.dumps({'error':str(error)}))
+"#;
+            durable::write_json(&journal, record).unwrap();
+            let mut spec = super::super::process::CommandSpec::new(vec![
+                "python3".into(),
+                "-B".into(),
+                "-c".into(),
+                script.into(),
+                config.to_string(),
+                option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+            ]);
+            spec.environment = Some(BTreeMap::from([
+                (
+                    "PYTHONPATH".into(),
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ),
+                ("PATH".into(), std::env::var("PATH").unwrap()),
+            ]));
+            codec::decode(&super::super::process::execute(&spec).unwrap()).unwrap()
+        };
+        durable::write_json(&journal, &first).unwrap();
+        let one = retire_record(&config, &first).unwrap();
+        assert!(!journal.exists());
+        let one_path = Path::new(one["history"].as_str().unwrap());
+        let inode = fs::metadata(one_path).unwrap().ino();
+        let two = retire_peer(&second);
+        assert!(two.get("error").is_none(), "{two}");
+        let two_path = Path::new(two["history"].as_str().unwrap());
+        assert_ne!(one_path, two_path);
+        assert_eq!(durable::read_json(one_path).unwrap(), first);
+        assert_eq!(durable::read_json(two_path).unwrap(), second);
+        assert!(!journal.exists());
+        // A crash after the archive publication but before journal removal must
+        // consume the same carrier without replacing its durable inode.
+        assert_eq!(retire_peer(&first), one);
+        assert_eq!(fs::metadata(one_path).unwrap().ino(), inode);
+        durable::write_json(&journal, &third).unwrap();
+        let three = retire_record(&config, &third).unwrap();
+        assert_ne!(three["history"], one["history"]);
+        assert_ne!(three["history"], two["history"]);
+        durable::write_json(&journal, &first).unwrap();
+        assert_eq!(retire_record(&config, &first).unwrap(), one);
+        assert_eq!(fs::metadata(one_path).unwrap().ino(), inode);
+        let foreign = json!({"retained":"foreign terminal evidence"});
+        durable::write_json(one_path, &foreign).unwrap();
+        assert_eq!(retire_peer(&first)["error"], "transition history conflicts");
+        assert_eq!(durable::read_json(&journal).unwrap(), first);
+        assert_eq!(durable::read_json(one_path).unwrap(), foreign);
+        assert!(
+            retire_record(&config, &first)
+                .unwrap_err()
+                .to_string()
+                .contains("transition history conflicts")
+        );
+        assert_eq!(durable::read_json(&journal).unwrap(), first);
+        assert_eq!(durable::read_json(one_path).unwrap(), foreign);
+    }
 }

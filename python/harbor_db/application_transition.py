@@ -439,10 +439,12 @@ def retire(config):
             raise ValueError("unfinished writer barrier release cannot be retired")
         active = target if record["phase"] == "complete" else source
         resource.verify(active, resource.contract(active))
-        archive = Path(config["barrier_dir"]) / (application_backup.identity(record["intent"]) + ".history.json")
-        if archive.exists() and read_json(archive) != record:
-            raise ValueError("transition history conflicts")
-        write_json(archive, record)
+        archive = Path(config["barrier_dir"]) / (application_backup.identity(record["intent"]) + "-" + application_backup.identity(record) + ".history.json")
+        if archive.exists():
+            if read_json(archive) != record:
+                raise ValueError("transition history conflicts")
+        else:
+            write_owned(archive, record)
         journal_path(config).unlink()
         sync_directory(journal_path(config).parent)
         return {"status": "retired", "history": str(archive)}

@@ -293,7 +293,7 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
         .iter()
         .chain(paths(target, "directories")?.iter())
     {
-        if barrier.starts_with(p) {
+        if barrier.starts_with(p) || p.starts_with(barrier) {
             return Err(invalid(
                 "startup barriers must be outside the guarded storage",
             ));

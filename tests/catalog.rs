@@ -321,7 +321,8 @@ prefixes = {'src/planner/tests.rs': 'tests::',
             'src/bin/home-manager-backup.rs': 'tests::',
              'src/storage/backup_manifest.rs': 'storage::backup_manifest::tests::',
              'src/storage/recovery.rs': 'storage::recovery::tests::',
-             'src/storage/recovery_capture.rs': 'storage::recovery_capture::tests::'}
+             'src/storage/application_transition.rs': 'storage::application_transition::tests::',
+              'src/storage/recovery_capture.rs': 'storage::recovery_capture::tests::'}
 sources += [pathlib.Path(path) for path in prefixes]
 tests = []
 for source in sources:

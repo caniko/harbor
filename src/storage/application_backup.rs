@@ -115,6 +115,12 @@ fn walk(root: &Path, path: &Path, result: &mut serde_json::Map<String, Value>) -
             .to_str()
             .ok_or_else(|| invalid("backup artifact path is not UTF-8"))?;
         if kind.is_dir() {
+            if result
+                .insert(relative.into(), json!({"directory":true}))
+                .is_some()
+            {
+                return Err(invalid("backup artifact path is duplicated"));
+            }
             walk(root, &entry_path, result)?;
         } else if kind.is_file() {
             if fs::symlink_metadata(&entry_path)?.nlink() != 1 {
@@ -381,7 +387,9 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     for (k,v) in json!({"resource":c["resource"],"attempt":attempt,"captured_at":captured_at,"manifest_sha256":identity(c)?,"executables":tools}).as_object().unwrap() { receipt[k]=v.clone(); }
     durable::write_json(&partial.join("acceptance.json"), &receipt)?;
     permissions(&partial)?;
-    durable::publish_tree(&partial, &destination)?;
+    durable::publish_tree_checked(&partial, &destination, || {
+        fresh(c, &json!(captured_at), now()?)
+    })?;
     durable::write_json_mode(
         &root.join("LAST_SUCCESS"),
         &json!({"attempt":attempt,"acceptance_sha256":codec::file_digest(&destination.join("acceptance.json"))?}),
@@ -405,10 +413,14 @@ pub fn verify_bytes(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
     if artifacts != receipt["artifacts"] {
         return Err(invalid("backup artifact hash does not match acceptance"));
     }
-    let age = time
-        .unwrap_or(now()?)
+    fresh(c, &receipt["captured_at"], time.unwrap_or(now()?))?;
+    Ok(receipt)
+}
+
+fn fresh(c: &Value, captured_at: &Value, now: i64) -> Result<()> {
+    let age = now
         .checked_sub(
-            receipt["captured_at"]
+            captured_at
                 .as_i64()
                 .ok_or_else(|| invalid("invalid capture time"))?,
         )
@@ -421,7 +433,7 @@ pub fn verify_bytes(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
     {
         return Err(invalid("backup acceptance is stale or from the future"));
     }
-    Ok(receipt)
+    Ok(())
 }
 pub fn inspect(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
     let root = validate(c, true)?;

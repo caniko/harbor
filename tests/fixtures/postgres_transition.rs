@@ -160,7 +160,7 @@ impl Gate {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-    fn recovery_ready(&mut self, postgres: &str) -> Result<()> {
+    fn recovery_ready(&mut self, node: &str, postgres: &str, name: &str) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(COMMAND);
         let script = format!(
             "runuser -u postgres -- {}/bin/psql -Xw -h /var/lib/demo-recovery-socket -p 55432 -Atqc 'SELECT NOT pg_is_in_recovery()'",
@@ -169,9 +169,9 @@ impl Gate {
         loop {
             let left = deadline.saturating_duration_since(Instant::now());
             require(!left.is_zero(), "recovery promotion deadline exceeded")?;
-            let (code, out) = self.execute("certifier", &script, left.as_secs().clamp(1, 60))?;
+            let (code, out) = self.execute(node, &script, left.as_secs().clamp(1, 60))?;
             if code == 0 && out.trim() == "t" {
-                return self.check(true, "independent-recovery-promoted");
+                return self.check(true, name);
             }
             std::thread::sleep(Duration::from_millis(100));
         }
@@ -726,7 +726,11 @@ fn run(args: Args) -> Result<()> {
         true,
         "physical-recovery-started",
     )?;
-    g.recovery_ready(&c.postgres_package)?;
+    g.recovery_ready(
+        "certifier",
+        &c.postgres_package,
+        "independent-recovery-promoted",
+    )?;
     let endpoint = g.json(
         "certifier",
         format!(
@@ -768,6 +772,33 @@ fn run(args: Args) -> Result<()> {
     )?;
     g.shell("primary",format!("cp /run/recovery.json {BASE}/evidence/recovery.json && chown postgres:postgres {BASE}/evidence/recovery.json"),true,"physical-receipt-installed")?;
     g.align("primary", "certifier", "physical-primary-clock-aligned")?;
+    g.shell(
+        "primary",
+        format!("{pg} inspect-recovery --socket-dir /run/postgresql --port 5432"),
+        false,
+        "independent-physical-receipt-cannot-substitute-for-source-host-restore",
+    )?;
+    g.shell("primary",format!("cp -a {BASE}/base/base-1 /var/lib/demo-recovered/18; sha256sum /var/lib/demo-recovered/18/postgresql.auto.conf > /run/local-auto.sha256; printf '%s' {} > /var/lib/demo-recovered/18/postgresql.conf; touch /var/lib/demo-recovered/18/recovery.signal; printf 'local all postgres peer\\n' > /var/lib/demo-recovered/pg_hba.conf; : > /var/lib/demo-recovered/pg_ident.conf; chown postgres:postgres /var/lib/demo-recovered/18/postgresql.conf /var/lib/demo-recovered/18/recovery.signal /var/lib/demo-recovered/pg_hba.conf /var/lib/demo-recovered/pg_ident.conf; chmod 0600 /var/lib/demo-recovered/pg_hba.conf /var/lib/demo-recovered/pg_ident.conf; runuser -u postgres -- {}/bin/pg_ctl -p {}/bin/postgres -D /var/lib/demo-recovered/18 -o {} -l /var/lib/demo-recovered/local.log -w start || {{ cat /var/lib/demo-recovered/local.log; exit 1; }}",quoted(&restored),quoted(&c.postgres_package),quoted(&c.postgres_package),quoted("-c data_directory=/var/lib/demo-recovered/18 -c listen_addresses= -c hba_file=/var/lib/demo-recovered/pg_hba.conf -c ident_file=/var/lib/demo-recovered/pg_ident.conf")),true,"source-host-disposable-physical-recovery-started")?;
+    g.recovery_ready(
+        "primary",
+        &c.postgres_package,
+        "source-host-recovery-promoted",
+    )?;
+    let local_recovery = g.json("primary",format!("{pg} certify-recovery --data-dir /var/lib/demo-recovered/18 --socket-dir /var/lib/demo-recovery-socket --port 55432"),"source-host-physical-recovery-certified")?;
+    g.check(
+        local_recovery["status"] == "ready"
+            && local_recovery["executor_host"] == "primary"
+            && local_recovery["records"] == recovery["records"]
+            && local_recovery["metadata_sha256"] == recovery["metadata_sha256"]
+            && local_recovery["snapshot_sha256"] == recovery["snapshot_sha256"],
+        "source-and-independent-executors-prove-the-same-physical-capture",
+    )?;
+    g.shell(
+        "primary",
+        "sha256sum -c /run/local-auto.sha256",
+        true,
+        "source-host-disposable-replay-preserves-copied-auto-config",
+    )?;
     g.phase(
         &format!("{transition} prepare"),
         "prepared",
@@ -832,11 +863,58 @@ fn run(args: Args) -> Result<()> {
     )?;
     g.shell("primary", &inspect, true, "abort-retains-borrowed-fence")?;
     g.shell("primary", &client, false, "abort-client-still-denied")?;
-    g.shell(
+    let first_retired = g.json(
         "primary",
         format!("{transition} retire"),
-        true,
         "aborted-transition-retired",
+    )?;
+    let first_history = field(&first_retired, "history")?;
+    let first_bytes = g.shell(
+        "primary",
+        format!("cat {}", quoted(first_history)),
+        true,
+        "first-aborted-terminal-history-retained",
+    )?;
+    let repeated_plan = g.phase(
+        &format!(
+            "{transition} plan --candidate {} --writer-fence-token {}",
+            quoted(&contract),
+            quoted(&token)
+        ),
+        "planned",
+        "same-immutable-intent-planned-after-retirement",
+    )?;
+    g.check(
+        repeated_plan["intent"] == planned["intent"],
+        "repeated-transition-preserves-identical-contract-intent",
+    )?;
+    g.phase(
+        &format!("{transition} abort"),
+        "aborted",
+        "same-intent-second-run-aborted-with-source-authority",
+    )?;
+    let second_retired = g.json(
+        "primary",
+        format!("{transition} retire"),
+        "same-intent-second-terminal-run-retired",
+    )?;
+    g.check(
+        second_retired["history"] != first_retired["history"],
+        "distinct-terminal-runs-retain-distinct-history-carriers",
+    )?;
+    let retained_first = g.shell(
+        "primary",
+        format!(
+            "cat {}; test ! -e /var/lib/demo-authority/transition.json; test -f {}",
+            quoted(first_history),
+            quoted(field(&second_retired, "history")?)
+        ),
+        true,
+        "repeated-retirement-retains-both-history-carriers-and-removes-journal",
+    )?;
+    g.check(
+        retained_first == first_bytes,
+        "repeated-retirement-preserves-original-terminal-history-bytes",
     )?;
     g.shell(
         "primary",
@@ -845,6 +923,15 @@ fn run(args: Args) -> Result<()> {
         "retirement-retains-borrowed-fence",
     )?;
     g.shell("primary", &client, false, "retirement-client-still-denied")?;
+    g.shell(
+        "primary",
+        format!(
+            "runuser -u postgres -- {}/bin/pg_ctl -D /var/lib/demo-recovered/18 -w stop",
+            quoted(&c.postgres_package)
+        ),
+        true,
+        "source-host-disposable-recovery-stopped",
+    )?;
     g.shell(
         "certifier",
         format!(

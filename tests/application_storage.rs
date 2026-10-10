@@ -35,6 +35,7 @@ if operation=='capture':
     if (base/'non_utf8').exists():
         for suffix in (b'\xff', b'\xfe'):
             with open(os.fsencode(backup) + b'/artifact-' + suffix, 'wb') as artifact: artifact.write(suffix)
+    if (base/'empty_directory').exists(): (backup/'required-empty'/'nested').mkdir(parents=True)
 elif operation=='restore':
     if (base/'fail_restore').exists(): sys.exit(1)
     (workspace/'restored.json').write_bytes((backup/'records.json').read_bytes())
@@ -45,6 +46,9 @@ elif operation=='verify':
     print(json.dumps({'version':1,'status':'verified','semantic_sha256':semantic}))
     if (base/'mutate').exists(): (backup/'records.json').write_text('[]')
 elif operation=='cleanup':
+    if (base/'slow_cleanup').exists():
+        import time
+        time.sleep(7.1)
     if (base/'fail_cleanup').exists(): sys.exit(1)
     if (base/'mutate_cleanup').exists(): (backup/'records.json').write_text('[]')
 elif operation=='fail': sys.exit(1)
@@ -74,6 +78,136 @@ fn backup_fixture() -> (tempfile::TempDir, Value) {
 }
 fn last(t: &Path) -> Value {
     durable::read_json(&t.join("backups/LAST_SUCCESS")).unwrap()
+}
+
+fn backup_peer(
+    c: &Value,
+    operation: &str,
+    argument: &str,
+    retry: bool,
+) -> harbor_db::storage::Result<Value> {
+    let script = r#"import json,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import application_backup
+if sys.argv[5]:
+    original_digest=application_backup.digest
+    patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[5] if str(path)=='/etc/machine-id' else path)).start()
+c=json.loads(sys.argv[1])
+try:
+    if sys.argv[2]=='capture': result=application_backup.capture(c,sys.argv[3],retry_incomplete=sys.argv[4]=='true')
+    else: result=application_backup.inspect(c,Path(sys.argv[3]))
+    print(json.dumps({'ok':result}))
+except ValueError as error: print(json.dumps({'error':str(error)}))
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        c.to_string(),
+        operation.into(),
+        argument.into(),
+        retry.to_string(),
+        option_env!("HARBOR_DB_TEST_MACHINE_ID")
+            .unwrap_or("")
+            .into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    let outcome: Value = serde_json::from_slice(&process::execute(&spec)?)?;
+    if let Some(error) = outcome["error"].as_str() {
+        return Err(harbor_db::storage::invalid(error));
+    }
+    Ok(outcome["ok"].clone())
+}
+
+#[test]
+fn stale_capture_preserves_success_and_allows_the_same_attempt_to_retry_in_both_engines() {
+    use std::os::unix::fs::MetadataExt;
+    for python in [false, true] {
+        let (t, mut c) = backup_fixture();
+        c["maximum_age_seconds"] = json!(6);
+        let capture = |attempt: &str, retry| {
+            if python {
+                backup_peer(&c, "capture", attempt, retry)
+            } else {
+                application_backup::capture(&c, attempt, retry)
+            }
+        };
+        capture("previous", false).unwrap();
+        let marker = t.path().join("backups/LAST_SUCCESS");
+        let previous = fs::read(&marker).unwrap();
+        let inode = fs::metadata(&marker).unwrap().ino();
+        fs::write(t.path().join("slow_cleanup"), b"").unwrap();
+        let error = capture("deterministic", false).unwrap_err();
+        assert!(
+            error.to_string().contains("stale"),
+            "python={python}: {error}"
+        );
+        assert_eq!(fs::read(&marker).unwrap(), previous);
+        assert_eq!(fs::metadata(&marker).unwrap().ino(), inode);
+        assert!(!t.path().join("backups/deterministic").exists());
+        assert!(t.path().join("backups/deterministic.partial").is_dir());
+        assert!(
+            !t.path()
+                .join("backups/deterministic.restore-workspace")
+                .exists()
+        );
+        fs::remove_file(t.path().join("slow_cleanup")).unwrap();
+        capture("deterministic", true).unwrap();
+        let backup = t.path().join("backups/deterministic");
+        application_backup::verify_bytes(&c, &backup, None).unwrap();
+        backup_peer(&c, "inspect", backup.to_str().unwrap(), false).unwrap();
+        assert_eq!(last(t.path())["attempt"], "deterministic");
+    }
+}
+
+#[test]
+fn empty_directory_changes_invalidate_accepted_artifacts_in_both_engines() {
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        fs::write(t.path().join("empty_directory"), b"").unwrap();
+        let receipt = if python {
+            backup_peer(&c, "capture", "point", false).unwrap()
+        } else {
+            application_backup::capture(&c, "point", false).unwrap()
+        };
+        assert_eq!(
+            receipt["artifacts"]["required-empty/nested"],
+            json!({"directory":true})
+        );
+        let backup = t.path().join("backups/point");
+        let inspect = || {
+            if python {
+                backup_peer(&c, "inspect", backup.to_str().unwrap(), false)
+            } else {
+                application_backup::verify_bytes(&c, &backup, None)
+            }
+        };
+        inspect().unwrap();
+        fs::remove_dir(backup.join("required-empty/nested")).unwrap();
+        assert!(
+            inspect().is_err(),
+            "python={python}: empty directory removal accepted"
+        );
+        fs::create_dir(backup.join("required-empty/nested")).unwrap();
+        inspect().unwrap();
+        fs::rename(backup.join("required-empty"), backup.join("renamed-empty")).unwrap();
+        assert!(inspect().is_err());
+        fs::rename(backup.join("renamed-empty"), backup.join("required-empty")).unwrap();
+        fs::remove_dir(backup.join("required-empty/nested")).unwrap();
+        fs::write(backup.join("required-empty/nested"), b"").unwrap();
+        assert!(
+            inspect().is_err(),
+            "python={python}: file/directory replacement accepted"
+        );
+    }
 }
 
 #[test]

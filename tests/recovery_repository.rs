@@ -79,12 +79,22 @@ impl Fixture {
         )
         .unwrap();
         fs::write(root.path().join("backup/recovery/SELECTED"), "capture-1\n").unwrap();
+        let mut wal_inventory = json!({});
         for name in ["000000010000000000000000", "000000010000000000000001"] {
             fs::File::create(root.path().join("backup/wal").join(name))
                 .unwrap()
                 .set_len(16777216)
                 .unwrap();
+            wal_inventory[name] =
+                json!(codec::file_digest(&root.path().join("backup/wal").join(name)).unwrap());
         }
+        durable::write_json(
+            &root
+                .path()
+                .join("backup/recovery/captures/capture-1.wal-inventory"),
+            &wal_inventory,
+        )
+        .unwrap();
         Self {
             root,
             config,
@@ -158,6 +168,83 @@ fn selected_capture_requires_complete_retained_wal_through_post_target_in_both_e
 }
 
 #[test]
+fn same_length_wal_corruption_invalidates_selected_readiness_without_rebinding_evidence_in_both_engines()
+ {
+    use std::io::{Seek, SeekFrom, Write};
+    let mut f = Fixture::new();
+    f.copied_source();
+    let snapshot = fs::read(f.snapshot_path()).unwrap();
+    let receipt = fs::read(f.p("backup/evidence/receipt.json")).unwrap();
+    for name in ["000000010000000000000000", "000000010000000000000001"] {
+        let mut wal = fs::OpenOptions::new()
+            .write(true)
+            .open(f.p("backup/wal").join(name))
+            .unwrap();
+        wal.seek(SeekFrom::Start(8192)).unwrap();
+        wal.write_all(b"corrupted bytes").unwrap();
+        assert_eq!(wal.metadata().unwrap().len(), 16777216);
+        assert!(
+            recovery::check(&f.config, Some(f.now)).is_err(),
+            "same-length corrupt WAL accepted: {name}"
+        );
+        assert!(f.python_action("check").get("error").is_some());
+        assert_eq!(fs::read(f.snapshot_path()).unwrap(), snapshot);
+        assert_eq!(
+            fs::read(f.p("backup/evidence/receipt.json")).unwrap(),
+            receipt
+        );
+        wal.seek(SeekFrom::Start(8192)).unwrap();
+        wal.write_all(&[0; 15]).unwrap();
+        assert!(recovery::check(&f.config, Some(f.now)).is_ok());
+        assert!(f.python_action("check").get("error").is_none());
+    }
+}
+
+#[test]
+fn wal_inventory_is_mandatory_and_cannot_be_rebound_after_certification_in_both_engines() {
+    let mut f = Fixture::new();
+    f.copied_source();
+    let path = f.p("backup/recovery/captures/capture-1.wal-inventory");
+    let original = fs::read(&path).unwrap();
+    let snapshot = fs::read(f.snapshot_path()).unwrap();
+    let receipt = fs::read(f.p("backup/evidence/receipt.json")).unwrap();
+    fs::remove_file(&path).unwrap();
+    assert!(recovery::check(&f.config, Some(f.now)).is_err());
+    assert!(f.python_action("check").get("error").is_some());
+    fs::write(&path, &original).unwrap();
+    let mut inventory = codec::decode(&original).unwrap();
+    inventory
+        .as_object_mut()
+        .unwrap()
+        .remove("000000010000000000000001");
+    durable::write_json(&path, &inventory).unwrap();
+    assert!(recovery::check(&f.config, Some(f.now)).is_err());
+    assert!(f.python_action("check").get("error").is_some());
+    let wal = f.p("backup/wal/000000010000000000000001");
+    let mut file = fs::OpenOptions::new().write(true).open(&wal).unwrap();
+    use std::io::Write;
+    file.write_all(b"corrupted bytes").unwrap();
+    inventory = codec::decode(&original).unwrap();
+    inventory["000000010000000000000001"] = json!(codec::file_digest(&wal).unwrap());
+    durable::write_json(&path, &inventory).unwrap();
+    // Even rewriting the inventory to match corruption cannot reuse accepted
+    // source/receipt bindings to its original immutable carrier bytes.
+    assert!(recovery::check(&f.config, Some(f.now)).is_err());
+    assert!(f.python_action("check").get("error").is_some());
+    assert_eq!(fs::read(f.snapshot_path()).unwrap(), snapshot);
+    assert_eq!(
+        fs::read(f.p("backup/evidence/receipt.json")).unwrap(),
+        receipt
+    );
+    use std::io::{Seek, SeekFrom};
+    file.seek(SeekFrom::Start(0)).unwrap();
+    file.write_all(&[0; 15]).unwrap();
+    fs::write(&path, original).unwrap();
+    assert!(recovery::check(&f.config, Some(f.now)).is_ok());
+    assert!(f.python_action("check").get("error").is_none());
+}
+
+#[test]
 fn invalid_repository_protocol_is_rejected_before_mutation_in_both_readers() {
     let mut f = Fixture::new();
     for protocol in [json!("typo"), Value::Null, json!(1)] {
@@ -196,8 +283,12 @@ fn identical_metadata_carriers_preserve_complete_legacy_and_selected_bindings() 
         f.p("backup/recovery/captures/capture-1.json")
     );
     assert_eq!(selected.snapshot_path(), f.snapshot_path());
-    assert_eq!(selected.binding(), &legacy["binding"]);
-    assert_eq!(f.python(), legacy);
+    let mut extended = legacy.clone();
+    extended["binding"]["wal_inventory_sha256"] = json!(
+        codec::file_digest(&f.p("backup/recovery/captures/capture-1.wal-inventory")).unwrap()
+    );
+    assert_eq!(selected.binding(), &extended["binding"]);
+    assert_eq!(f.python(), extended);
     assert_eq!(
         fs::read(f.p("backup/base/base-1.meta.json")).unwrap(),
         fs::read(selected.metadata_path()).unwrap()

@@ -20,8 +20,11 @@ The legacy `LAST_SUCCESS` ISO timestamp and `base/<backup-ID>/` publication rema
 intact. Recovery opts into `source-local-v1`; omitted protocol configuration uses
 the existing completed-ID/sidecar contract. The selected capture resides in
 `recovery/SELECTED`, referring to immutable `recovery/captures/<capture-ID>.json`.
-An immutable `recovery/snapshots/<capture-ID>.json` carries the corresponding
-source snapshot. Both are durable before the single selection commit; retries
+An immutable JSON `recovery/captures/<capture-ID>.wal-inventory` maps every required WAL
+segment filename to its streamed SHA-256 digest. The corresponding immutable
+`recovery/snapshots/<capture-ID>.json` binds the inventory carrier's exact bytes
+through `wal_inventory_sha256`, alongside the metadata binding. These carriers
+are durable before the single selection commit; retries
 preserve their bytes and the original completion timestamp. Recovery readers
 consume the selected generation's snapshot. The configured legacy snapshot path
 continues to locate the evidence lease and legacy-protocol snapshot.
@@ -32,8 +35,11 @@ also completes and waits for the following receiver segment containing a genuine
 post-target checkpoint record. This makes the frozen target reachable without
 depending on a partial WAL carrier or moving the target during a retry.
 Selection rechecks the manifest-derived external WAL range through that following
-segment. Every required carrier must remain a complete regular file; removal,
-truncation or redirection invalidates readiness even after certification.
+segment. Every required carrier must remain a complete regular file with exactly
+the captured bytes; removal, truncation, redirection or same-length corruption
+invalidates readiness even after certification. Both local and independent
+receipts bind the inventory. Captures lacking that byte-level binding must be
+recaptured and recertified; readers do not invent or upgrade accepted evidence.
 Local restore acceptance must name the declared source host, while off-host
 acceptance must name an independent host. Copying an independent receipt into
 both evidence paths cannot satisfy the two execution requirements.
@@ -57,7 +63,9 @@ never replaced or removed.
 
 An immutable retention pin protects the selected backup and its required WAL
 floor before metadata or selection becomes visible. Interrupted publication
-retains the pin and immutable intent for explicit retry. Pins outlive ordinary
+retains the pin and immutable intent for explicit retry. After WAL reception,
+the completed inventory freezes separately without rewriting the earlier pin.
+An accepted retry preserves that inventory and rejects changed WAL. Pins outlive ordinary
 age/top-two retention. Malformed or uncertain pin state preserves the repository.
 
 ## Capture and acceptance boundaries

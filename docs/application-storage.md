@@ -106,8 +106,12 @@ retains the private workspace for explicit `cleanup` or managed retry; SIGKILL
 does not establish automatic cleanup.
 
 `harbor-db-application-backup --config MANIFEST capture [--attempt ID]` records
-every artifact and executable hash, executes restoration and verification, flushes
-the accepted tree, then publishes it and advances `LAST_SUCCESS`. Publication
+every regular-file artifact and executable hash and every directory path (including
+empty directories), executes restoration and verification, and flushes the accepted
+tree. It rechecks capture freshness immediately before publishing the tree and
+advancing `LAST_SUCCESS`. A capture that aged past `maximumAgeSeconds` leaves
+partial evidence and preserves the previous marker, allowing an explicit retry
+of the same attempt. Publication
 sets the marker's final `0640` reader permissions and file-syncs them before
 rename, then syncs the containing directory. An interruption
 can leave a valid unpublished point; the previous success remains usable. Attempts
@@ -167,6 +171,8 @@ transition authority. Barrier directories are dedicated normalized namespaces,
 pairwise non-overlapping with each other and enabled backup roots, so persistent
 start policies and lock anchors cannot be shared or shadow another project's
 ownership. Disabled projects do not reserve units or namespaces.
+The barrier must also be disjoint from source and target storage roots and the
+authority directory in both containment directions; it cannot be their ancestor.
 Every runtime writer declared by the custody policy must belong to the
 transition's active or retired unit set. Both engines enforce this in manifest
 admission before preparation and recheck it before inventory, so custody cannot
@@ -211,7 +217,10 @@ The sequence is:
    records or taking an exclusive lease from the now-running writer.
    A retained inhibition marker blocks completion and retirement.
 8. `retire` archives terminal journal evidence before another transition may be
-   planned. The root-owned generation startup policy remains retained. Authorizing
+   planned. History filenames bind both the immutable intent and complete terminal
+   record, retaining distinct runs of one intent. Resuming retirement after archive
+   publication preserves that archive's bytes and inode. The root-owned generation
+   startup policy remains retained. Authorizing
    a new backend or generation uses another explicit qualified transition.
 
 Before writer enablement, `abort` requires the exact retained source generation

@@ -121,15 +121,25 @@ def select(config, settings, now):
     if not 1 <= last - first + 1 <= 1_000_000:
         raise ValueError("capture WAL range exceeds supported segment limit")
     per_log = 2**32 // segment
+    wal_bytes = _carrier(root / "recovery" / "captures" / f"{identifier}.wal-inventory", 16 << 20)
+    inventory = {}
     for number in range(first, last + 1):
-        carrier = recovery.absolute(root / "wal" / f"{timeline:08X}{number // per_log:08X}{number % per_log:08X}")
+        name = f"{timeline:08X}{number // per_log:08X}{number % per_log:08X}"
+        carrier = recovery.absolute(root / "wal" / name)
         with os.fdopen(_regular(carrier), "rb") as stream:
-            if os.fstat(stream.fileno()).st_size != segment:
+            before = os.fstat(stream.fileno())
+            if before.st_size != segment:
                 raise ValueError("retained WAL carrier is not a complete regular segment")
+            inventory[name] = hashlib.file_digest(stream, "sha256").hexdigest()
+            after = os.fstat(stream.fileno())
+            if after.st_size != segment or (before.st_mtime_ns, before.st_ctime_ns) != (after.st_mtime_ns, after.st_ctime_ns):
+                raise ValueError("retained WAL carrier changed during inventory")
+    if json.loads(wal_bytes) != inventory:
+        raise ValueError("retained WAL bytes differ from the immutable capture inventory")
     recovery.fresh(meta.get("completed_at"), int(time.time()), settings["max_age_seconds"])
     recovery.fresh(int(manifest.stat().st_mtime), now, settings["max_age_seconds"])
     binding = {"backup_id":meta["backup_id"], "system_identifier":settings["system_identifier"], "major":str(config["major"]),
                "epoch_id":meta["epoch_id"], "manifest_sha256":manifest_digest, "recovery_target_lsn":meta["post_backup_lsn"],
-               "metadata_sha256":hashlib.sha256(metadata_bytes).hexdigest()}
+               "metadata_sha256":hashlib.sha256(metadata_bytes).hexdigest(), "wal_inventory_sha256":hashlib.sha256(wal_bytes).hexdigest()}
     meta["record_hashes"] = MappingProxyType(hashes)
     return SelectedCapture(directory, metadata_path, snapshot_path, MappingProxyType(meta), MappingProxyType(binding))

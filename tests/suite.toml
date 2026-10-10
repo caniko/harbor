@@ -60,7 +60,21 @@ argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "recover
 argv_suffix = ["--", "--exact"]
 profile = "integration"
 maturity = "crystallized"
-selectors = ["selected_capture_requires_complete_retained_wal_through_post_target_in_both_engines"]
+selectors = ["selected_capture_requires_complete_retained_wal_through_post_target_in_both_engines", "same_length_wal_corruption_invalidates_selected_readiness_without_rebinding_evidence_in_both_engines", "wal_inventory_is_mandatory_and_cannot_be_rebound_after_certification_in_both_engines"]
+
+[[coverage]]
+case = "native.recovery_repository.same_length_wal_corruption_invalidates_selected_readiness_without_rebinding_evidence_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.inspect-recovery"
+dimension = "rejection"
+evidence = "Same-length corruption of either required WAL carrier rejects native and Python readiness without rewriting snapshot or receipts; exact original bytes restore admission. The separate physical VM gate also rejects an accepted capture retry attempting to rebind corrupted WAL."
+
+[[coverage]]
+case = "native.recovery_repository.wal_inventory_is_mandatory_and_cannot_be_rebound_after_certification_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.inspect-recovery"
+dimension = "rejection"
+evidence = "Missing or incomplete WAL inventory rejects in both engines. Recomputing that carrier after corrupting WAL cannot reuse accepted source/receipt bindings; all original evidence remains unchanged and exact restoration admits without recertification."
 
 [[coverage]]
 case = "native.recovery_repository.selected_capture_requires_complete_retained_wal_through_post_target_in_both_engines"
@@ -96,7 +110,14 @@ argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "transit
 argv_suffix = ["--", "--exact"]
 profile = "integration"
 maturity = "crystallized"
-selectors = ["transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines", "transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines"]
+selectors = ["transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines", "transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines", "barrier_and_guarded_storage_must_be_disjoint_in_both_directions_in_both_engines"]
+
+[[coverage]]
+case = "native.transition_storage.barrier_and_guarded_storage_must_be_disjoint_in_both_directions_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.plan"
+dimension = "rejection"
+evidence = "Both engines reject barriers equal to, inside, or containing either source or target storage. A prefix sibling passes without publishing journal or barrier storage."
 
 [[coverage]]
 case = "native.transition_storage.transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines"
@@ -121,7 +142,39 @@ argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "applica
 argv_suffix = ["--", "--exact"]
 profile = "integration"
 maturity = "crystallized"
-selectors = ["hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chmod"]
+selectors = ["hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chmod", "stale_capture_preserves_success_and_allows_the_same_attempt_to_retry_in_both_engines", "empty_directory_changes_invalidate_accepted_artifacts_in_both_engines"]
+
+[[coverage]]
+case = "native.application_storage.stale_capture_preserves_success_and_allows_the_same_attempt_to_retry_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "rejection"
+evidence = "Individually valid cleanup outlives maximum capture age in both engines; neither publishes the deterministic destination nor changes previous marker bytes or inode. Partial evidence remains, workspace cleanup completes, and the same attempt explicitly retries successfully."
+
+[[coverage]]
+case = "native.application_storage.empty_directory_changes_invalidate_accepted_artifacts_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.inspect"
+dimension = "rejection"
+evidence = "Both capture engines bind nested empty directory paths. Removing, renaming, or replacing them with an empty file rejects inspection; recreating the exact directory restores acceptance."
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.transition-retirement."
+selector_prefix = "storage::application_transition::tests::"
+source = "src/storage/application_transition.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--lib"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+selectors = ["retirement_retains_distinct_runs_and_resumes_without_rewriting_history_in_both_engines"]
+
+[[coverage]]
+case = "native.transition-retirement.storage::application_transition::tests::retirement_retains_distinct_runs_and_resumes_without_rewriting_history_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.retire"
+dimension = "interruption"
+evidence = "Distinct terminal journals sharing one intent retain separate archives across native and Python retirement. A retry after archive publication but before journal removal consumes the same carrier without replacing its bytes or inode."
 
 [[coverage]]
 case = "native.application_storage.hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chmod"

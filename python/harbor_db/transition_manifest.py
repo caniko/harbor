@@ -69,7 +69,7 @@ def validate(config):
         startup_inhibition.owned(barrier, directory=True)
     if barrier == authority or barrier.is_relative_to(authority) or authority.is_relative_to(barrier):
         raise ValueError("root startup barriers must be outside application-owned authority")
-    if any(barrier == Path(path) or barrier.is_relative_to(path) for path in source["directories"] + target["directories"]):
+    if any(barrier.is_relative_to(path) or Path(path).is_relative_to(barrier) for path in source["directories"] + target["directories"]):
         raise ValueError("startup barriers must be outside the guarded storage")
     units = config["units"] + config["retired_units"]
     if (not units or len(set(units)) != len(units)

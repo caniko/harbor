@@ -68,6 +68,7 @@ def inventory(path):
         metadata = entry.lstat()
         mode = metadata.st_mode
         if stat.S_ISDIR(mode):
+            result[relative] = {"directory": True}
             continue
         if not stat.S_ISREG(mode):
             raise ValueError("backup contains redirected or special files")
@@ -181,6 +182,7 @@ def capture(config, attempt, *, retry_incomplete=False):
                 raise ValueError("backup contains redirected or special files")
         partial.chmod(0o750)
         sync_tree(partial)
+        fresh(config, captured_at, int(time.time()))
         partial.rename(destination)
         sync_directory(root)
         write_json(root / "LAST_SUCCESS", {"attempt": attempt, "acceptance_sha256": digest(destination / "acceptance.json")}, mode=0o640)
@@ -203,10 +205,14 @@ def verify_bytes(config, backup, *, now=None):
     artifacts.pop("acceptance.json")
     if artifacts != receipt["artifacts"]:
         raise ValueError("backup artifact hash does not match acceptance")
-    age = (int(time.time()) if now is None else now) - receipt["captured_at"]
+    fresh(config, receipt["captured_at"], int(time.time()) if now is None else now)
+    return receipt
+
+
+def fresh(config, captured_at, now):
+    age = now - captured_at
     if not 0 <= age <= config["maximum_age_seconds"]:
         raise ValueError("backup acceptance is stale or from the future")
-    return receipt
 
 
 def certify(config, backup, state):

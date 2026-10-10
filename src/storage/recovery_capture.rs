@@ -152,8 +152,9 @@ fn wal_name(timeline: u32, number: u64, segment: u64) -> String {
     )
 }
 
-/// Read-only admission of the external carriers required by a selected capture.
-pub(crate) fn retained_wal(wal: &Path, manifest: &Value, metadata: &Value) -> Result<()> {
+/// Byte inventory of every external carrier through the post-target stop record.
+/// The finalizer freezes this separately from the pre-WAL immutable retention pin.
+pub(crate) fn retained_wal(wal: &Path, manifest: &Value, metadata: &Value) -> Result<Value> {
     let ranges = ranges(manifest)?;
     let segment = segment_size(&metadata["wal_segment_bytes"])?;
     let timeline: u32 = metadata["timeline"]
@@ -169,16 +170,30 @@ pub(crate) fn retained_wal(wal: &Path, manifest: &Value, metadata: &Value) -> Re
         recovery::lsn(&metadata["post_backup_lsn"])?,
         segment,
     )?;
+    let mut inventory = serde_json::Map::new();
     for number in first..=last {
-        let path = strict(&wal.join(wal_name(timeline, number, segment)))?;
-        let file = durable::open_regular(&path, false)?;
-        if file.metadata()?.len() != segment {
+        let name = wal_name(timeline, number, segment);
+        let path = strict(&wal.join(&name))?;
+        let mut file = durable::open_regular(&path, false)?;
+        let before = file.metadata()?;
+        if before.len() != segment {
             return Err(invalid(
                 "retained WAL carrier is not a complete regular segment",
             ));
         }
+        let digest = codec::hash_reader(&mut file)?;
+        let after = file.metadata()?;
+        if after.len() != segment
+            || before.mtime() != after.mtime()
+            || before.mtime_nsec() != after.mtime_nsec()
+            || before.ctime() != after.ctime()
+            || before.ctime_nsec() != after.ctime_nsec()
+        {
+            return Err(invalid("retained WAL carrier changed during inventory"));
+        }
+        inventory.insert(name, json!(digest));
     }
-    Ok(())
+    Ok(Value::Object(inventory))
 }
 
 fn wait_wal(
@@ -576,10 +591,27 @@ pub fn finalize(
         Ok(_) => (),
     }
     wait_wal(&root.join("wal"), timeline, first, last, segment, wal_wait)?;
+    let inventory = retained_wal(&root.join("wal"), &manifest, &metadata)?;
+    let mut inventory_bytes = codec::encode(&inventory, false)?;
+    inventory_bytes.push(b'\n');
+    if inventory_bytes.len() as u64 > MAX_BYTES {
+        return Err(invalid("capture WAL inventory exceeds size limit"));
+    }
+    // The pin precedes reception so pruning can protect unfinished captures.
+    // Freeze completed WAL bytes once before selecting the generation. Retries
+    // must preserve this carrier too; they cannot rebind corrupted WAL.
+    immutable(
+        &local,
+        &local
+            .join("captures")
+            .join(format!("{capture_id}.wal-inventory")),
+        &inventory_bytes,
+        capture_id,
+    )?;
     let result = json!({"version":1,"backup_id":backup_id,"system_identifier":settings["system_identifier"],"major":writer_fence::major(config)?,
         "epoch_id":metadata["epoch_id"],"manifest_sha256":metadata["manifest_sha256"],"recovery_target_lsn":metadata["post_backup_lsn"],
         "metadata_sha256":codec::digest(&content),"completed_at":metadata["completed_at"],"record_contract_sha256":metadata["record_contract_sha256"],
-        "records":metadata["record_hashes"],"writer_fence_token":token});
+        "records":metadata["record_hashes"],"writer_fence_token":token,"wal_inventory_sha256":codec::digest(&inventory_bytes)});
     publish_generation(&local, capture_id, &content, &result)?;
     Ok(result)
 }

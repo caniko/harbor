@@ -63,6 +63,71 @@ fn transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines() {
 }
 
 #[test]
+fn barrier_and_guarded_storage_must_be_disjoint_in_both_directions_in_both_engines() {
+    let mut f = Fixture::new();
+    let barrier = f.temp.path().join("barrier");
+    for source in [false, true] {
+        for directory in [
+            barrier.clone(),
+            barrier.join("data"),
+            f.temp.path().to_path_buf(),
+        ] {
+            let mut policy = if source {
+                f.source.clone()
+            } else {
+                f.target.clone()
+            };
+            policy["directories"] = json!([directory]);
+            let path = f
+                .temp
+                .path()
+                .join(if source { "source.json" } else { "target.json" });
+            durable::write_json(&path, &policy).unwrap();
+            let error = transition_manifest::validate(&f.config).unwrap_err();
+            assert!(error.to_string().contains("guarded storage"), "{error}");
+            let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import transition_manifest
+root_uid=int(sys.argv[2])
+if root_uid:
+    original_lstat=Path.lstat
+    def mapped_lstat(path):
+        info=original_lstat(path)
+        if info.st_uid!=root_uid: return info
+        fields=list(info); fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped_lstat).start()
+try: transition_manifest.validate(json.loads(sys.argv[1]))
+except ValueError as error: assert 'guarded storage' in str(error)
+else: raise AssertionError('overlapping guarded storage accepted')
+"#;
+            let mut spec = process::CommandSpec::new(vec![
+                "python3".into(),
+                "-B".into(),
+                "-c".into(),
+                script.into(),
+                f.config.to_string(),
+                option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+            ]);
+            spec.environment = Some(std::collections::BTreeMap::from([
+                (
+                    "PYTHONPATH".into(),
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ),
+                ("PATH".into(), std::env::var("PATH").unwrap()),
+            ]));
+            process::execute(&spec).unwrap();
+            durable::write_json(&path, if source { &f.source } else { &f.target }).unwrap();
+        }
+    }
+    f.config["barrier_dir"] = json!(f.temp.path().join("old-sibling"));
+    transition_manifest::validate(&f.config).unwrap();
+    assert!(!f.temp.path().join("old-sibling").exists());
+    assert!(!f.temp.path().join("authority/transition.json").exists());
+}
+
+#[test]
 fn transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines() {
     transition_capture_fixture(true);
 }
@@ -120,9 +185,19 @@ elif stage=='verify': print(json.dumps({'version':1,'status':'verified','semanti
         symlink(env!("CARGO_BIN_EXE_harbor-db-application-backup"), &binary).unwrap();
         let record = json!({"intent":transition_manifest::intent(&f.config).unwrap()});
         if python {
-            let script = r#"import json,sys
+            let script = r#"import json,os,sys
+from pathlib import Path
 from unittest.mock import patch
 from harbor_db import application_backup,application_transition
+root_uid=int(sys.argv[4])
+if root_uid:
+    original_lstat=Path.lstat
+    def mapped_lstat(path):
+        info=original_lstat(path)
+        if info.st_uid!=root_uid: return info
+        fields=list(info); fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped_lstat).start()
 original_digest=application_backup.digest
 if sys.argv[3]: patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
 backup,receipt=application_transition.capture_source(json.loads(sys.argv[1]),json.loads(sys.argv[2]),())
@@ -138,6 +213,7 @@ assert receipt['consistency']=='quiesced' and (backup/'acceptance.json').is_file
                 option_env!("HARBOR_DB_TEST_MACHINE_ID")
                     .unwrap_or("")
                     .into(),
+                option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
             ]);
             spec.environment = Some(BTreeMap::from([
                 (
@@ -1003,10 +1079,20 @@ fn custody_writers_must_be_covered_before_transition_or_inventory_in_both_engine
         transition_manifest::validate(&config).unwrap();
         application_transition::target_custody(&config, &record, &f.target, &[]).unwrap();
     }
-    let script = r#"import json,sys
+    let script = r#"import json,os,sys
 from pathlib import Path
+from unittest.mock import patch
 from harbor_db import application_transition,transition_manifest
-config,record,target=map(json.loads,sys.argv[1:])
+root_uid=int(sys.argv[4])
+if root_uid:
+    original_lstat=Path.lstat
+    def mapped_lstat(path):
+        info=original_lstat(path)
+        if info.st_uid!=root_uid: return info
+        fields=list(info); fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped_lstat).start()
+config,record,target=map(json.loads,sys.argv[1:4])
 path=Path(config['custody_manifest'])
 entry=json.loads(path.read_text())
 for units in (['uncovered.service'], ['demo.service','uncovered.service'], None, [7]):
@@ -1029,6 +1115,7 @@ for units in ([], ['demo.service'], ['legacy.service'], ['demo.service','legacy.
         config.to_string(),
         record.to_string(),
         f.target.to_string(),
+        option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
     ]);
     command.environment = Some(std::collections::BTreeMap::from([
         (

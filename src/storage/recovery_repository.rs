@@ -207,7 +207,19 @@ pub fn select(config: &Value, settings: &Value, now: i64) -> Result<SelectedCapt
     if recovery::lsn(&meta["post_backup_lsn"])? <= recovery::lsn(&meta["backup_stop_lsn"])? {
         return Err(invalid("backup recovery point must follow its stop LSN"));
     }
-    super::recovery_capture::retained_wal(&root.join("wal"), &manifest_value, &meta)?;
+    let wal_bytes = bounded_carrier(
+        &root
+            .join("recovery/captures")
+            .join(format!("{identifier}.wal-inventory")),
+        16 << 20,
+    )?;
+    if codec::decode(&wal_bytes)?
+        != super::recovery_capture::retained_wal(&root.join("wal"), &manifest_value, &meta)?
+    {
+        return Err(invalid(
+            "retained WAL bytes differ from the immutable capture inventory",
+        ));
+    }
     let actual_now: i64 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| invalid("invalid system clock"))?
@@ -229,7 +241,7 @@ pub fn select(config: &Value, settings: &Value, now: i64) -> Result<SelectedCapt
             .as_i64()
             .ok_or_else(|| invalid("invalid evidence age"))?,
     )?;
-    let binding = json!({"backup_id":backup_id,"system_identifier":settings["system_identifier"],"major":writer_fence::major(config)?,"epoch_id":meta["epoch_id"],"manifest_sha256":manifest_digest,"recovery_target_lsn":meta["post_backup_lsn"],"metadata_sha256":codec::digest(&metadata_bytes)});
+    let binding = json!({"backup_id":backup_id,"system_identifier":settings["system_identifier"],"major":writer_fence::major(config)?,"epoch_id":meta["epoch_id"],"manifest_sha256":manifest_digest,"recovery_target_lsn":meta["post_backup_lsn"],"metadata_sha256":codec::digest(&metadata_bytes),"wal_inventory_sha256":codec::digest(&wal_bytes)});
     Ok(SelectedCapture {
         directory,
         metadata_path,
