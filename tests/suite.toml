@@ -2,6 +2,13 @@
 version = 1
 
 [[coverage]]
+case = "nix.x86_64-linux.native-storage-eval"
+capability = "nixos"
+operation = "nixos.application-transition"
+dimension = "rejection"
+evidence = "nix/native-storage-eval.nix rejects empty argv, an empty executable and a relative executable independently for each of the four transition workers, while admitting the declared absolute executable configuration."
+
+[[coverage]]
 case = "native.supervisor.detached_nix_case_retains_launcher_path_without_service_manager_environment"
 capability = "suite-cli"
 operation = "harbor-db-test.run"

@@ -98,12 +98,17 @@ in {
     }));
   };
   config = lib.mkIf (projects != {}) {
-    assertions =
-      lib.mapAttrsToList (name: p: {
-        assertion = builtins.attrNames p.transition.commands == ["health" "import" "verify-source" "verify-target"] && p.transition.runtimeUnits != [];
-        message = "Harbor DB ${name} transitions require all semantic workers and explicit runtime units.";
-      })
-      projects;
+    assertions = lib.concatLists (lib.mapAttrsToList (name: p: [
+        {
+          assertion = builtins.attrNames p.transition.commands == ["health" "import" "verify-source" "verify-target"] && p.transition.runtimeUnits != [];
+          message = "Harbor DB ${name} transitions require all semantic workers and explicit runtime units.";
+        }
+        {
+          assertion = lib.all (worker: worker.argv != [] && lib.hasPrefix "/" (lib.head worker.argv)) (lib.attrValues p.transition.commands);
+          message = "Harbor DB ${name} transition workers require nonempty argv with an absolute executable.";
+        }
+      ])
+      projects);
     systemd.tmpfiles.rules = lib.concatMap (p: [
       "d ${p.transition.barrierDirectory} 0700 root root -"
       "f ${p.transition.barrierDirectory}/lock 0600 root root -"

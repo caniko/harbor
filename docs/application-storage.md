@@ -129,6 +129,8 @@ directory, retained storage roots and different backend bindings. Applications
 supply import, complete source/target parity and post-release health workers.
 Commands run under explicit service accounts and receive single argv substitutions
 for `{backup}`, `{source}`, `{target}` and, after binding, `{candidate}`.
+Every worker requires nonempty argv with an absolute executable; the generated
+NixOS configuration rejects invalid workers before installing transition tooling.
 
 The root coordinator installs persistent systemd client barriers before stopping
 writers and taking the exclusive authority lease. Legacy service units are included

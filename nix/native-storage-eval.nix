@@ -83,6 +83,14 @@
     rejected == [];
   withoutPlaceholder = stage: placeholder:
     backupCommands // {${stage} = builtins.filter (arg: arg != placeholder) backupCommands.${stage};};
+  transitionCommands = pkgs.lib.genAttrs ["import" "verify-target" "verify-source" "health"] (_: {
+    user = "fixture";
+    argv = ["${pkgs.coreutils}/bin/true"];
+  });
+  transitionCommandsAccepted = commands: let
+    configured = evaluate [module {services.harbor-db.projects.fixture.transition.commands = pkgs.lib.mkForce commands;}];
+  in
+    builtins.filter (assertion: !assertion.assertion && pkgs.lib.hasPrefix "Harbor DB fixture transition" assertion.message) configured.config.assertions == [];
   directEval = evaluate [
     ./module.nix
     ./postgres-lifecycle.nix
@@ -109,6 +117,16 @@ in
     name = "harbor-db-native-storage-eval";
     resultMessage = "Native storage package is selected through the module argument";
     assertions = [
+      {
+        name = "transition-worker-argv-boundaries";
+        message = "Every declared transition worker must have nonempty argv with an absolute executable.";
+        assertion =
+          transitionCommandsAccepted transitionCommands
+          && pkgs.lib.all (stage:
+            pkgs.lib.all (argv:
+              !transitionCommandsAccepted (transitionCommands // {${stage} = transitionCommands.${stage} // {inherit argv;};}))
+            [[] [""] ["relative-tool"]]) (builtins.attrNames transitionCommands);
+      }
       {
         name = "backup-command-placeholder-boundaries";
         message = "All stages require a literal backup argument, and restore/verify/cleanup also require a literal workspace argument.";

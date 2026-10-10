@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Reject empty or relative transition worker argv during NixOS evaluation,
+  before publishing unusable transition tooling.
 - Reject ambiguous custody roots, activation directories and directory-creating
   tmpfiles paths before they can bypass historical-root protection.
 - Reject backup manifests with missing literal stage placeholders or invalid
