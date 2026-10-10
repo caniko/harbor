@@ -383,6 +383,8 @@ pub enum OperationStatus {
     Pending,
     /// Operator-only operation was not selected during a normal run.
     SkippedManual,
+    /// Reactive repair is reserved for explicit restore mode.
+    SkippedRestore,
     /// Restore applied a pending operation and the re-check reported current.
     Restored,
 }
@@ -428,6 +430,7 @@ impl fmt::Display for OperationStatus {
             Self::Current => "current",
             Self::Pending => "pending",
             Self::SkippedManual => "skipped-manual",
+            Self::SkippedRestore => "skipped-restore",
             Self::Restored => "restored",
         })
     }

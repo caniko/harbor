@@ -4,7 +4,10 @@ use tokio::process::Command;
 
 use super::{
     error::MigrationError,
-    model::{CommandSpec, MigrationPlan, OperationStatus, RunMode, RunOptions, RunReport, Safety},
+    model::{
+        CommandSpec, Lifecycle, MigrationPlan, OperationStatus, RunMode, RunOptions, RunReport,
+        Safety,
+    },
 };
 
 /// Read a JSON or TOML plan based on its file extension.
@@ -48,12 +51,42 @@ pub async fn run_plan(
     let selected = options.operations.clone();
     let order = plan.execution_order(&selected)?;
     let selected_explicitly = !selected.is_empty();
+    let runnable = |operation: &super::model::MigrationOperation| {
+        !(mode == RunMode::Apply && operation.lifecycle == Lifecycle::Restore
+            || mode.applies()
+                && operation.safety == Safety::OperatorConfirmed
+                && !selected_explicitly)
+    };
+    // Admit the complete dependency closure before any command can write.
+    for operation in order.iter().filter(|operation| runnable(operation)) {
+        for dependency in &operation.depends_on {
+            let prerequisite = order
+                .iter()
+                .find(|entry| &entry.id == dependency)
+                .ok_or_else(|| {
+                    MigrationError::InvalidPlan(format!("missing prerequisite {dependency}"))
+                })?;
+            if mode == RunMode::Apply && prerequisite.lifecycle == Lifecycle::Restore {
+                return Err(MigrationError::InvalidPlan(format!(
+                    "operation {} depends on restore-only operation {dependency}",
+                    operation.id
+                )));
+            }
+            if mode.applies()
+                && prerequisite.safety == Safety::OperatorConfirmed
+                && !selected_explicitly
+            {
+                return Err(MigrationError::ConfirmationRequired(
+                    prerequisite.id.clone(),
+                ));
+            }
+        }
+    }
     if mode.applies()
-        && selected_explicitly
         && !options.confirm
-        && let Some(operation) = order.iter().find(|operation| {
-            operation.safety == Safety::OperatorConfirmed && selected.contains(&operation.id)
-        })
+        && let Some(operation) = order
+            .iter()
+            .find(|operation| runnable(operation) && operation.safety == Safety::OperatorConfirmed)
     {
         return Err(MigrationError::ConfirmationRequired(operation.id.clone()));
     }
@@ -63,11 +96,13 @@ pub async fn run_plan(
     };
 
     for operation in order {
-        let explicitly_selected = selected.contains(&operation.id);
-        if operation.safety == Safety::OperatorConfirmed
-            && mode.applies()
-            && (!selected_explicitly || !explicitly_selected)
-        {
+        if mode == RunMode::Apply && operation.lifecycle == Lifecycle::Restore {
+            report
+                .operations
+                .push((operation.id.clone(), OperationStatus::SkippedRestore));
+            continue;
+        }
+        if operation.safety == Safety::OperatorConfirmed && mode.applies() && !selected_explicitly {
             report
                 .operations
                 .push((operation.id.clone(), OperationStatus::SkippedManual));

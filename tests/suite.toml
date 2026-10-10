@@ -3,6 +3,32 @@ version = 1
 
 [[inventories]]
 origin = "rust"
+id_prefix = "native.plan-cli."
+selector_prefix = ""
+source = "tests/plan_cli.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "plan_cli"]
+argv_suffix = ["--", "--exact"]
+profile = "fast"
+maturity = "crystallized"
+selectors = ["normal_apply_excludes_restore_lifecycle_even_with_automatic_safety", "manual_prerequisites_require_confirmation_and_execute_before_dependents"]
+
+[[coverage]]
+case = "native.plan-cli.normal_apply_excludes_restore_lifecycle_even_with_automatic_safety"
+capability = "plan-cli"
+operation = "harbor-db.apply"
+dimension = "rejection"
+evidence = "Actual CLI apply skips restore lifecycle even with default automatic safety or explicit selection; restore mode repairs on demand. Apply rejects an ensure depending on restore-only work before unrelated commands can write."
+
+[[coverage]]
+case = "native.plan-cli.manual_prerequisites_require_confirmation_and_execute_before_dependents"
+capability = "plan-cli"
+operation = "harbor-db.apply"
+dimension = "rejection"
+evidence = "Unfiltered apply, confirmation without selection, and selected dependents without confirmation reject manual prerequisites before any write. Selecting the dependent with confirmation executes its prerequisite exactly once and first."
+
+
+[[inventories]]
+origin = "rust"
 id_prefix = "native.application_storage."
 selector_prefix = ""
 source = "tests/application_storage.rs"

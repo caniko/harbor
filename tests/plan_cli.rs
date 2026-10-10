@@ -186,6 +186,82 @@ fn assert_error(output: &Output, message: &str) {
 }
 
 #[test]
+fn normal_apply_excludes_restore_lifecycle_even_with_automatic_safety() {
+    let f = Fixture::new();
+    let ensure = operation(
+        "ensure",
+        "printf 'ensure\\n' >> \"$ROOT/actions\"",
+        "exit 0",
+    );
+    let mut repair = operation(
+        "repair",
+        "printf 'repair\\n' >> \"$ROOT/actions\"; touch \"$ROOT/repaired\"",
+        "test -e \"$ROOT/repaired\" || exit 2",
+    );
+    repair["lifecycle"] = json!("restore");
+    f.write_plan(vec![ensure.clone(), repair.clone()]);
+    assert_output(
+        &f.run("apply", &[]),
+        0,
+        "ensure: applied\nrepair: skipped-restore\n",
+    );
+    assert_eq!(fs::read(f.path("actions")).unwrap(), b"ensure\n");
+    assert!(!f.path("repaired").exists());
+    assert_output(
+        &f.run("apply", &["--operation", "repair", "--confirm"]),
+        0,
+        "repair: skipped-restore\n",
+    );
+    assert!(!f.path("repaired").exists());
+    assert_output(
+        &f.run("restore", &["--operation", "repair"]),
+        0,
+        "repair: restored\n",
+    );
+    fs::remove_file(f.path("actions")).unwrap();
+    let mut dependent = ensure;
+    dependent["depends_on"] = json!(["repair"]);
+    f.write_plan(vec![repair, dependent]);
+    assert_error(
+        &f.run("apply", &[]),
+        "depends on restore-only operation repair",
+    );
+    assert!(!f.path("actions").exists());
+}
+
+#[test]
+fn manual_prerequisites_require_confirmation_and_execute_before_dependents() {
+    let f = Fixture::new();
+    let mut manual = operation(
+        "manual",
+        "printf 'manual\\n' >> \"$ROOT/actions\"",
+        "exit 0",
+    );
+    manual["safety"] = json!("operator_confirmed");
+    let mut child = operation("child", "printf 'child\\n' >> \"$ROOT/actions\"", "exit 0");
+    child["depends_on"] = json!(["manual"]);
+    f.write_plan(vec![
+        operation("unrelated", "touch \"$ROOT/unrelated\"", "exit 0"),
+        manual,
+        child,
+    ]);
+    for args in [vec![], vec!["--confirm"], vec!["--operation", "child"]] {
+        assert_error(
+            &f.run("apply", &args),
+            "operation manual requires explicit confirmation",
+        );
+        assert!(!f.path("actions").exists());
+        assert!(!f.path("unrelated").exists());
+    }
+    assert_output(
+        &f.run("apply", &["--operation", "child", "--confirm"]),
+        0,
+        "manual: applied\nchild: applied\n",
+    );
+    assert_eq!(fs::read(f.path("actions")).unwrap(), b"manual\nchild\n");
+}
+
+#[test]
 fn legacy_json_toml_typedb_and_credential_argument_bytes() {
     let fixture = Fixture::new();
     let credential_directory = fixture.path("credential directory with spaces");
