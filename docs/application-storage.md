@@ -144,6 +144,10 @@ only local OS-peer control SQL remains available. An importer must use that cont
 path, for example a `postgres`-owned worker using `SET ROLE` for the dedicated
 schema owner. It cannot open application HBA access or release the borrowed fence.
 No transition command starts PostgreSQL or application services.
+Every runtime writer declared by the custody policy must belong to the
+transition's active or retired unit set. Both engines enforce this in manifest
+admission before preparation and recheck it before inventory, so custody cannot
+certify a corpus whose declared writer escaped the transition barriers.
 Borrowing requires the owner's existing persistent fence, backup-mutation and
 recovery-evidence lock anchors. Provision those anchors through the owner before
 application preparation, including contract-first preparation before the first

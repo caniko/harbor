@@ -834,6 +834,110 @@ fn target_corpus_evidence_cannot_hide_behind_semantic_acceptance() {
             .contains("corpus evidence changed")
     );
 }
+
+#[test]
+fn custody_writers_must_be_covered_before_transition_or_inventory_in_both_engines() {
+    let f = Fixture::new();
+    let corpus = f.temp.path().join("new/records");
+    fs::write(&corpus, b"acknowledged revision seven").unwrap();
+    let path = f.temp.path().join("custody.json");
+    let mut config = f.config.clone();
+    config["custody_manifest"] = json!(path);
+    config["retired_units"] = json!(["legacy.service"]);
+    let mut entry = json!({"kind":"filesystem","authority":f.target,
+        "custody_file":f.temp.path().join("authority/custody.json"),
+        "database_inventory_checks":[],"runtime_units":["uncovered.service"]});
+    durable::write_json(&path, &entry).unwrap();
+    let source_before = fs::read(f.temp.path().join("source.json")).unwrap();
+    let rejected = transition_manifest::validate(&config).unwrap_err();
+    assert!(
+        rejected.to_string().contains("custody writers"),
+        "{rejected}"
+    );
+    let record = json!({"source_authority":{"identity":"retained"},"primary_snapshot_sha256":null,
+        "source_acceptance_sha256":"a".repeat(64),"independent_sha256":"b".repeat(64),
+        "semantic_sha256":"c".repeat(64)});
+    assert!(
+        application_transition::target_custody(&config, &record, &f.target, &[])
+            .unwrap_err()
+            .to_string()
+            .contains("custody writers")
+    );
+    for writers in [
+        json!(["demo.service", "uncovered.service"]),
+        json!(null),
+        json!([7]),
+    ] {
+        entry["runtime_units"] = writers;
+        durable::write_json(&path, &entry).unwrap();
+        assert!(
+            transition_manifest::validate(&config)
+                .unwrap_err()
+                .to_string()
+                .contains("custody writers")
+        );
+        assert!(
+            application_transition::target_custody(&config, &record, &f.target, &[])
+                .unwrap_err()
+                .to_string()
+                .contains("custody writers")
+        );
+    }
+    assert!(!f.temp.path().join("authority/transition.json").exists());
+    assert!(!f.temp.path().join("barrier/inhibited.json").exists());
+    assert!(!f.temp.path().join("systemd").exists());
+    assert_eq!(
+        fs::read(f.temp.path().join("source.json")).unwrap(),
+        source_before
+    );
+    assert_eq!(fs::read(&corpus).unwrap(), b"acknowledged revision seven");
+    for runtime_units in [
+        json!([]),
+        json!(["demo.service"]),
+        json!(["legacy.service"]),
+        json!(["demo.service", "legacy.service"]),
+    ] {
+        entry["runtime_units"] = runtime_units;
+        durable::write_json(&path, &entry).unwrap();
+        transition_manifest::validate(&config).unwrap();
+        application_transition::target_custody(&config, &record, &f.target, &[]).unwrap();
+    }
+    let script = r#"import json,sys
+from pathlib import Path
+from harbor_db import application_transition,transition_manifest
+config,record,target=map(json.loads,sys.argv[1:])
+path=Path(config['custody_manifest'])
+entry=json.loads(path.read_text())
+for units in (['uncovered.service'], ['demo.service','uncovered.service'], None, [7]):
+    path.write_text(json.dumps(entry | {'runtime_units':units}))
+    for operation in (lambda: transition_manifest.validate(config),
+                      lambda: application_transition.target_custody(config,record,target,())):
+        try: operation()
+        except ValueError as error: assert 'custody writers' in str(error), error
+        else: raise AssertionError('uncovered custody writer admitted')
+for units in ([], ['demo.service'], ['legacy.service'], ['demo.service','legacy.service']):
+    path.write_text(json.dumps(entry | {'runtime_units':units}))
+    transition_manifest.validate(config)
+    application_transition.target_custody(config,record,target,())
+"#;
+    let mut command = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        record.to_string(),
+        f.target.to_string(),
+    ]);
+    command.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&command).unwrap();
+}
 #[test]
 fn backup_pin_and_borrowed_fence_require_declared_retained_anchors() {
     let f = Fixture::new();

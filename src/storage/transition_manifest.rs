@@ -160,7 +160,36 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
     let (source, target) = validate_bindings(config)?;
     validate_barrier_paths(config, &source, &target)?;
     validate_workers(config)?;
+    custody_entry(config, &target)?;
     Ok((source, target))
+}
+
+pub fn custody_entry(config: &Value, target: &Value) -> Result<Option<Value>> {
+    if config["custody_manifest"].is_null() {
+        return Ok(None);
+    }
+    let entry = durable::read_config_json(Path::new(string(config, "custody_manifest")?))?;
+    if entry["kind"] != "filesystem" || entry["authority"] != *target {
+        return Err(invalid(
+            "target custody manifest does not declare the exact target authority",
+        ));
+    }
+    let barriers = units(config)?;
+    if let Some(writers) = entry.get("runtime_units") {
+        let writers = writers.as_array().ok_or_else(|| {
+            invalid("custody writers must be a declared unit array covered by transition barriers")
+        })?;
+        if writers.iter().any(|writer| {
+            !writer
+                .as_str()
+                .is_some_and(|unit| barriers.iter().any(|barrier| barrier == unit))
+        }) {
+            return Err(invalid(
+                "custody writers must all be covered by transition units or retired_units",
+            ));
+        }
+    }
+    Ok(Some(entry))
 }
 
 fn validate_bindings(config: &Value) -> Result<(Value, Value)> {

@@ -87,7 +87,21 @@ def validate(config):
                 or not all(isinstance(arg, str) for arg in command["argv"]) or not Path(command["argv"][0]).is_absolute()):
             raise ValueError("transition workers require a declared user and absolute argv")
         pwd.getpwnam(command["user"])
+    custody_entry(config, target)
     return source, target
+
+
+def custody_entry(config, target):
+    if config["custody_manifest"] is None:
+        return None
+    entry = read_json(config["custody_manifest"])
+    if entry["kind"] != "filesystem" or entry["authority"] != target:
+        raise ValueError("target custody manifest does not declare the exact target authority")
+    writers = entry.get("runtime_units", [])
+    barriers = config["units"] + config["retired_units"]
+    if not isinstance(writers, list) or any(not isinstance(unit, str) or unit not in barriers for unit in writers):
+        raise ValueError("custody writers must all be covered by transition units or retired_units")
+    return entry
 
 
 def tools(config):

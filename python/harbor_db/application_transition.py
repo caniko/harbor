@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import application_backup, resource
 from .durable import lock, read_json, sync_directory, write_json
-from .transition_manifest import (candidate_path, fence, generation, inspect_barriers, install_barriers,
+from .transition_manifest import (candidate_path, custody_entry, fence, generation, inspect_barriers, install_barriers,
                                   intent, release_barriers, require_root, stop_units, validate, worker, write_owned)
 
 
@@ -185,12 +185,10 @@ def primary_evidence(config, record, leases):
 
 
 def target_custody(config, record, target, leases):
-    if config["custody_manifest"] is None:
+    entry = custody_entry(config, target)
+    if entry is None:
         return None
     from . import cutover
-    entry = read_json(config["custody_manifest"])
-    if entry["kind"] != "filesystem" or entry["authority"] != target:
-        raise ValueError("target custody manifest does not declare the exact target authority")
     requirement = []
     checks = entry.get("database_inventory_checks", [])
     if checks and config["postgres_manifest"] is None:

@@ -321,15 +321,9 @@ pub fn target_custody(
     target: &Value,
     leases: &[RawFd],
 ) -> Result<Value> {
-    if config["custody_manifest"].is_null() {
+    let Some(entry) = manifest::custody_entry(config, target)? else {
         return Ok(Value::Null);
-    }
-    let entry = durable::read_config_json(Path::new(string(config, "custody_manifest")?))?;
-    if entry["kind"] != "filesystem" || entry["authority"] != *target {
-        return Err(invalid(
-            "target custody manifest does not declare the exact target authority",
-        ));
-    }
+    };
     let mut requirements = vec![];
     let empty = vec![];
     let checks = match entry.get("database_inventory_checks") {
