@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Reject hard-linked application backup artifacts before publication permission
+  changes and during restore-point inspection in both engines.
 - Require unique normalized backup roots across enabled projects, preserving
   one owner for each lock, attempt and success-marker namespace.
 - Bind every custody runtime writer to an active or retired transition barrier

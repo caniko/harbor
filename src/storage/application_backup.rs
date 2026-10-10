@@ -117,6 +117,9 @@ fn walk(root: &Path, path: &Path, result: &mut serde_json::Map<String, Value>) -
         if kind.is_dir() {
             walk(root, &entry_path, result)?;
         } else if kind.is_file() {
+            if fs::symlink_metadata(&entry_path)?.nlink() != 1 {
+                return Err(invalid("backup artifacts must not have hard links"));
+            }
             if result
                 .insert(relative.into(), json!(codec::file_digest(&entry_path)?))
                 .is_some()
@@ -289,6 +292,9 @@ fn permissions(path: &Path) -> Result<()> {
         if e.file_type()?.is_dir() {
             permissions(&e.path())?;
         } else if e.file_type()?.is_file() {
+            if fs::symlink_metadata(e.path())?.nlink() != 1 {
+                return Err(invalid("backup artifacts must not have hard links"));
+            }
             fs::set_permissions(e.path(), fs::Permissions::from_mode(0o640))?;
         } else {
             return Err(invalid("backup contains redirected or special files"));

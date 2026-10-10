@@ -65,11 +65,14 @@ def inventory(path):
             relative.encode("utf-8")
         except UnicodeError:
             raise ValueError("backup artifact path is not UTF-8") from None
-        mode = entry.lstat().st_mode
+        metadata = entry.lstat()
+        mode = metadata.st_mode
         if stat.S_ISDIR(mode):
             continue
         if not stat.S_ISREG(mode):
             raise ValueError("backup contains redirected or special files")
+        if metadata.st_nlink != 1:
+            raise ValueError("backup artifacts must not have hard links")
         if relative in result:
             raise ValueError("backup artifact path is duplicated")
         result[relative] = digest(entry)
@@ -167,7 +170,15 @@ def capture(config, attempt, *, retry_incomplete=False):
         # Readers receive only accepted backup artifacts, never the disposable
         # restore workspace. The service group owns all publications.
         for entry in partial.rglob("*"):
-            entry.chmod(0o750 if entry.is_dir() else 0o640)
+            metadata = entry.lstat()
+            if stat.S_ISDIR(metadata.st_mode):
+                entry.chmod(0o750)
+            elif stat.S_ISREG(metadata.st_mode):
+                if metadata.st_nlink != 1:
+                    raise ValueError("backup artifacts must not have hard links")
+                entry.chmod(0o640)
+            else:
+                raise ValueError("backup contains redirected or special files")
         partial.chmod(0o750)
         sync_tree(partial)
         partial.rename(destination)

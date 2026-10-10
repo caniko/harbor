@@ -24,6 +24,9 @@ for path in (workspace.parent/'lock',base/'extra.lock'):
 if operation=='capture':
     backup.mkdir()
     (backup/'records.json').write_text('[{"id":1,"revision":7}]')
+    if (base/'hardlink').exists():
+        (backup/'records.json').unlink()
+        os.link(base/'mutable.json', backup/'records.json')
     semantic=hashlib.sha256((backup/'records.json').read_bytes()).hexdigest()
     (backup/'capture.json').write_text(json.dumps({'version':1,'consistency':'quiesced','semantic_sha256':semantic}))
     if (base/'symlink').exists(): (backup/'redirect').symlink_to('/etc/passwd')
@@ -71,6 +74,85 @@ fn backup_fixture() -> (tempfile::TempDir, Value) {
 }
 fn last(t: &Path) -> Value {
     durable::read_json(&t.join("backups/LAST_SUCCESS")).unwrap()
+}
+
+#[test]
+fn hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chmod() {
+    use std::os::unix::fs::MetadataExt;
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        let config_file = t.path().join("config.json");
+        durable::write_json(&config_file, &c).unwrap();
+        let invoke = |operation: &str, argument: &str| {
+            if python {
+                let script = "import json,sys\nfrom pathlib import Path\nfrom harbor_db import application_backup\nc=json.loads(Path(sys.argv[1]).read_text())\ntry:\n if sys.argv[2]=='capture': application_backup.capture(c,sys.argv[3])\n else: application_backup.inspect(c,Path(sys.argv[3]))\n outcome={'ok':True}\nexcept ValueError as error: outcome={'error':str(error)}\nprint(json.dumps(outcome))";
+                let mut spec = process::CommandSpec::new(vec![
+                    "python3".into(),
+                    "-B".into(),
+                    "-c".into(),
+                    script.into(),
+                    config_file.display().to_string(),
+                    operation.into(),
+                    argument.into(),
+                ]);
+                spec.environment = Some(std::collections::BTreeMap::from([
+                    (
+                        "PYTHONPATH".into(),
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+                    ("PATH".into(), std::env::var("PATH").unwrap()),
+                ]));
+                process::execute(&spec).and_then(|output| {
+                    let outcome: Value = serde_json::from_slice(&output)?;
+                    if let Some(error) = outcome["error"].as_str() {
+                        Err(harbor_db::storage::invalid(error))
+                    } else {
+                        assert_eq!(outcome, json!({"ok":true}));
+                        Ok(())
+                    }
+                })
+            } else if operation == "capture" {
+                application_backup::capture(&c, argument, false).map(|_| ())
+            } else {
+                application_backup::verify_bytes(&c, Path::new(argument), None).map(|_| ())
+            }
+        };
+        invoke("capture", "first").unwrap();
+        let marker = t.path().join("backups/LAST_SUCCESS");
+        let previous = fs::read(&marker).unwrap();
+        let marker_inode = fs::metadata(&marker).unwrap().ino();
+        let external = t.path().join("mutable.json");
+        fs::write(&external, br#"[{"id":1,"revision":7}]"#).unwrap();
+        fs::set_permissions(&external, fs::Permissions::from_mode(0o600)).unwrap();
+        fs::write(t.path().join("hardlink"), b"").unwrap();
+        let error = invoke("capture", "linked").unwrap_err();
+        assert!(
+            error.to_string().contains("hard link"),
+            "python={python}: {error}"
+        );
+        assert!(!t.path().join("backups/linked").exists());
+        assert!(
+            !t.path()
+                .join("backups/linked.partial/acceptance.json")
+                .exists()
+        );
+        assert!(!t.path().join("backups/linked.restore-workspace").exists());
+        assert_eq!(fs::metadata(&external).unwrap().mode() & 0o777, 0o600);
+        assert_eq!(fs::read(&external).unwrap(), br#"[{"id":1,"revision":7}]"#);
+        assert_eq!(fs::read(&marker).unwrap(), previous);
+        assert_eq!(fs::metadata(&marker).unwrap().ino(), marker_inode);
+        let accepted = t.path().join("backups/first");
+        invoke("inspect", accepted.to_str().unwrap()).unwrap();
+        let artifact = accepted.join("records.json");
+        fs::hard_link(&artifact, t.path().join("accepted-alias")).unwrap();
+        let error = invoke("inspect", accepted.to_str().unwrap()).unwrap_err();
+        assert!(
+            error.to_string().contains("hard link"),
+            "python={python}: {error}"
+        );
+        fs::remove_file(t.path().join("accepted-alias")).unwrap();
+        invoke("inspect", accepted.to_str().unwrap()).unwrap();
+    }
 }
 
 #[test]

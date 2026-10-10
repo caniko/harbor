@@ -3,6 +3,24 @@ version = 1
 
 [[inventories]]
 origin = "rust"
+id_prefix = "native.application_storage."
+selector_prefix = ""
+source = "tests/application_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "application_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+selectors = ["hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chmod"]
+
+[[coverage]]
+case = "native.application_storage.hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chmod"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "rejection"
+evidence = "Both engines reject actual captures hard-linking an external mutable inode before chmod or acceptance, preserving the external mode/bytes and prior marker bytes/inode. Partial evidence remains private and cleanup runs. Inspection rejects a hard link introduced into an accepted artifact even when its bytes still match, and succeeds after that alias is removed."
+
+[[inventories]]
+origin = "rust"
 id_prefix = "native.transition_storage."
 selector_prefix = ""
 source = "tests/transition_storage.rs"

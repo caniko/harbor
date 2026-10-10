@@ -45,7 +45,7 @@ sha256 = "958f1c84f67fd46f7eab054c334dd312c851b74559c032036c08e5e5653bcc69"
 
 [[extensions]]
 path = "python/harbor_db/application_backup.py"
-sha256 = "d4f24ff21a95741eec5e09290241980debdb4394a36b9eb5d07860244491986b"
+sha256 = "b2a28c893612192863189285c5e1f4c7ccd9be91271eec77a592ad62450eccfc"
 
 [[extensions]]
 path = "python/harbor_db/durable.py"
