@@ -3,6 +3,24 @@ version = 1
 
 [[inventories]]
 origin = "rust"
+id_prefix = "native.application_storage."
+selector_prefix = ""
+source = "tests/application_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "application_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+selectors = ["last_success_syncs_reader_permissions_before_publication_in_both_engines"]
+
+[[coverage]]
+case = "native.application_storage.last_success_syncs_reader_permissions_before_publication_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "interruption"
+evidence = "An fsync interposer requires the LAST_SUCCESS temporary inode to have final 0640 permissions at file sync in both engines. Injected marker file-sync failure preserves the previous marker bytes and inode, acknowledges no success, cleans its temporary name and retains the new accepted backup for explicit retry."
+
+[[inventories]]
+origin = "rust"
 id_prefix = "native.transition_storage."
 selector_prefix = ""
 source = "tests/transition_storage.rs"

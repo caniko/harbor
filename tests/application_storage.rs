@@ -73,6 +73,142 @@ fn last(t: &Path) -> Value {
     durable::read_json(&t.join("backups/LAST_SUCCESS")).unwrap()
 }
 
+#[test]
+fn last_success_syncs_reader_permissions_before_publication_in_both_engines() {
+    use std::{
+        os::unix::fs::MetadataExt,
+        process::{Command, Stdio},
+    };
+    let injector = tempfile::tempdir().unwrap();
+    let source = injector.path().join("marker-sync.c");
+    let library = injector.path().join("marker-sync.so");
+    fs::write(
+        &source,
+        r#"#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+int fsync(int fd) {
+    int (*next)(int) = (int (*)(int))dlsym(RTLD_NEXT, "fsync");
+    char link[64], path[4096];
+    snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
+    ssize_t length = readlink(link, path, sizeof(path) - 1);
+    if (length >= 0) {
+        path[length] = '\0';
+        const char *name = strrchr(path, '/');
+        struct stat info;
+        if (name && (strcmp(name + 1, "LAST_SUCCESS") == 0 ||
+            strncmp(name + 1, ".LAST_SUCCESS.", 14) == 0) &&
+            fstat(fd, &info) == 0 && S_ISREG(info.st_mode)) {
+            if ((info.st_mode & 0777) != 0640 || getenv("HARBOR_DB_TEST_FAIL_MARKER_SYNC")) {
+                errno = EIO;
+                return -1;
+            }
+        }
+    }
+    return next(fd);
+}
+"#,
+    )
+    .unwrap();
+    let compile = process::CommandSpec::new(vec![
+        "cc".into(),
+        "-shared".into(),
+        "-fPIC".into(),
+        "-Wall".into(),
+        "-Wextra".into(),
+        "-Werror".into(),
+        source.to_str().unwrap().into(),
+        "-o".into(),
+        library.to_str().unwrap().into(),
+        "-ldl".into(),
+    ]);
+    process::execute(&compile).unwrap();
+    for native in [true, false] {
+        let (temp, config) = backup_fixture();
+        let config_path = temp.path().join("config.json");
+        fs::write(&config_path, config.to_string()).unwrap();
+        let run = |attempt: &str, fail: bool| {
+            let mut command = if native {
+                let mut command = Command::new(env!("CARGO_BIN_EXE_harbor-db-application-backup"));
+                command.args([
+                    "--config",
+                    config_path.to_str().unwrap(),
+                    "capture",
+                    "--attempt",
+                    attempt,
+                ]);
+                command
+            } else {
+                let mut command = Command::new("python3");
+                command.args(["-B", "-c", r#"import json,sys
+from harbor_db import application_backup
+from unittest.mock import patch
+if sys.argv[3]:
+    original=application_backup.digest
+    patch.object(application_backup,'digest',side_effect=lambda path: original(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
+print(json.dumps(application_backup.capture(json.load(open(sys.argv[1])),sys.argv[2])))
+"#, config_path.to_str().unwrap(), attempt, option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("")]);
+                command
+            };
+            command
+                .env("LD_PRELOAD", &library)
+                .env(
+                    "PYTHONPATH",
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                )
+                .env_remove("HARBOR_DB_TEST_FAIL_MARKER_SYNC")
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            if fail {
+                command.env("HARBOR_DB_TEST_FAIL_MARKER_SYNC", "1");
+            }
+            process::spawn(&mut command)
+                .unwrap()
+                .wait_with_output()
+                .unwrap()
+        };
+        let accepted = run("good", false);
+        assert!(
+            accepted.status.success(),
+            "native={native}: {}",
+            String::from_utf8_lossy(&accepted.stderr)
+        );
+        let marker = temp.path().join("backups/LAST_SUCCESS");
+        let metadata = fs::metadata(&marker).unwrap();
+        assert_eq!(metadata.mode() & 0o777, 0o640);
+        let before = fs::read(&marker).unwrap();
+        let rejected = run("failed-sync", true);
+        assert!(
+            !rejected.status.success(),
+            "file-sync failure was acknowledged"
+        );
+        assert!(String::from_utf8_lossy(&rejected.stderr).contains("Input/output error"));
+        assert_eq!(fs::read(&marker).unwrap(), before);
+        assert_eq!(fs::metadata(&marker).unwrap().ino(), metadata.ino());
+        assert_eq!(last(temp.path())["attempt"], "good");
+        assert!(
+            temp.path()
+                .join("backups/failed-sync/acceptance.json")
+                .is_file()
+        );
+        assert!(
+            fs::read_dir(temp.path().join("backups"))
+                .unwrap()
+                .all(|entry| !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".LAST_SUCCESS."))
+        );
+    }
+}
+
 fn python_backup(c: &Value, action: &str) -> harbor_db::storage::Result<Value> {
     let script = r#"import json,sys
 from pathlib import Path

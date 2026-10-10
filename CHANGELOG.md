@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Synchronize the final reader permissions on `LAST_SUCCESS` before publishing
+  its inode in both backup engines; failed file sync preserves the prior marker.
 - Require optional PostgreSQL and custody transition policies to be immutable
   store references before operator dispatch, preserving recorded contract bytes.
 - Reject empty or relative transition worker argv during NixOS evaluation,

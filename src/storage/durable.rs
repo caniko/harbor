@@ -8,7 +8,7 @@ use std::{
     mem::ManuallyDrop,
     os::{
         fd::{AsRawFd, RawFd},
-        unix::fs::{MetadataExt, OpenOptionsExt},
+        unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -63,6 +63,10 @@ pub(super) fn temporary_file(parent: &Path, name: &OsStr) -> Result<(PathBuf, Fi
 }
 
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+    atomic_write_mode(path, bytes, 0o600)
+}
+
+pub fn atomic_write_mode(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| invalid("publication has no parent"))?;
@@ -73,6 +77,9 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let (temporary, mut file) = temporary_file(parent, name)?;
     let result = (|| {
         file.write_all(bytes)?;
+        // Synchronize the final reader permissions on the same inode before
+        // its name becomes the acknowledged publication.
+        file.set_permissions(fs::Permissions::from_mode(mode))?;
         file.sync_all()?;
         fs::rename(&temporary, path)?;
         sync_directory(parent)
@@ -84,9 +91,13 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 pub fn write_json(path: &Path, value: &Value) -> Result<()> {
+    write_json_mode(path, value, 0o600)
+}
+
+pub fn write_json_mode(path: &Path, value: &Value, mode: u32) -> Result<()> {
     let mut bytes = codec::encode(value, false)?;
     bytes.push(b'\n');
-    atomic_write(path, &bytes)
+    atomic_write_mode(path, &bytes, mode)
 }
 
 pub fn read_json(path: &Path) -> Result<Value> {

@@ -98,7 +98,9 @@ does not establish automatic cleanup.
 
 `harbor-db-application-backup --config MANIFEST capture [--attempt ID]` records
 every artifact and executable hash, executes restoration and verification, flushes
-the accepted tree, then publishes it and advances `LAST_SUCCESS`. An interruption
+the accepted tree, then publishes it and advances `LAST_SUCCESS`. Publication
+sets the marker's final `0640` reader permissions and file-syncs them before
+rename, then syncs the containing directory. An interruption
 can leave a valid unpublished point; the previous success remains usable. Attempts
 are never overwritten. `inspect BACKUP` rechecks bytes, contracts and freshness.
 

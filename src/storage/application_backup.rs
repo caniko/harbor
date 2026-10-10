@@ -376,12 +376,11 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     durable::write_json(&partial.join("acceptance.json"), &receipt)?;
     permissions(&partial)?;
     durable::publish_tree(&partial, &destination)?;
-    durable::write_json(
+    durable::write_json_mode(
         &root.join("LAST_SUCCESS"),
         &json!({"attempt":attempt,"acceptance_sha256":codec::file_digest(&destination.join("acceptance.json"))?}),
+        0o640,
     )?;
-    fs::set_permissions(root.join("LAST_SUCCESS"), fs::Permissions::from_mode(0o640))?;
-    durable::sync_directory(&root)?;
     Ok(receipt)
 }
 pub fn verify_bytes(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {

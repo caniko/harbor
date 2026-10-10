@@ -172,9 +172,7 @@ def capture(config, attempt, *, retry_incomplete=False):
         sync_tree(partial)
         partial.rename(destination)
         sync_directory(root)
-        write_json(root / "LAST_SUCCESS", {"attempt": attempt, "acceptance_sha256": digest(destination / "acceptance.json")})
-        (root / "LAST_SUCCESS").chmod(0o640)
-        sync_directory(root)
+        write_json(root / "LAST_SUCCESS", {"attempt": attempt, "acceptance_sha256": digest(destination / "acceptance.json")}, mode=0o640)
         return receipt
 
 
