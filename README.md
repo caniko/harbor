@@ -243,6 +243,11 @@ services.harbor-db.projects.provision = {
 `credentialArgs` appends credential file paths to the runner arguments;
 `credentialEnvironment` maps environment names to credential names. Do not put
 secret values in `args`, `environment`, or generated plans.
+Credential names contain 1..255 ASCII letters, digits, dots, underscores or
+hyphens, excluding `.` and `..`. Ordinary and credential environment keys use
+portable ASCII identifiers (`[A-Za-z_][A-Za-z0-9_]*`). Invalid keys or credential
+names reject the entire plan before any operation runs; generated Nix plans
+enforce the same contract during evaluation.
 
 ## Existing PostgreSQL adoption through NixOS
 

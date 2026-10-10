@@ -59,7 +59,21 @@ argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "plan_cl
 argv_suffix = ["--", "--exact"]
 profile = "fast"
 maturity = "crystallized"
-selectors = ["normal_apply_excludes_restore_lifecycle_even_with_automatic_safety", "manual_prerequisites_require_confirmation_and_execute_before_dependents"]
+selectors = ["normal_apply_excludes_restore_lifecycle_even_with_automatic_safety", "manual_prerequisites_require_confirmation_and_execute_before_dependents", "invalid_environment_bindings_reject_the_entire_plan_before_any_command_runs", "credential_name_boundaries_match_systemd_before_plan_execution"]
+
+[[coverage]]
+case = "native.plan-cli.invalid_environment_bindings_reject_the_entire_plan_before_any_command_runs"
+capability = "plan-cli"
+operation = "harbor-db.validate"
+dimension = "rejection"
+evidence = "The actual CLI rejects malformed ordinary and credential environment keys in both apply and check commands during validate/apply/check/restore, before even an unrelated earlier command can write. Portable identifiers still execute. Generated Nix project and raw migration environment maps enforce the same spelling."
+
+[[coverage]]
+case = "native.plan-cli.credential_name_boundaries_match_systemd_before_plan_execution"
+capability = "plan-cli"
+operation = "harbor-db.validate"
+dimension = "compatibility"
+evidence = "Actual CLI admission rejects empty/dot/parent/escaping and 256-byte credential names before any operation runs, through both argument and environment references. A 255-byte name and safe dotted name execute; Nix rejects the same invalid credential-source names in generated and raw plans."
 
 [[coverage]]
 case = "native.plan-cli.normal_apply_excludes_restore_lifecycle_even_with_automatic_safety"

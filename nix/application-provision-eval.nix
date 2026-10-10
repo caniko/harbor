@@ -43,6 +43,15 @@
     };
   };
   failed = evaluation: builtins.filter (item: !item.assertion) evaluation.config.assertions;
+  rejected = evaluation: fragment: pkgs.lib.any (item: pkgs.lib.hasInfix fragment item.message) (failed evaluation);
+  names = ["bad project" "bad\nproject" "bad\tproject" "bad/project" "" (pkgs.lib.concatStrings (pkgs.lib.replicate 129 "a"))];
+  provision = {
+    enable = true;
+    database = "other";
+    ownerRole = "other_owner";
+    runtimeRole = "other_runtime";
+    runtimeOsUser = "other";
+  };
 in
   (import ./eval-checks.nix {inherit pkgs;}).mkEvalCheck {
     name = "harbor-db-application-provision-eval";
@@ -57,6 +66,35 @@ in
         name = "duplicate";
         assertion = failed duplicate != [];
         message = "database reuse must be rejected";
+      }
+      {
+        name = "provision-only-name-rejection";
+        assertion = pkgs.lib.all (name: let
+          e = evaluate {
+            services.harbor-db.projects.${name} = {
+              enable = true;
+              postgres.provision = provision;
+            };
+          };
+        in
+          rejected e "provision project name")
+        names;
+        message = "Provision-only unsafe project names must reject even without generated migration units.";
+      }
+      {
+        name = "provision-only-name-boundaries";
+        assertion = pkgs.lib.all (name: failed (evaluate {services.harbor-db.projects.${name}.postgres.provision = provision;}) == []) ["a" "project_09-v1" (pkgs.lib.concatStrings (pkgs.lib.replicate 128 "a"))];
+        message = "Valid provision-only project names must admit the exact 1..128-byte boundaries.";
+      }
+      {
+        name = "schema-runtime-unit-overlap-rejection";
+        assertion = rejected (evaluate {services.harbor-db.projects.demo.postgres.provision.runtimeUnits = ["demo-schema.service"];}) "schemaUnits and runtimeUnits must be disjoint";
+        message = "A service cannot be ordered both before and after privilege reconciliation.";
+      }
+      {
+        name = "shared-owner-runtime-os-user-rejection";
+        assertion = rejected (evaluate {services.harbor-db.projects.demo.postgres.provision.ownerOsUser = "demo";}) "ownerOsUser and runtimeOsUser must differ";
+        message = "One peer OS account must never match both schema-owner and restricted-runtime HBA rules.";
       }
       {
         name = "schema-order";

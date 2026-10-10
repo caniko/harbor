@@ -7,61 +7,78 @@
   secretFile = pkgs.writeText "harbor-db-module-eval-secret" secretValue;
   rawCommand = pkgs.writeShellScript "harbor-db-module-eval-raw" "exit 0";
   runner = pkgs.writeShellScriptBin "module-eval-runner" "exit 0";
-  eval = import "${pkgs.path}/nixos/lib/eval-config.nix" {
-    inherit (pkgs) system;
-    modules = [
-      module
-      {
-        system.stateVersion = "24.11";
-        services.harbor-db.package = pkgs.writeShellScriptBin "harbor-db" "exit 0";
-        services.harbor-db.operations.raw = {
-          enable = true;
-          command = "${rawCommand}";
-          checkCommand = "${rawCommand}";
-          credentials.token = secretFile;
-          stateDirectory = "harbor-db-raw";
-          runtimeDirectory = "harbor-db-raw";
-        };
-        services.harbor-db.projects.demo = {
-          enable = true;
-          operations.ensure = {
+  evaluate = additional:
+    import "${pkgs.path}/nixos/lib/eval-config.nix" {
+      inherit (pkgs) system;
+      modules = [
+        module
+        {
+          system.stateVersion = "24.11";
+          boot.loader.grub.devices = ["/dev/vda"];
+          fileSystems."/" = {
+            device = "/dev/vda";
+            fsType = "ext4";
+          };
+          services.harbor-db.package = pkgs.writeShellScriptBin "harbor-db" "exit 0";
+          services.harbor-db.operations.raw = {
             enable = true;
-            kind = "credential";
-            lifecycle = "ensure";
+            command = "${rawCommand}";
+            checkCommand = "${rawCommand}";
             credentials.token = secretFile;
-            runner = {
-              package = runner;
-              executable = "bin/module-eval-runner";
-              args = ["ensure"];
-              checkArgs = ["check"];
-              credentialEnvironment.TOKEN_FILE = "token";
-            };
-            stateDirectory = "harbor-db-module-eval";
-            runtimeDirectory = "harbor-db-module-eval";
-            after = ["network-online.target"];
-            requires = ["network-online.target"];
-            runtimeUnits = ["demo-app.service"];
+            stateDirectory = "harbor-db-raw";
+            runtimeDirectory = "harbor-db-raw";
           };
-          operations.restore = {
+          services.harbor-db.projects.demo = {
             enable = true;
-            lifecycle = "restore";
-            safety = "operator_confirmed";
-            runner = {
-              command = "systemctl start demo-helper.service";
-              checkCommand = "test -f /var/lib/harbor-db-restore-healed";
+            operations.ensure = {
+              enable = true;
+              kind = "credential";
+              lifecycle = "ensure";
+              credentials.token = secretFile;
+              runner = {
+                package = runner;
+                executable = "bin/module-eval-runner";
+                args = ["ensure"];
+                checkArgs = ["check"];
+                credentialEnvironment.TOKEN_FILE = "token";
+              };
+              stateDirectory = "harbor-db-module-eval";
+              runtimeDirectory = "harbor-db-module-eval";
+              after = ["network-online.target"];
+              requires = ["network-online.target"];
+              runtimeUnits = ["demo-app.service"];
+            };
+            operations.restore = {
+              enable = true;
+              lifecycle = "restore";
+              safety = "operator_confirmed";
+              runner = {
+                command = "systemctl start demo-helper.service";
+                checkCommand = "test -f /var/lib/harbor-db-restore-healed";
+              };
             };
           };
-        };
-        services.harbor-db.dataDirectories = [
-          {
-            path = "/var/lib/harbor-db-data";
-            user = "postgres";
-            group = "postgres";
-            mode = "0700";
-          }
-        ];
-      }
-    ];
+          services.harbor-db.dataDirectories = [
+            {
+              path = "/var/lib/harbor-db-data";
+              user = "postgres";
+              group = "postgres";
+              mode = "0700";
+            }
+          ];
+        }
+        additional
+      ];
+    };
+  eval = evaluate {};
+  failed = evaluation: builtins.filter (item: !item.assertion) evaluation.config.assertions;
+  rejected = evaluation: fragment: lib.any (item: lib.hasInfix fragment item.message) (failed evaluation);
+  credentialNames = ["" "." ".." "../token" (lib.concatStrings (lib.replicate 256 "a"))];
+  credentials = name: {
+    enable = true;
+    credentials.${name} = secretFile;
+    runner.executable = "${runner}/bin/module-eval-runner";
+    runner.credentialArgs = [name];
   };
   service = eval.config.systemd.services.harbor-db-demo;
   checkService = eval.config.systemd.services.harbor-db-demo-check;
@@ -149,6 +166,63 @@ in
       PY
     '';
     assertions = [
+      {
+        name = "generated-credential-name-rejection";
+        assertion = lib.all (name: rejected (evaluate {services.harbor-db.projects.extra = credentials name;}) "credential names") credentialNames;
+        message = "Generated plans must reject empty, dot, parent, escaping and overlong credential names at evaluation.";
+      }
+      {
+        name = "raw-migration-credential-name-rejection";
+        assertion = lib.all (name:
+          rejected (evaluate {
+            services.harbor-db.migrations.extra = {
+              enable = true;
+              command = "${rawCommand}";
+              credentials.${name} = secretFile;
+            };
+          }) "credential names")
+        credentialNames;
+        message = "Raw migration credential names must obey the same filename contract.";
+      }
+      {
+        name = "valid-credential-name-boundaries";
+        assertion = lib.all (name: failed (evaluate {services.harbor-db.projects.extra = credentials name;}) == []) [(lib.concatStrings (lib.replicate 255 "a")) ".token_09-v1"];
+        message = "A 255-byte name and safe dot/underscore/hyphen names must remain admissible.";
+      }
+      {
+        name = "generated-credential-environment-name-rejection";
+        assertion = lib.all (key:
+          rejected (evaluate {
+            services.harbor-db.projects.extra = {
+              enable = true;
+              credentials.token = secretFile;
+              runner.executable = "${runner}/bin/module-eval-runner";
+              runner.credentialEnvironment.${key} = "token";
+            };
+          }) "environment names") ["" "BAD=NAME" "BAD NAME" "9NAME" "BAD-NAME"];
+        message = "An evaluated generated plan must use portable environment names for credential paths.";
+      }
+      {
+        name = "ordinary-environment-name-rejection";
+        assertion = lib.all (key: let
+          project = evaluate {
+            services.harbor-db.projects.extra = {
+              enable = true;
+              runner.executable = "${runner}/bin/module-eval-runner";
+              environment.${key} = "literal";
+            };
+          };
+          migration = evaluate {
+            services.harbor-db.migrations.extra = {
+              enable = true;
+              command = "${rawCommand}";
+              environment.${key} = "literal";
+            };
+          };
+        in
+          rejected project "environment names" && rejected migration "environment names") ["" "BAD=NAME" "BAD NAME" "9NAME" "BAD-NAME"];
+        message = "Project and raw migration ordinary environments must reject malformed keys before service generation.";
+      }
       {
         name = "credential-load-is-per-operation-source";
         assertion = lib.elem "token:${secretFile}" service.serviceConfig.LoadCredential;

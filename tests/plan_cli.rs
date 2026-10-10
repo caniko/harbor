@@ -230,6 +230,110 @@ fn normal_apply_excludes_restore_lifecycle_even_with_automatic_safety() {
 }
 
 #[test]
+fn invalid_environment_bindings_reject_the_entire_plan_before_any_command_runs() {
+    let f = Fixture::new();
+    for field in ["environment", "credential_environment"] {
+        for key in [
+            "",
+            " ",
+            "BAD=NAME",
+            "BAD\0NAME",
+            "BAD NAME",
+            "9NAME",
+            "BAD-NAME",
+        ] {
+            for command in ["apply", "check"] {
+                let mut invalid = operation(
+                    "invalid",
+                    "touch \"$ROOT/invalid\"",
+                    "touch \"$ROOT/invalid\"",
+                );
+                invalid[command][field] =
+                    json!({key:if field=="environment" {"plain"} else {"token"}});
+                f.write_plan(vec![
+                    operation(
+                        "unrelated",
+                        "touch \"$ROOT/unrelated\"",
+                        "touch \"$ROOT/unrelated\"",
+                    ),
+                    invalid,
+                ]);
+                for mode in ["validate", "apply", "check", "restore"] {
+                    assert_error(&f.run(mode, &[]), "environment name");
+                    assert!(
+                        !f.path("unrelated").exists(),
+                        "{mode} ran an earlier operation before rejecting {field} key {key:?}"
+                    );
+                    assert!(!f.path("invalid").exists());
+                }
+            }
+        }
+    }
+    let mut valid = operation(
+        "valid",
+        "printf '%s' \"$_ASCII_09\" > \"$ROOT/value\"; touch \"$ROOT/valid\"",
+        "exit 0",
+    );
+    valid["apply"]["environment"] =
+        json!({"_ASCII_09":"literal value with spaces\nand punctuation = preserved"});
+    valid["apply"]["credential_environment"] = json!({"TOKEN_FILE":"token"});
+    f.write_plan(vec![valid]);
+    assert_output(
+        &f.run("validate", &[]),
+        0,
+        "database-operation plan is valid\n",
+    );
+    assert_output(&f.run("apply", &[]), 0, "valid: applied\n");
+    assert!(f.path("valid").exists());
+    assert_eq!(
+        fs::read(f.path("value")).unwrap(),
+        b"literal value with spaces\nand punctuation = preserved"
+    );
+}
+
+#[test]
+fn credential_name_boundaries_match_systemd_before_plan_execution() {
+    let f = Fixture::new();
+    for name in [
+        "".to_owned(),
+        ".".to_owned(),
+        "..".to_owned(),
+        "a".repeat(256),
+        "../token".to_owned(),
+    ] {
+        for field in ["credential_args", "credential_environment"] {
+            let mut invalid = operation("invalid", "touch \"$ROOT/invalid\"", "exit 0");
+            invalid["apply"][field] = if field == "credential_args" {
+                json!([name])
+            } else {
+                json!({"TOKEN_FILE":name})
+            };
+            f.write_plan(vec![
+                operation("unrelated", "touch \"$ROOT/unrelated\"", "exit 0"),
+                invalid,
+            ]);
+            for mode in ["validate", "apply"] {
+                assert_error(&f.run(mode, &[]), "invalid credential name");
+                assert!(!f.path("unrelated").exists());
+                assert!(!f.path("invalid").exists());
+            }
+        }
+    }
+    for name in ["a".repeat(255), ".token_09-v1".to_owned()] {
+        let mut valid = operation("valid", "exit 0", "exit 0");
+        valid["apply"]["credential_args"] = json!([name]);
+        valid["apply"]["credential_environment"] = json!({"TOKEN_FILE":name});
+        f.write_plan(vec![valid]);
+        assert_output(
+            &f.run("validate", &[]),
+            0,
+            "database-operation plan is valid\n",
+        );
+        assert_output(&f.run("apply", &[]), 0, "valid: applied\n");
+    }
+}
+
+#[test]
 fn manual_prerequisites_require_confirmation_and_execute_before_dependents() {
     let f = Fixture::new();
     let mut manual = operation(

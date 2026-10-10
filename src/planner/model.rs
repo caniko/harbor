@@ -130,12 +130,23 @@ impl CommandSpec {
         for credential in &self.credential_args {
             validate_credential_name(credential, context)?;
         }
-        for (environment, credential) in &self.credential_environment {
-            if environment.trim().is_empty() {
+        for environment in self
+            .environment
+            .keys()
+            .chain(self.credential_environment.keys())
+        {
+            let mut bytes = environment.bytes();
+            if !bytes
+                .next()
+                .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+                || !bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            {
                 return Err(MigrationError::InvalidPlan(format!(
-                    "{context}: credential environment name must not be empty"
+                    "{context}: environment name must be a portable ASCII identifier"
                 )));
             }
+        }
+        for (environment, credential) in &self.credential_environment {
             if self.environment.contains_key(environment) {
                 return Err(MigrationError::InvalidPlan(format!(
                     "{context}: credential environment {environment} conflicts with environment"
@@ -409,6 +420,7 @@ impl RunReport {
 
 fn validate_credential_name(name: &str, context: &str) -> Result<(), MigrationError> {
     if name.is_empty()
+        || name.len() > 255
         || name == "."
         || name == ".."
         || !name

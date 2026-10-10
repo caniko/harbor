@@ -11,6 +11,10 @@
   unit = types.strMatching "[A-Za-z0-9_@.:-]+\\.service";
   projects = lib.filterAttrs (_: project: project.postgres.provision.enable) config.services.harbor-db.projects;
   policies = lib.mapAttrs (_: project: project.postgres.provision) projects;
+  safeProjectName = name: builtins.match "[A-Za-z0-9_-]{1,128}" name != null;
+  # Keep malformed names out of typed systemd fields so the project assertion
+  # reports the error before any PostgreSQL or unit configuration is generated.
+  renderedPolicies = lib.filterAttrs (name: _: safeProjectName name) policies;
   package = harborDbStoragePackage;
   manifest = name: policy:
     pkgs.writeText "harbor-db-${name}-provision.json" (builtins.toJSON {
@@ -87,33 +91,49 @@ in {
     });
   };
   config = lib.mkIf (projects != {}) {
-    assertions = [
-      {
-        assertion = config.services.postgresql.enable;
-        message = "Harbor DB application provisioning requires the host PostgreSQL service.";
-      }
-      {
-        assertion = lib.length (lib.unique (map (p: p.database) (lib.attrValues policies))) == lib.length (lib.attrValues policies);
-        message = "Harbor DB application databases must be unique.";
-      }
-      {
-        assertion = let roles = lib.concatMap (p: [p.ownerRole p.runtimeRole]) (lib.attrValues policies); in lib.length (lib.unique roles) == lib.length roles;
-        message = "Harbor DB application roles must have one dedicated owner.";
-      }
-    ];
+    assertions =
+      [
+        {
+          assertion = config.services.postgresql.enable;
+          message = "Harbor DB application provisioning requires the host PostgreSQL service.";
+        }
+        {
+          assertion = lib.length (lib.unique (map (p: p.database) (lib.attrValues policies))) == lib.length (lib.attrValues policies);
+          message = "Harbor DB application databases must be unique.";
+        }
+        {
+          assertion = let roles = lib.concatMap (p: [p.ownerRole p.runtimeRole]) (lib.attrValues policies); in lib.length (lib.unique roles) == lib.length roles;
+          message = "Harbor DB application roles must have one dedicated owner.";
+        }
+      ]
+      ++ lib.flatten (lib.mapAttrsToList (name: p: [
+          {
+            assertion = safeProjectName name;
+            message = "Harbor DB ${name} provision project name must contain 1..128 ASCII letters, digits, underscores or hyphens.";
+          }
+          {
+            assertion = lib.intersectLists p.schemaUnits p.runtimeUnits == [];
+            message = "Harbor DB ${name} schemaUnits and runtimeUnits must be disjoint.";
+          }
+          {
+            assertion = p.ownerOsUser != p.runtimeOsUser;
+            message = "Harbor DB ${name} ownerOsUser and runtimeOsUser must differ to isolate owner and runtime peer access.";
+          }
+        ])
+        policies);
     systemd.tmpfiles.rules = ["d /var/lib/harbor-db-provision 0700 postgres postgres -" "f /var/lib/harbor-db-provision/lock 0600 postgres postgres -"];
     environment.systemPackages = [package];
     services.postgresql.identMap = lib.mkBefore (lib.concatStringsSep "\n" (lib.mapAttrsToList (name: p: ''
         harbor-${name}-runtime ${p.runtimeOsUser} ${p.runtimeRole}
         harbor-${name}-owner ${p.ownerOsUser} ${p.ownerRole}
       '')
-      policies));
+      renderedPolicies));
     services.postgresql.authentication = lib.mkBefore (lib.concatStringsSep "\n" (lib.mapAttrsToList (name: p: ''
         local ${p.database} ${p.runtimeRole} peer map=harbor-${name}-runtime
         local ${p.database} ${p.ownerRole} peer map=harbor-${name}-owner
       '')
-      policies));
-    environment.etc = lib.mapAttrs' (name: p: lib.nameValuePair "harbor-db/${name}-provision.json" {source = manifest name p;}) policies;
+      renderedPolicies));
+    environment.etc = lib.mapAttrs' (name: p: lib.nameValuePair "harbor-db/${name}-provision.json" {source = manifest name p;}) renderedPolicies;
     systemd.services = lib.mkMerge (lib.mapAttrsToList (name: p: let
         provision = "harbor-db-${name}-provision";
         permissions = "harbor-db-${name}-permissions";
@@ -152,6 +172,6 @@ in {
               };
           };
       })
-      policies);
+      renderedPolicies);
   };
 }

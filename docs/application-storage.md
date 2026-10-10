@@ -10,6 +10,10 @@ record-level validators. Consumers declare paths, identities and deployment poli
 `ownerRole`, `runtimeRole`, `runtimeOsUser`, optional `ownerOsUser` (root), and
 schema/current/default privileges. Enable it explicitly. It may be used without
 enabling a lifecycle migration. Database and roles must be unique across projects.
+Provision project names use 1..128 ASCII letters, digits, underscores or hyphens.
+Owner and runtime OS users must differ: one peer identity cannot be authorized as
+both the schema owner and the restricted runtime role. `schemaUnits` and
+`runtimeUnits` must be disjoint to keep permission reconciliation acyclic.
 `lib.applicationProvisioning = 2` advertises strict post-schema reconciliation.
 
 `schemaUnits` require the generated provision service. `runtimeUnits` require
