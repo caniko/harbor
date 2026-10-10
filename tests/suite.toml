@@ -74,7 +74,7 @@ case = "nix.x86_64-linux.native-storage-eval"
 capability = "nixos"
 operation = "nixos.application-backup"
 dimension = "rejection"
-evidence = "nix/native-storage-eval.nix checks the actual backup module assertions: mixed ASCII resource names and the 128-byte boundary, required literal stage-specific placeholders, and bounded filename-safe credential IDs. Dotted/at-sign/empty/overlength resources, missing or embedded placeholders, and invalid credential IDs are rejected."
+evidence = "nix/native-storage-eval.nix checks the actual backup module assertions: mixed ASCII resource names and the 128-byte boundary, required literal stage-specific placeholders, and bounded filename-safe credential IDs. Dotted/at-sign/empty/overlength resources, missing or embedded placeholders, and invalid credential IDs are rejected. Shared backup roots with matching or differing owners and ambiguous path spellings reject too; distinct roots and disabled projects sharing an enabled root are admitted."
 
 [[inventories]]
 origin = "rust"

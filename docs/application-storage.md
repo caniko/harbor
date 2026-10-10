@@ -63,6 +63,10 @@ of schema migration or backend selection. `lib.applicationBackup = 1` advertises
 the interface. Physical cluster backups remain a separate `pgBackup` contract.
 Enabled backup project names must match `[A-Za-z0-9_-]{1,128}`, the runtime
 resource contract. Invalid names fail NixOS evaluation before a timer is installed.
+Every enabled project must also have a distinct, normalized absolute backup
+root, preserving exclusive lock, attempt and success-marker namespaces. Disabled
+projects do not reserve roots. Ambiguous dot/parent components and repeated or
+trailing separators are rejected before comparing roots.
 
 Backup inventories require UTF-8 relative artifact paths; non-UTF-8 file or
 directory names are rejected before acceptance publication. Every stage requires

@@ -7,6 +7,8 @@
 }: let
   inherit (lib) mkOption types;
   projects = lib.filterAttrs (_: p: p.backup.enable) config.services.harbor-db.projects;
+  roots = map (p: p.backup.directory) (lib.attrValues projects);
+  normalizedPath = (import ./storage-paths.nix {inherit lib;}).normalizedAbsolute;
   package = harborDbStoragePackage;
   manifest = name: backup:
     pkgs.writeText "harbor-db-${name}-backup.json" (builtins.toJSON {
@@ -65,38 +67,49 @@ in {
     });
   };
   config = lib.mkIf (projects != {}) {
-    assertions = lib.concatLists (lib.mapAttrsToList (name: p: [
+    assertions =
+      [
         {
-          assertion = builtins.match "[A-Za-z0-9_-]{1,128}" name != null;
-          message = "Harbor DB ${name} backup project name must contain 1..128 ASCII letters, digits, underscores or hyphens, matching the runtime resource name.";
+          assertion = lib.all normalizedPath roots;
+          message = "Harbor DB backup roots must be normalized absolute paths without '.', '..', repeated or trailing separators.";
         }
         {
-          assertion = builtins.attrNames p.backup.commands == ["capture" "cleanup" "restore" "verify"];
-          message = "Harbor DB ${name} backup requires capture, restore, verify and cleanup.";
+          assertion = lib.length roots == lib.length (lib.unique roots);
+          message = "Harbor DB backup roots must be unique across enabled projects so each lock and publication namespace has one owner.";
         }
-        {
-          assertion = lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) (lib.attrValues p.backup.commands);
-          message = "Harbor DB ${name} backup commands must be absolute.";
-        }
-        {
-          assertion = lib.all (stage: let
-            argv = p.backup.commands.${stage} or [];
-          in
-            lib.elem "{backup}" argv && (stage == "capture" || lib.elem "{workspace}" argv)) ["capture" "restore" "verify" "cleanup"];
-          message = "Harbor DB ${name} backup command placeholders require a literal {backup} argument in every stage and {workspace} in restore, verify and cleanup.";
-        }
-        {
-          assertion =
-            lib.all (credential:
-              builtins.match "[A-Za-z0-9_.-]{1,255}" credential != null && !(lib.elem credential ["." ".."])) (builtins.attrNames p.backup.credentials);
-          message = "Harbor DB ${name} backup credential names must be filename-safe ASCII IDs of 1..255 bytes, excluding '.' and '..'.";
-        }
-        {
-          assertion = lib.all (path: lib.hasPrefix "/" path && !(lib.hasPrefix "/nix/store/" path)) (lib.attrValues p.backup.credentials);
-          message = "Harbor DB backup credentials must be runtime paths outside the store.";
-        }
-      ])
-      projects);
+      ]
+      ++ lib.concatLists (lib.mapAttrsToList (name: p: [
+          {
+            assertion = builtins.match "[A-Za-z0-9_-]{1,128}" name != null;
+            message = "Harbor DB ${name} backup project name must contain 1..128 ASCII letters, digits, underscores or hyphens, matching the runtime resource name.";
+          }
+          {
+            assertion = builtins.attrNames p.backup.commands == ["capture" "cleanup" "restore" "verify"];
+            message = "Harbor DB ${name} backup requires capture, restore, verify and cleanup.";
+          }
+          {
+            assertion = lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) (lib.attrValues p.backup.commands);
+            message = "Harbor DB ${name} backup commands must be absolute.";
+          }
+          {
+            assertion = lib.all (stage: let
+              argv = p.backup.commands.${stage} or [];
+            in
+              lib.elem "{backup}" argv && (stage == "capture" || lib.elem "{workspace}" argv)) ["capture" "restore" "verify" "cleanup"];
+            message = "Harbor DB ${name} backup command placeholders require a literal {backup} argument in every stage and {workspace} in restore, verify and cleanup.";
+          }
+          {
+            assertion =
+              lib.all (credential:
+                builtins.match "[A-Za-z0-9_.-]{1,255}" credential != null && !(lib.elem credential ["." ".."])) (builtins.attrNames p.backup.credentials);
+            message = "Harbor DB ${name} backup credential names must be filename-safe ASCII IDs of 1..255 bytes, excluding '.' and '..'.";
+          }
+          {
+            assertion = lib.all (path: lib.hasPrefix "/" path && !(lib.hasPrefix "/nix/store/" path)) (lib.attrValues p.backup.credentials);
+            message = "Harbor DB backup credentials must be runtime paths outside the store.";
+          }
+        ])
+        projects);
     environment.systemPackages = [package];
     environment.etc = lib.mapAttrs' (name: p: lib.nameValuePair "harbor-db/${name}-backup.json" {source = manifest name p.backup;}) projects;
     users.groups = lib.listToAttrs (map (p: lib.nameValuePair p.backup.group {}) (lib.attrValues projects));

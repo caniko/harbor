@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Require unique normalized backup roots across enabled projects, preserving
+  one owner for each lock, attempt and success-marker namespace.
 - Bind every custody runtime writer to an active or retired transition barrier
   before preparation and inventory in both engines.
 - Synchronize the final reader permissions on `LAST_SUCCESS` before publishing

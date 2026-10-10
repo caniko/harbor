@@ -91,6 +91,23 @@
     configured = evaluate [module {services.harbor-db.projects.fixture.transition.commands = pkgs.lib.mkForce commands;}];
   in
     builtins.filter (assertion: !assertion.assertion && pkgs.lib.hasPrefix "Harbor DB fixture transition" assertion.message) configured.config.assertions == [];
+  backupRootsAccepted = {
+    directory,
+    user ? "fixture",
+    enable ? true,
+  }: let
+    configured = evaluate [
+      module
+      {
+        services.harbor-db.projects.peer.backup = {
+          inherit directory user enable;
+          group = "fixture";
+          commands = backupCommands;
+        };
+      }
+    ];
+  in
+    builtins.filter (assertion: !assertion.assertion && pkgs.lib.hasPrefix "Harbor DB backup roots" assertion.message) configured.config.assertions == [];
   directEval = evaluate [
     ./module.nix
     ./postgres-lifecycle.nix
@@ -117,6 +134,23 @@ in
     name = "harbor-db-native-storage-eval";
     resultMessage = "Native storage package is selected through the module argument";
     assertions = [
+      {
+        name = "backup-roots-are-exclusive-normalized-namespaces";
+        message = "Enabled projects must have distinct normalized backup roots, regardless of owner; disabled projects do not reserve a namespace.";
+        assertion =
+          backupRootsAccepted {directory = "/var/lib/peer-backup";}
+          && backupRootsAccepted {
+            directory = "/var/lib/fixture-backup";
+            enable = false;
+          }
+          && !(backupRootsAccepted {directory = "/var/lib/fixture-backup";})
+          && !(backupRootsAccepted {
+            directory = "/var/lib/fixture-backup";
+            user = "other";
+          })
+          && pkgs.lib.all (directory: !(backupRootsAccepted {inherit directory;}))
+          ["/var/lib/./fixture-backup" "/var/lib/peer/../fixture-backup" "/var/lib//fixture-backup" "/var/lib/fixture-backup/"];
+      }
       {
         name = "transition-worker-argv-boundaries";
         message = "Every declared transition worker must have nonempty argv with an absolute executable.";

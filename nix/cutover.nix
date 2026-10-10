@@ -43,11 +43,7 @@
     if entry.kind == "filesystem"
     then entry.authority.directories
     else []) (lib.attrValues resources);
-  normalizedPath = path:
-    path
-    == "/"
-    || (lib.hasPrefix "/" path
-      && lib.all (part: !(lib.elem part ["" "." ".."])) (lib.tail (lib.splitString "/" path)));
+  normalizedPath = (import ./storage-paths.nix {inherit lib;}).normalizedAbsolute;
   protectedPath = path:
     lib.any (root: let
       prefix = lib.removeSuffix "/" root;
