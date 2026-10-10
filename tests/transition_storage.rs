@@ -60,10 +60,10 @@ impl Fixture {
 #[test]
 fn operator_policy_requires_every_declared_manifest_to_be_immutable() {
     use std::os::unix::fs::PermissionsExt;
-    let fixture = std::path::Path::new(
-        option_env!("HARBOR_DB_TEST_CONFIG_FIXTURE")
-            .expect("operator qualification requires the immutable configuration fixture"),
-    );
+    let Some(fixture) = option_env!("HARBOR_DB_TEST_CONFIG_FIXTURE") else {
+        panic!("operator qualification requires the immutable configuration fixture");
+    };
+    let fixture = std::path::Path::new(fixture);
     let stored_alias = fixture.join("postgresql.json");
     let mut config = json!({
         "source_manifest":stored_alias,"target_manifest":stored_alias,"backup_manifest":stored_alias,
