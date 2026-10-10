@@ -19,6 +19,13 @@ operation = "harbor-db-transition.prepare"
 dimension = "rejection"
 evidence = "Both engines reject uncovered custody runtime writers and malformed unit arrays in shared manifest admission and again before inventory. Native admission leaves journal, barriers, source bytes and acknowledged corpus unchanged. Active or retired transition units cover declared writers, and an explicitly empty list remains valid."
 
+[[coverage]]
+case = "nix.x86_64-linux.postgres-lifecycle-eval"
+capability = "nixos"
+operation = "nixos.postgres-lifecycle"
+dimension = "rejection"
+evidence = "Preparation evaluation rejects provisioned and writable paths containing parent or dot components, repeated or trailing separators, and non-normalized protected roots before containment checks. Parent traversal into both the primary and authority tree rejects; a normalized disposable descendant remains valid."
+
 [[inventories]]
 origin = "rust"
 id_prefix = "native.application_storage."

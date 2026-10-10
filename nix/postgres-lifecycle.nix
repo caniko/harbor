@@ -6,6 +6,7 @@
   ...
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
+  normalizedPath = (import ./storage-paths.nix {inherit lib;}).normalizedAbsolute;
   cfg = config.services.harbor-db.postgresql;
   pg = config.services.postgresql;
   manifest = pkgs.writeText "harbor-db-postgresql.json" (builtins.toJSON ({
@@ -348,6 +349,10 @@ in {
               path != "/" && path != protected && !(lib.hasPrefix "${path}/" protected) && !(lib.hasPrefix "${protected}/" path)) [pg.dataDir cfg.stateDir])
           preparation.readWritePaths;
         message = "Managed recovery preparation must not grant writable access to the primary or authority tree.";
+      }
+      {
+        assertion = preparation == null || lib.all normalizedPath (preparation.readWritePaths ++ preparation.provisionDirectories ++ [pg.dataDir cfg.stateDir]);
+        message = "Managed recovery preparation requires normalized absolute writable, provisioned and protected paths before containment checks.";
       }
       {
         assertion = preparation == null || lib.all (path: lib.any (writable: path == writable || lib.hasPrefix "${writable}/" path) preparation.readWritePaths) preparation.provisionDirectories;

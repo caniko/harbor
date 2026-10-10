@@ -23,6 +23,8 @@
   one owner for each lock, attempt and success-marker namespace.
 - Bind every custody runtime writer to an active or retired transition barrier
   before preparation and inventory in both engines.
+- Reject ambiguous PostgreSQL preparation and protected paths before writable
+  containment checks and root-run provisioning.
 - Synchronize the final reader permissions on `LAST_SUCCESS` before publishing
   its inode in both backup engines; failed file sync preserves the prior marker.
 - Require optional PostgreSQL and custody transition policies to be immutable

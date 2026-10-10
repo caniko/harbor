@@ -93,6 +93,10 @@
     lib.any (entry:
       !entry.assertion && entry.message == "Managed source-local recovery preparation requires writer fencing; read-only certification and retired enrollment may remain unfenced.")
     policy.config.assertions;
+  preparationPathsAccepted = overrides: let
+    selected = (withPreparation.extendModules {modules = [overrides];}).config;
+  in
+    lib.all (entry: entry.assertion || !(lib.hasPrefix "Managed recovery preparation" entry.message || lib.hasPrefix "Managed recovery provisioning" entry.message)) selected.assertions;
 in
   mkEvalCheck {
     name = "harbor-db-postgres-lifecycle-eval";
@@ -103,6 +107,22 @@ in
         ${pkgs.systemd}/bin/systemd-run ${pkgs.systemd}/bin/systemctl
     '';
     assertions = [
+      {
+        name = "preparation-paths-reject-traversal-before-root-provisioning";
+        message = "Provisioning, writable paths and protected roots must have normalized spelling before containment and isolation checks.";
+        assertion =
+          preparationPathsAccepted {services.harbor-db.postgresql.recoveryPreparation.provisionDirectories = ["/srv/disposable/new"];}
+          && lib.all (path:
+            !(preparationPathsAccepted {
+              services.harbor-db.postgresql.recoveryPreparation.provisionDirectories = [path];
+            })) ["/srv/disposable/../postgres/18/new" "/srv/disposable/../postgres/authority/new" "/srv/disposable/./new" "/srv/disposable//new" "/srv/disposable/new/"]
+          && lib.all (path:
+            !(preparationPathsAccepted {
+              services.harbor-db.postgresql.recoveryPreparation.readWritePaths = lib.mkForce [path];
+            })) ["/srv/disposable/../postgres/18" "/srv/disposable/../postgres/authority" "/srv/./disposable" "/srv//disposable" "/srv/disposable/"]
+          && !(preparationPathsAccepted {services.postgresql.dataDir = lib.mkForce "/srv/postgres/./18";})
+          && !(preparationPathsAccepted {services.harbor-db.postgresql.stateDir = lib.mkForce "/srv/postgres/./authority";});
+      }
       {
         name = "source-local-producer-fence-policy";
         assertion =

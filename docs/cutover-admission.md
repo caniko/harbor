@@ -34,6 +34,9 @@ With custody enforcement enabled, authority roots, data directory paths and
 directory-creating tmpfiles paths must use normalized absolute spelling. Dot and
 parent components, repeated separators and trailing separators are rejected
 before creation; this comparison does not depend on the historical path existing.
+Managed PostgreSQL preparation applies the same normalized-path admission to
+provisioned directories, writable preparation paths and the protected primary
+and authority roots before containment checks or root-run directory creation.
 
 Database inventory queries may additionally return `size`, `sha256`,
 `git_repository = true` and `git_has_commits` for each path. Certification checks
