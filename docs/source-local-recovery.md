@@ -21,6 +21,12 @@ a firewall opening. An empty `sourceSettings.listenAddresses` also derives TCP
 listeners for those loopback families; explicit lists also retain the required
 source-local loopbacks, without duplicate addresses.
 Source and target still require the replicator password file.
+When a backup target shares a host with an enabled primary, every derived
+per-source backup root must be normalized and disjoint from the primary data
+directory in both containment directions. Equality, nested outputs and ambiguous
+path spellings fail evaluation before backup services can copy into their own
+input tree. A shared parent is permitted when the derived root and primary are
+disjoint siblings; a separate target without an enabled primary remains supported.
 When the PostgreSQL lifecycle module is present, source-local recovery enrolls
 `replicator` in `writerFence.replicationRoles`, preserving configured peer roles
 without duplicates. A forced policy that removes `replicator` from an enabled

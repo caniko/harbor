@@ -27,20 +27,21 @@
   storagePackage = harborDbStoragePackage;
   durable = "${storagePackage}/bin/harbor-db-durable";
   pruneTool = "${storagePackage}/bin/harbor-db-backup-prune";
+  storagePaths = import ./storage-paths.nix {inherit lib;};
 
   # A hostname is also used as a directory component. Keep the legacy IPv4
   # paths stable while preventing IPv6 / URI punctuation from becoming path
   # separators when the target list is expanded.
   sourceDirName = hostName: lib.replaceStrings ["/" ":" "[" "]"] ["_" "_" "_" "_"] hostName;
+  backupRootFor = source: "${cfg.targetSettings.backupDir}/${sourceDirName source.hostName}";
 
   mkTarget = name: source: let
     sourceId = source.hostName;
-    sourceDir = sourceDirName sourceId;
     suffix =
       if name == "legacy"
       then ""
       else "-${name}";
-    backupRoot = "${cfg.targetSettings.backupDir}/${sourceDir}";
+    backupRoot = backupRootFor source;
     passwordFile =
       if cfg.targetSettings.replicatorPasswordFile != null
       then cfg.targetSettings.replicatorPasswordFile
@@ -384,6 +385,16 @@ in {
           {
             assertion = !targetRole || cfg.targetSettings.replicatorPasswordFile != null;
             message = "services.harbor-db.pgBackup (role=target) requires targetSettings.replicatorPasswordFile to be set.";
+          }
+          {
+            assertion =
+              !(targetRole && config.services.postgresql.enable)
+              || lib.all (source: let
+                paths = [(backupRootFor source) config.services.postgresql.dataDir];
+              in
+                lib.all storagePaths.normalizedAbsolute paths && storagePaths.disjoint paths)
+              (lib.attrValues targetSources);
+            message = "services.harbor-db.pgBackup target backup roots and the local primary data directory must be normalized absolute and pairwise disjoint.";
           }
           {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || (sourceRole && targetRole && lib.elem cfg.source.hostName ["127.0.0.1" "localhost" "::1"]);

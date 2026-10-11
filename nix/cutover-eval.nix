@@ -104,6 +104,16 @@ in
     name = "harbor-db-cutover-eval";
     assertions = [
       {
+        name = "filesystem-root-custody-already-rejects-global-admission";
+        message = "The filesystem root contains the declared authority state and must fail global namespace admission before installing host-wide tmpfiles custody hooks.";
+        assertion = let
+          override.services.harbor-db.cutover.resources.history.authority.directories = lib.mkForce ["/"];
+          selected = (eval.extendModules {modules = [override];}).config;
+        in
+          !custodyAccepted override
+          && lib.any (a: !a.assertion && lib.hasInfix "custody roots and authority namespaces must be globally pairwise disjoint" a.message) selected.assertions;
+      }
+      {
         name = "custody-authority-and-corpus-namespaces-are-isolated";
         message = "An authority state directory cannot share or contain another authority/corpus or be nested inside one, before any namespace ownership is emitted.";
         assertion = let

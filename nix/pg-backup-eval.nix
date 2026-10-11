@@ -116,6 +116,45 @@ in
     resultMessage = "harbor-db PostgreSQL backup creates slots before streaming and verifies base backups";
     assertions = [
       {
+        name = "local-backup-roots-are-independent-of-the-primary";
+        message = "Every derived target backup root on a primary host must be normalized and disjoint from the live data directory before generating receive/base-backup services.";
+        assertion = let
+          accepted = primary: backup: let
+            selected =
+              (localEval.extendModules {
+                modules = [
+                  {
+                    services.postgresql.dataDir = lib.mkForce primary;
+                    services.harbor-db.pgBackup.targetSettings.backupDir = lib.mkForce backup;
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasPrefix "services.harbor-db.pgBackup" a.message) selected.assertions;
+          targetOnly =
+            (eval.extendModules {
+              modules = [
+                {
+                  services.postgresql.dataDir = "/srv/pg/10.0.0.2";
+                  services.harbor-db.pgBackup.targetSettings.backupDir = "/srv/pg";
+                }
+              ];
+            }).config;
+        in
+          lib.all (pair: !accepted (lib.head pair) (lib.last pair)) [
+            ["/srv/pg/main" "/srv/pg/main"]
+            ["/srv/pg/main" "/srv/pg/main/backups"]
+            ["/srv/pg/127.0.0.1" "/srv/pg"]
+            ["/srv/pg/127.0.0.1/primary" "/srv/pg"]
+            ["/srv/pg/main" "/srv/pg/./main/backups"]
+            ["/srv/pg/main" "/srv/pg//main"]
+            ["/srv/pg/./main" "/srv/backups"]
+          ]
+          && accepted "/srv/pg/main" "/srv/pg/main-sibling"
+          && accepted "/srv/pg/main" "/srv/pg"
+          && lib.all (a: a.assertion || !lib.hasPrefix "services.harbor-db.pgBackup" a.message) targetOnly.assertions;
+      }
+      {
         name = "source-local-recovery-requires-base-backup-production";
         message = "Source-local recovery requires both fresh verified base backups and continuous WAL; independent WAL-only targets remain supported.";
         assertion = let

@@ -1,6 +1,13 @@
 # Versioned static inventory. No discovery command, Nix evaluation, or pass verdict.
 version = 1
 
+[[coverage]]
+case = "nix.x86_64-linux.cutover-eval"
+capability = "cutover"
+operation = "harbor-db-cutover.check.preflight"
+dimension = "rejection"
+evidence = "The filesystem root is already rejected by the global corpus/authority namespace assertion because it contains the required authority state. A regression retains this rejection before installing host-wide tmpfiles custody hooks."
+
 [[inventories]]
 origin = "rust"
 id_prefix = "native.postgres_storage."
@@ -83,7 +90,7 @@ case = "nix.x86_64-linux.pg-backup-eval"
 capability = "postgres"
 operation = "harbor-db-postgres.capture-backup"
 dimension = "rejection"
-evidence = "Source-local recovery cannot disable fresh verified base-backup production while retaining WAL reception. Both enabled operations admit; a separate WAL-only target remains supported."
+evidence = "Source-local recovery cannot disable fresh verified base-backup production while retaining WAL reception. On primary hosts, evaluation also rejects equal, nested and containing per-source backup roots plus unnormalized path aliases before services can write into live primary storage. Complete source-local policies, disjoint derived siblings and independent target-only/WAL-only hosts admit."
 
 [[coverage]]
 case = "nix.x86_64-linux.pg-backup-eval"
