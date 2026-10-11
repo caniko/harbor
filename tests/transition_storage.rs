@@ -101,6 +101,39 @@ fn transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines() {
 }
 
 #[test]
+fn external_backup_manifest_cannot_share_a_transition_barrier_in_both_engines() {
+    let f = Fixture::new();
+    let barrier = f.temp.path().join("barrier");
+    for backup in [
+        barrier.clone(),
+        barrier.join("backup"),
+        f.temp.path().to_path_buf(),
+    ] {
+        durable::write_json(
+            &f.temp.path().join("backup.json"),
+            &json!({"root":backup,"maximum_age_seconds":3600}),
+        )
+        .unwrap();
+        let error = transition_manifest::validate(&f.config).unwrap_err();
+        assert!(
+            error.to_string().contains("backup and transition barrier"),
+            "{error}"
+        );
+        assert!(python_transition_validation(&f.config).contains("backup and transition barrier"));
+        assert!(!barrier.join("lock").exists());
+        assert!(!barrier.join("inhibited.json").exists());
+        assert!(!f.temp.path().join("authority/transition.json").exists());
+    }
+    durable::write_json(
+        &f.temp.path().join("backup.json"),
+        &json!({"root":f.temp.path().join("barrier-sibling"),"maximum_age_seconds":3600}),
+    )
+    .unwrap();
+    transition_manifest::validate(&f.config).unwrap();
+    assert_eq!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+}
+
+#[test]
 fn repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines()
  {
     transition_capture_fixture(false, true);

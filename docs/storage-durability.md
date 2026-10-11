@@ -75,6 +75,18 @@ running modifying child. The registered source is never given to `pg_upgrade`.
 Both temporary servers receive explicit data-directory overrides, so copied
 configuration cannot redirect them back onto the registered source.
 
+Source, target, staging and disposable source-copy paths must be pairwise
+disjoint in both containment directions before the authority lock or copy runs.
+This includes nested destinations that would make a recursive copy include itself.
+Version-2 upgrade journals bind the full selected configuration and the bytes of
+the PostgreSQL tools, copy/validation executables and file arguments used by
+interpreter adapters. Retries reject any policy or executable change before
+reusing staged output, including a `ready` publication. The same contract is
+rechecked after validation. Unbound version-1 journals require explicit operator
+inspection and fresh validation under the selected policy. Rewriting their
+version or reconstructing a contract from a newer configuration does not establish
+matching validation evidence.
+
 A `building` journal blocks startup, even when `PG_VERSION` exists. Inspect the
 failure, confirm all upgrade servers are stopped, then retry with:
 
@@ -154,6 +166,9 @@ pass `pg_verifybackup` and are never replaced by another run on the same day.
 Retention shares the backup writer lock, preserves the two latest complete base
 backups and WAL from every retained manifest's earliest start. Unknown manifests,
 timelines and segment-size mismatches retain WAL conservatively.
+`targetSettings.walSegmentBytes` accepts only powers of two from 1 MiB through
+1 GiB, matching the runtime pruning contract. Invalid sizes reject during Nix
+evaluation before the prune service can block dependent base backups.
 All completed backup directories, including expiration candidates, are classified
 before deletion. Redirected/non-directory entries, malformed start/end LSNs,
 unknown timeline values and missing manifests preserve both backups and WAL.

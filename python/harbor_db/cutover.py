@@ -231,9 +231,14 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
         require_database_paths(restored, database_requirements, roots=restores, git_executable=config.get("git_executable"))
         if source != restored:
             raise ValueError("source and restored historical corpus differ")
-        for original, restored_root, files in zip(roots, restores, source, strict=True):
-            if any(not item["directory"] and (original / name).samefile(restored_root / name)
-                   for name, item in files.items()):
+        source_inodes = set()
+        for root, files in zip(roots, source, strict=True):
+            for path in [root, *(root / name for name in files)]:
+                info = path.lstat()
+                source_inodes.add((info.st_dev, info.st_ino))
+        for restored_root, files in zip(restores, restored, strict=True):
+            restored_stats = [path.lstat() for path in [restored_root, *(restored_root / name for name in files)]]
+            if any((info.st_dev, info.st_ino) in source_inodes for info in restored_stats):
                 raise ValueError("restore corpus aliases a source file; require an independent restore")
         metadata = inventory(config, contents=False)
         if inventory(config, contents=True) != source:

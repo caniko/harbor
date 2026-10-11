@@ -104,11 +104,27 @@
         }
       ];
     }).config;
+  walSizeAccepted = size: let
+    selected = eval.extendModules {
+      modules = [{services.harbor-db.pgBackup.targetSettings.walSegmentBytes = lib.mkForce size;}];
+    };
+  in
+    (builtins.tryEval (builtins.deepSeq selected.config.systemd.services.pg-backup-prune.script true)).success;
 in
   mkEvalCheck {
     name = "harbor-db-pg-backup-eval";
     resultMessage = "harbor-db PostgreSQL backup creates slots before streaming and verifies base backups";
     assertions = [
+      {
+        name = "invalid-wal-segment-size-rejects-before-backup-services";
+        assertion = lib.all (size: !walSizeAccepted size) [0 3 524288 1048577 3145728 1073741825 2147483648];
+        message = "WAL segment sizes must reject before generating a prune service that blocks base backups.";
+      }
+      {
+        name = "all-runtime-supported-wal-segment-sizes-evaluate";
+        assertion = lib.all walSizeAccepted [1048576 2097152 4194304 8388608 16777216 33554432 67108864 134217728 268435456 536870912 1073741824];
+        message = "Every supported power-of-two WAL segment size must remain valid.";
+      }
       {
         name = "source-local-recovery-requires-wal-receiver";
         assertion = let

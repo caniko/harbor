@@ -282,9 +282,9 @@ in {
 
     targetSettings = {
       walSegmentBytes = mkOption {
-        type = types.ints.positive;
+        type = types.enum [1048576 2097152 4194304 8388608 16777216 33554432 67108864 134217728 268435456 536870912 1073741824];
         default = 16777216;
-        description = "Source cluster WAL segment size in bytes (initdb default: 16 MiB). Required for conservative WAL retention boundaries.";
+        description = "Source cluster WAL segment size in bytes, a power of two from 1 MiB through 1 GiB (initdb default: 16 MiB). Required for conservative WAL retention boundaries.";
       };
       package = mkOption {
         type = types.package;

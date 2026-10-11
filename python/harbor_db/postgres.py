@@ -260,6 +260,32 @@ def control_digest(data):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def upgrade_contract(config):
+    settings = config["upgrade"]
+    tools = {Path(package) / "bin" / name
+             for package in (config["package"], settings["package"])
+             for name in ("pg_ctl", "pg_controldata")}
+    tools.update(Path(config["package"]) / "bin" / name for name in ("initdb", "pg_upgrade"))
+    for package in (config["package"], settings["package"]):
+        tools.update(path for path in (Path(package) / "bin").iterdir() if path.is_file())
+    for key in ("copy_command", "validate_command"):
+        argv = settings.get(key, [])
+        if not isinstance(argv, list) or any(not isinstance(arg, str) for arg in argv):
+            raise LifecycleError("upgrade command arguments must be strings")
+        if key == "validate_command" and not argv:
+            raise LifecycleError("upgrade requires a consumer validation command")
+        if argv:
+            tools.add(Path(argv[0]))
+            tools.update(Path(arg) for arg in argv[1:] if Path(arg).is_file())
+    executables = {}
+    for path in sorted(tools):
+        if not path.is_absolute() or not path.is_file():
+            raise LifecycleError("upgrade executable or adapter file is absent")
+        with path.open("rb") as stream:
+            executables[str(path)] = hashlib.file_digest(stream, "sha256").hexdigest()
+    return {"config": config, "executables": executables}
+
+
 def upgrade(config, *, retry_incomplete=False):
     """Upgrade offline by copy, preserving all interrupted output for diagnosis.
 
@@ -278,8 +304,12 @@ def upgrade(config, *, retry_incomplete=False):
     target = Path(config["data_dir"])
     staging = target.with_name(target.name + ".harbor-staging")
     source_copy = target.with_name(target.name + ".harbor-source")
-    if Path(source["data_dir"]) in (target, staging, source_copy):
-        raise LifecycleError("source and destination must differ")
+    locations = (Path(source["data_dir"]), target, staging, source_copy)
+    for index, location in enumerate(locations):
+        if location.resolve() != location:
+            raise LifecycleError("upgrade storage paths must not be redirected")
+        if any(location.is_relative_to(other) or other.is_relative_to(location) for other in locations[:index]):
+            raise LifecycleError("upgrade source, target, staging and source-copy paths must be disjoint")
     journal_path = state / "upgrade.json"
     # Upgrades always operate on adopted authority, including journal resumes.
     with lock(state / "lock") as lease:
@@ -304,11 +334,13 @@ def upgrade(config, *, retry_incomplete=False):
             raise LifecycleError("external tablespaces are unsupported for staged upgrades")
         if (Path(source["data_dir"]) / "pg_wal").is_symlink():
             raise LifecycleError("external WAL storage is unsupported for staged upgrades")
+        contract = upgrade_contract(config)
         intent = {
-            "version": 1, "source": source_record, "source_control": digest,
+            "version": 2, "source": source_record, "source_control": digest,
             "target": {k: config[k] for k in ("resource", "data_dir", "major", "package")},
             "staging": str(staging),
             "source_copy": str(source_copy),
+            "contract": contract,
         }
         if journal is not None:
             if any(journal.get(k) != v for k, v in intent.items()):
@@ -373,6 +405,8 @@ def upgrade(config, *, retry_incomplete=False):
         require_stopped(config["package"], staging)
         if control_digest(source["data_dir"]) != digest:
             raise LifecycleError("registered source changed during offline upgrade")
+        if upgrade_contract(config) != contract:
+            raise LifecycleError("upgrade executable or contract changed during validation")
         journal["identity"] = identity(
             config, inspect_cluster(config["package"], staging, config["major"]),
         )

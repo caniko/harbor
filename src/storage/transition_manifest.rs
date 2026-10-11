@@ -179,6 +179,12 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
     let backup_root = Path::new(string(&backup, "root")?);
     custody::validate_path(string(&backup, "root")?)?;
     super::recovery::absolute(backup_root)?;
+    let barrier = Path::new(string(config, "barrier_dir")?);
+    if backup_root.starts_with(barrier) || barrier.starts_with(backup_root) {
+        return Err(invalid(
+            "backup and transition barrier roots must be disjoint",
+        ));
+    }
     if source_roots
         .iter()
         .chain(&target_roots)

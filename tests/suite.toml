@@ -3,6 +3,69 @@ version = 1
 
 [[inventories]]
 origin = "rust"
+id_prefix = "native.postgres_storage."
+selector_prefix = ""
+source = "tests/postgres_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "postgres_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["nested_upgrade_paths_reject_before_lock_or_copy_in_both_engines", "ready_upgrade_binds_policy_and_executable_bytes_across_native_and_python_resume"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.transition_storage."
+selector_prefix = ""
+source = "tests/transition_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "transition_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["external_backup_manifest_cannot_share_a_transition_barrier_in_both_engines"]
+
+[[coverage]]
+case = "native.postgres_storage.nested_upgrade_paths_reject_before_lock_or_copy_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.upgrade"
+dimension = "rejection"
+evidence = "Both engines reject equality and ancestor relationships among source, target, staging and source-copy paths before an authority lock or recursive copy. Layouts with staging/source-copy ancestors also reject. The absent lock fixture bounds execution on the predecessor."
+
+[[coverage]]
+case = "native.postgres_storage.ready_upgrade_binds_policy_and_executable_bytes_across_native_and_python_resume"
+capability = "postgres"
+operation = "harbor-db-postgres.upgrade"
+dimension = "interruption"
+evidence = "A real synthetic upgrade stops after publishing ready. Policy changes, tool or validator byte changes and a legacy unbound journal reject in both engines without changing the cluster or journal. An exact native journal resumes in Python once, without rerunning validation."
+
+[[coverage]]
+case = "native.transition_storage.external_backup_manifest_cannot_share_a_transition_barrier_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.plan"
+dimension = "rejection"
+evidence = "An external immutable backup policy cannot share, contain or lie inside a transition barrier. Both engines reject during manifest validation before writer inhibition, lock or journal creation; similarly named siblings admit."
+
+[[coverage]]
+case = "vm.x86_64-linux.native-postgres-recovery-acceptance"
+capability = "cutover"
+operation = "harbor-db-cutover.certify"
+dimension = "rejection"
+evidence = "The packaged native engine and Python peer reject real cross-root bind mounts of an entire root, one file and an empty directory against identical source inventories. Rejection precedes identity/custody publication; independent copies remain certifiable."
+
+[[coverage]]
+case = "nix.x86_64-linux.pg-backup-eval"
+capability = "backup-retention"
+operation = "harbor-db-backup-prune.invoke"
+dimension = "rejection"
+evidence = "Evaluation rejects WAL sizes below 1 MiB, above 1 GiB and non-powers of two before generating the dependent prune/basebackup services. All eleven supported powers of two remain accepted."
+
+[[inventories]]
+origin = "rust"
 id_prefix = "native.application-publication."
 selector_prefix = "storage::application_publication::tests::"
 source = "src/storage/application_publication.rs"

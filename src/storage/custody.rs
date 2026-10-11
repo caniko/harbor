@@ -2,6 +2,7 @@
 use super::{Result, codec, durable, invalid, process, resource, string};
 use serde_json::{Value, json};
 use std::{
+    collections::HashSet,
     fs,
     os::unix::fs::MetadataExt,
     path::{Component, Path, PathBuf},
@@ -422,19 +423,26 @@ pub fn certify_filesystem(
     if source != restored {
         return Err(invalid("source and restored historical corpus differ"));
     }
-    for (index, (a, b)) in roots.iter().zip(restored_roots).enumerate() {
-        for (name, item) in source[index]
+    let mut source_inodes = HashSet::new();
+    for (index, root) in roots.iter().enumerate() {
+        let files = source[index]
             .as_object()
-            .ok_or_else(|| invalid("invalid corpus"))?
-        {
-            if item["directory"] == false {
-                let x = fs::metadata(a.join(name))?;
-                let y = fs::metadata(b.join(name))?;
-                if x.dev() == y.dev() && x.ino() == y.ino() {
-                    return Err(invalid(
-                        "restore corpus aliases a source file; require an independent restore",
-                    ));
-                }
+            .ok_or_else(|| invalid("invalid corpus"))?;
+        for path in std::iter::once(root.clone()).chain(files.keys().map(|name| root.join(name))) {
+            let info = fs::symlink_metadata(path)?;
+            source_inodes.insert((info.dev(), info.ino()));
+        }
+    }
+    for (index, root) in restored_roots.iter().enumerate() {
+        let files = restored[index]
+            .as_object()
+            .ok_or_else(|| invalid("invalid restored corpus"))?;
+        for path in std::iter::once(root.clone()).chain(files.keys().map(|name| root.join(name))) {
+            let info = fs::symlink_metadata(path)?;
+            if source_inodes.contains(&(info.dev(), info.ino())) {
+                return Err(invalid(
+                    "restore corpus aliases a source file; require an independent restore",
+                ));
             }
         }
     }

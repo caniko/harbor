@@ -70,6 +70,11 @@ the existing resource adoption engine after equality succeeds, then durably
 publishes its receipt. Equal record counts or equal file sizes do not establish
 custody.
 
+Restored roots, files and directories must have inodes independent of the union
+of every authoritative root's inventory. A bind mount of another source root or
+one of its entries cannot certify a restore, even with identical inventories,
+disjoint path spelling and a regular-file link count of one.
+
 For a resource with `database_resource = "postgresql"`, certification also
 requires executed recovery evidence and live records matching the accepted
 database snapshot. The filesystem receipt binds that snapshot digest. A changed

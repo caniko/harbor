@@ -1,11 +1,12 @@
 //! Explicit adoption, lifetime writer leases, and crash-resumable copy upgrades.
 use super::{
-    Result, durable, invalid,
+    Result, codec, durable, invalid,
     pg_core::{self, major, path},
     process, string,
 };
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeSet,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -174,6 +175,58 @@ fn copy_tree(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn upgrade_contract(config: &Value) -> Result<Value> {
+    let settings = config
+        .get("upgrade")
+        .ok_or_else(|| invalid("missing upgrade"))?;
+    let mut tools = BTreeSet::new();
+    for package in [path(config, "package")?, path(settings, "package")?] {
+        // pg_upgrade invokes other package tools, including postgres, pg_dump
+        // and pg_resetwal. Bind the complete executable directory as well.
+        for entry in fs::read_dir(package.join("bin"))? {
+            let tool = entry?.path();
+            if tool.is_file() {
+                tools.insert(tool);
+            }
+        }
+        for binary in ["pg_ctl", "pg_controldata"] {
+            tools.insert(package.join("bin").join(binary));
+        }
+    }
+    for binary in ["initdb", "pg_upgrade"] {
+        tools.insert(path(config, "package")?.join("bin").join(binary));
+    }
+    for key in ["copy_command", "validate_command"] {
+        let argv = strings(settings.get(key))?;
+        if key == "validate_command" && argv.is_empty() {
+            return Err(invalid("upgrade requires a consumer validation command"));
+        }
+        if let Some(executable) = argv.first() {
+            tools.insert(PathBuf::from(executable));
+        }
+        // Interpreter adapters can name additional executable/script files.
+        tools.extend(
+            argv.iter()
+                .skip(1)
+                .map(PathBuf::from)
+                .filter(|p| p.is_file()),
+        );
+    }
+    let mut executables = serde_json::Map::new();
+    for tool in tools {
+        if !tool.is_absolute() || !tool.is_file() {
+            return Err(invalid("upgrade executable or adapter file is absent"));
+        }
+        executables.insert(
+            tool.to_str()
+                .ok_or_else(|| invalid("invalid upgrade executable path"))?
+                .into(),
+            json!(codec::file_digest(&fs::canonicalize(&tool)?)?),
+        );
+    }
+    Ok(json!({"config":config,"executables":executables}))
+}
+
 pub fn upgrade(config: &Value, retry_incomplete: bool) -> Result<()> {
     pg_core::validate_config(config)?;
     let settings = config
@@ -202,8 +255,19 @@ pub fn upgrade(config: &Value, retry_incomplete: bool) -> Result<()> {
     let staging = sibling(&target, ".harbor-staging")?;
     let source_copy = sibling(&target, ".harbor-source")?;
     let original = path(&source, "data_dir")?;
-    if [&target, &staging, &source_copy].contains(&&original) {
-        return Err(invalid("source and destination must differ"));
+    let locations = [&original, &target, &staging, &source_copy];
+    for (index, location) in locations.iter().enumerate() {
+        if !pg_core::unredirected(location)? {
+            return Err(invalid("upgrade storage paths must not be redirected"));
+        }
+        if locations[..index]
+            .iter()
+            .any(|other| location.starts_with(other) || other.starts_with(location))
+        {
+            return Err(invalid(
+                "upgrade source, target, staging and source-copy paths must be disjoint",
+            ));
+        }
     }
     let journal_path = state.join("upgrade.json");
     let lease = durable::lock(&state.join("lock"), false, false)?;
@@ -256,7 +320,8 @@ pub fn upgrade(config: &Value, retry_incomplete: bool) -> Result<()> {
             "external WAL storage is unsupported for staged upgrades",
         ));
     }
-    let intent = json!({"version":1,"source":source_record,"source_control":digest,"target":{"resource":config["resource"],"data_dir":config["data_dir"],"major":config["major"],"package":config["package"]},"staging":staging,"source_copy":source_copy});
+    let contract = upgrade_contract(config)?;
+    let intent = json!({"version":2,"source":source_record,"source_control":digest,"target":{"resource":config["resource"],"data_dir":config["data_dir"],"major":config["major"],"package":config["package"]},"staging":staging,"source_copy":source_copy,"contract":contract});
     if let Some(journal) = journal {
         for (key, value) in intent
             .as_object()
@@ -384,6 +449,11 @@ pub fn upgrade(config: &Value, retry_incomplete: bool) -> Result<()> {
     pg_core::require_stopped_leased(&package, &staging, &[lease.fd()])?;
     if pg_core::control_digest(&original)? != digest {
         return Err(invalid("registered source changed during offline upgrade"));
+    }
+    if upgrade_contract(config)? != contract {
+        return Err(invalid(
+            "upgrade executable or contract changed during validation",
+        ));
     }
     journal["identity"] = pg_core::identity(
         config,

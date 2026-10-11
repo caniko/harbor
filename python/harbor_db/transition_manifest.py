@@ -83,6 +83,8 @@ def validate(config):
     cutover.validate_path(str(backup_root))
     if backup_root.resolve() != backup_root:
         raise ValueError("recovery path must be absolute and not redirected")
+    if backup_root.is_relative_to(barrier) or barrier.is_relative_to(backup_root):
+        raise ValueError("backup and transition barrier roots must be disjoint")
     if any(backup_root.is_relative_to(path) or Path(path).is_relative_to(backup_root)
            for path in source["directories"] + target["directories"]):
         raise ValueError("backup and corpus roots must be disjoint")

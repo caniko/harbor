@@ -41,6 +41,9 @@ fn synthetic() -> (
         "printf 'Database system identifier: '; cat \"$1/identifier\"; printf '\\n'",
     );
     executable(&root.path().join("package/bin/pg_ctl"), "exit 3");
+    executable(&root.path().join("package/bin/initdb"), "exit 1");
+    executable(&root.path().join("package/bin/pg_upgrade"), "exit 1");
+    executable(&root.path().join("package/bin/postgres"), "exit 1");
     let config = json!({"resource":"db","major":"18","package":root.path().join("package"),"state_dir":root.path().join("state"),"data_dir":root.path().join("data")});
     (root, config, guard)
 }
@@ -203,7 +206,9 @@ fn interrupted_upgrade_is_preserved_and_requires_explicit_retry() {
     old["major"] = json!("17");
     postgres::adopt(&old, "12345").unwrap();
     config["data_dir"] = json!(root.path().join("target"));
-    config["upgrade"] = json!({"data_dir":source,"major":"17","package":config["package"],"validate_command":["/bin/true"]});
+    let validator = root.path().join("validator");
+    executable(&validator, "exit 0");
+    config["upgrade"] = json!({"data_dir":source,"major":"17","package":config["package"],"validate_command":[validator]});
     executable(
         &root.path().join("package/bin/initdb"),
         "mkdir -p \"$2\"; printf '18\\n' > \"$2/PG_VERSION\"; printf 'staged output' > \"$2/evidence\"; exit 1",
@@ -246,6 +251,192 @@ fn interrupted_upgrade_is_preserved_and_requires_explicit_retry() {
 }
 
 #[test]
+fn nested_upgrade_paths_reject_before_lock_or_copy_in_both_engines() {
+    for (source_name, target_name) in [
+        ("data", "data/new"),
+        ("data/old", "data"),
+        ("data", "data"),
+        ("data", "data/new/target"),
+        ("data.harbor-staging/old", "data"),
+        ("data.harbor-source/old", "data"),
+    ] {
+        let (root, mut config, _guard) = synthetic();
+        let source = root.path().join(source_name);
+        let target = root.path().join(target_name);
+        fs::create_dir_all(&source).unwrap();
+        config["data_dir"] = json!(target);
+        config["upgrade"] = json!({"data_dir":source,"major":"17","package":root.path().join("package"),"validate_command":["/unused-validator"]});
+        // No authority anchor exists. Reject before acquiring one, so the
+        // default recursive copier cannot consume space on the predecessor.
+        let native = postgres::upgrade(&config, false).unwrap_err();
+        assert!(native.to_string().contains("disjoint"), "{native}");
+        let script = r#"import json,sys
+from harbor_db import postgres
+try: postgres.upgrade(json.loads(sys.argv[1]))
+except postgres.LifecycleError as error: assert 'disjoint' in str(error), str(error)
+else: raise AssertionError('nested upgrade accepted')
+"#;
+        let mut command = harbor_db::storage::process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            config.to_string(),
+        ]);
+        command.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        harbor_db::storage::process::execute(&command).unwrap();
+        assert!(!root.path().join("state/lock").exists());
+        assert!(!root.path().join("state/upgrade.json").exists());
+    }
+}
+
+fn interrupted_ready_upgrade() -> (
+    tempfile::TempDir,
+    serde_json::Value,
+    std::sync::MutexGuard<'static, ()>,
+) {
+    let (root, mut config, guard) = synthetic();
+    let old = root.path().join("data");
+    fs::write(old.join("PG_VERSION"), "17\n").unwrap();
+    config["data_dir"] = json!(root.path().join("18"));
+    let validator = root.path().join("validate");
+    executable(
+        &validator,
+        &format!("printf checked >> '{}/validated'", root.path().display()),
+    );
+    config["upgrade"] = json!({"data_dir":old,"major":"17","package":root.path().join("package"),"validate_command":[validator],"initdb_args":[],"extra_config":""});
+    let mut source = config.clone();
+    source["data_dir"] = json!(old);
+    source["major"] = json!("17");
+    postgres::adopt(&source, "12345").unwrap();
+    executable(
+        &root.path().join("package/bin/initdb"),
+        "mkdir -p \"$2/global\"; printf '18\\n' > \"$2/PG_VERSION\"; printf 12345 > \"$2/identifier\"; printf control > \"$2/global/pg_control\"; touch \"$2/postgresql.conf\"",
+    );
+    executable(&root.path().join("package/bin/pg_upgrade"), "exit 0");
+    executable(
+        &root.path().join("package/bin/pg_ctl"),
+        &format!(
+            "if test -e '{0}/block-publication' && grep -q '\"phase\": \"ready\"' '{0}/state/upgrade.json'; then exit 0; fi; exit 3",
+            root.path().display()
+        ),
+    );
+    fs::write(root.path().join("block-publication"), "").unwrap();
+    assert!(
+        postgres::upgrade(&config, false)
+            .unwrap_err()
+            .to_string()
+            .contains("running")
+    );
+    assert_eq!(
+        durable::read_json(&root.path().join("state/upgrade.json")).unwrap()["phase"],
+        "ready"
+    );
+    assert!(!root.path().join("18").exists());
+    (root, config, guard)
+}
+
+#[test]
+fn ready_upgrade_binds_policy_and_executable_bytes_across_native_and_python_resume() {
+    let (root, config, _guard) = interrupted_ready_upgrade();
+    fs::remove_file(root.path().join("block-publication")).unwrap();
+    let journal = fs::read(root.path().join("state/upgrade.json")).unwrap();
+    let identity = fs::read(root.path().join("state/identity.json")).unwrap();
+    let script = r#"import json,sys
+from harbor_db import postgres
+try: postgres.upgrade(json.loads(sys.argv[1]))
+except postgres.LifecycleError as error: assert 'contract changed' in str(error), str(error)
+else: raise AssertionError('changed ready upgrade was published')
+"#;
+    let check = |changed: &serde_json::Value| {
+        let before = fs::read(root.path().join("state/upgrade.json")).unwrap();
+        let native = postgres::upgrade(changed, false).unwrap_err();
+        assert!(native.to_string().contains("contract changed"), "{native}");
+        let mut command = harbor_db::storage::process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            changed.to_string(),
+        ]);
+        command.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        harbor_db::storage::process::execute(&command).unwrap();
+        assert_eq!(
+            fs::read(root.path().join("state/upgrade.json")).unwrap(),
+            before
+        );
+        assert_eq!(
+            fs::read(root.path().join("state/identity.json")).unwrap(),
+            identity
+        );
+        assert!(!root.path().join("18").exists());
+        assert!(root.path().join("18.harbor-staging").exists());
+    };
+    for (key, value) in [
+        ("copy_command", json!([root.path().join("validate")])),
+        ("initdb_args", json!(["--no-data-checksums"])),
+        ("extra_config", json!("shared_buffers = '64MB'")),
+        (
+            "validate_command",
+            json!([root.path().join("validate"), "changed-arg"]),
+        ),
+    ] {
+        let mut changed = config.clone();
+        changed["upgrade"][key] = value;
+        check(&changed);
+    }
+    for path in [
+        root.path().join("validate"),
+        root.path().join("package/bin/pg_upgrade"),
+        root.path().join("package/bin/initdb"),
+        root.path().join("package/bin/pg_ctl"),
+        root.path().join("package/bin/pg_controldata"),
+        root.path().join("package/bin/postgres"),
+    ] {
+        let before = fs::read(&path).unwrap();
+        let mut after = before.clone();
+        after.extend_from_slice(b"\n# changed validator or tool\n");
+        fs::write(&path, after).unwrap();
+        check(&config);
+        fs::write(&path, before).unwrap();
+    }
+    let mut legacy: serde_json::Value = serde_json::from_slice(&journal).unwrap();
+    legacy["version"] = json!(1);
+    legacy.as_object_mut().unwrap().remove("contract");
+    durable::write_json(&root.path().join("state/upgrade.json"), &legacy).unwrap();
+    check(&config);
+    fs::write(root.path().join("state/upgrade.json"), &journal).unwrap();
+    // The exact contract can be resumed by the other engine after rejection.
+    let mut command = harbor_db::storage::process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),"import json,sys; from harbor_db import postgres; postgres.upgrade(json.loads(sys.argv[1]))".into(),config.to_string()]);
+    command.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    harbor_db::storage::process::execute(&command).unwrap();
+    assert!(!root.path().join("state/upgrade.json").exists());
+    assert_eq!(
+        fs::read_to_string(root.path().join("validated")).unwrap(),
+        "checked"
+    );
+    postgres::upgrade(&config, false).unwrap();
+}
+
+#[test]
 fn ready_upgrade_resumes_after_rename_and_identity_publication() {
     let (root, mut config, _guard) = synthetic();
     let source = root.path().join("data");
@@ -254,12 +445,14 @@ fn ready_upgrade_resumes_after_rename_and_identity_publication() {
     old["major"] = json!("17");
     postgres::adopt(&old, "12345").unwrap();
     config["data_dir"] = json!(root.path().join("target"));
-    config["upgrade"] = json!({"data_dir":source,"major":"17","package":config["package"]});
+    let validator = root.path().join("validator");
+    executable(&validator, "exit 0");
+    config["upgrade"] = json!({"data_dir":source,"major":"17","package":config["package"],"validate_command":[validator]});
     let stage = root.path().join("target.harbor-staging");
     fs::create_dir(&stage).unwrap();
     fs::write(stage.join("PG_VERSION"), "18\n").unwrap();
     fs::write(stage.join("identifier"), "54321").unwrap();
-    let journal = json!({"version":1,"phase":"ready","source":pg_core::identity(&old,"12345").unwrap(),"source_control":pg_core::control_digest(&source).unwrap(),"target":{"resource":config["resource"],"major":config["major"],"package":config["package"],"data_dir":config["data_dir"]},"staging":stage,"source_copy":root.path().join("target.harbor-source"),"identity":pg_core::identity(&config,"54321").unwrap()});
+    let journal = json!({"version":2,"phase":"ready","source":pg_core::identity(&old,"12345").unwrap(),"source_control":pg_core::control_digest(&source).unwrap(),"target":{"resource":config["resource"],"major":config["major"],"package":config["package"],"data_dir":config["data_dir"]},"staging":stage,"source_copy":root.path().join("target.harbor-source"),"identity":pg_core::identity(&config,"54321").unwrap(),"contract":postgres::upgrade_contract(&config).unwrap()});
     durable::write_json(&root.path().join("state/upgrade.json"), &journal).unwrap();
     fs::rename(&stage, root.path().join("target")).unwrap();
     durable::write_json(

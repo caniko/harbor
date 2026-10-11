@@ -227,7 +227,9 @@ ownership. Disabled projects do not reserve units or namespaces.
 The barrier must also be disjoint from source and target storage roots and the
 authority directory in both containment directions; it cannot be their ancestor.
 The selected backup root must also be disjoint from both source and target corpora
-in either containment direction. Filesystem custody roots are globally disjoint
+and the transition barrier in either containment direction. Runtime manifest
+admission enforces this even for an external immutable backup manifest outside
+the enabled project backup set, before writers are inhibited. Filesystem custody roots are globally disjoint
 across resources so a corpus has exactly one resource lease.
 Every runtime writer declared by the custody policy must belong to the
 transition's active or retired unit set. Both engines enforce this in manifest

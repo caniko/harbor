@@ -187,6 +187,9 @@ in
       gate = "harbor-db-cutover check --contract /srv/cutover.json --host primary"
       primary.fail(gate)
       primary.succeed("test ! -e /srv/corpus-authority/identity.json")
+      # Exercise cross-root aliases with real bind mounts in both engines.
+      primary.succeed("env PYTHONPATH=${../python} ${pkgs.python3}/bin/python3 -B ${../tests/check_custody_cross_root.py} --native ${tool}/bin/harbor-db-cutover > /srv/cross-root-custody.json")
+      primary.copy_from_machine("/srv/cross-root-custody.json", "cross-root-custody")
       primary.succeed("harbor-db-cutover certify --contract /srv/cutover.json --host primary --resource archive --identity accepted-history --restore-root /srv/corpus-restore")
       primary.succeed(gate)
       primary.succeed(gate + " --phase activate")
