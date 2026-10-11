@@ -1,5 +1,10 @@
 # Source-local physical recovery producer
 
+The lifecycle `stateDir` must be a dedicated normalized absolute directory.
+The filesystem root, relative paths, dot components, repeated or trailing
+separators and whitespace/control characters reject before tmpfiles can assign
+PostgreSQL ownership or permissions.
+
 ## Decision
 
 Recovery capture runs on the source using its existing PostgreSQL OS account and

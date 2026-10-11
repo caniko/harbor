@@ -111,6 +111,11 @@ resolves to a regular file inside the immutable store; directories, missing file
 and mutable link targets fail realization before timer installation. Store-local
 links retain native/Python file-hashing compatibility. Evaluation does not realize
 adapter packages.
+
+Transition `executableFiles` use the same evaluation and realization contract.
+Across all enabled provisioning projects, runtime OS accounts must be disjoint
+from the complete owner-account set so peer mappings cannot elevate another
+project's runtime account. Shared owner-only accounts remain supported.
 Embedded fragments such as `--backup={backup}` do not satisfy this contract.
 Credential IDs use `[A-Za-z0-9_.-]{1,255}`, excluding `.` and `..`, and credential
 paths remain runtime paths outside the Nix store.

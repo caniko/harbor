@@ -113,6 +113,10 @@ in {
           message = "Harbor DB application provisioning requires the host PostgreSQL service.";
         }
         {
+          assertion = lib.intersectLists (map (p: p.ownerOsUser) (lib.attrValues policies)) (map (p: p.runtimeOsUser) (lib.attrValues policies)) == [];
+          message = "Harbor DB runtime OS users must not map to any application owner role across enabled projects.";
+        }
+        {
           assertion = lib.length (lib.unique (map (p: p.database) (lib.attrValues policies))) == lib.length (lib.attrValues policies);
           message = "Harbor DB application databases must be unique.";
         }

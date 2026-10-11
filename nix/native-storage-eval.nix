@@ -110,6 +110,8 @@
     backupCommands // {${stage} = builtins.filter (arg: arg != placeholder) backupCommands.${stage};};
   backupFileManifest = executableFiles:
     (evaluate [module {services.harbor-db.projects.fixture.backup = {inherit executableFiles;};}]).config.environment.etc."harbor-db/fixture-backup.json".source;
+  transitionFileManifest = executableFiles:
+    (evaluate [module {services.harbor-db.projects.fixture.transition = {inherit executableFiles;};}]).config.environment.etc."harbor-db/fixture-transition.json".source;
   redirectedExecutable = pkgs.runCommand "harbor-db-redirected-adapter" {} ''
     mkdir "$out"
     ln -s /proc/version "$out/adapter"
@@ -185,9 +187,9 @@ in
   (import ./eval-checks.nix {inherit pkgs;}).mkEvalCheck {
     name = "harbor-db-native-storage-eval";
     resultMessage = "Native storage package is selected through the module argument";
-    runtimeScript = let
-      regular = backupFileManifest ["${pkgs.coreutils}/bin/true"];
-      invalid = map backupFileManifest [["${pkgs.coreutils}/bin"] ["${pkgs.coreutils}/bin/absent-harbor-adapter"] ["${redirectedExecutable}/adapter"]];
+    runtimeScript = pkgs.lib.concatMapStringsSep "\n" (manifestFor: let
+      regular = manifestFor ["${pkgs.coreutils}/bin/true"];
+      invalid = map manifestFor [["${pkgs.coreutils}/bin"] ["${pkgs.coreutils}/bin/absent-harbor-adapter"] ["${redirectedExecutable}/adapter"]];
     in ''
       (${regular.executableValidation})
       test -f ${regular}
@@ -198,7 +200,7 @@ in
           fi
         '')
         invalid}
-    '';
+    '') [backupFileManifest transitionFileManifest];
     assertions = [
       {
         name = "backup-storage-mount-required";
@@ -307,6 +309,19 @@ in
           && pkgs.lib.all (path: !backupPolicyAccepted {executableFiles = [path];}) ["relative-adapter" "/absent/adapter" "/run/runtime-adapter" "${pkgs.coreutils}/bin/../bin/true" "${pkgs.coreutils}/bin//true"]
           && (let manifest = backupFileManifest ["${pkgs.coreutils}/bin/true"]; in pkgs.lib.hasPrefix manifest.executableValidation manifest.buildCommand);
         message = "Additional adapters require normalized immutable paths during evaluation and regular files before the backup manifest is built; the exact production validation rejects directories and nonexistent files at realization without IFD.";
+      }
+      {
+        name = "additional-transition-executables-are-immutable-paths";
+        assertion = let
+          accepted = executableFiles: let
+            selected = (evaluate [module {services.harbor-db.projects.fixture.transition.executableFiles = executableFiles;}]).config;
+          in
+            pkgs.lib.all (entry: entry.assertion || !(pkgs.lib.hasInfix "transition executableFiles" entry.message)) selected.assertions;
+        in
+          accepted ["${pkgs.coreutils}/bin/true"]
+          && pkgs.lib.all (path: !accepted [path]) ["relative-adapter" "/absent/adapter" "/run/runtime-adapter" "${pkgs.coreutils}/bin/../bin/true" "${pkgs.coreutils}/bin//true"]
+          && (let manifest = transitionFileManifest ["${pkgs.coreutils}/bin/true"]; in pkgs.lib.hasPrefix manifest.executableValidation manifest.buildCommand);
+        message = "Transition adapters reject relative and mutable or ambiguous paths, preserving normalized store-local files.";
       }
       {
         name = "backup-credential-name-boundaries";

@@ -112,6 +112,17 @@ in
     '';
     assertions = [
       {
+        name = "lifecycle-state-is-dedicated-and-normalized";
+        message = "Identity state requires a dedicated normalized absolute directory before tmpfiles ownership is generated, independent of managed preparation.";
+        assertion = let
+          accepted = stateDir: let
+            selected = (eval.extendModules {modules = [{services.harbor-db.postgresql.stateDir = lib.mkForce stateDir;}];}).config;
+          in
+            lib.all (entry: entry.assertion || entry.message != "Harbor DB identity state requires a dedicated normalized absolute directory.") selected.assertions;
+        in
+          accepted "/srv/harbor-state" && lib.all (path: !accepted path) ["/" "" "relative" "/srv/state/" "/srv//state" "/srv/./state" "/srv/../state" "/srv/state other" "/srv/state\nother"];
+      }
+      {
         name = "recovery-receipt-paths-are-distinct";
         message = "Local and off-host recovery receipts cannot alias one another or overwrite the snapshot.";
         assertion =

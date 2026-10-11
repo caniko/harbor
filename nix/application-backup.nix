@@ -10,26 +10,13 @@
   projects = lib.filterAttrs (_: p: p.backup.enable) config.services.harbor-db.projects;
   roots = map (p: p.backup.directory) (lib.attrValues projects);
   storagePaths = import ./storage-paths.nix {inherit lib;};
+  immutableFiles = import ./immutable-files.nix {inherit lib;};
   package = harborDbStoragePackage;
   mountUnits = backup:
     map (mount: "${utils.escapeSystemdPath mount}.mount")
     (lib.filter (mount: mount == "/" || mount == backup.directory || lib.hasPrefix "${mount}/" backup.directory)
       (lib.attrNames config.fileSystems));
   manifest = name: backup: let
-    # File contents belong to realization. Do not inspect an unrealized package
-    # during evaluation or require import-from-derivation for this policy.
-    executableValidation =
-      lib.concatMapStringsSep "\n" (path: ''
-        if ! test -f ${lib.escapeShellArg path}; then
-          echo 'Harbor DB ${name} backup executableFiles must name regular immutable files.' >&2
-          exit 1
-        fi
-        case "$(realpath -e -- ${lib.escapeShellArg path})" in
-          /nix/store/*) ;;
-          *) echo 'Harbor DB ${name} backup executableFiles must resolve inside the immutable store.' >&2; exit 1 ;;
-        esac
-      '')
-      backup.executableFiles;
     document = pkgs.writeText "harbor-db-${name}-backup.json" (builtins.toJSON {
       version = 2;
       worker_user = backup.user;
@@ -42,10 +29,7 @@
       maximum_age_seconds = backup.maximumAgeSeconds;
     });
   in
-    document.overrideAttrs (previous: {
-      buildCommand = executableValidation + previous.buildCommand;
-      passthru = (previous.passthru or {}) // {inherit executableValidation;};
-    });
+    immutableFiles.checkedManifest "Harbor DB ${name} backup" backup.executableFiles document;
 in {
   imports = [./storage-package-argument.nix];
   options.services.harbor-db.projects = mkOption {
@@ -118,7 +102,7 @@ in {
             message = "Harbor DB ${name} backup requires capture, restore, verify and cleanup.";
           }
           {
-            assertion = lib.all (path: storagePaths.normalizedAbsolute path && builtins.match "/nix/store/[0-9a-z]{32}-[^/]+(/[^/]+)*" path != null) p.backup.executableFiles;
+            assertion = lib.all immutableFiles.storePath p.backup.executableFiles;
             message = "Harbor DB ${name} backup executableFiles must be normalized immutable store paths; manifest realization requires regular files.";
           }
           {

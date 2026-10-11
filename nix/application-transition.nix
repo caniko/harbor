@@ -11,9 +11,10 @@
   barriers = map (p: p.transition.barrierDirectory) (lib.attrValues projects);
   backupRoots = map (p: p.backup.directory) (lib.attrValues (lib.filterAttrs (_: p: p.backup.enable or false) config.services.harbor-db.projects));
   storagePaths = import ./storage-paths.nix {inherit lib;};
+  immutableFiles = import ./immutable-files.nix {inherit lib;};
   package = harborDbStoragePackage;
-  manifest = name: p:
-    pkgs.writeText "harbor-db-${name}-transition.json" (builtins.toJSON {
+  manifest = name: p: let
+    document = pkgs.writeText "harbor-db-${name}-transition.json" (builtins.toJSON {
       version = 1;
       resource = name;
       source_manifest = p.sourceManifest;
@@ -36,6 +37,8 @@
       executable_files = p.executableFiles;
       timeout_seconds = p.timeoutSeconds;
     });
+  in
+    immutableFiles.checkedManifest "Harbor DB ${name} transition" p.executableFiles document;
 in {
   imports = [./storage-package-argument.nix];
   options.services.harbor-db.projects = mkOption {
@@ -129,6 +132,10 @@ in {
           {
             assertion = lib.all (worker: worker.argv != [] && lib.hasPrefix "/" (lib.head worker.argv)) (lib.attrValues p.transition.commands);
             message = "Harbor DB ${name} transition workers require nonempty argv with an absolute executable.";
+          }
+          {
+            assertion = lib.all immutableFiles.storePath p.transition.executableFiles;
+            message = "Harbor DB ${name} transition executableFiles must be normalized immutable store paths; manifest realization requires regular files.";
           }
         ])
         projects);

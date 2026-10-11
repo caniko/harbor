@@ -322,6 +322,10 @@ in {
         message = "Harbor DB identity state must be outside the PostgreSQL data directory.";
       }
       {
+        assertion = cfg.stateDir != "/" && normalizedPath cfg.stateDir && builtins.match "/[A-Za-z0-9_./-]+" cfg.stateDir != null;
+        message = "Harbor DB identity state requires a dedicated normalized absolute directory.";
+      }
+      {
         assertion = cfg.upgrade == null || cfg.upgrade.validateCommand != [];
         message = "Staged PostgreSQL upgrades require consumer validation.";
       }

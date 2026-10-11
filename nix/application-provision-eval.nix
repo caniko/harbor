@@ -123,6 +123,48 @@ in
         message = "One peer OS account must never match both schema-owner and restricted-runtime HBA rules.";
       }
       {
+        name = "cross-project-runtime-owner-user-rejection";
+        assertion = pkgs.lib.all (overrides:
+          rejected (evaluate {
+            services.harbor-db.projects.other.postgres.provision =
+              provision
+              // {
+                ownerOsUser = "other_owner_os";
+                runtimeOsUser = "other_runtime_os";
+              }
+              // overrides;
+          }) "runtime OS users must not map to any application owner role") [{ownerOsUser = "demo";} {runtimeOsUser = "root";}];
+        message = "Both cross-project owner/runtime collision directions reject before peer authentication can grant schema-owner privileges.";
+      }
+      {
+        name = "cross-project-disjoint-user-admission";
+        assertion =
+          failed (evaluate {
+            services.harbor-db.projects.other.postgres.provision =
+              provision
+              // {
+                ownerOsUser = "other_owner_os";
+                runtimeOsUser = "other_runtime_os";
+              };
+          })
+          == [];
+        message = "Distinct enabled-project owner and runtime OS accounts remain valid.";
+      }
+      {
+        name = "disabled-project-owner-collision-admission";
+        assertion =
+          failed (evaluate {
+            services.harbor-db.projects.other.postgres.provision =
+              provision
+              // {
+                enable = false;
+                ownerOsUser = "demo";
+              };
+          })
+          == [];
+        message = "Disabled projects cannot reserve owner peer mappings or reject an enabled runtime account.";
+      }
+      {
         name = "schema-order";
         assertion = builtins.elem "demo-schema.service" eval.config.systemd.services.harbor-db-demo-provision.requiredBy;
         message = "schema must require provisioning";
