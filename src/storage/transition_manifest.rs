@@ -744,17 +744,13 @@ pub fn startup_unit(state: &Path, unit: &str) -> Result<()> {
 }
 pub fn release_barriers(config: &Value, record: &Value, aborted: bool) -> Result<()> {
     let state = Path::new(string(config, "barrier_dir")?);
-    durable::write_json(
-        &state.join("start-policy.json"),
-        &json!({"version":1,"generation":record[if aborted{"source_generation"}else{"candidate"}],"authority_manifest":config[if aborted{"source_manifest"}else{"target_manifest"}],"units":if aborted{json!(units(config)?)}else{config["units"].clone()}}),
-    )?;
     let mut paths = vec![state.join("inhibited.json")];
-    if aborted && !array(config, "retired_units")?.is_empty() {
+    if !array(config, "retired_units")?.is_empty() {
         paths.push(state.join("retired/inhibited.json"));
     }
-    for path in paths {
-        if path.exists() {
-            owned(&path, false)?;
+    for path in &paths {
+        if super::writer_fence::exists(path) {
+            owned(path, false)?;
             let expected = if path
                 .parent()
                 .and_then(Path::file_name)
@@ -764,9 +760,20 @@ pub fn release_barriers(config: &Value, record: &Value, aborted: bool) -> Result
             } else {
                 json!({"intent":record["intent"],"candidate":record["barrier_candidate"]})
             };
-            if durable::read_json(&path)? != expected {
+            if durable::read_json(path)? != expected {
                 return Err(invalid("another transition owns the startup barrier"));
             }
+        }
+    }
+    durable::write_json(
+        &state.join("start-policy.json"),
+        &json!({"version":1,"generation":record[if aborted{"source_generation"}else{"candidate"}],"authority_manifest":config[if aborted{"source_manifest"}else{"target_manifest"}],"units":if aborted{json!(units(config)?)}else{config["units"].clone()}}),
+    )?;
+    for path in paths {
+        if !aborted && path != state.join("inhibited.json") {
+            continue;
+        }
+        if super::writer_fence::exists(&path) {
             fs::remove_file(&path)?;
             durable::sync_directory(
                 path.parent()

@@ -63,6 +63,9 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
                 ));
             }
         } else {
+            if entry.get("git_executable").is_some() {
+                custody::git_executable(string(entry, "git_executable")?)?;
+            }
             if !entry["transition_manifest"].is_null() {
                 validate_path(string(entry, "transition_manifest")?)?;
             }

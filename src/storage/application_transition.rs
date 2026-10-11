@@ -384,10 +384,24 @@ pub fn target_custody(
     )
 }
 fn custody_equal(observed: &Value, expected: &Value) -> bool {
-    expected.as_object().is_some_and(|o| {
-        o.iter()
-            .all(|(k, v)| k == "completed_at" || observed[k] == *v)
-    })
+    let (Some(mut observed), Some(mut expected)) =
+        (observed.as_object().cloned(), expected.as_object().cloned())
+    else {
+        return false;
+    };
+    let verified_at = observed.remove("completed_at");
+    let retained_at = expected.remove("completed_at");
+    retained_at
+        .as_ref()
+        .and_then(Value::as_i64)
+        .is_some_and(|at| {
+            at > 0
+                && verified_at
+                    .as_ref()
+                    .and_then(Value::as_i64)
+                    .is_some_and(|now| at <= now)
+        })
+        && expected == observed
 }
 pub fn verify_custody(
     config: &Value,

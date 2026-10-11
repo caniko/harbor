@@ -48,7 +48,12 @@ both source and independent restore against those requirements. Git repositories
 must be bare and pass `git fsck --full --strict`; database-nonempty repositories
 must resolve `HEAD` to a commit. Shallow history, partial clones and external
 object alternates cannot claim complete custody. The immutable `git_executable`
-is part of the resource contract. Activation repeats these integrity checks.
+is part of the resource contract. Nix admits only normalized store paths and
+realizes the manifest after checking that each resolves to a regular store file.
+Both engines validate a root-owned, read-only, executable store file and its
+immutable alias chain before execution, including external manifests. Mutable
+runtime aliases to a store executable are rejected. Activation repeats these
+integrity checks.
 
 Cutover capability version 3 guards all seven declared systemd writer phases
 (`ExecCondition`, `ExecStartPre`, `ExecStart`, `ExecStartPost`, `ExecReload`,

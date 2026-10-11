@@ -253,14 +253,29 @@ pub fn require_database_paths(
     }
     Ok(())
 }
+pub fn git_executable(executable: &str) -> Result<PathBuf> {
+    validate_path(executable)?;
+    let path = durable::immutable_store_reference(Path::new(executable)).map_err(|error| {
+        invalid(format!(
+            "Git integrity requires an immutable store executable: {error}"
+        ))
+    })?;
+    if fs::metadata(&path)?.mode() & 0o111 == 0 {
+        return Err(invalid(
+            "Git integrity requires an executable immutable store file",
+        ));
+    }
+    Ok(path)
+}
 pub fn validate_git_repository(
     path: &Path,
     requirement: &Value,
     executable: Option<&str>,
 ) -> Result<()> {
-    let executable = executable
-        .filter(|s| Path::new(s).is_absolute())
-        .ok_or_else(|| invalid("Git integrity requires a declared absolute executable"))?;
+    let executable =
+        git_executable(executable.ok_or_else(|| {
+            invalid("Git integrity requires a declared immutable store executable")
+        })?)?;
     if requirement
         .get("git_has_commits")
         .is_some_and(|v| !v.is_boolean())
@@ -295,7 +310,7 @@ pub fn validate_git_repository(
     environment.insert("GIT_CONFIG_NOSYSTEM".into(), "1".into());
     environment.insert("GIT_CONFIG_GLOBAL".into(), "/dev/null".into());
     let mut spec = process::CommandSpec::new(vec![
-        executable.into(),
+        executable.to_string_lossy().into_owned(),
         "--no-replace-objects".into(),
         format!("--git-dir={}", path.display()),
     ]);

@@ -250,6 +250,11 @@ Custody inventories reject regular files with external hard links in metadata
 and content checks. Database inventory queries supply paths and attributes;
 the policy's root index remains authoritative and query-supplied `root` fields
 are rejected in both ordinary cutover and transition custody publication.
+Retried preparation and commit compare the complete persisted custody object
+against reconstructed evidence, excluding only `completed_at` from equality.
+The retained timestamp must still be a positive integer no later than the fresh
+verification. Missing fields, added fields and non-object custody reject before
+authority or custody publication.
 
 The root coordinator installs persistent systemd client barriers before stopping
 writers and taking the exclusive authority lease. Legacy service units are included
@@ -263,6 +268,9 @@ transition authority. Barrier directories are dedicated normalized namespaces,
 pairwise non-overlapping with each other and enabled backup roots, so persistent
 start policies and lock anchors cannot be shared or shadow another project's
 ownership. Disabled projects do not reserve units or namespaces.
+Writer release and abort validate every selected inhibition marker before updating
+`start-policy.json` or removing any marker. Rejection preserves the retained startup
+policy and all barriers; interrupted successful releases remain retryable.
 The barrier must also be disjoint from source and target storage roots and the
 authority directory in both containment directions; it cannot be their ancestor.
 The selected backup root must also be disjoint from both source and target corpora

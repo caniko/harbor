@@ -41,6 +41,11 @@ def main():
         # These are disposable processes, not systemd units. Exclusive-lock
         # refusal must prove lease coverage, independently of unit-state checks.
         resource["runtime_units"] = []
+        # This fixture certifies a plain-file corpus and tests production writer
+        # command leases. It has no Git requirements. Store ownership is unmapped
+        # in the build namespace; Git admission is covered by the ownership-bound
+        # native/Python cargo fixtures and the production cutover VM.
+        resource.pop("git_executable")
         resource["authority"]["state_dir"] = str(authority)
         resource["authority"]["directories"] = [str(source)]
         resource["custody_file"] = str(authority / "custody.json")

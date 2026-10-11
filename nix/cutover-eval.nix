@@ -104,6 +104,14 @@ in
     name = "harbor-db-cutover-eval";
     assertions = [
       {
+        name = "git-integrity-checker-is-an-immutable-store-file";
+        message = "Filesystem custody must reject mutable or non-normalized Git checker paths while retaining the default immutable Git executable.";
+        assertion =
+          custodyAccepted {}
+          && !custodyAccepted {services.harbor-db.cutover.resources.history.git_executable = lib.mkForce "/var/lib/archive/git";}
+          && !custodyAccepted {services.harbor-db.cutover.resources.history.git_executable = lib.mkForce "/nix/store/00000000000000000000000000000000-tools/../git";};
+      }
+      {
         name = "filesystem-root-custody-already-rejects-global-admission";
         message = "The filesystem root contains the declared authority state and must fail global namespace admission before installing host-wide tmpfiles custody hooks.";
         assertion = let

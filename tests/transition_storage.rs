@@ -1532,6 +1532,210 @@ for units in ([], ['demo.service'], ['legacy.service'], ['demo.service','legacy.
     ]));
     process::execute(&command).unwrap();
 }
+
+#[test]
+fn partial_or_extended_custody_cannot_authorize_transition_retries_in_both_engines() {
+    let f = Fixture::new();
+    fs::write(
+        f.temp.path().join("new/records"),
+        b"acknowledged revision seven",
+    )
+    .unwrap();
+    let path = f.temp.path().join("custody.json");
+    durable::write_json(&path, &json!({"kind":"filesystem","authority":f.target,
+        "custody_file":f.temp.path().join("authority/custody.json"),"database_inventory_checks":[]})).unwrap();
+    let mut config = f.config.clone();
+    config["custody_manifest"] = json!(path);
+    let mut record = json!({"source_authority":{"identity":"retained"},"primary_snapshot_sha256":null,
+        "source_acceptance_sha256":"a".repeat(64),"independent_sha256":"b".repeat(64),"semantic_sha256":"c".repeat(64)});
+    let complete =
+        application_transition::target_custody(&config, &record, &f.target, &[]).unwrap();
+    let mut malformed = vec![
+        json!({}),
+        json!({"resource":"demo"}),
+        json!([]),
+        json!(true),
+    ];
+    for key in complete.as_object().unwrap().keys() {
+        let mut partial = complete.clone();
+        partial.as_object_mut().unwrap().remove(key);
+        malformed.push(partial);
+    }
+    let mut extended = complete.clone();
+    extended["undeclared"] = json!(true);
+    malformed.push(extended);
+    for timestamp in [
+        json!(true),
+        json!(-1),
+        json!(null),
+        json!(harbor_db::storage::custody::now() + 3600),
+    ] {
+        let mut changed = complete.clone();
+        changed["completed_at"] = timestamp;
+        malformed.push(changed);
+    }
+    for custody in malformed {
+        record["custody"] = custody;
+        assert!(
+            application_transition::verify_custody(&config, &record, &f.target, &[]).is_err(),
+            "partial custody was admitted: {}",
+            record["custody"]
+        );
+    }
+    record["custody"] = complete;
+    application_transition::verify_custody(&config, &record, &f.target, &[]).unwrap();
+    let script = r#"import copy
+from test_application_transition import ApplicationTransitionTest
+from harbor_db import application_transition as transition
+from harbor_db.durable import read_json,write_json
+f=ApplicationTransitionTest();f.setUp()
+try:
+    f.custody();f.prepare()
+    journal=f.state/'transition.json';retained=read_json(journal)
+    variants=[{}, {'resource':'demo'}, [], True]
+    variants += [{k:v for k,v in retained['custody'].items() if k!=missing} for missing in retained['custody']]
+    variants.append(retained['custody'] | {'undeclared':True})
+    variants += [retained['custody'] | {'completed_at':at} for at in (True,-1,None,retained['custody']['completed_at']+3600)]
+    for value in variants:
+        changed=copy.deepcopy(retained);changed['custody']=value
+        for operation in (transition.prepare,transition.commit):
+            write_json(journal,changed)
+            identity=(f.state/'identity.json').read_bytes();custody=(f.state/'custody.json').read_bytes()
+            try: operation(f.config)
+            except ValueError: pass
+            else: raise AssertionError('partial custody admitted: '+repr(value))
+            assert (f.state/'identity.json').read_bytes()==identity
+            assert (f.state/'custody.json').read_bytes()==custody
+    write_json(journal,retained)
+    transition.prepare(f.config);transition.commit(f.config)
+finally: f.doCleanups()
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!(
+                "{}/python:{}/tests",
+                env!("CARGO_MANIFEST_DIR"),
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&spec).unwrap();
+}
+
+#[test]
+fn rejected_barrier_release_preserves_all_markers_and_startup_policy_in_both_engines() {
+    use std::os::unix::fs::MetadataExt;
+    let f = Fixture::new();
+    let mut config = f.config.clone();
+    config["retired_units"] = json!(["legacy.service"]);
+    let record = json!({"intent":"selected-intent","barrier_candidate":"selected-candidate",
+        "source_generation":"retained-source","candidate":"selected-target"});
+    let state = f.temp.path().join("barrier");
+    fs::create_dir(state.join("retired")).unwrap();
+    let policy = state.join("start-policy.json");
+    let primary = state.join("inhibited.json");
+    let retired = state.join("retired/inhibited.json");
+    let expected_primary =
+        json!({"intent":record["intent"],"candidate":record["barrier_candidate"]});
+    let expected_retired = json!({"resource":"demo","units":["legacy.service"]});
+    for aborted in [false, true] {
+        for bad_retired in [false, true] {
+            durable::write_json(&policy, &json!({"retain":"original startup authority"})).unwrap();
+            durable::write_json(
+                &primary,
+                &if bad_retired {
+                    expected_primary.clone()
+                } else {
+                    json!({"foreign":true})
+                },
+            )
+            .unwrap();
+            durable::write_json(
+                &retired,
+                &if bad_retired {
+                    json!({"foreign":true})
+                } else {
+                    expected_retired.clone()
+                },
+            )
+            .unwrap();
+            let before: Vec<_> = [&policy, &primary, &retired]
+                .iter()
+                .map(|path| (fs::read(path).unwrap(), fs::metadata(path).unwrap().ino()))
+                .collect();
+            assert!(transition_manifest::release_barriers(&config, &record, aborted).is_err());
+            for (path, (bytes, inode)) in [&policy, &primary, &retired].iter().zip(before) {
+                assert_eq!(fs::read(path).unwrap(), bytes);
+                assert_eq!(fs::metadata(path).unwrap().ino(), inode);
+            }
+        }
+    }
+    durable::write_json(&primary, &expected_primary).unwrap();
+    durable::write_json(&retired, &expected_retired).unwrap();
+    transition_manifest::release_barriers(&config, &record, true).unwrap();
+    assert!(!primary.exists() && !retired.exists());
+    assert_eq!(
+        durable::read_json(&policy).unwrap()["generation"],
+        record["source_generation"]
+    );
+    transition_manifest::release_barriers(&config, &record, true).unwrap();
+    let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import transition_manifest
+from harbor_db.durable import write_json,read_json
+uid=int(sys.argv[3])
+if uid:
+    original=Path.lstat
+    def mapped(path):
+        info=original(path)
+        if info.st_uid!=uid: return info
+        fields=list(info);fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped).start()
+c,r=map(json.loads,sys.argv[1:3]);state=Path(c['barrier_dir'])
+policy=state/'start-policy.json';primary=state/'inhibited.json';retired=state/'retired/inhibited.json'
+p={'intent':r['intent'],'candidate':r['barrier_candidate']};q={'resource':c['resource'],'units':c['retired_units']}
+for aborted,bad_retired in ((False,False),(False,True),(True,False),(True,True)):
+    write_json(policy,{'retain':'original startup authority'})
+    write_json(primary,p if bad_retired else {'foreign':True});write_json(retired,{'foreign':True} if bad_retired else q)
+    before=[(path.read_bytes(),path.stat().st_ino) for path in (policy,primary,retired)]
+    try: transition_manifest.release_barriers(c,r,aborted=aborted)
+    except ValueError: pass
+    else: raise AssertionError('foreign startup barrier released')
+    assert before==[(path.read_bytes(),path.stat().st_ino) for path in (policy,primary,retired)]
+write_json(primary,p);write_json(retired,q)
+transition_manifest.release_barriers(c,r,aborted=True)
+assert not primary.exists() and not retired.exists()
+assert read_json(policy)['generation']==r['source_generation']
+transition_manifest.release_barriers(c,r,aborted=True)
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        record.to_string(),
+        option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&spec).unwrap();
+}
 #[test]
 fn backup_pin_and_borrowed_fence_require_declared_retained_anchors() {
     let f = Fixture::new();

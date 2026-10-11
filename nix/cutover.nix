@@ -30,7 +30,8 @@
           else 5432;
       };
     };
-  manifest = pkgs.writeText "harbor-db-cutover.json" (builtins.toJSON {
+  immutableFiles = import ./immutable-files.nix {inherit lib;};
+  manifest = immutableFiles.checkedManifest "Harbor DB cutover" (map (entry: entry.git_executable) (lib.attrValues cfg.resources)) (pkgs.writeText "harbor-db-cutover.json" (builtins.toJSON {
     version = 1;
     enforced = cfg.enable;
     host = config.networking.hostName;
@@ -38,7 +39,7 @@
     timeout_seconds = cfg.timeoutSeconds;
     activation_timeout_seconds = cfg.activationTimeoutSeconds;
     inherit resources;
-  });
+  }));
   protectedDirectories = lib.concatMap (entry:
     if entry.kind == "filesystem"
     then entry.authority.directories
@@ -241,6 +242,10 @@ in {
     }
     (lib.mkIf cfg.enable {
       assertions = [
+        {
+          assertion = lib.all (entry: immutableFiles.storePath entry.git_executable) (lib.attrValues cfg.resources);
+          message = "Harbor-DB Git integrity checkers must be normalized immutable store paths; manifest realization requires regular store-resolved files.";
+        }
         {
           assertion = storagePaths.disjoint custodyNamespaces;
           message = "Harbor-DB filesystem custody roots and authority namespaces must be globally pairwise disjoint across resources.";

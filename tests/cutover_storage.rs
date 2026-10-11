@@ -798,6 +798,84 @@ fn git_strict_fsck_detects_missing_referenced_objects() {
 }
 
 #[test]
+fn git_integrity_rejects_mutable_checkers_before_execution_in_both_engines() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let f = Fixture::new();
+    let repository = f.source.join("incomplete.git");
+    fs::create_dir(&repository).unwrap();
+    let called = f.source.join("checker-called");
+    let fake = f.source.join("fake-git");
+    fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\ntouch '{}'\ncase \"$3\" in config) exit 1;; rev-parse) echo true;; esac\n",
+            called.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+    let alias = f.source.join("git-alias");
+    symlink(git(), &alias).unwrap();
+    for executable in [&fake, &alias] {
+        let result = custody::validate_git_repository(&repository, &json!({}), executable.to_str());
+        assert!(result.is_err(), "mutable Git checker admitted");
+        assert!(!called.exists(), "mutable checker ran before admission");
+        let mut manifest = f.manifest();
+        manifest["resources"]["archive"]["git_executable"] = json!(executable);
+        assert!(cutover::validate_manifest(&manifest, "fixture").is_err());
+    }
+    let script = r#"import json,os,subprocess,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import cutover
+repo,called,fake,alias=map(Path,sys.argv[1:5]);manifest=json.loads(sys.argv[5]);git=sys.argv[6];uid=int(sys.argv[7])
+if uid:
+    original=Path.lstat
+    def mapped(path):
+        info=original(path)
+        if info.st_uid!=uid: return info
+        fields=list(info);fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped).start()
+for exe in (fake,alias):
+    try: cutover.validate_git_repository(repo,{},str(exe))
+    except ValueError: pass
+    else: raise AssertionError('mutable Git checker admitted')
+    assert not called.exists(),'mutable checker ran before admission'
+    manifest['resources']['archive']['git_executable']=str(exe)
+    try: cutover.validate_manifest(manifest,'fixture')
+    except ValueError: pass
+    else: raise AssertionError('mutable checker admitted by external manifest')
+manifest['resources']['archive']['git_executable']=git
+cutover.validate_manifest(manifest,'fixture')
+complete=repo.parent/'verified.git'
+subprocess.run([git,'init','--bare',str(complete)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+cutover.validate_git_repository(complete,{},git)
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        repository.to_string_lossy().into_owned(),
+        called.to_string_lossy().into_owned(),
+        fake.to_string_lossy().into_owned(),
+        alias.to_string_lossy().into_owned(),
+        f.manifest().to_string(),
+        git().to_string_lossy().into_owned(),
+        option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&spec).unwrap();
+}
+
+#[test]
 fn content_replacement_with_same_mtime_and_size_is_rejected() {
     use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
     let f = Fixture::new();

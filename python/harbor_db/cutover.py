@@ -37,6 +37,8 @@ def validate_manifest(value, host):
             if entry["user"] != "postgres":
                 raise ValueError("PostgreSQL admission requires the postgres service identity")
         else:
+            if "git_executable" in entry:
+                immutable_git_executable(entry["git_executable"])
             if entry.get("transition_manifest") is not None:
                 validate_path(entry["transition_manifest"])
             authority = entry.get("authority", {})
@@ -171,9 +173,42 @@ def require_database_paths(inventories, requirements, *, roots=(), git_executabl
             validate_git_repository(Path(roots[root]) / path, requirement, git_executable)
 
 
+def immutable_git_executable(executable):
+    validate_path(executable)
+    store = Path("/nix/store")
+    def reference(path, depth=0):
+        if not path.is_relative_to(store) or depth > 64:
+            raise ValueError("Git integrity requires an immutable store executable")
+        for selected in (path, *path.parents):
+            if selected == store:
+                break
+            info = selected.lstat()
+            if info.st_uid != 0:
+                raise ValueError("Git integrity requires root-owned immutable store paths")
+            if stat.S_ISLNK(info.st_mode):
+                target = selected.readlink()
+                reference(target if target.is_absolute() else selected.parent.resolve(strict=True) / target, depth + 1)
+            elif info.st_mode & 0o222:
+                raise ValueError("Git integrity requires read-only immutable store paths")
+    path = Path(executable)
+    reference(path)
+    resolved = path.resolve(strict=True)
+    if not re.fullmatch(r"/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9+._?=-]+(?:/[^/]+)*", str(resolved)):
+        raise ValueError("Git integrity requires an immutable store executable")
+    for parent in resolved.parents:
+        if parent == store:
+            break
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222:
+            raise ValueError("Git integrity requires immutable store ancestors")
+    info = resolved.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222 or not info.st_mode & 0o111:
+        raise ValueError("Git integrity requires an executable immutable store file")
+    return str(resolved)
+
+
 def validate_git_repository(path, requirement, executable):
-    if not isinstance(executable, str) or not Path(executable).is_absolute():
-        raise ValueError("Git integrity requires a declared absolute executable")
+    executable = immutable_git_executable(executable)
     if type(requirement.get("git_has_commits", False)) is not bool:
         raise ValueError("invalid database Git commit requirement")
     if any((path / "objects/pack").glob("*.promisor")):

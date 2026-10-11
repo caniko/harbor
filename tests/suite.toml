@@ -3,6 +3,55 @@ version = 1
 
 [[inventories]]
 origin = "rust"
+id_prefix = "native.transition_storage."
+selector_prefix = ""
+source = "tests/transition_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "transition_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["partial_or_extended_custody_cannot_authorize_transition_retries_in_both_engines", "rejected_barrier_release_preserves_all_markers_and_startup_policy_in_both_engines"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.cutover_storage."
+selector_prefix = ""
+source = "tests/cutover_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "cutover_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["git_integrity_rejects_mutable_checkers_before_execution_in_both_engines"]
+
+[[coverage]]
+case = "native.transition_storage.partial_or_extended_custody_cannot_authorize_transition_retries_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.prepare"
+dimension = "rejection"
+evidence = "Both engines reject empty, partial, extended or non-object custody and invalid timestamps; preparation and commit retries retain authority/custody bytes, while exact complete custody remains resumable."
+
+[[coverage]]
+case = "native.transition_storage.rejected_barrier_release_preserves_all_markers_and_startup_policy_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.enable-writes"
+dimension = "rejection"
+evidence = "Foreign primary or retired markers reject before any startup-policy write or marker deletion in both engines, preserving bytes and inodes; owned multi-marker abort release and repeated release succeed."
+
+[[coverage]]
+case = "native.cutover_storage.git_integrity_rejects_mutable_checkers_before_execution_in_both_engines"
+capability = "cutover"
+operation = "harbor-db-cutover.certify"
+dimension = "rejection"
+evidence = "Both engines reject a mutable fake Git checker and a mutable alias to real store Git before execution, including external manifests; real immutable Git still validates a complete bare repository."
+
+[[inventories]]
+origin = "rust"
 id_prefix = "native.recovery_storage."
 selector_prefix = ""
 source = "tests/recovery_storage.rs"

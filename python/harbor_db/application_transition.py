@@ -227,9 +227,18 @@ def target_custody(config, record, target, leases):
 
 def verify_custody(config, record, target, leases):
     observed = target_custody(config, record, target, leases)
-    if record["custody"] is not None and any(observed[key] != value for key, value in record["custody"].items() if key != "completed_at"):
+    if record["custody"] is not None and not custody_equal(observed, record["custody"]):
         raise ValueError("prepared target corpus evidence changed")
     return observed
+
+
+def custody_equal(observed, expected):
+    return (isinstance(expected, dict) and isinstance(observed, dict)
+            and type(expected.get("completed_at")) is int
+            and type(observed.get("completed_at")) is int
+            and 0 < expected["completed_at"] <= observed["completed_at"]
+            and {key: value for key, value in expected.items() if key != "completed_at"}
+                == {key: value for key, value in observed.items() if key != "completed_at"})
 
 
 def prepare(config):
@@ -280,7 +289,7 @@ def prepare_target(config, record, target, leases):
         raise ValueError("prepared target authority evidence changed")
     record["target_authority"] = prepared
     custody = target_custody(config, record, target, leases)
-    if record.get("custody") is not None and any(custody[key] != value for key, value in record["custody"].items() if key != "completed_at"):
+    if record.get("custody") is not None and not custody_equal(custody, record["custody"]):
         raise ValueError("prepared target corpus evidence changed")
     record.setdefault("custody", custody)
     save(config, record, "prepared")

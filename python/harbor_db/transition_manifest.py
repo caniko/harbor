@@ -235,21 +235,25 @@ def startup_unit(state, unit):
 
 def release_barriers(config, record, *, aborted=False):
     state = Path(config["barrier_dir"])
-    write_json(state / "start-policy.json", {"version": 1,
-               "generation": record["source_generation"] if aborted else record["candidate"],
-               "authority_manifest": config["source_manifest"] if aborted else config["target_manifest"],
-               "units": config["units"] + (config["retired_units"] if aborted else [])})
     paths = [state / "inhibited.json"]
-    if aborted and config["retired_units"]:
+    if config["retired_units"]:
         paths.append(state / "retired/inhibited.json")
     for path in paths:
-        if path.exists():
+        if os.path.lexists(path):
             startup_inhibition.owned(path)
             marker = read_json(path)
             expected = ({"resource": config["resource"], "units": config["retired_units"]}
                         if path.parent.name == "retired" else {"intent": record["intent"], "candidate": record["barrier_candidate"]})
             if marker != expected:
                 raise ValueError("another transition owns the startup barrier")
+    write_json(state / "start-policy.json", {"version": 1,
+               "generation": record["source_generation"] if aborted else record["candidate"],
+               "authority_manifest": config["source_manifest"] if aborted else config["target_manifest"],
+               "units": config["units"] + (config["retired_units"] if aborted else [])})
+    for path in paths:
+        if not aborted and path != state / "inhibited.json":
+            continue
+        if os.path.lexists(path):
             path.unlink()
             sync_directory(path.parent)
 
