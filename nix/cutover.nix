@@ -27,7 +27,7 @@
         port =
           if config.services.harbor-db.postgresql.switchAdoption != null
           then config.services.harbor-db.postgresql.switchAdoption.port
-          else 5432;
+          else config.services.postgresql.settings.port;
       };
     };
   immutableFiles = import ./immutable-files.nix {inherit lib;};
@@ -238,6 +238,10 @@ in {
     }
     (lib.mkIf cfg.enable {
       assertions = [
+        {
+          assertion = lib.all (entry: normalizedPath entry.custody_file && builtins.dirOf entry.custody_file == entry.authority.state_dir && !(lib.elem (builtins.baseNameOf entry.custody_file) ["identity.json" "transition.json" "lock"])) (lib.attrValues cfg.resources);
+          message = "Harbor-DB custody receipts must be dedicated direct authority children outside identity, transition journal and lock control paths.";
+        }
         {
           assertion = lib.all (entry: immutableFiles.storePath entry.git_executable) (lib.attrValues cfg.resources);
           message = "Harbor-DB Git integrity checkers must be normalized immutable store paths; manifest realization requires regular store-resolved files.";

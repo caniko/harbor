@@ -47,10 +47,7 @@ def validate_manifest(value, host):
                     or authority.get("resource") != name or not isinstance(authority.get("binding"), dict)
                     or type(entry.get("max_age_seconds")) is not int or entry["max_age_seconds"] <= 0):
                 raise ValueError(f"invalid existing filesystem authority: {name}")
-            validate_path(authority.get("state_dir"))
-            validate_path(entry.get("custody_file"))
-            if Path(entry["custody_file"]).parent != Path(authority["state_dir"]):
-                raise ValueError("custody receipt must be directly in its private authority directory")
+            custody_receipt_path(entry)
             for directory in directories:
                 validate_path(directory)
             if entry.get("login_shell") is not None:
@@ -111,6 +108,17 @@ def validate_storage_namespaces(manifest, *, deadline=None):
 def validate_path(path):
     if not isinstance(path, str) or not Path(path).is_absolute() or os.path.normpath(path) != path:
         raise ValueError("cutover storage and policy paths must be canonical absolute paths")
+
+
+def custody_receipt_path(config):
+    state = config["authority"].get("state_dir")
+    receipt = config.get("custody_file")
+    validate_path(state)
+    validate_path(receipt)
+    receipt = Path(receipt)
+    if receipt.parent != Path(state) or receipt.name in ("identity.json", "transition.json", "lock"):
+        raise ValueError("custody receipt must be a dedicated direct authority child outside authority control paths")
+    return receipt
 
 
 def digest(path):
@@ -278,6 +286,7 @@ def validate_git_repository(path, requirement, executable):
 
 def certify_filesystem(config, restored_roots, identifier, *, now=None, database_snapshot=None, database_requirements=()):
     """Writers must already be stopped; this command never stops or restores them."""
+    receipt = custody_receipt_path(config)
     now = int(time.time()) if now is None else now
     authority = config["authority"]
     resource.contract(authority)
@@ -323,7 +332,7 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
         if any(writer_active(unit) for unit in config["runtime_units"]) or root_identities(config) != identities:
             raise ValueError("source writer or storage identity changed during custody certification")
         publish()
-        write_json(recovery.absolute(config["custody_file"]), {
+        write_json(recovery.absolute(receipt), {
             "version": 1, "resource": authority["resource"], "identity": identifier,
             "binding": authority["binding"], "directories": authority["directories"],
             "completed_at": now, "database_snapshot_sha256": database_snapshot,

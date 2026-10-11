@@ -31,6 +31,11 @@ senders: the continuous receiver holds one slot/sender while a streaming base
 backup uses the second slot and two concurrent connections. Evaluation checks
 both `sourceSettings` and the effective PostgreSQL settings, so an override
 cannot silently reduce this capacity.
+Every enabled WAL-receiver and base-backup slot name must contain 1–63 lowercase
+ASCII letters, digits or underscores. Names are validated before producer
+services are admitted, including for independent targets. The length bound
+prevents PostgreSQL clients from silently truncating different names to the same
+slot. When both operations are enabled, their validated names must differ.
 
 The source-local plain-format producer supports only the primary's built-in
 tablespaces. Source setup, receiver startup and each base-backup startup inspect
@@ -47,6 +52,11 @@ They cannot select `recovery/`, `base/`, `wal/`, `locks/`, `BACKUP_LOCK`,
 `preparation.json`. Nix and both runtime
 engines reject these aliases before publication, including off-host receipt
 imports. The dedicated `<backupRoot>/evidence/` subtree remains supported.
+Snapshot, local-receipt and off-host-receipt paths also exclude the declared
+PostgreSQL data, lifecycle-state and startup-inhibition trees in both containment
+directions. Nix and both runtimes reject these paths before capture, preparation
+or receipt publication, including under the legacy protocol. Recovery evidence
+cannot replace cluster control files, authority identity or fence/startup policy.
 Every generated physical backup root must also be outside all enabled custody
 corpus/authority namespaces and enrolled PostgreSQL data, lifecycle-state and
 startup-inhibition roots, including on target-only hosts. Equality and either

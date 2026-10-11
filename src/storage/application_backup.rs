@@ -345,7 +345,7 @@ fn exists(p: &Path) -> bool {
 }
 pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value> {
     let root = validate(c, true)?;
-    if !super::resource::valid_name(attempt) {
+    if !super::resource::valid_name(attempt) || matches!(attempt, "LAST_SUCCESS" | "lock") {
         return Err(invalid("invalid backup attempt"));
     }
     let protected = c["version"] == 2;

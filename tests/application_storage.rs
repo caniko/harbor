@@ -902,6 +902,84 @@ fn redirected_mutating_or_incomplete_capture_cannot_publish() {
 }
 
 #[test]
+fn reserved_attempts_cannot_poison_backup_publication_in_both_engines() {
+    use std::os::unix::fs::MetadataExt;
+    for python in [false, true] {
+        for populated in [false, true] {
+            let (t, c) = backup_fixture();
+            if populated {
+                application_backup::capture(&c, "retained", false).unwrap();
+            }
+            let root = t.path().join("backups");
+            let lock = root.join("lock");
+            let info = lock.metadata().unwrap();
+            let identity = (info.dev(), info.ino());
+            let before: Vec<_> = fs::read_dir(&root)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            let marker = fs::read(root.join("LAST_SUCCESS")).ok();
+            let config = t.path().join("config.json");
+            durable::write_json(&config, &c).unwrap();
+            for attempt in ["LAST_SUCCESS", "lock"] {
+                for retry in [false, true] {
+                    let mut command = if python {
+                        let mut command = std::process::Command::new("python3");
+                        command.args(["-B", "-m", "harbor_db.application_backup"]);
+                        command.env(
+                            "PYTHONPATH",
+                            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                        );
+                        command
+                    } else {
+                        std::process::Command::new(env!(
+                            "CARGO_BIN_EXE_harbor-db-application-backup"
+                        ))
+                    };
+                    command
+                        .arg("--config")
+                        .arg(&config)
+                        .args(["capture", "--attempt", attempt]);
+                    if retry {
+                        command.arg("--retry-incomplete");
+                    }
+                    command
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped());
+                    let result = process::spawn(&mut command)
+                        .unwrap()
+                        .wait_with_output()
+                        .unwrap();
+                    assert_eq!(result.status.code(), Some(1));
+                    assert!(
+                        String::from_utf8_lossy(&result.stderr).contains("invalid backup attempt"),
+                        "{}",
+                        String::from_utf8_lossy(&result.stderr)
+                    );
+                    assert!(result.stdout.is_empty());
+                    assert_eq!(fs::read(root.join("LAST_SUCCESS")).ok(), marker);
+                    let after: Vec<_> = fs::read_dir(&root)
+                        .unwrap()
+                        .map(|entry| entry.unwrap().file_name())
+                        .collect();
+                    assert_eq!(before, after);
+                    let info = lock.metadata().unwrap();
+                    assert_eq!(identity, (info.dev(), info.ino()));
+                }
+            }
+            let receipt = if python {
+                backup_peer(&c, "capture", "valid-next", false).unwrap()
+            } else {
+                application_backup::capture(&c, "valid-next", false).unwrap()
+            };
+            assert_eq!(receipt["attempt"], "valid-next");
+            assert_eq!(last(t.path())["attempt"], "valid-next");
+        }
+    }
+}
+
+#[test]
 fn artifact_inventory_rejects_non_utf8_files_and_directories_without_collapsing_valid_names() {
     use std::os::unix::ffi::OsStringExt;
     let t = tempfile::tempdir().unwrap();

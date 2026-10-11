@@ -134,7 +134,7 @@ def certification(config, backup, workspace, lease, artifacts, worker=None):
 
 def capture(config, attempt, *, retry_incomplete=False):
     root = validate(config)
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", attempt):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", attempt) or attempt in ("LAST_SUCCESS", "lock"):
         raise ValueError("invalid backup attempt")
     protected = config["version"] == 2
     if protected:

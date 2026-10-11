@@ -364,6 +364,17 @@ in {
         message = "PostgreSQL recovery snapshots, local receipts and off-host receipts must use distinct paths.";
       }
       {
+        assertion =
+          cfg.recovery
+          == null
+          || (let
+            evidence = [cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
+            protected = [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir];
+          in
+            lib.all normalizedPath protected && lib.all (path: lib.all (root: storagePaths.disjoint [path root]) protected) evidence);
+        message = "PostgreSQL recovery evidence must remain outside PostgreSQL storage, lifecycle authority and startup-inhibition trees.";
+      }
+      {
         assertion = cfg.recovery == null || cfg.switchAdoption == null || cfg.recovery.systemIdentifier == cfg.switchAdoption.systemIdentifier;
         message = "Recovery and switch adoption must name the same authoritative cluster.";
       }

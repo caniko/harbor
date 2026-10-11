@@ -22,6 +22,10 @@ Candidate-owned `postgresCompatibilityChecks` run cheap read-only SQL against
 the live primary before building. Each query must return exactly one true value;
 unsupported schemas or failed migrations block admission. The accepted recovery
 policy still defines its backup age and restore requirements.
+While first-rollout `switchAdoption` is configured, automatic PostgreSQL enrollment
+uses that request's explicit local endpoint. After the one-shot request is retired,
+cutover checks retain `/run/postgresql` and use the effective
+`services.postgresql.settings.port`, including non-default service ports.
 
 ## Historical filesystem state
 
@@ -33,6 +37,12 @@ keeps one resource's identity and transition journals outside another resource's
 certified corpus and exclusive lease. Set every `dataDirectories` entry at or beneath a
 custody root to `create = false`; missing historical storage is an error. Explicit initialization
 of genuinely new state remains a separate policy choice.
+Each `custody_file` must be a dedicated direct child of its authority directory.
+The names `identity.json`, `transition.json` and `lock` are reserved authority
+controls. Nix and both runtime manifest readers reject them, and direct
+certification checks the receipt path before taking a lease or adopting storage.
+Rejected paths preserve existing authority bytes/inodes and do not publish root
+identity markers.
 
 With custody enforcement enabled, authority roots, data directory paths and
 directory-creating tmpfiles paths must use normalized absolute spelling. Dot and

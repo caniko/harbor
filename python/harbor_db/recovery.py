@@ -44,7 +44,7 @@ def policy(config):
     return _policy(config)
 
 
-def validate_evidence_paths(settings, source_local):
+def validate_evidence_paths(config, settings, source_local):
     declared = [settings[key] for key in ("backup_root", "snapshot_file", "receipt_file", "off_host_receipt_file") if key in settings and not (key == "off_host_receipt_file" and settings[key] is None)]
     if any(not isinstance(raw, str) or not raw.startswith("/") or any(part in ("", ".", "..") for part in raw.split("/")[1:]) for raw in declared):
         raise ValueError("recovery evidence must use normalized paths outside repository control paths")
@@ -56,17 +56,25 @@ def validate_evidence_paths(settings, source_local):
     snapshot = absolute(settings["snapshot_file"])
     controls = [root / name for name in ("recovery", "base", "wal", "locks", "BACKUP_LOCK", "LAST_SUCCESS")] if root is not None else []
     controls.extend(snapshot.parent / name for name in ("recovery.lock", "preparation.lock", "preparation.json"))
+    protected = [absolute(config[key]) for key in ("data_dir", "state_dir") if key in config]
+    startup = config.get("startup_inhibition")
+    if startup is not None:
+        if not isinstance(startup, dict) or not isinstance(startup.get("state_dir"), str):
+            raise ValueError("invalid PostgreSQL storage startup-inhibition path")
+        protected.append(absolute(startup["state_dir"]))
     for key in ("snapshot_file", "receipt_file", "off_host_receipt_file"):
         if key == "off_host_receipt_file" and settings.get(key) is None:
             continue
         evidence = absolute(settings[key])
+        if any(evidence.is_relative_to(root) or root.is_relative_to(evidence) for root in protected):
+            raise ValueError("recovery evidence must stay outside PostgreSQL storage and policy trees")
         if any(evidence.is_relative_to(control) or control.is_relative_to(evidence) for control in controls):
             raise ValueError("recovery evidence must stay outside repository control paths")
 
 
 def _policy(config, *, certifier_host=None):
     settings = config["recovery"]
-    validate_evidence_paths(settings, recovery_repository.source_local(settings))
+    validate_evidence_paths(config, settings, recovery_repository.source_local(settings))
     if type(settings.get("require_writer_fence", False)) is not bool:
         raise ValueError("recovery writer fence requirement must be a boolean")
     paths = [settings["snapshot_file"], settings["receipt_file"]]

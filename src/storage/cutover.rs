@@ -82,15 +82,7 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
                     "invalid existing filesystem authority: {name}"
                 )));
             }
-            validate_path(string(authority, "state_dir")?)?;
-            validate_path(string(entry, "custody_file")?)?;
-            if Path::new(string(entry, "custody_file")?).parent()
-                != Some(Path::new(string(authority, "state_dir")?))
-            {
-                return Err(invalid(
-                    "custody receipt must be directly in its private authority directory",
-                ));
-            }
+            custody::receipt_path(entry)?;
             for directory in directories {
                 validate_path(
                     directory

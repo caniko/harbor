@@ -105,6 +105,14 @@ timestamp/PID attempt, remain operator-retained even while no transition process
 holds a lease. Legacy origin is ambiguous, so pruning cannot infer it retroactively.
 Use `--attempt ID` to retry an existing timer attempt; `--scheduled` selects a new
 attempt and cannot be combined with `--attempt` or `--retry-incomplete`.
+Explicit attempt IDs reserve `LAST_SUCCESS` and `lock`. Both capture engines
+reject these names before acquiring the mutation lease, creating staging output
+or running an adapter, including retries on a fresh repository. Rejection leaves
+the existing marker and lease inode intact, and later valid captures can publish.
+Scheduled services use `TimeoutStartSec = infinity`: per-stage adapter deadlines
+still apply, while full-tree protected publication and both pruning passes may
+take longer than a fixed coordinator allowance. Systemd does not kill valid
+copy/retention work just because the adapter stages used their configured budget.
 For explicit retention use `harbor-db-application-backup --config MANIFEST prune
 --keep N --incomplete-age-seconds SECONDS`. Redirected top-level attempts, invalid
 success markers and mounted deletion subtrees fail the plan before any deletion;

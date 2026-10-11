@@ -160,7 +160,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["legacy_evidence_cannot_replace_repository_control_paths_in_both_engines", "primary_and_selected_backup_cannot_share_inodes_even_with_an_independent_restore_in_both_engines"]
+selectors = ["legacy_evidence_cannot_replace_repository_control_paths_in_both_engines", "primary_and_selected_backup_cannot_share_inodes_even_with_an_independent_restore_in_both_engines", "recovery_evidence_cannot_replace_postgres_storage_in_both_engines"]
 
 [[inventories]]
 origin = "rust"
@@ -188,7 +188,28 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["independent_certification_retries_preserve_original_evidence_across_engines_and_later_seconds"]
+selectors = ["independent_certification_retries_preserve_original_evidence_across_engines_and_later_seconds", "reserved_attempts_cannot_poison_backup_publication_in_both_engines"]
+
+[[coverage]]
+case = "native.recovery_storage.recovery_evidence_cannot_replace_postgres_storage_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.snapshot-records"
+dimension = "rejection"
+evidence = "Native/Python policy and actual snapshot entrypoints reject equal, nested and containing snapshot/local/off-host outputs across declared primary/lifecycle/startup storage under omitted, legacy and source-local protocols. PG_VERSION, pg_control, identity/fence/startup policy bytes and inodes remain unchanged, no verifier/publication runs, and dedicated siblings plus ordinary snapshot capture still admit. Nix checks the same boundary."
+
+[[coverage]]
+case = "native.application_storage.reserved_attempts_cannot_poison_backup_publication_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "rejection"
+evidence = "Both actual capture CLIs reject LAST_SUCCESS and lock with the exact invalid-attempt diagnostic before staging, on fresh and populated roots with ordinary/retry flags. Marker bytes, root inventory and lock inode remain unchanged; a subsequent valid native/Python capture publishes successfully."
+
+[[coverage]]
+case = "native.cutover_storage.custody_receipts_cannot_replace_authority_controls_in_both_engines"
+capability = "cutover"
+operation = "harbor-db-cutover.certify"
+dimension = "rejection"
+evidence = "Both manifest readers and direct certification entrypoints reserve identity.json, transition.json and lock from custody receipts before lease/adoption. Fresh and already-adopted authorities retain exact control bytes/inodes and root-marker state under a held exclusive lease; a dedicated receipt still certifies. Nix enforces the same direct-child/control-name contract."
 
 [[coverage]]
 case = "native.recovery_storage.legacy_evidence_cannot_replace_repository_control_paths_in_both_engines"
@@ -489,7 +510,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["restored_corpus_roots_must_be_pairwise_independent_in_both_engines", "custody_authorities_and_corpora_have_disjoint_global_namespaces_in_both_engines", "enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_engines", "cross_resource_inode_aliases_reject_before_workers_in_both_engines"]
+selectors = ["restored_corpus_roots_must_be_pairwise_independent_in_both_engines", "custody_authorities_and_corpora_have_disjoint_global_namespaces_in_both_engines", "enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_engines", "cross_resource_inode_aliases_reject_before_workers_in_both_engines", "custody_receipts_cannot_replace_authority_controls_in_both_engines"]
 
 [[coverage]]
 case = "native.cutover_storage.enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_engines"

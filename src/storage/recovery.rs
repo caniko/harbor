@@ -74,7 +74,7 @@ pub fn policy(config: &Value) -> Result<&Value> {
     policy_for_executor(config, None)
 }
 
-fn validate_evidence_paths(settings: &Value, source_local: bool) -> Result<()> {
+fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool) -> Result<()> {
     for key in [
         "backup_root",
         "snapshot_file",
@@ -124,11 +124,31 @@ fn validate_evidence_paths(settings: &Value, source_local: bool) -> Result<()> {
     controls.extend(
         ["recovery.lock", "preparation.lock", "preparation.json"].map(|name| parent.join(name)),
     );
+    let mut protected = Vec::new();
+    for key in ["data_dir", "state_dir"] {
+        if config.get(key).is_some() {
+            protected.push(absolute(&path(config, key)?)?);
+        }
+    }
+    if let Some(startup) = config
+        .get("startup_inhibition")
+        .filter(|value| !value.is_null())
+    {
+        protected.push(absolute(&path(startup, "state_dir")?)?);
+    }
     for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
         if key == "off_host_receipt_file" && settings[key].is_null() {
             continue;
         }
         let evidence = absolute(&path(settings, key)?)?;
+        if protected
+            .iter()
+            .any(|root| evidence.starts_with(root) || root.starts_with(&evidence))
+        {
+            return Err(invalid(
+                "recovery evidence must stay outside PostgreSQL storage and policy trees",
+            ));
+        }
         if controls
             .iter()
             .any(|control| evidence.starts_with(control) || control.starts_with(&evidence))
@@ -147,7 +167,7 @@ fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> R
         .filter(|v| v.is_object())
         .ok_or_else(|| invalid("missing recovery policy"))?;
     let source_local = super::recovery_repository::source_local(settings)?;
-    validate_evidence_paths(settings, source_local)?;
+    validate_evidence_paths(config, settings, source_local)?;
     if settings
         .get("require_writer_fence")
         .is_some_and(|v| !v.is_boolean())

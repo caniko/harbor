@@ -758,6 +758,108 @@ fn enrollment_rejects_unsafe_paths_units_dependencies_and_empty_roots() {
         assert!(custody::validate_path(path).is_err());
     }
 }
+
+#[test]
+fn custody_receipts_cannot_replace_authority_controls_in_both_engines() {
+    use std::os::unix::fs::MetadataExt;
+    for adopted in [false, true] {
+        let f = Fixture::new();
+        if adopted {
+            f.certify().unwrap();
+        }
+        fs::write(
+            f.state.join("transition.json"),
+            b"retained transition journal",
+        )
+        .unwrap();
+        let _lease = harbor_db::storage::durable::lock(&f.state.join("lock"), false, true).unwrap();
+        let before: Vec<_> = fs::read_dir(&f.state)
+            .unwrap()
+            .map(|entry| {
+                let path = entry.unwrap().path();
+                let info = path.metadata().unwrap();
+                (
+                    path.file_name().unwrap().to_owned(),
+                    info.dev(),
+                    info.ino(),
+                    fs::read(path).unwrap(),
+                )
+            })
+            .collect();
+        for name in ["identity.json", "transition.json", "lock"] {
+            let mut config = f.config.clone();
+            config["custody_file"] = json!(f.state.join(name));
+            let mut manifest = f.manifest();
+            manifest["resources"]["archive"] = config.clone();
+            assert!(
+                cutover::validate_manifest(&manifest, "fixture")
+                    .unwrap_err()
+                    .to_string()
+                    .contains("custody receipt")
+            );
+            assert!(
+                custody::certify_filesystem(
+                    &config,
+                    std::slice::from_ref(&f.restore),
+                    "verified-storage",
+                    Some(1000),
+                    None,
+                    &json!([])
+                )
+                .unwrap_err()
+                .to_string()
+                .contains("custody receipt")
+            );
+            let script = r#"import json,sys
+from harbor_db import cutover
+manifest=json.loads(sys.argv[1]);config=manifest['resources']['archive']
+for operation in (lambda: cutover.validate_manifest(manifest,'fixture'),lambda: cutover.certify_filesystem(config,[sys.argv[2]],'verified-storage',now=1000)):
+ try: operation()
+ except ValueError as error: assert 'custody receipt' in str(error),str(error)
+ else: raise AssertionError('authority control admitted as custody receipt')
+"#;
+            let result = output(
+                std::process::Command::new("python3")
+                    .args([
+                        "-B",
+                        "-c",
+                        script,
+                        &manifest.to_string(),
+                        f.restore.to_str().unwrap(),
+                    ])
+                    .env(
+                        "PYTHONPATH",
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+            );
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            let after: Vec<_> = fs::read_dir(&f.state)
+                .unwrap()
+                .map(|entry| {
+                    let path = entry.unwrap().path();
+                    let info = path.metadata().unwrap();
+                    (
+                        path.file_name().unwrap().to_owned(),
+                        info.dev(),
+                        info.ino(),
+                        fs::read(path).unwrap(),
+                    )
+                })
+                .collect();
+            assert_eq!(before, after);
+            assert_eq!(
+                f.source.join(".harbor-db-archive-identity.json").exists(),
+                adopted
+            );
+        }
+    }
+    let f = Fixture::new();
+    f.certify().unwrap();
+}
 #[test]
 fn real_dispatcher_reports_failure_without_creating_authority() {
     let f = Fixture::new();

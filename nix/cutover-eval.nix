@@ -104,6 +104,55 @@ in
     name = "harbor-db-cutover-eval";
     assertions = [
       {
+        name = "postgres-cutover-port-survives-switch-adoption-retirement";
+        message = "The generated automatic PostgreSQL resource follows effective service ports once adoption is retired and retains an explicit first-rollout endpoint while active.";
+        assertion = let
+          resource = port: adoption: let
+            selected =
+              (eval.extendModules {
+                modules = [
+                  {
+                    services.postgresql = {
+                      enable = true;
+                      settings.port = lib.mkForce port;
+                    };
+                    services.harbor-db.postgresql = {
+                      enable = true;
+                      switchAdoption = lib.mkForce adoption;
+                    };
+                  }
+                ];
+              }).config;
+          in
+            (builtins.fromJSON (builtins.unsafeDiscardStringContext selected.services.harbor-db.cutover.manifest.text)).resources.postgresql;
+          active = resource 55432 {
+            systemIdentifier = "12345";
+            socketDir = "/run/first-rollout";
+            port = 55433;
+          };
+        in
+          active.port
+          == 55433
+          && active.socket_dir == "/run/first-rollout"
+          && lib.all (port: let
+            retired = resource port null;
+          in
+            retired.port == port && retired.socket_dir == "/run/postgresql") [5432 55432 6543];
+      }
+      {
+        name = "custody-receipts-reserve-authority-controls";
+        message = "Every filesystem receipt is a dedicated direct authority child and cannot replace identity, transition journal or lock.";
+        assertion = let
+          accepted = path: let
+            selected = (eval.extendModules {modules = [{services.harbor-db.cutover.resources.history.custody_file = lib.mkForce path;}];}).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "custody receipts" a.message) selected.assertions;
+        in
+          accepted "/var/lib/authority/custody.json"
+          && !accepted "/var/lib/outside.json"
+          && lib.all (name: !accepted "/var/lib/authority/${name}") ["identity.json" "transition.json" "lock"];
+      }
+      {
         name = "git-integrity-checker-is-an-immutable-store-file";
         message = "Filesystem custody must reject mutable or non-normalized Git checker paths while retaining the default immutable Git executable.";
         assertion =
@@ -127,13 +176,17 @@ in
         assertion = let
           peer = {
             user = "archive";
+            custody_file = "/var/lib/peer-authority/custody.json";
             authority = {
               state_dir = "/var/lib/peer-authority";
               directories = ["/srv/peer-history"];
               binding.backend = "files";
             };
           };
-          accepted = override: custodyAccepted {services.harbor-db.cutover.resources = {peer = lib.recursiveUpdate peer override;};};
+          accepted = override: let
+            entry = lib.recursiveUpdate peer override;
+          in
+            custodyAccepted {services.harbor-db.cutover.resources.peer = entry // {custody_file = "${entry.authority.state_dir}/custody.json";};};
         in
           accepted {}
           && lib.all (state: !accepted {authority.state_dir = state;}) ["/srv/history" "/srv/history/state" "/srv" "/var/lib/authority" "/var/lib/authority/nested" "/var/lib"]
@@ -185,6 +238,7 @@ in
             !custodyAccepted {
               services.harbor-db.cutover.resources.peer = {
                 user = "archive";
+                custody_file = "/var/lib/peer-authority/custody.json";
                 authority = {
                   state_dir = "/var/lib/peer-authority";
                   directories = [directory];
@@ -195,6 +249,7 @@ in
           && custodyAccepted {
             services.harbor-db.cutover.resources.peer = {
               user = "archive";
+              custody_file = "/var/lib/peer-authority/custody.json";
               authority = {
                 state_dir = "/var/lib/peer-authority";
                 directories = ["/srv/history-sibling"];

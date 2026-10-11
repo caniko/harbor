@@ -139,6 +139,21 @@ in
       mv "$root/retained-pg_tblspc" "$root/cluster/pg_tblspc"
       pg_ctl -D "$root/cluster" -l "$root/server.log" -o "-k $root/socket -p 55450 -c listen_addresses=" -w start >/dev/null
       trap 'pg_ctl -D "$root/cluster" -m immediate -w stop >/dev/null' EXIT
+      mkdir "$root/slot-receiver"
+      for slot in "" "Upper" "with-hyphen" "with space" "slash/name"; do
+        if pg_receivewal -h "$root/socket" -p 55450 -D "$root/slot-receiver" --create-slot "--slot=$slot" >"$out/invalid-slot.log" 2>&1; then
+          echo "invalid replication slot name was admitted" >&2; exit 1
+        fi
+      done
+      pg_receivewal -h "$root/socket" -p 55450 -D "$root/slot-receiver" --create-slot --slot=${lib.escapeShellArg (lib.concatStrings (lib.replicate 64 "a"))}
+      test "$(psql -X -At -v ON_ERROR_STOP=1 -h "$root/socket" -p 55450 -d postgres -c 'SELECT slot_name FROM pg_replication_slots')" = ${lib.escapeShellArg (lib.concatStrings (lib.replicate 63 "a"))}
+      pg_receivewal -h "$root/socket" -p 55450 -D "$root/slot-receiver" --drop-slot --slot=${lib.escapeShellArg (lib.concatStrings (lib.replicate 63 "a"))}
+      for slot in slot_0 0 ${lib.escapeShellArg (lib.concatStrings (lib.replicate 63 "a"))}; do
+        pg_receivewal -h "$root/socket" -p 55450 -D "$root/slot-receiver" --create-slot "--slot=$slot"
+        pg_receivewal -h "$root/socket" -p 55450 -D "$root/slot-receiver" --drop-slot "--slot=$slot"
+      done
+      test "$(psql -X -At -v ON_ERROR_STOP=1 -h "$root/socket" -p 55450 -d postgres -c 'SELECT count(*) FROM pg_replication_slots')" = 0
+      printf '%s\n' 'invalid-slot-names-rejected; oversized-client-name-truncation-reproduced; 63-byte-name-accepted; slots-retired' > "$out/slot-admission"
       psql -X -v ON_ERROR_STOP=1 -h "$root/socket" -p 55450 -d postgres -c "CREATE TABLESPACE test_external LOCATION '$root/tablespace'" >/dev/null
       psql -X -v ON_ERROR_STOP=1 -h "$root/socket" -p 55450 -d postgres -c "CREATE TABLE retained(id int) TABLESPACE test_external;INSERT INTO retained VALUES(86)" >/dev/null
       if pg_basebackup -h "$root/socket" -p 55450 -D "$root/unmapped" --checkpoint=fast --wal-method=stream >"$out/unmapped-basebackup.log" 2>&1; then
@@ -151,6 +166,31 @@ in
       printf '%s\n' 'real-unmapped-basebackup-rejected; generated-guard-rejected; primary-records-preserved' > "$out/tablespace-admission"
     '';
     assertions = [
+      {
+        name = "replication-slot-names-reject-before-producer-services";
+        message = "Enabled receiver/base-backup slots require 1-63 lowercase ASCII letters, digits or underscores; disabled operations retain inert settings.";
+        assertion = let
+          accepted = configuration: operation: name: enabled: let
+            selected =
+              (configuration.extendModules {
+                modules = [
+                  {
+                    services.harbor-db.pgBackup.targetSettings.${operation} = {
+                      slotName = lib.mkForce name;
+                      enable = lib.mkForce enabled;
+                    };
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "valid PostgreSQL replication slot names" a.message) selected.assertions;
+        in
+          lib.all (configuration:
+            lib.all (operation:
+              lib.all (name: accepted configuration operation name true) ["slot_0" "0" (lib.concatStrings (lib.replicate 63 "a"))]
+              && lib.all (name: !accepted configuration operation name true) ["" "Upper" "with-hyphen" "with space" "with\nnewline" "quote'" "slash/name" "é" (lib.concatStrings (lib.replicate 64 "a"))]
+              && accepted configuration operation "unused slot" false) ["receiveWal" "baseBackup"]) [eval localEval];
+      }
       {
         name = "physical-backup-roots-exclude-global-custody-namespaces";
         message = "Target-only and local producers cannot mutate an enabled filesystem corpus, authority, or enrolled PostgreSQL primary/lifecycle/startup namespace.";

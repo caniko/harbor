@@ -59,6 +59,24 @@ pub fn validate_path(s: &str) -> Result<()> {
     }
     Ok(())
 }
+pub fn receipt_path(config: &Value) -> Result<PathBuf> {
+    let state = string(&config["authority"], "state_dir")?;
+    let receipt = string(config, "custody_file")?;
+    validate_path(state)?;
+    validate_path(receipt)?;
+    let receipt = Path::new(receipt);
+    if receipt.parent() != Some(Path::new(state))
+        || receipt
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| matches!(name, "identity.json" | "transition.json" | "lock"))
+    {
+        return Err(invalid(
+            "custody receipt must be a dedicated direct authority child outside authority control paths",
+        ));
+    }
+    Ok(receipt.to_owned())
+}
 pub fn root_identities(config: &Value) -> Result<Value> {
     Ok(Value::Array(
         paths(&config["authority"], "directories")?
@@ -365,6 +383,7 @@ pub fn certify_filesystem(
     database_snapshot: Option<&str>,
     requirements: &Value,
 ) -> Result<()> {
+    let receipt = receipt_path(config)?;
     let authority = &config["authority"];
     resource::contract(authority)?;
     let roots = paths(authority, "directories")?;
@@ -512,7 +531,7 @@ pub fn certify_filesystem(
         durable::write_json(&identity_path, &record)?;
     }
     durable::write_json(
-        Path::new(string(config, "custody_file")?),
+        &receipt,
         &json!({"version":1,"resource":authority["resource"],"identity":identifier,"binding":authority["binding"],"directories":authority["directories"],"completed_at":at.unwrap_or_else(now),"database_snapshot_sha256":database_snapshot,"database_requirements":requirements,"inventory":source,"metadata":metadata,"root_identities":identities}),
     )
 }

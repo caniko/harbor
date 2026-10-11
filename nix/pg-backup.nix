@@ -332,7 +332,7 @@ in {
         slotName = mkOption {
           type = types.str;
           default = "pgbackup_wal";
-          description = "Replication slot name created on the source for pg_receivewal.";
+          description = "Replication slot name created on the source for pg_receivewal; 1-63 lowercase ASCII letters, digits or underscores.";
         };
       };
 
@@ -353,7 +353,7 @@ in {
         slotName = mkOption {
           type = types.str;
           default = "pgbackup_base";
-          description = "Temporary replication slot name created during base backup.";
+          description = "Temporary replication slot name created during base backup; 1-63 lowercase ASCII letters, digits or underscores.";
         };
       };
 
@@ -426,6 +426,10 @@ in {
               in
                 lib.all storagePaths.normalizedAbsolute paths && storagePaths.disjoint paths) (lib.attrValues targetSources);
             message = "services.harbor-db.pgBackup target backup roots must be normalized absolute and disjoint from all enabled custody namespaces, including PostgreSQL lifecycle and startup state.";
+          }
+          {
+            assertion = !targetRole || lib.all (operation: !operation.enable || builtins.match "[a-z0-9_]{1,63}" operation.slotName != null) [cfg.targetSettings.receiveWal cfg.targetSettings.baseBackup];
+            message = "services.harbor-db.pgBackup enabled WAL/base-backup operations require valid PostgreSQL replication slot names: 1-63 lowercase ASCII letters, digits or underscores.";
           }
           {
             assertion = !targetRole || !cfg.targetSettings.receiveWal.enable || !cfg.targetSettings.baseBackup.enable || cfg.targetSettings.receiveWal.slotName != cfg.targetSettings.baseBackup.slotName;

@@ -112,6 +112,31 @@ in
     '';
     assertions = [
       {
+        name = "recovery-evidence-excludes-postgres-primary-and-policy-trees";
+        message = "Snapshot/local/off-host outputs cannot replace PostgreSQL cluster, lifecycle authority, or startup-inhibition files under legacy or source-local policy.";
+        assertion = let
+          accepted = protocol: key: path: let
+            selected =
+              (eval.extendModules {
+                modules = [
+                  {
+                    services.harbor-db.postgresql.recovery = {
+                      repositoryProtocol = protocol;
+                      ${key} = lib.mkForce path;
+                    };
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "PostgreSQL storage" a.message) selected.assertions;
+        in
+          lib.all (protocol:
+            lib.all (key:
+              accepted protocol key "/srv/postgres/18-sibling/receipt.json"
+              && lib.all (path: !accepted protocol key path) ["/srv/postgres/18" "/srv/postgres/18/PG_VERSION" "/srv/postgres/18/global/pg_control" "/srv/postgres/authority" "/srv/postgres/authority/identity.json" "/var/lib/harbor-db/postgresql-startup" "/var/lib/harbor-db/postgresql-startup/policy.json" "/srv/postgres"])
+            ["snapshotFile" "receiptFile" "offHostReceiptFile"]) ["legacy" "source-local-v1"];
+      }
+      {
         name = "writer-fence-setup-units-are-unique-and-not-the-primary";
         message = "Evaluation must reject setup unit lists that runtime inhibition rejects before installing a persistent gate.";
         assertion = let

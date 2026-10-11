@@ -426,6 +426,122 @@ impl Fixture {
 }
 
 #[test]
+fn recovery_evidence_cannot_replace_postgres_storage_in_both_engines() {
+    use std::os::unix::fs::MetadataExt;
+    let mut f = Fixture::new();
+    fs::create_dir_all(f.p("data/global")).unwrap();
+    fs::create_dir(f.p("startup")).unwrap();
+    f.config["startup_inhibition"] = json!({"state_dir":f.p("startup")});
+    for file in [
+        "data/global/pg_control",
+        "state/identity.json",
+        "state/writer-fence.json",
+        "startup/policy.json",
+    ] {
+        fs::write(f.p(file), b"retained primary or authority state").unwrap();
+    }
+    let retained = [
+        "data/PG_VERSION",
+        "data/global/pg_control",
+        "state/identity.json",
+        "state/writer-fence.json",
+        "startup/policy.json",
+    ];
+    let before: Vec<_> = retained
+        .iter()
+        .map(|file| {
+            let path = f.p(file);
+            let info = path.metadata().unwrap();
+            (info.dev(), info.ino(), fs::read(path).unwrap())
+        })
+        .collect();
+    let original = f.config.clone();
+    for protocol in [None, Some("legacy"), Some("source-local-v1")] {
+        for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+            for target in [
+                "data",
+                "data/PG_VERSION",
+                "data/global/pg_control",
+                "state",
+                "state/identity.json",
+                "state/writer-fence.json",
+                "startup",
+                "startup/policy.json",
+                "",
+            ] {
+                f.config = original.clone();
+                if let Some(protocol) = protocol {
+                    f.config["recovery"]["repository_protocol"] = json!(protocol);
+                }
+                f.config["recovery"][key] = json!(if target.is_empty() {
+                    f.root.path().to_owned()
+                } else {
+                    f.p(target)
+                });
+                let error = recovery::policy(&f.config).unwrap_err();
+                assert!(
+                    error.to_string().contains("PostgreSQL storage"),
+                    "{key}/{target}: {error}"
+                );
+                let error =
+                    recovery::snapshot(&f.config, Path::new("/run/postgresql"), 5432, Some(f.now))
+                        .unwrap_err();
+                assert!(error.to_string().contains("PostgreSQL storage"), "{error}");
+                let script = r#"import json,sys
+from harbor_db import recovery
+config=json.loads(sys.argv[1])
+for operation in (lambda: recovery.policy(config), lambda: recovery.snapshot(config,'/run/postgresql',5432,now=int(sys.argv[2]))):
+ try: operation()
+ except ValueError as error: assert 'PostgreSQL storage' in str(error),str(error)
+ else: raise AssertionError('primary storage admitted as evidence')
+"#;
+                let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
+                    "python3".into(),
+                    "-B".into(),
+                    "-c".into(),
+                    script.into(),
+                    f.config.to_string(),
+                    f.now.to_string(),
+                ]);
+                spec.environment = Some(std::collections::BTreeMap::from([
+                    (
+                        "PYTHONPATH".into(),
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+                    ("PATH".into(), std::env::var("PATH").unwrap()),
+                ]));
+                harbor_db::storage::process::execute(&spec).unwrap();
+                let after: Vec<_> = retained
+                    .iter()
+                    .map(|file| {
+                        let path = f.p(file);
+                        let info = path.metadata().unwrap();
+                        (info.dev(), info.ino(), fs::read(path).unwrap())
+                    })
+                    .collect();
+                assert_eq!(before, after);
+                assert!(!f.p("backup/evidence/records.json").exists());
+                assert!(!f.p("verify.log").exists());
+            }
+        }
+    }
+    f.config = original;
+    for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+        let mut independent = f.config.clone();
+        independent["recovery"][key] = json!(f.p("data-sibling/receipt.json"));
+        recovery::policy(&independent).unwrap();
+    }
+    for file in [
+        "state/identity.json",
+        "state/writer-fence.json",
+        "startup/policy.json",
+    ] {
+        fs::remove_file(f.p(file)).unwrap();
+    }
+    f.snapshot();
+}
+
+#[test]
 fn primary_configuration_links_are_protected_without_admitting_restore_redirects_in_both_engines() {
     let f = Fixture::new();
     f.accepted();

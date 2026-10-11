@@ -228,6 +228,21 @@ in
     '') [backupFileManifest transitionFileManifest];
     assertions = [
       {
+        name = "backup-coordinator-retains-unbounded-publication-and-retention";
+        message = "The service must not kill valid coordinator copy/prune work after bounded adapter stages; each stage still carries its configured deadline.";
+        assertion = pkgs.lib.all (seconds: let
+          selected = evaluate [module {services.harbor-db.projects.fixture.backup.timeoutSeconds = pkgs.lib.mkForce seconds;}];
+          service = selected.config.systemd.services.harbor-db-fixture-backup.serviceConfig;
+          manifest = builtins.fromJSON (builtins.unsafeDiscardStringContext selected.config.environment.etc."harbor-db/fixture-backup.json".source.text);
+        in
+          service.TimeoutStartSec
+          == "infinity"
+          && manifest.timeout_seconds == seconds
+          && service.ExecStartPost == service.ExecStartPre
+          && pkgs.lib.hasInfix "prune --keep" service.ExecStartPre)
+        [1 3600 86400];
+      }
+      {
         name = "backup-roots-exclude-all-custody-namespaces";
         message = "Scheduled backup mutations must stay outside every enabled corpus, authority and PostgreSQL primary/state root in both containment directions.";
         assertion =
