@@ -8,7 +8,7 @@ use std::{
     io::Read,
     os::{fd::RawFd, unix::fs::MetadataExt},
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use writer_fence::{exists, major, path};
 
@@ -699,11 +699,22 @@ fn hostname() -> Result<String> {
 }
 /// Reject aliases even when bind mounts leave canonical path spelling distinct.
 /// Missing authoritative storage is expected on an independent executor.
-fn storage_identities(
+pub(crate) fn storage_identities(
     path: &Path,
     identities: &mut BTreeSet<(u64, u64)>,
     primary: bool,
 ) -> Result<()> {
+    storage_identities_until(path, identities, primary, None)
+}
+pub(crate) fn storage_identities_until(
+    path: &Path,
+    identities: &mut BTreeSet<(u64, u64)>,
+    primary: bool,
+    deadline: Option<Instant>,
+) -> Result<()> {
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        return Err(invalid("custody namespace inspection budget exhausted"));
+    }
     let link = fs::symlink_metadata(path)?;
     // NixOS generates primary configuration as links into the immutable store.
     // Include those regular target inodes in the protected set. Copied backup
@@ -727,7 +738,7 @@ fn storage_identities(
     }
     if info.is_dir() {
         for entry in fs::read_dir(path)? {
-            storage_identities(&entry?.path(), identities, primary)?;
+            storage_identities_until(&entry?.path(), identities, primary, deadline)?;
         }
     }
     Ok(())

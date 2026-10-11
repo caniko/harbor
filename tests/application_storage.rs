@@ -1434,6 +1434,109 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         "control",
         "demo",
     );
+    success(
+        "CREATE TABLE unmanaged.records(id int); CREATE SEQUENCE unmanaged.cursor; CREATE FUNCTION unmanaged.read_record() RETURNS int LANGUAGE sql AS 'SELECT 1'; CREATE TYPE unmanaged.record_kind AS ENUM ('one')",
+        "control",
+        "demo",
+    );
+    let mut grant_outcomes = Vec::new();
+    for (grant, revoke) in [
+        (
+            "GRANT USAGE ON SCHEMA unmanaged TO demo_runtime",
+            "REVOKE USAGE ON SCHEMA unmanaged FROM demo_runtime",
+        ),
+        (
+            "GRANT UPDATE ON unmanaged.records TO demo_runtime",
+            "REVOKE UPDATE ON unmanaged.records FROM demo_runtime",
+        ),
+        (
+            "GRANT UPDATE(id) ON unmanaged.records TO demo_runtime",
+            "REVOKE UPDATE(id) ON unmanaged.records FROM demo_runtime",
+        ),
+        (
+            "GRANT USAGE ON SEQUENCE unmanaged.cursor TO demo_runtime",
+            "REVOKE USAGE ON SEQUENCE unmanaged.cursor FROM demo_runtime",
+        ),
+        (
+            "GRANT EXECUTE ON FUNCTION unmanaged.read_record() TO demo_runtime",
+            "REVOKE EXECUTE ON FUNCTION unmanaged.read_record() FROM demo_runtime",
+        ),
+        (
+            "GRANT USAGE ON TYPE unmanaged.record_kind TO demo_runtime",
+            "REVOKE USAGE ON TYPE unmanaged.record_kind FROM demo_runtime",
+        ),
+        (
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA unmanaged GRANT SELECT ON TABLES TO demo_runtime",
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA unmanaged REVOKE SELECT ON TABLES FROM demo_runtime",
+        ),
+    ] {
+        success(grant, "control", "demo");
+        let native_check = provision::check(&policy, &endpoint).unwrap();
+        let python_check = python_provision(&policy, "check");
+        assert!(
+            python_check.status.success(),
+            "{}",
+            String::from_utf8_lossy(&python_check.stderr)
+        );
+        let python_check = process::text(&python_check.stdout).unwrap().trim() == "true";
+        for python in [false, true] {
+            for action in ["apply", "reconcile"] {
+                // Deliberately stale managed ACLs must remain untouched when an
+                // undeclared grant requires explicit operator adoption/removal.
+                success(
+                    "GRANT UPDATE ON immutable TO demo_runtime",
+                    "control",
+                    "demo",
+                );
+                let before = success(
+                    "SELECT relacl::text FROM pg_class WHERE oid='public.immutable'::regclass",
+                    "control",
+                    "demo",
+                );
+                let rejected = if python {
+                    !python_provision(&policy, action).status.success()
+                } else if action == "apply" {
+                    provision::apply(&policy, &endpoint).is_err()
+                } else {
+                    provision::reconcile(&policy, &endpoint).is_err()
+                };
+                let after = success(
+                    "SELECT relacl::text FROM pg_class WHERE oid='public.immutable'::regclass",
+                    "control",
+                    "demo",
+                );
+                grant_outcomes.push((
+                    grant,
+                    python,
+                    action,
+                    !native_check,
+                    !python_check,
+                    rejected,
+                    before == after,
+                ));
+                success(
+                    "REVOKE UPDATE ON immutable FROM demo_runtime",
+                    "control",
+                    "demo",
+                );
+            }
+        }
+        success(revoke, "control", "demo");
+        provision::reconcile(&policy, &endpoint).unwrap();
+        assert!(python_provision(&policy, "reconcile").status.success());
+        assert!(provision::check(&policy, &endpoint).unwrap());
+    }
+    success(
+        "DROP TABLE unmanaged.records;DROP SEQUENCE unmanaged.cursor;DROP FUNCTION unmanaged.read_record();DROP TYPE unmanaged.record_kind",
+        "control",
+        "demo",
+    );
+    assert!(
+        grant_outcomes
+            .iter()
+            .all(|(_, _, _, a, b, c, d)| *a && *b && *c && *d),
+        "{grant_outcomes:?}"
+    );
     let mut ownership_outcomes = Vec::new();
     for (create, drop) in [
         (

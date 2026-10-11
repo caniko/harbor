@@ -25,7 +25,6 @@ def validate_manifest(value, host):
         timeout = value.get(key, default)
         if type(timeout) is not int or not 1 <= timeout <= maximum:
             raise ValueError(f"invalid bounded cutover inspection budget: {key}")
-    namespaces = []
     for name, entry in value["resources"].items():
         if (not re.fullmatch(r"[A-Za-z0-9_-]+", name) or not isinstance(entry, dict)
                 or entry.get("kind") not in ("postgres", "filesystem")
@@ -54,7 +53,6 @@ def validate_manifest(value, host):
                 raise ValueError("custody receipt must be directly in its private authority directory")
             for directory in directories:
                 validate_path(directory)
-            namespaces.extend(map(Path, [authority["state_dir"], *directories]))
             if entry.get("login_shell") is not None:
                 validate_path(entry["login_shell"])
             units = entry.get("runtime_units")
@@ -65,10 +63,43 @@ def validate_manifest(value, host):
             dependency = entry.get("database_resource")
             if dependency is not None and value["resources"].get(dependency, {}).get("kind") != "postgres":
                 raise ValueError("filesystem custody requires an enrolled PostgreSQL recovery dependency")
-    for index, root in enumerate(namespaces):
-        if any(root.is_relative_to(other) or other.is_relative_to(root) for other in namespaces[index + 1:]):
+    namespaces = namespace_roots(value)
+    for index, (root, _) in enumerate(namespaces):
+        if any(root.is_relative_to(other) or other.is_relative_to(root) for other, _ in namespaces[index + 1:]):
             raise ValueError("filesystem custody namespaces must be globally disjoint")
     return value
+
+
+def namespace_roots(manifest):
+    roots = []
+    for entry in manifest["resources"].values():
+        if entry["kind"] == "postgres":
+            database = read_json(entry["config"])
+            for key, primary in (("data_dir", True), ("state_dir", False)):
+                validate_path(database.get(key))
+                roots.append((Path(database[key]), primary))
+        else:
+            roots.extend((Path(path), False) for path in [entry["authority"]["state_dir"], *entry["authority"]["directories"]])
+    return roots
+
+
+def validate_storage_namespaces(manifest, *, deadline=None):
+    """Inspect all private roots in the coordinator before user-scoped workers."""
+    protected = set()
+    if deadline is None:
+        deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
+    for root, primary in namespace_roots(manifest):
+        try:
+            root.lstat()
+        except FileNotFoundError:
+            continue
+        if root.resolve() != root:
+            raise ValueError("custody namespaces contain redirected storage")
+        identities = set()
+        recovery.storage_identities(root, identities, primary=primary, deadline=deadline)
+        if not protected.isdisjoint(identities):
+            raise ValueError("custody namespaces alias shared storage across resource leases")
+        protected.update(identities)
 
 
 def validate_path(path):
@@ -428,6 +459,7 @@ def main():
             argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
             resource.serve(config["authority"], argv, inspect=lambda: check_resource(config, phase="startup"))
         elif args.command == "certify":
+            validate_storage_namespaces(manifest)
             config = manifest["resources"][args.resource]
             dependency = config.get("database_resource")
             database = None
@@ -454,6 +486,7 @@ def main():
             results = {}
             deadline = time.monotonic() + manifest.get(
                 "timeout_seconds" if args.phase == "preflight" else "activation_timeout_seconds", 30 if args.phase == "preflight" else 900)
+            validate_storage_namespaces(manifest, deadline=deadline)
             for name, config in manifest["resources"].items():
                 try:
                     remaining = deadline - time.monotonic()

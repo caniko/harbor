@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  options,
   harborDbStoragePackage,
   ...
 }: let
@@ -11,6 +12,7 @@
   barriers = map (p: p.transition.barrierDirectory) (lib.attrValues projects);
   backupRoots = map (p: p.backup.directory) (lib.attrValues (lib.filterAttrs (_: p: p.backup.enable or false) config.services.harbor-db.projects));
   storagePaths = import ./storage-paths.nix {inherit lib;};
+  custodyNamespaces = import ./custody-namespaces.nix {inherit config lib options;};
   immutableFiles = import ./immutable-files.nix {inherit lib;};
   package = harborDbStoragePackage;
   manifest = name: p: let
@@ -118,6 +120,10 @@ in {
         {
           assertion = storagePaths.disjoint (barriers ++ backupRoots);
           message = "Harbor DB transition namespaces require barrier and enabled backup roots to be pairwise non-overlapping.";
+        }
+        {
+          assertion = lib.all (barrier: lib.all (namespace: storagePaths.disjoint [barrier namespace]) custodyNamespaces) barriers;
+          message = "Harbor DB transition barriers must stay outside all enabled custody namespaces, including PostgreSQL primary and lifecycle state storage, in both containment directions.";
         }
       ]
       ++ lib.concatLists (lib.mapAttrsToList (name: p: [

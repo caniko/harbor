@@ -141,6 +141,35 @@ in
           && accepted {authority.state_dir = "/var/lib/authority-sibling";};
       }
       {
+        name = "filesystem-custody-excludes-enrolled-postgresql-storage";
+        message = "Every filesystem authority/corpus must be disjoint from the automatically enrolled PostgreSQL primary and lifecycle state roots.";
+        assertion = let
+          accepted = kind: path:
+            custodyAccepted {
+              services.postgresql.enable = true;
+              services.postgresql.dataDir = "/srv/postgres-primary";
+              services.harbor-db.postgresql = {
+                enable = true;
+                stateDir = "/srv/postgres-state";
+              };
+              services.harbor-db.cutover.resources.history.authority.${kind} = lib.mkForce (
+                if kind == "directories"
+                then [path]
+                else path
+              );
+              services.harbor-db.cutover.resources.history.custody_file = lib.mkForce (
+                if kind == "state_dir"
+                then "${path}/custody.json"
+                else "/var/lib/authority/custody.json"
+              );
+            };
+        in
+          lib.all (kind:
+            accepted kind "/srv/postgres-primary-sibling"
+            && lib.all (path: !accepted kind path) ["/srv/postgres-primary" "/srv/postgres-primary/nested" "/srv/postgres-state" "/srv/postgres-state/nested" "/srv"])
+          ["directories" "state_dir"];
+      }
+      {
         name = "ambiguous-custody-paths-fail-before-directory-creation";
         assertion = lib.all (path:
           !custodyAccepted {services.harbor-db.dataDirectories = lib.mkForce [{inherit path;}];}

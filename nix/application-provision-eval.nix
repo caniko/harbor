@@ -58,6 +58,19 @@ in
     resultMessage = "Dedicated roles, peer mappings, provisioning order and conflict assertions are retained";
     assertions = [
       {
+        name = "runtime-privilege-admission-cannot-skip-behind-fence";
+        message = "A skipped provisioning prerequisite must also prevent the dependent runtime unit from starting while writer-fence.json exists.";
+        assertion = let
+          fenced = evaluate {services.harbor-db.postgresql.enable = true;};
+          gate = ["!${fenced.config.services.harbor-db.postgresql.stateDir}/writer-fence.json"];
+        in
+          fenced.config.systemd.services.harbor-db-demo-provision.unitConfig.ConditionPathExists
+          == gate
+          && fenced.config.systemd.services.harbor-db-demo-permissions.unitConfig.ConditionPathExists == gate
+          && (fenced.config.systemd.services.demo.unitConfig.ConditionPathExists or []) == gate
+          && !(eval.config.systemd.services.demo.unitConfig ? ConditionPathExists);
+      }
+      {
         name = "valid";
         assertion = failed eval == [];
         message = "provision-only projects must evaluate without a dummy migration";

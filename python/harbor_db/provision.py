@@ -88,6 +88,28 @@ def reconcile(config, endpoint):
         _apply(config, endpoint, require_tables=True)
 
 
+def unexpected_runtime_grants(policy):
+    """Inspect direct ACL dependencies across all databases and object classes."""
+    database, owner, runtime, schema = [policy[key] for key in ("database", "owner_role", "runtime_role", "schema")]
+    database_oid = f"COALESCE((SELECT oid FROM pg_database WHERE datname='{database}'),0)"
+    return (
+        "EXISTS (SELECT 1 FROM pg_shdepend d WHERE d.refclassid='pg_authid'::regclass "
+        f"AND d.refobjid=(SELECT oid FROM pg_roles WHERE rolname='{runtime}') AND d.deptype IN ('a','i') "
+        "AND NOT (d.dbid=0 AND d.classid='pg_database'::regclass "
+        f"AND d.objid={database_oid}) "
+        f"AND NOT (d.dbid={database_oid} AND ("
+        "(d.classid='pg_class'::regclass AND EXISTS (SELECT 1 FROM pg_class c "
+        "JOIN pg_namespace n ON n.oid=c.relnamespace "
+        f"WHERE c.oid=d.objid AND n.nspname='{schema}' AND c.relkind IN ('r','p','v','m','f','S'))) "
+        "OR (d.classid='pg_namespace'::regclass "
+        f"AND d.objid=COALESCE((SELECT oid FROM pg_namespace WHERE nspname='{schema}'),0)) "
+        "OR (d.classid='pg_default_acl'::regclass AND EXISTS (SELECT 1 FROM pg_default_acl a "
+        f"WHERE a.oid=d.objid AND a.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{owner}') "
+        f"AND a.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{schema}')) "
+        "AND a.defaclobjtype IN ('r','S'))))))"
+    )
+
+
 def _apply(config, endpoint, *, require_tables):
     policy = validate(config)
     database, owner, runtime, schema = [identifier(policy[key]) for key in
@@ -111,6 +133,17 @@ def _apply(config, endpoint, *, require_tables):
                    f"AND r.rolname='{policy['owner_role']}')); ")
     if unsafe == "t":
         raise ValueError("conflicting application role or database ownership; explicit adoption is required")
+    exists = query(endpoint, "postgres", f"SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname='{policy['database']}');") == "t"
+    unsafe_objects_sql = ("SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                         f"WHERE n.nspname='{policy['schema']}' AND c.relkind IN ('r','p','v','m','f','S') "
+                         f"AND pg_get_userbyid(c.relowner)<>'{policy['owner_role']}') "
+                         "OR EXISTS (SELECT 1 FROM pg_namespace "
+                         f"WHERE nspname='{policy['schema']}' AND pg_get_userbyid(nspowner)<>'{policy['owner_role']}' "
+                         "AND NOT (nspname='public' AND pg_get_userbyid(nspowner)='pg_database_owner'));")
+    if exists and query(endpoint, policy["database"], unsafe_objects_sql) == "t":
+        raise ValueError("conflicting application object ownership; explicit adoption is required")
+    if query(endpoint, policy["database"] if exists else "postgres", f"SELECT {unexpected_runtime_grants(policy)};") == "t":
+        raise ValueError("runtime role has undeclared grants outside the managed application policy; explicit adoption is required")
     sql = [f"SELECT pg_advisory_lock(hashtextextended('harbor-db:{policy['database']}',0));"]
     for role in (owner, runtime):
         name = role.strip('"')
@@ -121,13 +154,7 @@ def _apply(config, endpoint, *, require_tables):
                 f"(SELECT 1 FROM pg_database WHERE datname='{policy['database']}')\\gexec",
                 ])
     query(endpoint, "postgres", "\n".join(sql))
-    unsafe_objects = query(endpoint, policy["database"], "SELECT EXISTS (SELECT 1 FROM pg_class c "
-                           "JOIN pg_namespace n ON n.oid=c.relnamespace "
-                           f"WHERE n.nspname='{policy['schema']}' AND c.relkind IN ('r','p','v','m','f','S') "
-                           f"AND pg_get_userbyid(c.relowner)<>'{policy['owner_role']}') "
-                           "OR EXISTS (SELECT 1 FROM pg_namespace "
-                           f"WHERE nspname='{policy['schema']}' AND pg_get_userbyid(nspowner)<>'{policy['owner_role']}' "
-                           "AND NOT (nspname='public' AND pg_get_userbyid(nspowner)='pg_database_owner'));")
+    unsafe_objects = query(endpoint, policy["database"], unsafe_objects_sql)
     if unsafe_objects == "t":
         raise ValueError("conflicting application object ownership; explicit adoption is required")
     sql = ["BEGIN;", f"SELECT pg_advisory_xact_lock(hashtextextended('harbor-db:{policy['database']}',0));",
@@ -174,7 +201,8 @@ def _check(config, endpoint, *, require_tables):
         return False
     runtime, owner, schema, database = [policy[key] for key in
                                       ("runtime_role", "owner_role", "schema", "database")]
-    checks = ["NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND deptype='o' "
+    checks = [f"NOT ({unexpected_runtime_grants(policy)})",
+              "NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND deptype='o' "
               f"AND refobjid=(SELECT oid FROM pg_roles WHERE rolname='{runtime}'))",
               f"(SELECT pg_get_userbyid(datdba)='{owner}' FROM pg_database WHERE datname='{database}')",
               f"(SELECT pg_get_userbyid(nspowner)='{owner}' FROM pg_namespace WHERE nspname='{schema}')",

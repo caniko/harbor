@@ -103,6 +103,65 @@ fn persistent_anchor_busy_and_collision() {
 }
 
 #[test]
+fn skipped_cases_record_terminal_results_without_acquiring_busy_resources() {
+    use harbor_db::storage::durable;
+    use supervisor::ExitReason;
+    for (mode, reason) in [
+        ("cancelled", ExitReason::Cancelled),
+        ("unsupported", ExitReason::UnsupportedPlatform),
+        ("dependency", ExitReason::DependencyFailed),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut selection = spec(tmp.path(), "true", 5);
+        let mut skipped = selection.cases[0].clone();
+        skipped.id = "skipped".into();
+        skipped.resources = vec!["busy".into()];
+        skipped.artifacts.clear();
+        if mode == "unsupported" {
+            skipped.platform = "unsupported-platform".into();
+        } else if mode == "dependency" {
+            selection.cases[0].execution = Execution::Argv {
+                argv: vec!["sh".into(), "-c".into(), "exit 1".into()],
+                env: BTreeMap::from([("PATH".into(), std::env::var("PATH").unwrap())]),
+            };
+            selection.cases[0].artifacts.clear();
+            skipped.dependencies = vec!["case".into()];
+        }
+        selection.cases.push(skipped);
+        let mut later = selection.cases[0].clone();
+        later.id = "later".into();
+        later.artifacts.clear();
+        later.execution = Execution::Argv {
+            argv: vec!["sh".into(), "-c".into(), "true".into()],
+            env: BTreeMap::from([("PATH".into(), std::env::var("PATH").unwrap())]),
+        };
+        selection.cases.push(later);
+        let run = supervisor::create_run(Some(tmp.path()), mode, selection).unwrap();
+        let resources = run.parent().unwrap().join("resources");
+        fs::create_dir_all(&resources).unwrap();
+        let anchor = resources.join("busy.lock");
+        let _busy = durable::lock(&anchor, false, true).unwrap();
+        if mode == "cancelled" {
+            supervisor::cancel(&run).unwrap();
+        }
+        supervisor::worker(&run).unwrap();
+        let state = supervisor::status(&run).unwrap();
+        assert!(state.terminal, "{mode}");
+        assert_eq!(state.results.len(), 3, "{mode}");
+        assert_eq!(state.results[1].reason, reason, "{mode}");
+        assert_eq!(state.results[1].code, None);
+        assert_eq!(
+            state.results[2].reason,
+            if mode == "cancelled" {
+                ExitReason::Cancelled
+            } else {
+                ExitReason::Exited
+            }
+        );
+    }
+}
+
+#[test]
 fn observer_reattaches_and_missing_worker_is_incomplete() {
     let tmp = tempfile::tempdir().unwrap();
     let run =

@@ -78,6 +78,9 @@ fn run(cli: Cli) -> Result<i32> {
     // read through their strict receipt readers.
     let path = durable::configuration_path(&contract.contract)?;
     let manifest = cutover::validate_manifest(&durable::read_config_json(&path)?, &contract.host)?;
+    if matches!(&cli.command, Command::Certify { .. }) {
+        cutover::validate_storage_namespaces(&manifest)?;
+    }
     let select = |name: &str| {
         manifest["resources"]
             .get(name)

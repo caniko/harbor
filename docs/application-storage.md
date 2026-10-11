@@ -56,6 +56,11 @@ The runtime role must own no objects in any schema of the application database.
 Provisioning rejects such ownership before role or ACL mutation, and read-only
 checks inspect PostgreSQL ownership dependencies across schemas and object types,
 including tables, sequences, views, functions, types and schemas.
+Direct runtime-role ACL dependencies must also belong to objects the declared
+policy can reconcile. Grants on other schemas, relations, columns, sequences,
+functions, types or defaults reject before role/ACL mutation. Read-only checking
+uses the same database-wide dependency check; foreign database/shared-object grants
+cannot be hidden by the managed schema's valid ACLs.
 
 Checks cover schema ownership, role membership, exact table/sequence privileges,
 column grants, grant options and defaults for future owner-created objects.
@@ -63,7 +68,9 @@ Database, schema, relation and default ACLs reject undeclared grantees. Column
 ACLs permit only the owner; explicit runtime privileges belong at table scope.
 An unrelated grantee requires explicit operator reconciliation before admission.
 PostgreSQL 18 is the qualified privilege surface, including MAINTAIN. Ordinary
-provisioning services retain the PostgreSQL fence startup condition; intentional
+provisioning and dependent runtime services retain the PostgreSQL fence startup
+condition. A skipped provisioning prerequisite cannot admit a dependent runtime
+start while `writer-fence.json` exists. Intentional
 maintenance under a fence uses the declared OS-peer control channel explicitly.
 
 ## Executed application backups (version 2)
@@ -125,6 +132,9 @@ root, preserving exclusive lock, attempt and success-marker namespaces. Disabled
 projects do not reserve roots. Ambiguous dot/parent components and repeated or
 trailing separators are rejected before comparing roots. Roots must be pairwise
 non-ancestral so another project's directory ownership cannot block traversal.
+Nix admission also keeps each enabled backup root disjoint from every enabled
+cutover corpus and authority-state namespace, including enrolled PostgreSQL
+primary and lifecycle state roots, in both containment directions.
 Transition admission also keeps the selected backup root disjoint from the
 shared source/target authority state in both containment directions. Otherwise
 the nested backup coordinator could contend with the transition's own authority
@@ -275,7 +285,9 @@ Across enabled projects, each active or retired writer unit belongs to one
 transition authority. Barrier directories are dedicated normalized namespaces,
 pairwise non-overlapping with each other and enabled backup roots, so persistent
 start policies and lock anchors cannot be shared or shadow another project's
-ownership. Disabled projects do not reserve units or namespaces.
+ownership. Nix admission checks barriers against every enabled cutover corpus,
+authority state, and enrolled PostgreSQL primary/lifecycle state too. Disabled
+projects do not reserve units or namespaces.
 Writer release and abort validate every selected inhibition marker before updating
 `start-policy.json` or removing any marker. Rejection preserves the retained startup
 policy and all barriers; interrupted successful releases remain retryable.

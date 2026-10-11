@@ -3,6 +3,7 @@
   lib,
   pkgs,
   utils,
+  options,
   harborDbStoragePackage,
   ...
 }: let
@@ -10,6 +11,7 @@
   projects = lib.filterAttrs (_: p: p.backup.enable) config.services.harbor-db.projects;
   roots = map (p: p.backup.directory) (lib.attrValues projects);
   storagePaths = import ./storage-paths.nix {inherit lib;};
+  custodyNamespaces = import ./custody-namespaces.nix {inherit config lib options;};
   immutableFiles = import ./immutable-files.nix {inherit lib;};
   package = harborDbStoragePackage;
   mountUnits = backup:
@@ -98,6 +100,10 @@ in {
         {
           assertion = storagePaths.disjoint roots;
           message = "Harbor DB backup roots must be pairwise non-overlapping across enabled projects so each lock and publication namespace has one owner.";
+        }
+        {
+          assertion = lib.all (root: lib.all (namespace: storagePaths.disjoint [root namespace]) custodyNamespaces) roots;
+          message = "Harbor DB backup roots must stay outside all enabled custody namespaces, including PostgreSQL primary and lifecycle state storage, in both containment directions.";
         }
       ]
       ++ lib.concatLists (lib.mapAttrsToList (name: p: [

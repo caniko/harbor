@@ -10,7 +10,8 @@ use super::{
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
-    path::Path,
+    fs,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -46,7 +47,6 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
             )));
         }
     }
-    let mut namespaces = Vec::new();
     for (name, entry) in resources {
         if !custody::name(name)
             || !entry.is_object()
@@ -83,7 +83,6 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
                 )));
             }
             validate_path(string(authority, "state_dir")?)?;
-            namespaces.push(Path::new(string(authority, "state_dir")?).to_path_buf());
             validate_path(string(entry, "custody_file")?)?;
             if Path::new(string(entry, "custody_file")?).parent()
                 != Some(Path::new(string(authority, "state_dir")?))
@@ -98,7 +97,6 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
                         .to_str()
                         .ok_or_else(|| invalid("invalid corpus directory"))?,
                 )?;
-                namespaces.push(directory);
             }
             if !entry["login_shell"].is_null() {
                 validate_path(string(entry, "login_shell")?)?;
@@ -122,10 +120,11 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
             }
         }
     }
-    for (index, root) in namespaces.iter().enumerate() {
+    let namespaces = namespace_roots(value)?;
+    for (index, (root, _)) in namespaces.iter().enumerate() {
         if namespaces[index + 1..]
             .iter()
-            .any(|other| root.starts_with(other) || other.starts_with(root))
+            .any(|(other, _)| root.starts_with(other) || other.starts_with(root))
         {
             return Err(invalid(
                 "filesystem custody namespaces must be globally disjoint",
@@ -133,6 +132,72 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
         }
     }
     Ok(value.clone())
+}
+
+fn namespace_roots(manifest: &Value) -> Result<Vec<(PathBuf, bool)>> {
+    let mut roots = Vec::new();
+    for entry in manifest["resources"]
+        .as_object()
+        .ok_or_else(|| invalid("invalid cutover resources"))?
+        .values()
+    {
+        if entry["kind"] == "postgres" {
+            let database = durable::read_config_json(Path::new(string(entry, "config")?))?;
+            for (key, primary) in [("data_dir", true), ("state_dir", false)] {
+                let path = string(&database, key)?;
+                validate_path(path)?;
+                roots.push((PathBuf::from(path), primary));
+            }
+        } else {
+            roots.push((
+                PathBuf::from(string(&entry["authority"], "state_dir")?),
+                false,
+            ));
+            roots.extend(
+                custody::paths(&entry["authority"], "directories")?
+                    .into_iter()
+                    .map(|path| (path, false)),
+            );
+        }
+    }
+    Ok(roots)
+}
+
+/// Global coordinators can inspect all private authorities before dispatching
+/// user-scoped workers. Workers/serve retain their own lease and startup guard;
+/// they must not require read access to other applications' private corpora.
+pub fn validate_storage_namespaces(manifest: &Value) -> Result<()> {
+    validate_storage_namespaces_until(
+        manifest,
+        Instant::now()
+            + Duration::from_secs(
+                manifest["activation_timeout_seconds"]
+                    .as_u64()
+                    .unwrap_or(900),
+            ),
+    )
+}
+fn validate_storage_namespaces_until(manifest: &Value, deadline: Instant) -> Result<()> {
+    let mut protected = BTreeSet::new();
+    for (root, primary) in namespace_roots(manifest)? {
+        match fs::symlink_metadata(&root) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        }
+        if fs::canonicalize(&root)? != root {
+            return Err(invalid("custody namespaces contain redirected storage"));
+        }
+        let mut identities = BTreeSet::new();
+        recovery::storage_identities_until(&root, &mut identities, primary, Some(deadline))?;
+        if !protected.is_disjoint(&identities) {
+            return Err(invalid(
+                "custody namespaces alias shared storage across resource leases",
+            ));
+        }
+        protected.extend(identities);
+    }
+    Ok(())
 }
 
 fn prepared_transition(config: &Value, phase: &str) -> Result<Option<Value>> {
@@ -406,6 +471,7 @@ pub fn check_manifest(
     .as_u64()
     .unwrap_or(if phase == "preflight" { 30 } else { 900 });
     let deadline = Instant::now() + Duration::from_secs(seconds);
+    validate_storage_namespaces_until(manifest, deadline)?;
     let mut results = serde_json::Map::new();
     let mut failures = vec![];
     let resources = manifest["resources"]

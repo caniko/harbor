@@ -306,8 +306,10 @@ def inspect_restored(config, socket_dir, port):
     """))
 
 
-def storage_identities(path, identities, *, primary=False):
+def storage_identities(path, identities, *, primary=False, deadline=None):
     import stat
+    if deadline is not None and time.monotonic() >= deadline:
+        raise ValueError("custody namespace inspection budget exhausted")
     info = path.lstat()
     if primary and stat.S_ISLNK(info.st_mode):
         info = path.stat()
@@ -321,7 +323,7 @@ def storage_identities(path, identities, *, primary=False):
     identities.add(identity)
     if stat.S_ISDIR(info.st_mode):
         for entry in path.iterdir():
-            storage_identities(entry, identities, primary=primary)
+            storage_identities(entry, identities, primary=primary, deadline=deadline)
 
 
 def isolated_restore(restored, authoritative, backup):

@@ -154,43 +154,47 @@ in {
       renderedPolicies));
     environment.etc = lib.mapAttrs' (name: p: lib.nameValuePair "harbor-db/${name}-provision.json" {source = manifest name p;}) renderedPolicies;
     systemd.services = lib.mkMerge (lib.mapAttrsToList (name: p: let
-        provision = "harbor-db-${name}-provision";
-        permissions = "harbor-db-${name}-permissions";
-        common = {
-          unitConfig = gate;
-          serviceConfig = {
-            Type = "oneshot";
-            User = "postgres";
-            UMask = "0077";
-            TimeoutStartSec = "2min";
-            NoNewPrivileges = true;
-          };
+      provision = "harbor-db-${name}-provision";
+      permissions = "harbor-db-${name}-permissions";
+      common = {
+        unitConfig = gate;
+        serviceConfig = {
+          Type = "oneshot";
+          User = "postgres";
+          UMask = "0077";
+          TimeoutStartSec = "2min";
+          NoNewPrivileges = true;
         };
-      in {
-        ${provision} =
-          common
-          // {
-            requires = ["postgresql.service" "postgresql-setup.service"];
-            after = ["postgresql.service" "postgresql-setup.service"];
-            before = p.schemaUnits;
-            requiredBy = p.schemaUnits;
-            serviceConfig = common.serviceConfig // {ExecStart = "${command name p} apply";};
-          };
-        ${permissions} =
-          common
-          // {
-            requires = ["${provision}.service"] ++ p.schemaUnits;
-            after = ["${provision}.service"] ++ p.schemaUnits;
-            before = p.runtimeUnits;
-            requiredBy = p.runtimeUnits;
-            serviceConfig =
-              common.serviceConfig
-              // {
-                ExecStart = "${command name p} reconcile";
-                ExecStartPost = "${command name p} check";
-              };
-          };
-      })
-      renderedPolicies);
+      };
+    in
+      lib.mkMerge [
+        {
+          ${provision} =
+            common
+            // {
+              requires = ["postgresql.service" "postgresql-setup.service"];
+              after = ["postgresql.service" "postgresql-setup.service"];
+              before = p.schemaUnits;
+              requiredBy = p.schemaUnits;
+              serviceConfig = common.serviceConfig // {ExecStart = "${command name p} apply";};
+            };
+          ${permissions} =
+            common
+            // {
+              requires = ["${provision}.service"] ++ p.schemaUnits;
+              after = ["${provision}.service"] ++ p.schemaUnits;
+              before = p.runtimeUnits;
+              requiredBy = p.runtimeUnits;
+              serviceConfig =
+                common.serviceConfig
+                // {
+                  ExecStart = "${command name p} reconcile";
+                  ExecStartPost = "${command name p} check";
+                };
+            };
+        }
+        (lib.genAttrs (map (lib.removeSuffix ".service") p.runtimeUnits) (_: {unitConfig = gate;}))
+      ])
+    renderedPolicies);
   };
 }

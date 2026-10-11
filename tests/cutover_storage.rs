@@ -108,6 +108,163 @@ for contents in (False,True):
 }
 
 #[test]
+fn enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_engines() {
+    let f = Fixture::new();
+    let config = f.temp.path().join("postgres.json");
+    let data = f.temp.path().join("postgres-data");
+    let state = f.temp.path().join("postgres-state");
+    fs::write(
+        &config,
+        json!({"data_dir":data,"state_dir":state}).to_string(),
+    )
+    .unwrap();
+    let mut base = f.manifest();
+    base["resources"]["postgresql"] = json!({"kind":"postgres","user":"postgres","config":config});
+    let check = |manifest: &serde_json::Value, accepted: bool| {
+        assert_eq!(
+            cutover::validate_manifest(manifest, "fixture").is_ok(),
+            accepted,
+            "{manifest}"
+        );
+        let result = output(std::process::Command::new("python3").args([
+            "-B", "-c",
+            "import json,sys;from harbor_db import cutover\ntry:cutover.validate_manifest(json.loads(sys.argv[1]),'fixture')\nexcept ValueError as e: assert sys.argv[2]=='false' and 'custody namespaces' in str(e),str(e)\nelse: assert sys.argv[2]=='true','overlapping PostgreSQL storage admitted'",
+            &manifest.to_string(), &accepted.to_string(),
+        ]).env("PYTHONPATH", format!("{}/python",env!("CARGO_MANIFEST_DIR"))));
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    };
+    check(&base, true);
+    for root in [data, state] {
+        for path in [
+            root.clone(),
+            root.join("nested"),
+            root.parent().unwrap().to_path_buf(),
+        ] {
+            for kind in ["state_dir", "directories"] {
+                let mut manifest = base.clone();
+                if kind == "state_dir" {
+                    manifest["resources"]["archive"]["authority"][kind] = json!(path);
+                    manifest["resources"]["archive"]["custody_file"] =
+                        json!(path.join("custody.json"));
+                } else {
+                    manifest["resources"]["archive"]["authority"][kind] = json!([path]);
+                }
+                check(&manifest, false);
+            }
+        }
+    }
+    assert!(!f.state.join("lock").exists());
+}
+
+#[test]
+fn cross_resource_inode_aliases_reject_before_workers_in_both_engines() {
+    for mount_kind in ["hardlink", "nested-empty", "root"] {
+        let mounted = mount_kind != "hardlink";
+        for (source_state, target_state) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let f = Fixture::new();
+            let mut peer = Fixture::new();
+            peer.config["authority"]["resource"] = json!("peer");
+            let mut manifest = f.manifest();
+            manifest["resources"]["peer"] = peer.config.clone();
+            let contract = f.temp.path().join("contract.json");
+            fs::write(&contract, manifest.to_string()).unwrap();
+            cutover::validate_storage_namespaces(&manifest).unwrap();
+            let source = if source_state { &f.state } else { &f.source };
+            let target = if target_state {
+                &peer.state
+            } else {
+                &peer.source
+            };
+            let original = if mount_kind == "root" {
+                source.clone()
+            } else {
+                source.join("shared-entry")
+            };
+            let alias = if mount_kind == "root" {
+                target.clone()
+            } else {
+                target.join("shared-entry")
+            };
+            if mount_kind == "nested-empty" {
+                fs::create_dir(&original).unwrap();
+                fs::create_dir(&alias).unwrap();
+            } else if !mounted {
+                fs::write(&original, b"protected source bytes").unwrap();
+                fs::hard_link(&original, &alias).unwrap();
+            }
+            for python in [false, true] {
+                let mut argv = if python {
+                    vec![
+                        "python3".to_owned(),
+                        "-B".into(),
+                        "-m".into(),
+                        "harbor_db.cutover".into(),
+                    ]
+                } else {
+                    vec![env!("CARGO_BIN_EXE_harbor-db-cutover").into()]
+                };
+                argv.extend([
+                    "check".into(),
+                    "--contract".into(),
+                    contract.display().to_string(),
+                    "--host".into(),
+                    "fixture".into(),
+                    "--phase".into(),
+                    "startup".into(),
+                ]);
+                if mounted {
+                    let mut namespace = vec![
+                        "unshare".into(),
+                        "--user".into(),
+                        "--map-root-user".into(),
+                        "--mount".into(),
+                        "--".into(),
+                        "sh".into(),
+                        "-c".into(),
+                        "mount --bind -- \"$1\" \"$2\" || exit;shift 2;exec \"$@\"".into(),
+                        "namespace-fixture".into(),
+                        original.display().to_string(),
+                        alias.display().to_string(),
+                    ];
+                    namespace.append(&mut argv);
+                    argv = namespace;
+                }
+                let result = output(std::process::Command::new(&argv[0]).args(&argv[1..]).env(
+                    "PYTHONPATH",
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ));
+                assert!(
+                    !result.status.success()
+                        && String::from_utf8_lossy(&result.stderr)
+                            .contains("custody namespaces alias"),
+                    "python={python},mount_kind={mount_kind},source_state={source_state},target_state={target_state}: {}\n{}",
+                    String::from_utf8_lossy(&result.stdout),
+                    String::from_utf8_lossy(&result.stderr)
+                );
+                assert!(!f.state.join("lock").exists());
+                assert!(!peer.state.join("lock").exists());
+            }
+            if !mounted {
+                fs::remove_file(alias).unwrap();
+            }
+            cutover::validate_storage_namespaces(&manifest).unwrap();
+            let accepted = output(std::process::Command::new("python3").args(["-B","-c","import json,sys;from harbor_db import cutover;cutover.validate_storage_namespaces(json.loads(sys.argv[1]))",&manifest.to_string()]).env("PYTHONPATH",format!("{}/python",env!("CARGO_MANIFEST_DIR"))));
+            assert!(
+                accepted.status.success(),
+                "{}",
+                String::from_utf8_lossy(&accepted.stderr)
+            );
+        }
+    }
+}
+
+#[test]
 fn custody_authorities_and_corpora_have_disjoint_global_namespaces_in_both_engines() {
     let f = Fixture::new();
     let mut base = f.manifest();

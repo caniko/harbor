@@ -920,21 +920,7 @@ pub fn worker(run: &Path) -> Result<()> {
         }) {
             skipped = Some(ExitReason::DependencyFailed);
         }
-        let mut resources = case.resources.clone();
-        resources.sort();
-        resources.dedup();
-        let resources_dir = run
-            .parent()
-            .ok_or_else(|| error("run base missing"))?
-            .join("resources");
-        private_dir(&resources_dir)?;
         let mut leases = Vec::new();
-        for resource in &resources {
-            leases.push(lease(
-                &resources_dir.join(format!("{resource}.lock")),
-                true,
-            )?);
-        }
         let descriptors = artifacts(run, case);
         let before: Vec<_> = descriptors
             .iter()
@@ -952,6 +938,20 @@ pub fn worker(run: &Path) -> Result<()> {
                 evidence_errors: vec![],
             }
         } else {
+            let mut resources = case.resources.clone();
+            resources.sort();
+            resources.dedup();
+            let resources_dir = run
+                .parent()
+                .ok_or_else(|| error("run base missing"))?
+                .join("resources");
+            private_dir(&resources_dir)?;
+            for resource in &resources {
+                leases.push(lease(
+                    &resources_dir.join(format!("{resource}.lock")),
+                    true,
+                )?);
+            }
             execute_case(run, &spec, case, &authority, &leases, &mut started)?
         };
         if matches!(case.execution, Execution::Nix { .. })

@@ -314,6 +314,10 @@ retained executable replacement, cancellation, hard deadlines, interrupted
 workers, nonpassing semantic evidence, and a live stale-PID surrogate. Python
 transports the VM session and retained artifacts. Its coverage bindings require
 actual passing VM evidence; registration alone does not qualify supervision.
+Cases classified as cancelled, unsupported or dependency-failed publish their
+exact skipped result without acquiring global exclusive execution resources.
+A busy resource held by another run cannot abort those skipped cases or prevent
+later independent cases from completing.
 
 `harbor-db-writer-fence-fixture` orchestrates the native writer-fence VM through
 the version-1 bridge. It owns command expectations, root-barrier and SQL readback,

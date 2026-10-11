@@ -461,7 +461,21 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["restored_corpus_roots_must_be_pairwise_independent_in_both_engines", "custody_authorities_and_corpora_have_disjoint_global_namespaces_in_both_engines"]
+selectors = ["restored_corpus_roots_must_be_pairwise_independent_in_both_engines", "custody_authorities_and_corpora_have_disjoint_global_namespaces_in_both_engines", "enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_engines", "cross_resource_inode_aliases_reject_before_workers_in_both_engines"]
+
+[[coverage]]
+case = "native.cutover_storage.enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_engines"
+capability = "cutover"
+operation = "harbor-db-cutover.check.startup"
+dimension = "rejection"
+evidence = "Both engines read enrolled PostgreSQL data/state paths from the selected policy and reject filesystem corpus/authority overlap in both containment directions before locks or workers. Nix evaluation rejects the same global namespace conflicts."
+
+[[coverage]]
+case = "native.cutover_storage.cross_resource_inode_aliases_reject_before_workers_in_both_engines"
+capability = "cutover"
+operation = "harbor-db-cutover.check.startup"
+dimension = "concurrency"
+evidence = "Actual native/Python coordinators reject cross-resource hard links, root bind mounts and mounted nested empty directories between corpus and authority roots before any worker lease/publication. Independent roots pass global inode inspection after each alias is removed."
 
 [[inventories]]
 origin = "rust"
@@ -2208,7 +2222,14 @@ source = "tests/supervisor.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "supervisor"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["eof_is_not_exit_and_follower_has_no_authority", "timeout_and_cancel_preserve_execution_reason", "persistent_anchor_busy_and_collision", "observer_reattaches_and_missing_worker_is_incomplete", "killed_worker_cannot_relaunch_and_child_retains_authority", "worker_failure_before_registration_publishes_terminal_evidence_and_forbids_retry", "detached_worker_loss_before_registration_uses_the_acknowledged_unit_state"]
+selectors = ["eof_is_not_exit_and_follower_has_no_authority", "timeout_and_cancel_preserve_execution_reason", "persistent_anchor_busy_and_collision", "observer_reattaches_and_missing_worker_is_incomplete", "killed_worker_cannot_relaunch_and_child_retains_authority", "worker_failure_before_registration_publishes_terminal_evidence_and_forbids_retry", "detached_worker_loss_before_registration_uses_the_acknowledged_unit_state", "skipped_cases_record_terminal_results_without_acquiring_busy_resources"]
+
+[[coverage]]
+case = "native.supervisor.skipped_cases_record_terminal_results_without_acquiring_busy_resources"
+capability = "suite-cli"
+operation = "harbor-db-test.worker"
+dimension = "concurrency"
+evidence = "Cancelled, unsupported and dependency-failed cases retain exact skipped terminal results despite an actually held global resource lease, and later executable cases complete without aborted worker publication."
 
 [[inventories]]
 origin = "rust"

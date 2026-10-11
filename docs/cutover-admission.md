@@ -42,6 +42,17 @@ Managed PostgreSQL preparation applies the same normalized-path admission to
 provisioned directories, writable preparation paths and the protected primary
 and authority roots before containment checks or root-run directory creation.
 
+Global namespace admission includes every filesystem corpus and authority-state
+root plus the data and lifecycle-state paths read from each enrolled PostgreSQL
+policy. All must be pairwise disjoint in both containment directions. Before
+dispatching user-scoped inspection or certification workers, the coordinator also
+compares complete inode inventories across these namespaces, including directory
+roots and mounted descendants. Hard links, root bind mounts and nested empty
+directory aliases cannot give shared storage separate resource leases. Traversal
+uses the coordinator's bounded inspection budget. Worker/serve processes retain
+their own authority lease and startup guard without requiring read access to
+other applications' private corpora.
+
 Database inventory queries may additionally return `size`, `sha256`,
 `git_repository = true` and `git_has_commits` for each path. Certification checks
 both source and independent restore against those requirements. Git repositories

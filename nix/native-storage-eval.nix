@@ -162,6 +162,31 @@
   in
     builtins.filter (assertion: !assertion.assertion && pkgs.lib.hasPrefix "Harbor DB transition namespaces" assertion.message) configured.config.assertions == [];
   transitionNamespacesAccepted = peer: transitionPoliciesAccepted {inherit peer;};
+  custodyStorageAccepted = kind: path: enabled: let
+    selected = evaluate [
+      module
+      {
+        services.harbor-db.cutover = {
+          enable = pkgs.lib.mkForce enabled;
+          resources.peer = {
+            user = "fixture";
+            runtime_units = [];
+            custody_file = "/var/lib/peer-authority/custody.json";
+            authority = {
+              state_dir = "/var/lib/peer-authority";
+              directories = ["/srv/peer-history"];
+              binding.backend = "files";
+            };
+          };
+        };
+        services.harbor-db.projects.fixture =
+          if kind == "backup"
+          then {backup.directory = pkgs.lib.mkForce path;}
+          else {transition.barrierDirectory = pkgs.lib.mkForce path;};
+      }
+    ];
+  in
+    builtins.filter (a: !a.assertion && pkgs.lib.hasInfix "custody namespaces" a.message) selected.config.assertions == [];
   directEval = evaluate [
     ./module.nix
     ./postgres-lifecycle.nix
@@ -202,6 +227,22 @@ in
         invalid}
     '') [backupFileManifest transitionFileManifest];
     assertions = [
+      {
+        name = "backup-roots-exclude-all-custody-namespaces";
+        message = "Scheduled backup mutations must stay outside every enabled corpus, authority and PostgreSQL primary/state root in both containment directions.";
+        assertion =
+          custodyStorageAccepted "backup" "/srv/peer-history-sibling" true
+          && custodyStorageAccepted "backup" "/srv/peer-history/backups" false
+          && pkgs.lib.all (path: !custodyStorageAccepted "backup" path true) ["/srv/peer-history" "/srv/peer-history/backups" "/srv" "/var/lib/peer-authority" "/var/lib/peer-authority/backups" "/var/lib" "/var/lib/postgresql/18/backups" "/var/lib/harbor-db/postgresql/backups"];
+      }
+      {
+        name = "transition-barriers-exclude-all-custody-namespaces";
+        message = "Transition setup and barrier writes must stay outside every enabled corpus, authority and PostgreSQL primary/state root in both containment directions.";
+        assertion =
+          custodyStorageAccepted "transition" "/srv/peer-history-sibling" true
+          && custodyStorageAccepted "transition" "/srv/peer-history/barriers" false
+          && pkgs.lib.all (path: !custodyStorageAccepted "transition" path true) ["/srv/peer-history" "/srv/peer-history/barriers" "/srv" "/var/lib/peer-authority" "/var/lib/peer-authority/barriers" "/var/lib" "/var/lib/postgresql/18/barriers" "/var/lib/harbor-db/postgresql/barriers"];
+      }
       {
         name = "scheduled-backup-retention-precedes-capture";
         message = "Every recurring backup installs serialized pruning before capture, with positive bounded retention beyond capture/retry deadlines.";

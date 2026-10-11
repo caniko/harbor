@@ -44,11 +44,7 @@
     if entry.kind == "filesystem"
     then entry.authority.directories
     else []) (lib.attrValues resources);
-  authorityDirectories = lib.concatMap (entry:
-    if entry.kind == "filesystem"
-    then [entry.authority.state_dir]
-    else []) (lib.attrValues resources);
-  custodyNamespaces = protectedDirectories ++ authorityDirectories;
+  custodyNamespaces = import ./custody-namespaces.nix {inherit config lib options;};
   storagePaths = import ./storage-paths.nix {inherit lib;};
   normalizedPath = storagePaths.normalizedAbsolute;
   protectedPath = path:
@@ -248,7 +244,7 @@ in {
         }
         {
           assertion = storagePaths.disjoint custodyNamespaces;
-          message = "Harbor-DB filesystem custody roots and authority namespaces must be globally pairwise disjoint across resources.";
+          message = "Harbor-DB filesystem custody roots and authority namespaces must be globally pairwise disjoint across resources, including enrolled PostgreSQL primary/lifecycle state custody namespaces.";
         }
         {
           assertion = lib.all normalizedPath custodyNamespaces && lib.all (entry: normalizedPath entry.path) declaredDirectories;

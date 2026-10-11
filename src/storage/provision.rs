@@ -156,6 +156,19 @@ pub fn reconcile(c: &Value, e: &Value) -> Result<()> {
     apply_phase(c, e, true)
 }
 
+// pg_shdepend covers direct ACL dependencies for every object class, including
+// column and default ACLs. Only the objects this policy can reconcile are allowed.
+fn unexpected_runtime_grants(p: &Value) -> Result<String> {
+    let db = string(p, "database")?;
+    let o = string(p, "owner_role")?;
+    let r = string(p, "runtime_role")?;
+    let s = string(p, "schema")?;
+    let db_oid = format!("COALESCE((SELECT oid FROM pg_database WHERE datname='{db}'),0)");
+    Ok(format!(
+        "EXISTS (SELECT 1 FROM pg_shdepend d WHERE d.refclassid='pg_authid'::regclass AND d.refobjid=(SELECT oid FROM pg_roles WHERE rolname='{r}') AND d.deptype IN ('a','i') AND NOT (d.dbid=0 AND d.classid='pg_database'::regclass AND d.objid={db_oid}) AND NOT (d.dbid={db_oid} AND ((d.classid='pg_class'::regclass AND EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid=d.objid AND n.nspname='{s}' AND c.relkind IN ('r','p','v','m','f','S'))) OR (d.classid='pg_namespace'::regclass AND d.objid=COALESCE((SELECT oid FROM pg_namespace WHERE nspname='{s}'),0)) OR (d.classid='pg_default_acl'::regclass AND EXISTS (SELECT 1 FROM pg_default_acl a WHERE a.oid=d.objid AND a.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND a.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND a.defaclobjtype IN ('r','S'))))))"
+    ))
+}
+
 fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
     let _lease = durable::lock(Path::new(string(e, "lock_file")?), false, false)?;
     let p = validate(c)?;
@@ -187,6 +200,29 @@ fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
             "conflicting application role or database ownership; explicit adoption is required",
         ));
     }
+    let exists = query(
+        e,
+        "postgres",
+        &format!("SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname='{db}');"),
+    )? == "t";
+    let unsafe_objects = format!(
+        "SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='{s}' AND c.relkind IN ('r','p','v','m','f','S') AND pg_get_userbyid(c.relowner)<>'{o}') OR EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='{s}' AND pg_get_userbyid(nspowner)<>'{o}' AND NOT (nspname='public' AND pg_get_userbyid(nspowner)='pg_database_owner'));"
+    );
+    if exists && query(e, db, &unsafe_objects)? == "t" {
+        return Err(invalid(
+            "conflicting application object ownership; explicit adoption is required",
+        ));
+    }
+    if query(
+        e,
+        if exists { db } else { "postgres" },
+        &format!("SELECT {};", unexpected_runtime_grants(&p)?),
+    )? == "t"
+    {
+        return Err(invalid(
+            "runtime role has undeclared grants outside the managed application policy; explicit adoption is required",
+        ));
+    }
     let mut sql = vec![format!(
         "SELECT pg_advisory_lock(hashtextextended('harbor-db:{db}',0));"
     )];
@@ -196,14 +232,7 @@ fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
     }
     sql.push(format!("SELECT 'CREATE DATABASE {database} OWNER {owner}' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='{db}')\\gexec"));
     query(e, "postgres", &sql.join("\n"))?;
-    if query(
-        e,
-        db,
-        &format!(
-            "SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='{s}' AND c.relkind IN ('r','p','v','m','f','S') AND pg_get_userbyid(c.relowner)<>'{o}') OR EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='{s}' AND pg_get_userbyid(nspowner)<>'{o}' AND NOT (nspname='public' AND pg_get_userbyid(nspowner)='pg_database_owner'));"
-        ),
-    )? == "t"
-    {
+    if query(e, db, &unsafe_objects)? == "t" {
         return Err(invalid(
             "conflicting application object ownership; explicit adoption is required",
         ));
@@ -282,6 +311,7 @@ fn check_phase(c: &Value, e: &Value, require_tables: bool) -> Result<bool> {
         return Ok(false);
     }
     let mut checks = vec![
+        format!("NOT ({})", unexpected_runtime_grants(&p)?),
         format!(
             "NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND deptype='o' AND refobjid=(SELECT oid FROM pg_roles WHERE rolname='{r}'))"
         ),
