@@ -408,6 +408,38 @@ fn python_and_native_drill_exchange_restored_clusters_and_cleanup() {
         }
         fs::remove_file(redirected).unwrap();
 
+        // Even a forged carrier using another live PostgreSQL postmaster's PID
+        // cannot authorize a signal to that server under the same worker UID.
+        let impostor = workspace.with_extension("impostor");
+        private(&impostor);
+        private(&impostor.join("cluster"));
+        let forged = pid
+            .replacen(
+                cluster.to_str().unwrap(),
+                impostor.join("cluster").to_str().unwrap(),
+                1,
+            )
+            .replacen(
+                socket.to_str().unwrap(),
+                impostor.join("socket").to_str().unwrap(),
+                1,
+            );
+        let forged_path = impostor.join("cluster/postmaster.pid");
+        fs::write(&forged_path, &forged).unwrap();
+        fs::set_permissions(&forged_path, fs::Permissions::from_mode(0o600)).unwrap();
+        for engine in [native, !native] {
+            refused_cleanup(
+                drill(engine, &package, "cleanup", &backup, &impostor),
+                "disposable PID references a different process; cleanup refused",
+            );
+            assert_eq!(fs::read(&forged_path).unwrap(), forged.as_bytes());
+            assert_eq!(carrier(workspace, true), before);
+            assert_eq!(
+                record(&package, &socket, "55439", "harbor_restore"),
+                expected
+            );
+        }
+
         assert!(successful(drill(!native, &package, "cleanup", &backup, workspace)).is_empty());
         assert!(!cluster.join("postmaster.pid").exists());
         assert_eq!(
@@ -434,4 +466,104 @@ fn python_and_native_drill_exchange_restored_clusters_and_cleanup() {
         assert_eq!(fs::read(backup.join("database.dump")).unwrap(), dump);
         assert!(!source.join("postmaster.pid").exists());
     }
+}
+
+#[test]
+fn stale_disposable_pid_cleanup_never_signals_unrelated_processes_in_both_engines() {
+    let package = PathBuf::from(std::env::var_os("HARBOR_DB_TEST_POSTGRES").unwrap());
+    let mut outcomes = vec![];
+    for native in [true, false] {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        let backup = root.path().join("backup");
+        let cluster = workspace.join("cluster");
+        for directory in [&workspace, &backup, &cluster] {
+            private(directory);
+        }
+        fs::write(cluster.join("PG_VERSION"), "18\n").unwrap();
+        let signal_marker = root.path().join("signalled");
+        let mut child = Command::new(python()).args(["-c", "import pathlib,signal,sys,time;signal.signal(signal.SIGINT,lambda *_:pathlib.Path(sys.argv[1]).write_text('unexpected shutdown'));print('ready',flush=True);time.sleep(60)",signal_marker.to_str().unwrap()]).stdout(Stdio::piped()).spawn().unwrap();
+        use std::io::BufRead;
+        let mut ready = String::new();
+        std::io::BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut ready)
+            .unwrap();
+        assert_eq!(ready, "ready\n");
+        let pidfile = cluster.join("postmaster.pid");
+        let bytes = format!(
+            "{}\n{}\n{}\n55439\n{}\n\n0 0\nready\n",
+            child.id(),
+            cluster.display(),
+            chrono::Utc::now().timestamp(),
+            workspace.join("socket").display()
+        );
+        fs::write(&pidfile, &bytes).unwrap();
+        fs::set_permissions(&pidfile, fs::Permissions::from_mode(0o600)).unwrap();
+        // Bound pg_ctl's legacy wait during the red reproduction, independently
+        // of the new process-bound cleanup implementation.
+        let limited = root.path().join("package/bin");
+        fs::create_dir_all(&limited).unwrap();
+        fs::write(
+            limited.join("pg_ctl"),
+            format!(
+                "#!{}\nimport os,sys;os.execv({:?},['pg_ctl','-t','1',*sys.argv[1:]])\n",
+                python().display(),
+                package.join("bin/pg_ctl").display().to_string()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(limited.join("pg_ctl"), fs::Permissions::from_mode(0o700)).unwrap();
+        let refused = drill(
+            native,
+            limited.parent().unwrap(),
+            "cleanup",
+            &backup,
+            &workspace,
+        );
+        let preserved = fs::read(&pidfile).ok() == Some(bytes.as_bytes().to_vec());
+        let signalled = signal_marker.exists();
+        for invalid in ["-1", "2147483648", "1_234"] {
+            let malformed = bytes.replacen(&child.id().to_string(), invalid, 1);
+            fs::write(&pidfile, &malformed).unwrap();
+            let rejected = drill(native, &package, "cleanup", &backup, &workspace);
+            assert!(!rejected.status.success(), "{rejected:?}");
+            assert_eq!(fs::read(&pidfile).unwrap(), malformed.as_bytes());
+            assert!(!signal_marker.exists());
+        }
+        let oversized = format!("{bytes}{}", "x".repeat(8192));
+        fs::write(&pidfile, &oversized).unwrap();
+        assert!(
+            !drill(native, &package, "cleanup", &backup, &workspace)
+                .status
+                .success()
+        );
+        assert_eq!(fs::read(&pidfile).unwrap(), oversized.as_bytes());
+        assert!(!signal_marker.exists());
+        fs::write(&pidfile, &bytes).unwrap();
+        child.kill().unwrap();
+        child.wait().unwrap();
+        let stopped = drill(native, &package, "cleanup", &backup, &workspace);
+        let retired = !pidfile.exists();
+        let repeated = drill(!native, &package, "cleanup", &backup, &workspace);
+        outcomes.push((
+            native,
+            !refused.status.success(),
+            preserved,
+            !signalled,
+            stopped.status.success(),
+            retired,
+            repeated.status.success(),
+        ));
+    }
+    assert!(
+        outcomes.iter().all(
+            |(_, rejected, preserved, safe, stopped, retired, repeated)| *rejected
+                && *preserved
+                && *safe
+                && *stopped
+                && *retired
+                && *repeated
+        ),
+        "{outcomes:?}"
+    );
 }

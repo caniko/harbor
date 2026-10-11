@@ -21,6 +21,20 @@ a firewall opening. An empty `sourceSettings.listenAddresses` also derives TCP
 listeners for those loopback families; explicit lists also retain the required
 source-local loopbacks, without duplicate addresses.
 Source and target still require the replicator password file.
+Source-local recovery requires at least two replication slots and three WAL
+senders: the continuous receiver holds one slot/sender while a streaming base
+backup uses the second slot and two concurrent connections. Evaluation checks
+both `sourceSettings` and the effective PostgreSQL settings, so an override
+cannot silently reduce this capacity.
+
+The source-local plain-format producer supports only the primary's built-in
+tablespaces. Source setup, receiver startup and each base-backup startup inspect
+the actual `PGDATA/pg_tblspc` directory before replication. Missing, redirected,
+unreadable or nonempty inventories reject. External tablespaces require a
+separately qualified mapping/restore contract; they are never copied back into
+authoritative same-host locations by this mode. The gate reproduces the upstream
+unmapped same-host failure with a real PostgreSQL 18 tablespace and proves
+rejection leaves primary records queryable.
 All recovery snapshot and receipt outputs reserve a separate evidence namespace,
 including the default legacy protocol.
 They cannot select `recovery/`, `base/`, `wal/`, `locks/`, `BACKUP_LOCK`,

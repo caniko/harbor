@@ -1,11 +1,202 @@
 //! Logical restoration using a private, disposable local PostgreSQL endpoint.
-use super::{Result, invalid, pg_core, process};
+use super::{Result, durable, invalid, pg_core, process};
 use std::{
     fs,
+    io::{self, Read},
+    os::fd::{AsRawFd, FromRawFd, OwnedFd},
+    os::unix::ffi::OsStrExt,
     os::unix::fs::{DirBuilderExt, MetadataExt},
     path::Path,
     time::{Duration, Instant},
 };
+
+/// A PID file is an untrusted reference, never signalling authority. A pidfd
+/// pins the inspected process even if it exits and its numeric PID is reused.
+fn cleanup(cluster: &Path, socket: &Path, deadline: Instant) -> Result<()> {
+    let path = cluster.join("postmaster.pid");
+    let mut file = match durable::open_regular(&path, false) {
+        Ok(file) => file,
+        Err(super::StorageError::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    let info = file.metadata()?;
+    if !pg_core::unredirected(cluster)?
+        || info.uid() != unsafe { libc::getuid() }
+        || info.nlink() != 1
+        || info.mode() & 0o077 != 0
+    {
+        return Err(invalid(
+            "disposable PID carrier must be owned, private and unredirected",
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.by_ref().take(4097).read_to_end(&mut bytes)?;
+    let text =
+        std::str::from_utf8(&bytes).map_err(|_| invalid("invalid disposable PID carrier"))?;
+    let lines: Vec<_> = text.lines().collect();
+    let pid = lines
+        .first()
+        .and_then(|value| value.parse::<i32>().ok())
+        .filter(|pid| *pid > 1)
+        .ok_or_else(|| invalid("invalid disposable PID carrier"))?;
+    let started = lines
+        .get(2)
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|started| *started > 0)
+        .ok_or_else(|| invalid("invalid disposable PID carrier"))?;
+    if bytes.len() > 4096
+        || lines.get(1)
+            != Some(
+                &cluster
+                    .to_str()
+                    .ok_or_else(|| invalid("invalid disposable cluster path"))?,
+            )
+        || lines.get(3) != Some(&"55439")
+        || lines.get(4)
+            != Some(
+                &socket
+                    .to_str()
+                    .ok_or_else(|| invalid("invalid disposable socket path"))?,
+            )
+    {
+        return Err(invalid(
+            "disposable PID carrier does not identify its workspace",
+        ));
+    }
+    let unchanged = || -> Result<bool> {
+        let input = durable::open_regular(&path, false)?;
+        let current = input.metadata()?;
+        if current.dev() != info.dev() || current.ino() != info.ino() {
+            return Ok(false);
+        }
+        let mut contents = Vec::new();
+        input.take(4097).read_to_end(&mut contents)?;
+        Ok(contents == bytes)
+    };
+    let retire = || -> Result<()> {
+        match fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return durable::sync_directory(cluster);
+            }
+            Err(error) => return Err(error.into()),
+            Ok(current) if current.dev() != info.dev() || current.ino() != info.ino() => {
+                return Err(invalid("disposable PID carrier changed during cleanup"));
+            }
+            Ok(_) => {}
+        }
+        if !unchanged()? {
+            return Err(invalid("disposable PID carrier changed during cleanup"));
+        }
+        fs::remove_file(&path)?;
+        durable::sync_directory(cluster)
+    };
+    // SAFETY: pidfd_open takes a positive numeric PID and no pointer arguments.
+    let descriptor = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+    if descriptor < 0 {
+        let error = io::Error::last_os_error();
+        return if error.raw_os_error() == Some(libc::ESRCH) {
+            retire()
+        } else {
+            Err(error.into())
+        };
+    }
+    // SAFETY: the successful syscall returned a newly owned descriptor.
+    let descriptor = unsafe { OwnedFd::from_raw_fd(descriptor as i32) };
+    let exited = || -> Result<bool> {
+        let mut event = libc::pollfd {
+            fd: descriptor.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: event is one initialized, writable pollfd.
+        if unsafe { libc::poll(&mut event, 1, 0) } < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        Ok(event.revents & libc::POLLIN != 0)
+    };
+    if exited()? {
+        return retire();
+    }
+    let inspect = || -> Result<bool> {
+        let proc = Path::new("/proc").join(pid.to_string());
+        let stat = fs::read_to_string(proc.join("stat"))?;
+        let fields: Vec<_> = stat
+            .rsplit_once(") ")
+            .ok_or_else(|| invalid("invalid postmaster process identity"))?
+            .1
+            .split_whitespace()
+            .collect();
+        let ticks = fields
+            .get(19)
+            .and_then(|value| value.parse::<i64>().ok())
+            .ok_or_else(|| invalid("invalid postmaster process start time"))?;
+        let boot = fs::read_to_string("/proc/stat")?
+            .lines()
+            .find_map(|line| line.strip_prefix("btime ")?.parse::<i64>().ok())
+            .ok_or_else(|| invalid("missing kernel boot time"))?;
+        // SAFETY: sysconf takes a constant and does not borrow memory.
+        let frequency = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+        if frequency <= 0 {
+            return Err(invalid("missing kernel clock frequency"));
+        }
+        let executable = fs::read_link(proc.join("exe"))?;
+        let argv = fs::read(proc.join("cmdline"))?;
+        let postgres = executable
+            .file_name()
+            .is_some_and(|name| name == "postgres")
+            || (executable
+                .file_name()
+                .is_some_and(|name| name.as_bytes().starts_with(b"qemu-"))
+                && argv.split(|b| *b == 0).any(|arg| {
+                    Path::new(std::ffi::OsStr::from_bytes(arg))
+                        .file_name()
+                        .is_some_and(|name| name == "postgres")
+                }));
+        Ok(postgres
+            && fs::metadata(&proc)?.uid() == info.uid()
+            && fs::read_link(proc.join("cwd"))? == cluster
+            && fields.get(2).and_then(|value| value.parse::<i32>().ok()) == Some(pid)
+            && fields.get(3).and_then(|value| value.parse::<i32>().ok()) == Some(pid)
+            && (boot + ticks / frequency - started).abs() <= 2)
+    };
+    let valid = inspect();
+    if exited()? {
+        return retire();
+    }
+    if !valid? {
+        return Err(invalid(
+            "disposable PID references a different process; cleanup refused",
+        ));
+    }
+    if !unchanged()? {
+        return Err(invalid("disposable PID carrier changed during cleanup"));
+    }
+    // SAFETY: the owned pidfd pins the inspected postmaster; no pointer is used.
+    if unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            descriptor.as_raw_fd(),
+            libc::SIGINT,
+            std::ptr::null::<libc::siginfo_t>(),
+            0,
+        )
+    } < 0
+    {
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() != Some(libc::ESRCH) {
+            return Err(error.into());
+        }
+    }
+    while !exited()? {
+        if Instant::now() >= deadline {
+            return Err(invalid("disposable restore exceeded its execution limit"));
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    retire()
+}
 
 fn run(package: &Path, program: &str, args: Vec<String>, deadline: Instant) -> Result<()> {
     let mut argv = vec![package.join("bin").join(program).display().to_string()];
@@ -83,22 +274,7 @@ pub fn operate_with_timeout(
     let socket = workspace.join("socket");
     let data = cluster.display().to_string();
     if command == "cleanup" {
-        if cluster.join("postmaster.pid").exists() {
-            run(
-                package,
-                "pg_ctl",
-                vec![
-                    "-D".into(),
-                    data,
-                    "-m".into(),
-                    "fast".into(),
-                    "-w".into(),
-                    "stop".into(),
-                ],
-                deadline,
-            )?;
-        }
-        return Ok(());
+        return cleanup(&cluster, &socket, deadline);
     }
     if command != "restore" {
         return Err(invalid("unsupported disposable restore command"));

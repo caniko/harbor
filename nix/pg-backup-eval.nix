@@ -110,11 +110,83 @@
     };
   in
     (builtins.tryEval (builtins.deepSeq selected.config.systemd.services.pg-backup-prune.script true)).success;
+  tablespaceEval =
+    (localEval.extendModules {
+      modules = [{services.postgresql.dataDir = lib.mkForce "/build/guard-source/cluster";}];
+    }).config;
+  tablespaceGuard = lib.head tablespaceEval.systemd.services.pg-basebackup.serviceConfig.ExecStartPre;
 in
   mkEvalCheck {
     name = "harbor-db-pg-backup-eval";
     resultMessage = "harbor-db PostgreSQL backup creates slots before streaming and verifies base backups";
+    nativeBuildInputs = [pkgs.postgresql_18 pkgs.coreutils pkgs.findutils];
+    runtimeScript = ''
+      set -euo pipefail
+      unset PGHOST PGPORT PGUSER PGDATABASE PGSERVICE PGOPTIONS PGPASSFILE
+      root=/build/guard-source
+      mkdir -p "$root/socket" "$root/tablespace"
+      chmod 0700 "$root" "$root/socket" "$root/tablespace"
+      if ${tablespaceGuard}; then echo "missing primary was admitted" >&2; exit 1; fi
+      initdb -D "$root/cluster" --locale=C --auth=trust >/dev/null
+      ${tablespaceGuard}
+      chmod 000 "$root/cluster/pg_tblspc"
+      if ${tablespaceGuard}; then echo "unreadable tablespace inventory was admitted" >&2; exit 1; fi
+      chmod 0700 "$root/cluster/pg_tblspc"
+      mv "$root/cluster/pg_tblspc" "$root/retained-pg_tblspc"
+      ln -s "$root/retained-pg_tblspc" "$root/cluster/pg_tblspc"
+      if ${tablespaceGuard}; then echo "redirected tablespace inventory was admitted" >&2; exit 1; fi
+      rm "$root/cluster/pg_tblspc"
+      mv "$root/retained-pg_tblspc" "$root/cluster/pg_tblspc"
+      pg_ctl -D "$root/cluster" -l "$root/server.log" -o "-k $root/socket -p 55450 -c listen_addresses=" -w start >/dev/null
+      trap 'pg_ctl -D "$root/cluster" -m immediate -w stop >/dev/null' EXIT
+      psql -X -v ON_ERROR_STOP=1 -h "$root/socket" -p 55450 -d postgres -c "CREATE TABLESPACE test_external LOCATION '$root/tablespace'" >/dev/null
+      psql -X -v ON_ERROR_STOP=1 -h "$root/socket" -p 55450 -d postgres -c "CREATE TABLE retained(id int) TABLESPACE test_external;INSERT INTO retained VALUES(86)" >/dev/null
+      if pg_basebackup -h "$root/socket" -p 55450 -D "$root/unmapped" --checkpoint=fast --wal-method=stream >"$out/unmapped-basebackup.log" 2>&1; then
+        echo "unmapped same-host backup unexpectedly succeeded" >&2; exit 1
+      fi
+      grep -q 'exists but is not empty' "$out/unmapped-basebackup.log"
+      if ${tablespaceGuard}; then echo "external tablespace was admitted" >&2; exit 1; fi
+      test "$(psql -X -At -v ON_ERROR_STOP=1 -h "$root/socket" -p 55450 -d postgres -c 'SELECT id FROM retained')" = 86
+      test "$(find "$root/cluster/pg_tblspc" -mindepth 1 -maxdepth 1 -type l -print | wc -l)" = 1
+      printf '%s\n' 'real-unmapped-basebackup-rejected; generated-guard-rejected; primary-records-preserved' > "$out/tablespace-admission"
+    '';
     assertions = [
+      {
+        name = "source-local-tablespaces-reject-before-replication";
+        message = "Source setup, receiver and basebackup invoke the same tablespace admission before any replication connection; independent targets have no local-primary guard.";
+        assertion =
+          lib.head tablespaceEval.systemd.services.pg-receivewal.serviceConfig.ExecStartPre
+          == tablespaceGuard
+          && lib.hasInfix (builtins.unsafeDiscardStringContext tablespaceGuard) tablespaceEval.systemd.services.postgresql-setup.script
+          && eval.config.systemd.services.pg-basebackup.serviceConfig.ExecStartPre == [];
+      }
+      {
+        name = "source-local-recovery-requires-replication-capacity";
+        message = "Source-local recovery needs two slots and three WAL senders, including effective PostgreSQL overrides; standalone targets stay valid.";
+        assertion = let
+          accepted = configuration: slots: senders: effective:
+            lib.all (a: a.assertion || !lib.hasPrefix "services.harbor-db.pgBackup" a.message)
+            (configuration.extendModules {
+              modules = [
+                {
+                  services.harbor-db.pgBackup.sourceSettings = {
+                    maxReplicationSlots = slots;
+                    maxWalSenders = senders;
+                  };
+                  services.postgresql.settings = effective;
+                }
+              ];
+            }).config.assertions;
+        in
+          accepted localEval 2 3 {}
+          && accepted localEval 3 4 {}
+          && !accepted localEval 1 3 {}
+          && !accepted localEval 2 1 {}
+          && !accepted localEval 2 2 {}
+          && !accepted localEval 2 3 {max_wal_senders = lib.mkForce 2;}
+          && !accepted localEval 2 3 {max_replication_slots = lib.mkForce 1;}
+          && accepted eval 1 1 {};
+      }
       {
         name = "local-backup-roots-are-independent-of-the-primary";
         message = "Every derived target backup root on a primary host must be normalized and disjoint from the live data directory before generating receive/base-backup services.";

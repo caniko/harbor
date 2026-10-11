@@ -2,12 +2,111 @@
 
 import argparse
 import os
+import select
+import signal
+import stat
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 from . import process
+from .durable import sync_directory
+
+
+def cleanup(cluster, socket, deadline):
+    """Inspect a process-bound pidfd; a persisted numeric PID cannot authorize signals."""
+    path = cluster / "postmaster.pid"
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or cluster.resolve() != cluster
+                or info.st_uid != os.getuid() or info.st_nlink != 1 or info.st_mode & 0o077):
+            raise ValueError("disposable PID carrier must be owned, private and unredirected")
+        raw = os.read(fd, 4097)
+    finally:
+        os.close(fd)
+    try:
+        lines = raw.decode("utf-8").splitlines()
+        pid, started = int(lines[0]), int(lines[2])
+        if not 1 < pid < 1 << 31 or not 0 < started < 1 << 63 or not lines[0].isascii() or not lines[0].isdigit() or not lines[2].isascii() or not lines[2].isdigit():
+            raise ValueError
+    except (ValueError, IndexError) as error:
+        raise ValueError("invalid disposable PID carrier") from error
+    if len(raw) > 4096 or len(lines) < 5 or lines[1] != str(cluster) or lines[3] != "55439" or lines[4] != str(socket):
+        raise ValueError("disposable PID carrier does not identify its workspace")
+
+    def unchanged():
+        current_fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            current = os.fstat(current_fd)
+            return (stat.S_ISREG(current.st_mode)
+                    and (current.st_dev, current.st_ino) == (info.st_dev, info.st_ino)
+                    and os.read(current_fd, 4097) == raw)
+        finally:
+            os.close(current_fd)
+
+    def retire():
+        try:
+            current = path.lstat()
+        except FileNotFoundError:
+            sync_directory(cluster)
+            return
+        if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino) or not unchanged():
+            raise ValueError("disposable PID carrier changed during cleanup")
+        path.unlink()
+        sync_directory(cluster)
+
+    try:
+        descriptor = os.pidfd_open(pid)
+    except ProcessLookupError:
+        retire()
+        return
+    try:
+        def exited():
+            return bool(select.select([descriptor], [], [], 0)[0])
+
+        if exited():
+            retire()
+            return
+        try:
+            proc = Path("/proc") / str(pid)
+            fields = (proc / "stat").read_text().rsplit(") ", 1)[1].split()
+            boot = next(int(line[6:]) for line in Path("/proc/stat").read_text().splitlines() if line.startswith("btime "))
+            frequency = os.sysconf("SC_CLK_TCK")
+            executable = Path(os.readlink(proc / "exe"))
+            argv = (proc / "cmdline").read_bytes().split(b"\0")
+            postgres = executable.name == "postgres" or (executable.name.startswith("qemu-") and any(Path(os.fsdecode(arg)).name == "postgres" for arg in argv))
+            valid = (frequency > 0 and postgres and proc.stat().st_uid == info.st_uid
+                     and os.readlink(proc / "cwd") == str(cluster)
+                     and int(fields[2]) == pid and int(fields[3]) == pid
+                     and abs(boot + int(fields[19]) // frequency - started) <= 2)
+        except (OSError, ValueError, IndexError, StopIteration):
+            if not exited():
+                raise
+            valid = False
+        if exited():
+            retire()
+            return
+        if not valid:
+            raise ValueError("disposable PID references a different process; cleanup refused")
+        if not unchanged():
+            raise ValueError("disposable PID carrier changed during cleanup")
+        try:
+            signal.pidfd_send_signal(descriptor, signal.SIGINT)
+        except ProcessLookupError:
+            pass
+        while not exited():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ValueError("disposable restore exceeded its execution limit")
+            select.select([descriptor], [], [], min(remaining, .01))
+        retire()
+    finally:
+        os.close(descriptor)
 
 
 def run(package, program, arguments, deadline):
@@ -42,8 +141,7 @@ def operate(package, command, backup, workspace, dump="database.dump", *, timeou
         raise ValueError("dump must be a direct backup child")
     cluster, socket = workspace / "cluster", workspace / "socket"
     if command == "cleanup":
-        if (cluster / "postmaster.pid").exists():
-            run(package, "pg_ctl", ["-D", cluster, "-m", "fast", "-w", "stop"], deadline)
+        cleanup(cluster, socket, deadline)
         return
     if command != "restore":
         raise ValueError("unsupported disposable restore command")

@@ -207,6 +207,14 @@ seconds and may select `--timeout-seconds` from 1 to 86400, overriding inheritan
 Failure attempts bounded cleanup separately. Abrupt coordinator cancellation
 retains the private workspace for explicit `cleanup` or managed retry; SIGKILL
 does not establish automatic cleanup.
+Cleanup treats `postmaster.pid` as an untrusted reference. On Linux it pins the
+process with a pidfd and verifies its PostgreSQL executable, worker identity,
+cluster working directory, process-group/session leadership and start time
+before sending fast-shutdown SIGINT through that descriptor. Numeric PID reuse
+cannot redirect the signal. A confirmed dead process permits compare-bound,
+directory-synchronized removal of its stale PID file. A live foreign process or
+changed carrier rejects and retains evidence; no `pg_ctl stop` is invoked from
+the persisted numeric PID. The same bounded cleanup protocol works across engines.
 
 `harbor-db-application-backup --config MANIFEST capture [--attempt ID]` records
 every regular-file artifact and executable hash and every directory path (including

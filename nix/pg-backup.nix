@@ -28,6 +28,19 @@
   durable = "${storagePackage}/bin/harbor-db-durable";
   pruneTool = "${storagePackage}/bin/harbor-db-backup-prune";
   storagePaths = import ./storage-paths.nix {inherit lib;};
+  sourceLocalTablespaceCheck = pkgs.writeShellScript "pg-backup-source-local-tablespaces" ''
+    set -euo pipefail
+    tablespaces=${lib.escapeShellArg "${config.services.postgresql.dataDir}/pg_tblspc"}
+    if [ ! -d "$tablespaces" ] || [ -L "$tablespaces" ]; then
+      echo "pg-backup: source-local recovery requires a primary without external tablespaces" >&2
+      exit 1
+    fi
+    entries="$(${pkgs.findutils}/bin/find "$tablespaces" -mindepth 1 -maxdepth 1 -print -quit)"
+    if [ -n "$entries" ]; then
+      echo "pg-backup: source-local recovery requires a primary without external tablespaces" >&2
+      exit 1
+    fi
+  '';
 
   # A hostname is also used as a directory component. Keep the legacy IPv4
   # paths stable while preventing IPv6 / URI punctuation from becoming path
@@ -97,7 +110,9 @@
       wantedBy = ["multi-user.target"];
       serviceConfig = {
         User = "postgres";
-        ExecStartPre = ["${pgReceivewalCmd} -D ${walDir} --status-interval=5 --no-loop --slot=${cfg.targetSettings.receiveWal.slotName} --create-slot --if-not-exists"];
+        ExecStartPre =
+          lib.optional cfg.targetSettings.sourceLocalRecovery.enable "${sourceLocalTablespaceCheck}"
+          ++ ["${pgReceivewalCmd} -D ${walDir} --status-interval=5 --no-loop --slot=${cfg.targetSettings.receiveWal.slotName} --create-slot --if-not-exists"];
         ExecStart = "${pgReceivewalCmd} -D ${walDir} --verbose --synchronous --slot=${cfg.targetSettings.receiveWal.slotName}";
         Restart = "on-failure";
         RestartSec = "5s";
@@ -142,6 +157,7 @@
       serviceConfig = {
         Type = "oneshot";
         User = "postgres";
+        ExecStartPre = lib.optional cfg.targetSettings.sourceLocalRecovery.enable "${sourceLocalTablespaceCheck}";
         ProtectSystem = "strict";
         ReadWritePaths = [backupRoot];
         UMask = "0077";
@@ -413,6 +429,10 @@ in {
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires baseBackup.enable for fresh verified recovery base backups.";
           }
           {
+            assertion = !cfg.targetSettings.sourceLocalRecovery.enable || (cfg.sourceSettings.maxReplicationSlots >= 2 && cfg.sourceSettings.maxWalSenders >= 3 && config.services.postgresql.settings.max_replication_slots >= 2 && config.services.postgresql.settings.max_wal_senders >= 3);
+            message = "services.harbor-db.pgBackup sourceLocalRecovery requires at least two replication slots and three WAL senders, including effective PostgreSQL settings.";
+          }
+          {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || !(config.services.harbor-db.postgresql.enable or false) || lib.elem "replicator" config.services.harbor-db.postgresql.writerFence.replicationRoles;
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires replicator in the writer-fence replication roles.";
           }
@@ -451,7 +471,10 @@ in {
         };
 
         systemd.services.postgresql-setup.script = lib.mkAfter (
-          lib.optionalString (cfg.sourceSettings.replicatorPasswordFile != null) ''
+          lib.optionalString cfg.targetSettings.sourceLocalRecovery.enable ''
+            ${sourceLocalTablespaceCheck}
+          ''
+          + lib.optionalString (cfg.sourceSettings.replicatorPasswordFile != null) ''
             if [ ! -r ${cfg.sourceSettings.replicatorPasswordFile} ] || [ ! -s ${cfg.sourceSettings.replicatorPasswordFile} ]; then
               echo "pg-backup: replicator password file unreadable or empty" >&2
               exit 1

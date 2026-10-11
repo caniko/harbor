@@ -61,7 +61,7 @@ sha256 = "6aadb28cecea0ddff75ce6fc80982816770e1e614051a51356834b566cb41053"
 
 [[extensions]]
 path = "python/harbor_db/postgres_drill.py"
-sha256 = "355e3c07b050033fc315903ec54c658f3bc4aba31578f831dde85946cd501a0c"
+sha256 = "00c42cdd3cbf46009bd258c8ba1c162e79f064a8d77ba413de4d1e6208b3138b"
 
 [[extensions]]
 path = "python/harbor_db/process.py"

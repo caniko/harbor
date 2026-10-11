@@ -412,7 +412,7 @@ case = "nix.x86_64-linux.pg-backup-eval"
 capability = "postgres"
 operation = "harbor-db-postgres.capture-backup"
 dimension = "rejection"
-evidence = "Source-local recovery cannot disable fresh verified base-backup production while retaining WAL reception. On primary hosts, evaluation also rejects equal, nested and containing per-source backup roots plus unnormalized path aliases before services can write into live primary storage. Complete source-local policies, disjoint derived siblings and independent target-only/WAL-only hosts admit."
+evidence = "Source-local recovery cannot disable fresh verified base-backup production while retaining WAL reception; source/effective configurations below two slots or three senders reject. The real PG18 fixture accepts an empty tablespace inventory, rejects missing/unreadable/redirected/nonempty inventories, reproduces unmapped same-host basebackup failure and preserves queryable primary records; generated setup/receiver/basebackup share the guard. On primary hosts, evaluation also rejects overlapping or unnormalized per-source backup roots before services write. Complete source-local policies, disjoint siblings and independent target-only/WAL-only hosts admit."
 
 [[coverage]]
 case = "nix.x86_64-linux.pg-backup-eval"
@@ -1187,7 +1187,7 @@ case = "nix.x86_64-linux.pg-backup-eval"
 capability = "nixos"
 operation = "nixos.pg-backup"
 dimension = "positive"
-evidence = "nix/pg-backup-eval.nix evaluates module wiring only: flush-wal-on-receipt, slot-create-is-pre-start, restart-policy, source-replication-hba/firewall, verify-backup and partial-publish assert synchronous WAL arguments, slot setup, restart backoff, replication access and verification before partial-tree publication. This check does not execute WAL receiving or a backup."
+evidence = "nix/pg-backup-eval.nix evaluates synchronous WAL arguments, slot setup, restart backoff, replication access and verification before partial-tree publication. Its real PostgreSQL 18 fixture also creates an external tablespace, reproduces unmapped same-host pg_basebackup failure and verifies generated tablespace admission rejects before replication while preserving primary records. This does not qualify successful generated backup production."
 
 [[inventories]]
 origin = "rust"
@@ -5056,7 +5056,14 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 180
 resources = { cpu = 2, memory_mib = 512, disk_mib = 512, exclusive = [] }
-selectors = ["python_and_native_drill_exchange_restored_clusters_and_cleanup"]
+selectors = ["python_and_native_drill_exchange_restored_clusters_and_cleanup", "stale_disposable_pid_cleanup_never_signals_unrelated_processes_in_both_engines"]
+
+[[coverage]]
+case = "native.drill-interop.stale_disposable_pid_cleanup_never_signals_unrelated_processes_in_both_engines"
+capability = "postgres-drill"
+operation = "harbor-db-postgres-drill.cleanup"
+dimension = "recovery"
+evidence = "Both actual cleanup CLIs reject a private PID carrier referencing a live same-UID sentinel without delivering SIGINT or changing its bytes. Once that owned process exits, cleanup removes the stale carrier and opposite-engine retry succeeds. The live PostgreSQL interop case also forges another postmaster's PID and proves both engines preserve its queryable records and carrier bytes."
 
 [[coverage]]
 case = "native.drill-interop.python_and_native_drill_exchange_restored_clusters_and_cleanup"
