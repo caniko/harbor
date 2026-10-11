@@ -238,6 +238,12 @@ def inspect(config, backup, *, now=None):
 
 
 def verify_bytes(config, backup, *, now=None):
+    receipt = verify_integrity(config, backup)
+    fresh(config, receipt["captured_at"], int(time.time()) if now is None else now)
+    return receipt
+
+
+def verify_integrity(config, backup):
     receipt = read_json(backup / "acceptance.json")
     if (receipt["status"] != "verified" or receipt["manifest_sha256"] != identity(config)
             or receipt["executables"] != executables(config) or receipt["resource"] != config["resource"]):
@@ -246,8 +252,17 @@ def verify_bytes(config, backup, *, now=None):
     artifacts.pop("acceptance.json")
     if artifacts != receipt["artifacts"]:
         raise ValueError("backup artifact hash does not match acceptance")
-    fresh(config, receipt["captured_at"], int(time.time()) if now is None else now)
     return receipt
+
+
+def inspect_retained(config, backup):
+    """Retained rollback captures do not expire; their bytes, tools and contract do."""
+    validate(config)
+    with lock(Path(config["root"]) / "lock", shared=True):
+        receipt = verify_integrity(config, Path(backup))
+        if type(receipt["captured_at"]) is not int or not 0 <= receipt["captured_at"] <= int(time.time()):
+            raise ValueError("retained backup capture time is invalid or from the future")
+        return receipt
 
 
 def fresh(config, captured_at, now):

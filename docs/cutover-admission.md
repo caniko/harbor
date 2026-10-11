@@ -103,7 +103,9 @@ publishes its receipt. Equal record counts or equal file sizes do not establish
 custody.
 
 Restored roots, files and directories must have inodes independent of the union
-of every authoritative root's inventory. A bind mount of another source root or
+of every enrolled corpus, authority, PostgreSQL primary, lifecycle and startup
+namespace's inventory. The coordinator rejects lexical containment and complete
+inode overlap before dispatching a certifying worker. A bind mount of another source root or
 one of its entries cannot certify a restore, even with identical inventories,
 disjoint path spelling and a regular-file link count of one.
 

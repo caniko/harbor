@@ -117,6 +117,10 @@ in {
           message = "Harbor DB runtime OS users must not map to any application owner role across enabled projects.";
         }
         {
+          assertion = lib.all (p: !(lib.elem p.runtimeOsUser ["root" "postgres"])) (lib.attrValues policies);
+          message = "Harbor DB runtime OS users must not use root or postgres control accounts.";
+        }
+        {
           assertion = lib.length (lib.unique (map (p: p.database) (lib.attrValues policies))) == lib.length (lib.attrValues policies);
           message = "Harbor DB application databases must be unique.";
         }
@@ -142,14 +146,18 @@ in {
         policies);
     systemd.tmpfiles.rules = ["d /var/lib/harbor-db-provision 0700 postgres postgres -" "f /var/lib/harbor-db-provision/lock 0600 postgres postgres -"];
     environment.systemPackages = [package];
-    services.postgresql.identMap = lib.mkBefore (lib.concatStringsSep "\n" (lib.mapAttrsToList (name: p: ''
-        harbor-${name}-runtime ${p.runtimeOsUser} ${p.runtimeRole}
-        harbor-${name}-owner ${p.ownerOsUser} ${p.ownerRole}
-      '')
-      renderedPolicies));
+    services.postgresql.identMap = lib.mkBefore ("harbor-control postgres postgres\n"
+      + lib.concatStringsSep "\n" (lib.mapAttrsToList (name: p: ''
+          harbor-${name}-runtime ${p.runtimeOsUser} ${p.runtimeRole}
+          harbor-${name}-owner ${p.ownerOsUser} ${p.ownerRole}
+        '')
+        renderedPolicies));
     services.postgresql.authentication = lib.mkBefore (lib.concatStringsSep "\n" (lib.mapAttrsToList (name: p: ''
         local ${p.database} ${p.runtimeRole} peer map=harbor-${name}-runtime
         local ${p.database} ${p.ownerRole} peer map=harbor-${name}-owner
+        local ${p.database} postgres peer map=harbor-control
+        local ${p.database} all reject
+        host ${p.database} all all reject
       '')
       renderedPolicies));
     environment.etc = lib.mapAttrs' (name: p: lib.nameValuePair "harbor-db/${name}-provision.json" {source = manifest name p;}) renderedPolicies;

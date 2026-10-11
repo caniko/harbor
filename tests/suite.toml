@@ -1,5 +1,44 @@
 # Versioned static inventory. No discovery command, Nix evaluation, or pass verdict.
 version = 1
+[[inventories]]
+origin = "rust"
+id_prefix = "native.supervisor."
+selector_prefix = ""
+source = "tests/supervisor.rs"
+argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "supervisor"]
+argv_suffix = ["--", "--exact"]
+maturity = "crystallized"
+selectors = ["untrusted_supervisor_bases_and_ancestors_reject_before_publication"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.candidate."
+selector_prefix = ""
+source = "tests/candidate.rs"
+argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "candidate"]
+argv_suffix = ["--", "--exact"]
+maturity = "crystallized"
+selectors = ["candidate_retention_streams_large_tracked_and_untracked_files"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.cutover_storage."
+selector_prefix = ""
+source = "tests/cutover_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "cutover_storage"]
+argv_suffix = ["--", "--exact"]
+maturity = "crystallized"
+selectors = ["coordinator_rejects_restore_roots_in_every_enrolled_namespace_in_both_engines"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.transition_storage."
+selector_prefix = ""
+source = "tests/transition_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "transition_storage"]
+argv_suffix = ["--", "--exact"]
+maturity = "crystallized"
+selectors = ["stale_capture_can_abort_but_changed_bytes_or_evidence_keep_barriers"]
 
 [[coverage]]
 case = "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"

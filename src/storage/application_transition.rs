@@ -217,8 +217,23 @@ pub fn capture_source(
     Ok((backup, result))
 }
 pub fn source_bytes(config: &Value, record: &Value, leases: &[RawFd]) -> Result<Value> {
+    bound_source_bytes(config, record, leases, false)
+}
+fn bound_source_bytes(
+    config: &Value,
+    record: &Value,
+    leases: &[RawFd],
+    retained: bool,
+) -> Result<Value> {
     let backup = Path::new(string(record, "backup")?);
-    let result = backup_worker(config, backup, leases)?;
+    let result = if retained {
+        application_backup::inspect_retained(
+            &durable::read_config_json(Path::new(string(config, "backup_manifest")?))?,
+            backup,
+        )?
+    } else {
+        backup_worker(config, backup, leases)?
+    };
     if record["source_acceptance_sha256"] != codec::file_digest(&backup.join("acceptance.json"))? {
         return Err(invalid("source backup evidence changed"));
     }
@@ -731,7 +746,7 @@ pub fn abort(config: &Value) -> Result<Value> {
     }
     let fence = manifest::fence(config, &mut tx.record, &tx.fds)?;
     if tx.record.get("backup").is_some() {
-        source_bytes(config, &tx.record, &fence.fds)?;
+        bound_source_bytes(config, &tx.record, &fence.fds, true)?;
         semantic(
             &run_action(config, "verify-source", &tx.record, &fence.fds)?,
             string(&tx.record, "semantic_sha256")?,

@@ -52,7 +52,7 @@ They cannot select `recovery/`, `base/`, `wal/`, `locks/`, `BACKUP_LOCK`,
 `preparation.json`. Nix and both runtime
 engines reject these aliases before publication, including off-host receipt
 imports. The dedicated `<backupRoot>/evidence/` subtree remains supported.
-Snapshot, local-receipt and off-host-receipt paths also exclude the declared
+The repository root, snapshot, local-receipt and off-host-receipt paths exclude the declared
 PostgreSQL data, lifecycle-state and startup-inhibition trees in both containment
 directions. Nix and both runtimes reject these paths before capture, preparation
 or receipt publication, including under the legacy protocol. Recovery evidence

@@ -178,8 +178,45 @@ pub fn validate_storage_namespaces(manifest: &Value) -> Result<()> {
     )
 }
 fn validate_storage_namespaces_until(manifest: &Value, deadline: Instant) -> Result<()> {
+    inspect_namespace_roots(namespace_roots(manifest)?, deadline)
+}
+
+/// Check the complete declared contract even in a user-scoped certifying worker.
+pub fn validate_restore_roots(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
+    let protected = namespace_roots(manifest)?;
+    for restore in restores {
+        validate_path(&restore.to_string_lossy())?;
+        if protected
+            .iter()
+            .any(|(root, _)| restore.starts_with(root) || root.starts_with(restore))
+        {
+            return Err(invalid(
+                "restore roots must be independent of every enrolled storage namespace",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The privileged coordinator also rejects bind-mounted aliases before dispatch.
+pub fn validate_restore_namespaces(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
+    validate_restore_roots(manifest, restores)?;
+    let mut roots = namespace_roots(manifest)?;
+    roots.extend(restores.iter().cloned().map(|root| (root, false)));
+    inspect_namespace_roots(
+        roots,
+        Instant::now()
+            + Duration::from_secs(
+                manifest["activation_timeout_seconds"]
+                    .as_u64()
+                    .unwrap_or(900),
+            ),
+    )
+}
+
+fn inspect_namespace_roots(roots: Vec<(PathBuf, bool)>, deadline: Instant) -> Result<()> {
     let mut protected = BTreeSet::new();
-    for (root, primary) in namespace_roots(manifest)? {
+    for (root, primary) in roots {
         match fs::symlink_metadata(&root) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,

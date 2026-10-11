@@ -71,6 +71,102 @@ impl Fixture {
 }
 
 #[test]
+fn coordinator_rejects_restore_roots_in_every_enrolled_namespace_in_both_engines() {
+    use harbor_db::storage::durable;
+    use std::os::unix::fs::MetadataExt;
+    for python in [false, true] {
+        let f = Fixture::new();
+        let other_state = f.temp.path().join("other-authority");
+        fs::create_dir(&other_state).unwrap();
+        fs::write(other_state.join("control"), b"other authority").unwrap();
+        let postgres = f.temp.path().join("postgres.json");
+        let postgres_roots: Vec<_> = ["primary", "pg-state", "pg-startup"]
+            .map(|name| f.temp.path().join(name))
+            .into();
+        for path in &postgres_roots {
+            fs::create_dir(path).unwrap();
+            fs::write(path.join("control"), b"PostgreSQL control").unwrap();
+        }
+        durable::write_json(&postgres, &json!({"data_dir":postgres_roots[0],"state_dir":postgres_roots[1],"startup_inhibition":{"state_dir":postgres_roots[2]}})).unwrap();
+        let mut manifest = f.manifest();
+        let mut peer = f.config.clone();
+        peer["authority"]["resource"] = json!("other");
+        peer["authority"]["state_dir"] = json!(other_state);
+        peer["authority"]["directories"] = json!([f.restore]);
+        peer["custody_file"] = json!(other_state.join("custody.json"));
+        manifest["resources"]["other"] = peer;
+        manifest["resources"]["postgresql"] =
+            json!({"kind":"postgres","user":"postgres","config":postgres});
+        let contract = f.temp.path().join("global.json");
+        durable::write_json(&contract, &manifest).unwrap();
+        let invoke = |root: &std::path::Path| {
+            let mut command = if python {
+                let mut command = std::process::Command::new("python3");
+                command.args(["-B", "-m", "harbor_db.cutover"]).env(
+                    "PYTHONPATH",
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                );
+                command
+            } else {
+                std::process::Command::new(env!("CARGO_BIN_EXE_harbor-db-cutover"))
+            };
+            output(
+                command
+                    .args(["certify", "--contract"])
+                    .arg(&contract)
+                    .args([
+                        "--host",
+                        "fixture",
+                        "--resource",
+                        "archive",
+                        "--identity",
+                        "retained",
+                        "--restore-root",
+                    ])
+                    .arg(root),
+            )
+        };
+        let before = fs::metadata(other_state.join("control")).unwrap().ino();
+        for root in std::iter::once(&f.restore)
+            .chain(std::iter::once(&other_state))
+            .chain(postgres_roots.iter())
+        {
+            for path in [root.clone(), root.join("nested")] {
+                let result = invoke(&path);
+                assert!(
+                    !result.status.success()
+                        && String::from_utf8_lossy(&result.stderr).contains("restore roots"),
+                    "{result:?}"
+                );
+                assert!(!f.state.join("identity.json").exists());
+                assert!(!f.state.join("custody.json").exists());
+                assert!(!f.source.join(".harbor-db-archive-identity.json").exists());
+            }
+        }
+        assert_eq!(
+            fs::metadata(other_state.join("control")).unwrap().ino(),
+            before
+        );
+        let independent = f.temp.path().join("independent");
+        fs::create_dir(&independent).unwrap();
+        fs::create_dir(independent.join("historical.git")).unwrap();
+        fs::write(
+            independent.join("historical.git/HEAD"),
+            fs::read(f.source.join("historical.git/HEAD")).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            independent.join("history"),
+            fs::read(f.source.join("history")).unwrap(),
+        )
+        .unwrap();
+        let result = invoke(&independent);
+        assert!(result.status.success(), "{result:?}");
+        assert!(f.state.join("custody.json").exists());
+    }
+}
+
+#[test]
 fn hardlinked_custody_corpus_rejects_metadata_and_content_admission_in_both_engines() {
     let f = Fixture::new();
     let external = f.temp.path().join("external-history");

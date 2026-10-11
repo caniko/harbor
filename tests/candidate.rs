@@ -3,6 +3,69 @@ use harbor_db::testing::candidate;
 use std::{fs, process::Command};
 
 #[test]
+fn candidate_retention_streams_large_tracked_and_untracked_files() {
+    use std::{
+        io::{Seek, SeekFrom, Write},
+        os::unix::fs::{MetadataExt, PermissionsExt},
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("checkout");
+    fs::create_dir(&source).unwrap();
+    assert!(
+        Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    for name in ["tracked", "untracked"] {
+        let mut file = fs::File::create(source.join(name)).unwrap();
+        file.write_all(b"large fixture header").unwrap();
+        file.seek(SeekFrom::Start(17 * 1024 * 1024)).unwrap();
+        file.write_all(b"complete last byte").unwrap();
+    }
+    fs::set_permissions(source.join("tracked"), fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(
+        Command::new("git")
+            .args(["add", "tracked"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let retained = candidate::retain(&source, &temp.path().join("retained")).unwrap();
+    candidate::verify(&retained).unwrap();
+    for name in ["tracked", "untracked"] {
+        let path = retained.source.join(name);
+        assert_eq!(
+            harbor_db::testing::supervisor::bind_file(&path)
+                .unwrap()
+                .sha256,
+            harbor_db::testing::supervisor::bind_file(&source.join(name))
+                .unwrap()
+                .sha256
+        );
+        assert_eq!(fs::metadata(&path).unwrap().len(), 17 * 1024 * 1024 + 18);
+        assert_ne!(
+            fs::metadata(&path).unwrap().ino(),
+            fs::metadata(source.join(name)).unwrap().ino()
+        );
+        assert_eq!(
+            fs::metadata(&path).unwrap().mode() & 0o777,
+            if name == "tracked" { 0o700 } else { 0o600 }
+        );
+    }
+    fs::OpenOptions::new()
+        .append(true)
+        .open(retained.source.join("untracked"))
+        .unwrap()
+        .write_all(b"changed")
+        .unwrap();
+    assert!(candidate::verify(&retained).is_err());
+}
+
+#[test]
 fn retained_candidate_contains_edits_and_new_sources_but_no_build_or_private_state() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source");

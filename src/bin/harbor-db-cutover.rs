@@ -78,8 +78,8 @@ fn run(cli: Cli) -> Result<i32> {
     // read through their strict receipt readers.
     let path = durable::configuration_path(&contract.contract)?;
     let manifest = cutover::validate_manifest(&durable::read_config_json(&path)?, &contract.host)?;
-    if matches!(&cli.command, Command::Certify { .. }) {
-        cutover::validate_storage_namespaces(&manifest)?;
+    if let Command::Certify { restore_root, .. } = &cli.command {
+        cutover::validate_restore_namespaces(&manifest, restore_root)?;
     }
     let select = |name: &str| {
         manifest["resources"]
@@ -174,6 +174,7 @@ fn run(cli: Cli) -> Result<i32> {
             database_requirements,
             ..
         } => {
+            cutover::validate_restore_roots(&manifest, &certify_roots)?;
             let requirements = harbor_db::storage::codec::decode_str(&database_requirements)?;
             cutover::certify_filesystem(
                 select(&worker)?,

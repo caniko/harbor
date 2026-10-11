@@ -134,7 +134,7 @@ in
             lib.all (key:
               accepted protocol key "/srv/postgres/18-sibling/receipt.json"
               && lib.all (path: !accepted protocol key path) ["/srv/postgres/18" "/srv/postgres/18/PG_VERSION" "/srv/postgres/18/global/pg_control" "/srv/postgres/authority" "/srv/postgres/authority/identity.json" "/var/lib/harbor-db/postgresql-startup" "/var/lib/harbor-db/postgresql-startup/policy.json" "/srv/postgres"])
-            ["snapshotFile" "receiptFile" "offHostReceiptFile"]) ["legacy" "source-local-v1"];
+            ["backupRoot" "snapshotFile" "receiptFile" "offHostReceiptFile"]) ["legacy" "source-local-v1"];
       }
       {
         name = "writer-fence-setup-units-are-unique-and-not-the-primary";

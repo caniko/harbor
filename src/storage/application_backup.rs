@@ -520,6 +520,12 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     Ok(receipt)
 }
 pub fn verify_bytes(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
+    let receipt = verify_integrity(c, b)?;
+    fresh(c, &receipt["captured_at"], time.unwrap_or(now()?))?;
+    Ok(receipt)
+}
+
+fn verify_integrity(c: &Value, b: &Path) -> Result<Value> {
     let receipt = durable::read_json(&b.join("acceptance.json"))?;
     if receipt["status"] != "verified"
         || receipt["manifest_sha256"] != identity(c)?
@@ -535,7 +541,6 @@ pub fn verify_bytes(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
     if artifacts != receipt["artifacts"] {
         return Err(invalid("backup artifact hash does not match acceptance"));
     }
-    fresh(c, &receipt["captured_at"], time.unwrap_or(now()?))?;
     Ok(receipt)
 }
 
@@ -561,6 +566,22 @@ pub fn inspect(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
     let root = validate(c, true)?;
     let _lease = durable::lock(&root.join("lock"), true, false)?;
     verify_bytes(c, b, time)
+}
+/// Retained rollback captures do not expire; their bytes, tools and contract do.
+pub fn inspect_retained(c: &Value, b: &Path) -> Result<Value> {
+    let root = validate(c, true)?;
+    let _lease = durable::lock(&root.join("lock"), true, false)?;
+    let receipt = verify_integrity(c, b)?;
+    let now = now()?;
+    if !receipt["captured_at"]
+        .as_i64()
+        .is_some_and(|at| at >= 0 && at <= now)
+    {
+        return Err(invalid(
+            "retained backup capture time is invalid or from the future",
+        ));
+    }
+    Ok(receipt)
 }
 pub fn certify(c: &Value, b: &Path, state: &Path) -> Result<Value> {
     validate(c, false)?;

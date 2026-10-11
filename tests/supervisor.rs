@@ -46,6 +46,54 @@ fn spec(root: &Path, script: &str, deadline: u64) -> RunSpec {
 }
 
 #[test]
+fn untrusted_supervisor_bases_and_ancestors_reject_before_publication() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let tmp = tempfile::tempdir().unwrap();
+    let parent = tmp.path().join("parent");
+    let base = parent.join("runs");
+    fs::create_dir_all(&base).unwrap();
+    fs::set_permissions(&base, fs::Permissions::from_mode(0o700)).unwrap();
+    let resource = base.join("resources");
+    fs::create_dir(&resource).unwrap();
+    fs::write(resource.join("shared.lock"), b"persistent lease").unwrap();
+    let inode = fs::metadata(resource.join("shared.lock")).unwrap().ino();
+    for (index, mode) in [0o777, 0o770, 0o1777].into_iter().enumerate() {
+        fs::set_permissions(&base, fs::Permissions::from_mode(mode)).unwrap();
+        assert!(
+            supervisor::create_run(
+                Some(&base),
+                &format!("rejected-{index}"),
+                spec(tmp.path(), "true", 5)
+            )
+            .is_err()
+        );
+        assert!(!base.join(format!("rejected-{index}")).exists());
+        assert_eq!(
+            fs::metadata(resource.join("shared.lock")).unwrap().ino(),
+            inode
+        );
+    }
+    fs::set_permissions(&base, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o777)).unwrap();
+    assert!(
+        supervisor::create_run(Some(&base), "bad-ancestor", spec(tmp.path(), "true", 5)).is_err()
+    );
+    let missing = parent.join("uncreated/nested");
+    assert!(
+        supervisor::create_run(Some(&missing), "bad-new", spec(tmp.path(), "true", 5)).is_err()
+    );
+    assert!(!parent.join("uncreated").exists());
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+    let run = supervisor::create_run(Some(&base), "private", spec(tmp.path(), "true", 5)).unwrap();
+    supervisor::worker(&run).unwrap();
+    assert_eq!(supervisor::verify(&run).unwrap().verdict, Verdict::Passed);
+    assert_eq!(
+        fs::metadata(resource.join("shared.lock")).unwrap().ino(),
+        inode
+    );
+}
+
+#[test]
 fn eof_is_not_exit_and_follower_has_no_authority() {
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(

@@ -50,7 +50,7 @@ pub struct FileBinding {
 }
 // Bind complete source/launcher files with bounded memory. Small acceptance
 // carriers retain evidence::MAX_ARTIFACT_BYTES; debug launchers often exceed it.
-const MAX_BOUND_FILE_BYTES: u64 = 1024 * 1024 * 1024;
+pub(crate) const MAX_BOUND_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 pub fn bind_file(path: &Path) -> Result<FileBinding> {
     Ok(FileBinding {
         path: path.to_path_buf(),
@@ -214,6 +214,22 @@ fn safe_id(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 fn private_dir(path: &Path) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    let caller = unsafe { libc::geteuid() };
+    let trusted = |directory: &File, private: bool| -> Result<()> {
+        let metadata = directory.metadata()?;
+        // Root-owned system ancestors and trusted sticky temporary parents may
+        // host caller-owned children; the final evidence directory is private.
+        if (metadata.uid() != caller && metadata.uid() != 0)
+            || (metadata.mode() & 0o022 != 0 && metadata.mode() & 0o1000 == 0)
+            || (private && (metadata.uid() != caller || metadata.mode() & 0o022 != 0))
+        {
+            return Err(error(
+                "supervisor storage must have private owned directories and trusted ancestors",
+            ));
+        }
+        Ok(())
+    };
     if !path.is_absolute() {
         return Err(error("storage directory must be absolute"));
     }
@@ -226,6 +242,7 @@ fn private_dir(path: &Path) -> Result<()> {
             return Err(error("storage traversal forbidden"));
         };
         let directory = evidence::open(&prefix, libc::O_RDONLY | libc::O_DIRECTORY, 0)?;
+        trusted(&directory, false)?;
         use std::os::unix::ffi::OsStrExt;
         let name_c = std::ffi::CString::new(name.as_bytes())?;
         if unsafe { libc::mkdirat(directory.as_raw_fd(), name_c.as_ptr(), 0o700) } != 0
@@ -234,8 +251,13 @@ fn private_dir(path: &Path) -> Result<()> {
             return Err(std::io::Error::last_os_error().into());
         }
         prefix.push(name);
-        evidence::open(&prefix, libc::O_RDONLY | libc::O_DIRECTORY, 0)?;
+        let child = evidence::open(&prefix, libc::O_RDONLY | libc::O_DIRECTORY, 0)?;
+        trusted(&child, prefix == path)?;
     }
+    trusted(
+        &evidence::open(path, libc::O_RDONLY | libc::O_DIRECTORY, 0)?,
+        true,
+    )?;
     Ok(())
 }
 fn log_file(path: &Path) -> Result<File> {

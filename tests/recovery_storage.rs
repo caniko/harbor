@@ -457,7 +457,12 @@ fn recovery_evidence_cannot_replace_postgres_storage_in_both_engines() {
         .collect();
     let original = f.config.clone();
     for protocol in [None, Some("legacy"), Some("source-local-v1")] {
-        for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+        for key in [
+            "backup_root",
+            "snapshot_file",
+            "receipt_file",
+            "off_host_receipt_file",
+        ] {
             for target in [
                 "data",
                 "data/PG_VERSION",
@@ -526,7 +531,12 @@ for operation in (lambda: recovery.policy(config), lambda: recovery.snapshot(con
         }
     }
     f.config = original;
-    for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+    for key in [
+        "backup_root",
+        "snapshot_file",
+        "receipt_file",
+        "off_host_receipt_file",
+    ] {
         let mut independent = f.config.clone();
         independent["recovery"][key] = json!(f.p("data-sibling/receipt.json"));
         recovery::policy(&independent).unwrap();

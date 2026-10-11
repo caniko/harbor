@@ -17,6 +17,11 @@ both the schema owner and the restricted runtime role. `schemaUnits` and
 projects must also be acyclic, including shared schema and runtime units.
 `lib.applicationProvisioning = 2` advertises strict post-schema reconciliation.
 
+Runtime OS users cannot be `root` or `postgres`. Database-scoped peer rules allow
+only the declared runtime and owner mappings and the PostgreSQL control account.
+Explicit local and TCP reject rules terminate admission before permissive global
+HBA rules can authorize an undeclared role.
+
 `schemaUnits` require the generated provision service. `runtimeUnits` require
 the generated permissions service, which runs after the explicit schema units.
 Harbor DB does not invoke schema migrations itself. `tables` overrides exact
@@ -400,6 +405,10 @@ remain supported.
 Before writer enablement, `abort` requires the exact retained source generation
 selected with clients still inhibited and intact source semantic evidence. It
 restores old authority/custody using compare-and-swap, preserving target bytes.
+The journal-bound rollback capture may be older than `maximumAgeSeconds`; abort
+still verifies its complete artifacts, acceptance digest, executable/manifest
+identity and source semantics. Invalid or future capture timestamps reject.
+Forward admission and independent certification still require fresh evidence.
 After writer enablement, abort is forbidden even if no write has yet been observed:
 reversal requires a fresh reverse transition. Release and abort can resume after
 an interruption; neither rewrites foreign identity or startup policy.

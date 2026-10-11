@@ -133,8 +133,9 @@ def capture_source(config, record, leases):
     return backup, result
 
 
-def source_bytes(config, record):
-    result = application_backup.inspect(read_json(config["backup_manifest"]), Path(record["backup"]))
+def source_bytes(config, record, *, retained=False):
+    inspect = application_backup.inspect_retained if retained else application_backup.inspect
+    result = inspect(read_json(config["backup_manifest"]), Path(record["backup"]))
     if application_backup.digest(Path(record["backup"]) / "acceptance.json") != record["source_acceptance_sha256"]:
         raise ValueError("source backup evidence changed")
     return result
@@ -430,7 +431,7 @@ def abort(config):
             raise ValueError("abort requires the exact retained source generation selected with writers inhibited")
         with fence(config, record, leases) as pinned:
             if "backup" in record:
-                source_bytes(config, record)
+                source_bytes(config, record, retained=True)
                 semantic(run_action(config, "verify-source", record, pinned), record["semantic_sha256"])
             if record["phase"] in ("committing", "committed", "aborting"):
                 save(config, record, "aborting")

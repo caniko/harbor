@@ -89,7 +89,7 @@ fn automatic_manual_capture_remains_pinned_after_scheduled_retention_in_both_eng
         durable::write_json(&config, &c).unwrap();
         let mut command = if python {
             let mut command = std::process::Command::new("python3");
-            command.args(["-B", "-m", "harbor_db.application_backup"]);
+            command.args(["-B", "-c", "import sys\nfrom unittest.mock import patch\nfrom harbor_db import application_backup\nfixture=sys.argv.pop(1)\noriginal=application_backup.digest\nif fixture:\n patch.object(application_backup,'digest',side_effect=lambda path: original(fixture if str(path)=='/etc/machine-id' else path)).start()\nraise SystemExit(application_backup.main())", option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("")]);
             command.env(
                 "PYTHONPATH",
                 format!("{}/python", env!("CARGO_MANIFEST_DIR")),
@@ -1327,7 +1327,13 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         );
         spec.environment = Some(env);
         spec.identity = identity;
-        spec.timeout = Duration::from_secs(120);
+        // QEMU user-mode runs every real PostgreSQL client/server executable;
+        // retain a finite platform-specific budget for the full convergence run.
+        spec.timeout = Duration::from_secs(if cfg!(target_arch = "aarch64") {
+            900
+        } else {
+            120
+        });
         let output = process::run(&spec).unwrap();
         assert!(
             output.status.success(),

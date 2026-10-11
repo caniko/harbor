@@ -88,10 +88,29 @@ def namespace_roots(manifest):
 
 def validate_storage_namespaces(manifest, *, deadline=None):
     """Inspect all private roots in the coordinator before user-scoped workers."""
-    protected = set()
     if deadline is None:
         deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
-    for root, primary in namespace_roots(manifest):
+    inspect_namespace_roots(namespace_roots(manifest), deadline)
+
+
+def validate_restore_roots(manifest, restores):
+    protected = namespace_roots(manifest)
+    for restore in restores:
+        validate_path(str(restore))
+        restore = Path(restore)
+        if any(restore.is_relative_to(root) or root.is_relative_to(restore) for root, _ in protected):
+            raise ValueError("restore roots must be independent of every enrolled storage namespace")
+
+
+def validate_restore_namespaces(manifest, restores):
+    validate_restore_roots(manifest, restores)
+    inspect_namespace_roots(namespace_roots(manifest) + [(Path(root), False) for root in restores],
+                            time.monotonic() + manifest.get("activation_timeout_seconds", 900))
+
+
+def inspect_namespace_roots(roots, deadline):
+    protected = set()
+    for root, primary in roots:
         try:
             root.lstat()
         except FileNotFoundError:
@@ -474,7 +493,7 @@ def main():
             argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
             resource.serve(config["authority"], argv, inspect=lambda: check_resource(config, phase="startup"))
         elif args.command == "certify":
-            validate_storage_namespaces(manifest)
+            validate_restore_namespaces(manifest, args.restore_root)
             config = manifest["resources"][args.resource]
             dependency = config.get("database_resource")
             database = None
@@ -490,6 +509,7 @@ def main():
             execute_worker(args.contract, args.resource, config, "certify",
                            manifest.get("activation_timeout_seconds", 900), extra, command_name="certify-worker")
         elif args.command == "certify-worker":
+            validate_restore_roots(manifest, args.certify_roots)
             certify_filesystem(manifest["resources"][args.worker], args.certify_roots,
                                 args.certify_identity, database_snapshot=args.database_snapshot,
                                 database_requirements=args.database_requirements)

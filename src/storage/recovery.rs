@@ -136,7 +136,15 @@ fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool)
     {
         protected.push(absolute(&path(startup, "state_dir")?)?);
     }
-    for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+    for key in [
+        "backup_root",
+        "snapshot_file",
+        "receipt_file",
+        "off_host_receipt_file",
+    ] {
+        if key == "backup_root" && settings.get(key).is_none() && !source_local {
+            continue;
+        }
         if key == "off_host_receipt_file" && settings[key].is_null() {
             continue;
         }
@@ -149,9 +157,10 @@ fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool)
                 "recovery evidence must stay outside PostgreSQL storage and policy trees",
             ));
         }
-        if controls
-            .iter()
-            .any(|control| evidence.starts_with(control) || control.starts_with(&evidence))
+        if key != "backup_root"
+            && controls
+                .iter()
+                .any(|control| evidence.starts_with(control) || control.starts_with(&evidence))
         {
             return Err(invalid(
                 "recovery evidence must stay outside repository control paths",

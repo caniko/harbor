@@ -53,10 +53,43 @@ for engine in args.engine or ("native", "python"):
             finally:
                 subprocess.run(["umount", str(restore)], check=True)
         # Disjoint copies with identical content remain certifiable.
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        other, other_state = base / "other", base / "other-state"
+        other.mkdir(mode=0o700)
+        other_state.mkdir(mode=0o700)
+        (other / "empty").mkdir(mode=0o700)
+        (other / "history").write_bytes(b"identical historical corpus")
+        peer = {**resource, "authority": {**resource["authority"], "resource": "other",
+                "state_dir": str(other_state), "directories": [str(other)]},
+                "custody_file": str(other_state / "custody.json")}
+        manifest = json.loads(contract.read_text())
+        manifest["resources"]["other"] = peer
+        contract.write_text(json.dumps(manifest))
+        coordinator = ([args.native] if engine == "native" else [sys.executable, "-B", "-m", "harbor_db.cutover"])
+        coordinator += ["certify", "--contract", str(contract), "--host", "fixture", "--resource", "crossroot",
+                        "--identity", "history", "--restore-root", str(restored_a), "--restore-root", str(restored_b)]
+        for name in ("", "history", "empty"):
+            source, restore = (other, restored_a) if not name else (other / name, restored_a / name)
+            subprocess.run(["mount", "--bind", str(source), str(restore)], check=True)
+            try:
+                result = subprocess.run(coordinator, capture_output=True, text=True, timeout=30)
+                assert result.returncode != 0 and "alias" in result.stderr, (engine, name, result.stdout, result.stderr)
+                assert not (state / "identity.json").exists()
+                assert not (state / "custody.json").exists()
+                assert not (a / ".harbor-db-crossroot-identity.json").exists()
+            finally:
+                subprocess.run(["umount", str(restore)], check=True)
+        # An unprivileged mapped-root namespace explicitly denies setgroups,
+        # so it cannot dispatch a root credential-changing worker. Its alias
+        # checks above finish before dispatch; validate independent copies with
+        # the direct worker here. Real-root VMs exercise coordinator dispatch,
+        # and the Rust CLI regression exercises it as the ordinary service user.
+        groups_denied = Path("/proc/self/setgroups").read_text().strip() == "deny"
+        result = subprocess.run(command if groups_denied else coordinator, capture_output=True, text=True, timeout=30)
         assert result.returncode == 0, (engine, result.stdout, result.stderr)
         assert (state / "custody.json").is_file()
         results.append({"engine": engine, "crossRootBindAliasRejected": True,
+                        "otherEnrolledCorpusRootFileAndEmptyDirectoryAliasesRejected": True,
+                        "independentCopyAcceptance": "direct-worker" if groups_denied else "coordinator",
                         "fileOnlyAndEmptyDirectoryAliasesRejected": True,
                         "noAliasPublication": True, "independentCopiesAccepted": True})
 print(json.dumps({"status": "pass", "results": results}))

@@ -62,13 +62,15 @@ def validate_evidence_paths(config, settings, source_local):
         if not isinstance(startup, dict) or not isinstance(startup.get("state_dir"), str):
             raise ValueError("invalid PostgreSQL storage startup-inhibition path")
         protected.append(absolute(startup["state_dir"]))
-    for key in ("snapshot_file", "receipt_file", "off_host_receipt_file"):
+    for key in ("backup_root", "snapshot_file", "receipt_file", "off_host_receipt_file"):
+        if key == "backup_root" and root is None:
+            continue
         if key == "off_host_receipt_file" and settings.get(key) is None:
             continue
         evidence = absolute(settings[key])
         if any(evidence.is_relative_to(root) or root.is_relative_to(evidence) for root in protected):
             raise ValueError("recovery evidence must stay outside PostgreSQL storage and policy trees")
-        if any(evidence.is_relative_to(control) or control.is_relative_to(evidence) for control in controls):
+        if key != "backup_root" and any(evidence.is_relative_to(control) or control.is_relative_to(evidence) for control in controls):
             raise ValueError("recovery evidence must stay outside repository control paths")
 
 

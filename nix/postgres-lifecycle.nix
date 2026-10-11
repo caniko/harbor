@@ -368,7 +368,7 @@ in {
           cfg.recovery
           == null
           || (let
-            evidence = [cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
+            evidence = [cfg.recovery.backupRoot cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
             protected = [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir];
           in
             lib.all normalizedPath protected && lib.all (path: lib.all (root: storagePaths.disjoint [path root]) protected) evidence);

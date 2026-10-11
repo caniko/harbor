@@ -195,6 +195,20 @@ impl Gate {
             2,
             &format!("{phase}:runtime-os-user-owner-login-rejected"),
         )?;
+        for role in ["postgres", "incomplete_runtime"] {
+            self.command(
+                Self::sql_argv(args, "demo", role, "SELECT current_user"),
+                2,
+                &format!("{phase}:runtime-os-user-{role}-login-rejected"),
+            )?;
+        }
+        let mut tcp = Self::sql_argv(args, "demo", "postgres", "SELECT current_user");
+        tcp[8] = "127.0.0.1".into();
+        self.command(
+            tcp,
+            2,
+            &format!("{phase}:runtime-tcp-control-login-rejected"),
+        )?;
         Ok(())
     }
 

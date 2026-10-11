@@ -3,7 +3,7 @@ use super::{
     evidence,
     supervisor::{self, FileBinding, Result},
 };
-use crate::storage::{codec, durable};
+use crate::storage::durable;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -84,13 +84,12 @@ pub fn retain(source: &Path, destination: &Path) -> Result<Candidate> {
         if !metadata.is_file() {
             return Err(supervisor::error("candidate contains non-file source"));
         }
-        let bytes = evidence::bounded_read(&original)?;
         let path = retained.join(&name);
         fs::DirBuilder::new().recursive(true).mode(0o700).create(
             path.parent()
                 .ok_or_else(|| supervisor::error("source parent absent"))?,
         )?;
-        durable::atomic_write(&path, &bytes)?;
+        evidence::atomic_copy(&path, &original, supervisor::MAX_BOUND_FILE_BYTES)?;
         // Preserve only the executable bit; retained files are private to their owner.
         fs::set_permissions(
             &path,
@@ -100,10 +99,7 @@ pub fn retain(source: &Path, destination: &Path) -> Result<Candidate> {
                 0o600
             }),
         )?;
-        let binding = FileBinding {
-            path,
-            sha256: codec::digest(&bytes),
-        };
+        let binding = supervisor::bind_file(&path)?;
         manifest.push(serde_json::json!({"path": name, "sha256": binding.sha256, "executable": metadata.permissions().mode() & 0o111 != 0}));
         files.push(binding);
     }

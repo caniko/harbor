@@ -383,6 +383,10 @@ original receipt and stop only observer units successfully created for that run.
 
 For catalog runs, `--base` must be an absolute private storage path outside the
 checkout, and `--id` must be a new ASCII alphanumeric/hyphen/underscore identity.
+Existing bases must belong to the caller and prohibit group/world writes. Every
+ancestor must be caller- or root-owned and prohibit untrusted writes, except
+trusted sticky temporary parents. Admission preserves rejected storage modes and
+existing lease inodes rather than repairing them in place.
 The runner retains tracked and nonignored untracked regular sources, including
 local edits, under `BASE/ID-candidate/source`. It excludes `.git`, `.direnv`,
 `.envrc`, build targets, `.nix-results` output/GC-root state, Python bytecode, and
@@ -390,6 +394,8 @@ the root `.pre-commit-config.yaml` generated development-shell link. Other
 symlinks/special sources, including dangling links, are rejected.
 The retained inventory covers the entire snapshot, not just selected test files.
 Candidate and run identity reuse is rejected.
+Regular sources up to 1 GiB are retained and SHA-256-bound with streaming I/O;
+the separate 16 MiB acceptance-document limit does not constrain source fixtures.
 
 `BASE/ID-artifacts` retains the catalog bytes, `unittest-v1.py`, per-case
 workspaces, and `runner-binding.json`. The binding records profile, original-to-safe

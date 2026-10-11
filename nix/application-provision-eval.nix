@@ -58,6 +58,33 @@ in
     resultMessage = "Dedicated roles, peer mappings, provisioning order and conflict assertions are retained";
     assertions = [
       {
+        name = "database-peer-admission-terminates-before-permissive-global-rules";
+        message = "Runtime/owner/control peer mappings must end in scoped local and network denial, including hosts with permissive global fallback.";
+        assertion = let
+          selected = (evaluate {services.postgresql.authentication = pkgs.lib.mkAfter "local all all trust\nhost all all all trust";}).config;
+        in
+          pkgs.lib.hasInfix ''
+            local demo demo_runtime peer map=harbor-demo-runtime
+            local demo demo_owner peer map=harbor-demo-owner
+            local demo postgres peer map=harbor-control
+            local demo all reject
+            host demo all all reject
+          ''
+          selected.services.postgresql.authentication
+          && pkgs.lib.hasInfix "harbor-control postgres postgres" selected.services.postgresql.identMap;
+      }
+      {
+        name = "privileged-runtime-peer-os-users-reject";
+        message = "The PostgreSQL control account and root cannot also host restricted application runtime processes.";
+        assertion = pkgs.lib.all (user:
+          rejected (evaluate {
+            services.harbor-db.projects.demo.postgres.provision = {
+              ownerOsUser = "schema_owner";
+              runtimeOsUser = pkgs.lib.mkForce user;
+            };
+          }) "runtime OS users must not use root or postgres") ["root" "postgres"];
+      }
+      {
         name = "runtime-privilege-admission-cannot-skip-behind-fence";
         message = "A skipped provisioning prerequisite must also prevent the dependent runtime unit from starting while writer-fence.json exists.";
         assertion = let

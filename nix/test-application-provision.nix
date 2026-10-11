@@ -14,11 +14,16 @@ in
       extraPythonPackages = ps:
         pkgs.lib.optional interop (bridge.package ps);
       name = "harbor-db-application-provision";
-      nodes.machine = {pkgs, ...}: {
+      nodes.machine = {
+        pkgs,
+        lib,
+        ...
+      }: {
         imports = [module];
         services.postgresql = {
           enable = true;
           package = pkgs.postgresql_18;
+          authentication = lib.mkAfter "local all all trust\nhost all all all trust";
         };
         users.users.demo = {
           isSystemUser = true;
@@ -105,6 +110,11 @@ in
           machine.wait_for_unit("demo.service")
           machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U demo_runtime -c 'UPDATE history SET id=2'")
           machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U demo_owner -c 'SELECT 1'")
+          machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U postgres -c 'SELECT current_user'")
+          machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -h 127.0.0.1 -d demo -U postgres -c 'SELECT current_user'")
+          machine.succeed("runuser -u postgres -- psql -X -w -v ON_ERROR_STOP=1 -d postgres -c 'CREATE ROLE undeclared LOGIN'")
+          machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U undeclared -c 'SELECT current_user'")
+          machine.succeed("runuser -u postgres -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U postgres -c 'SELECT current_user'")
           machine.succeed("runuser -u postgres -- harbor-db-provision --config /etc/harbor-db/demo-provision.json check")
           machine.fail("systemctl start incomplete.service")
           machine.fail("systemctl is-active incomplete.service")
