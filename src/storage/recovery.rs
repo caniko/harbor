@@ -750,13 +750,20 @@ fn isolated_restore(restored: &Path, authoritative: &Path, backup: &Path) -> Res
             Err(error) => return Err(error.into()),
         }
     }
-    let mut protected = BTreeSet::new();
+    let mut primary = BTreeSet::new();
     match fs::symlink_metadata(authoritative) {
-        Ok(_) => storage_identities(authoritative, &mut protected, true)?,
+        Ok(_) => storage_identities(authoritative, &mut primary, true)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
+    let mut protected = BTreeSet::new();
     storage_identities(backup, &mut protected, false)?;
+    if !primary.is_disjoint(&protected) {
+        return Err(invalid(
+            "selected backup aliases shared storage in the authoritative primary",
+        ));
+    }
+    protected.extend(primary);
     let mut copy = BTreeSet::new();
     storage_identities(restored, &mut copy, false)?;
     if !protected.is_disjoint(&copy) {

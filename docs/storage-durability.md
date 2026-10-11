@@ -60,6 +60,9 @@ transaction. A generated configuration default alone is insufficient.
 separate in both containment directions from the cluster data and identity state.
 Nix evaluation rejects overlapping defaults after a parent-directory override,
 as well as traversal, duplicate separators and unsafe startup-path spellings.
+Recovery preparation writable and provisioned directories must also be disjoint
+from startup inhibition storage in both containment directions. Preparation cannot
+change the owner or mode of the root-owned inhibition namespace.
 
 ## Offline major upgrades
 
@@ -124,6 +127,35 @@ This contract cannot retrofit immutable generations created before the guard.
 Certify rollback targets after installing guards and application compatibility
 checks. Hardware must honor PostgreSQL/filesystem flush requests; software tests
 do not certify a drive's power-loss behavior.
+
+## Restore storage isolation
+
+Restore certification inventories the primary, selected backup and disposable
+restore separately. Any primary/backup inode intersection rejects certification,
+including hard links and nested bind mounts of empty directories; their union must
+also remain disjoint from the restored tree. An absent primary is permitted only
+on an independent executor. Immutable primary configuration links remain supported.
+
+## Retiring source-local captures
+
+Source-local captures pin their base backup and required WAL until explicitly
+retired. After publishing and selecting a successor capture, an operator may run:
+
+```sh
+harbor-db-postgres --config /etc/harbor-db/postgresql.json retire-capture --capture-id OBSOLETE_ID
+```
+
+Both engines require `source-local-v1` and the existing exclusive repository
+mutation lease; live capture, inspection, preparation or certification blocks
+retirement. The selected generation cannot be retired. Completed and abandoned
+unselected captures may be retired without a live primary, including expired pins.
+The operation binds the repository identity and every present carrier digest in
+an immutable `.retired` journal before removing capture metadata, WAL inventory,
+snapshot and finally its pin. Interrupted removal resumes from this journal;
+changed retry carriers reject before further deletion. Retired identifiers cannot
+be selected or republished. Subsequent ordinary pruning can reclaim the unpinned
+backup and WAL under its existing retention policy. Scheduled application pruning
+does not retire these recovery pins.
 
 ## Recovery SQL checks
 

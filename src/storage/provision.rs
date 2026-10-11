@@ -180,7 +180,7 @@ fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
         ));
     }
     let unsafe_sql = format!(
-        "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname='{db}' AND pg_get_userbyid(datdba)<>'{o}') OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN ('{o}','{r}') AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)) OR EXISTS (SELECT 1 FROM pg_shdepend d JOIN pg_roles r ON r.oid=d.refobjid WHERE d.refclassid='pg_authid'::regclass AND d.deptype='o' AND r.rolname IN ('{o}','{r}') AND d.dbid<>COALESCE((SELECT oid FROM pg_database WHERE datname='{db}'),0) AND NOT (d.dbid=0 AND d.classid='pg_database'::regclass AND d.objid=(SELECT oid FROM pg_database WHERE datname='{db}') AND r.rolname='{o}')); "
+        "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname='{db}' AND pg_get_userbyid(datdba)<>'{o}') OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN ('{o}','{r}') AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)) OR EXISTS (SELECT 1 FROM pg_shdepend d JOIN pg_roles r ON r.oid=d.refobjid WHERE d.refclassid='pg_authid'::regclass AND d.deptype='o' AND r.rolname IN ('{o}','{r}') AND (d.dbid<>COALESCE((SELECT oid FROM pg_database WHERE datname='{db}'),0) OR r.rolname='{r}') AND NOT (d.dbid=0 AND d.classid='pg_database'::regclass AND d.objid=(SELECT oid FROM pg_database WHERE datname='{db}') AND r.rolname='{o}')); "
     );
     if query(e, "postgres", &unsafe_sql)? == "t" {
         return Err(invalid(
@@ -282,6 +282,9 @@ fn check_phase(c: &Value, e: &Value, require_tables: bool) -> Result<bool> {
         return Ok(false);
     }
     let mut checks = vec![
+        format!(
+            "NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND deptype='o' AND refobjid=(SELECT oid FROM pg_roles WHERE rolname='{r}'))"
+        ),
         format!("(SELECT pg_get_userbyid(datdba)='{o}' FROM pg_database WHERE datname='{db}')"),
         format!("(SELECT pg_get_userbyid(nspowner)='{o}' FROM pg_namespace WHERE nspname='{s}')"),
         format!("has_schema_privilege('{r}','{s}','USAGE')"),

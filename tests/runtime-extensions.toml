@@ -21,7 +21,7 @@ sha256 = "47e441ba84dfef1a86f07d6e91f88ff09a1d22076f6c316830a20f2a6fcceac5"
 
 [[extensions]]
 path = "python/harbor_db/recovery.py"
-sha256 = "ad94e29e6f2aa8138781ef195759649fa46cc358d2a1c650d5bf3060e4bfebdd"
+sha256 = "aaf4104e4f6aa93596e395c556da7dc0aa2e4414bc0420b2f823dbd42e83ba0a"
 
 [[extensions]]
 path = "python/harbor_db/application_transition.py"
@@ -37,7 +37,7 @@ sha256 = "751c60ae6807f0f5d1482bb996dc2b22122400f8e39cb5189636084b8f8ca9a9"
 
 [[extensions]]
 path = "python/harbor_db/provision.py"
-sha256 = "d7bb0048cc0c634cc9a3fe671108ed1c90b3ec89174a2efd0c386a9f8c766f82"
+sha256 = "7a44bfe3ce372a72124c1a16f2695cfb8ba1dddf3e35409a36c0b7d743b9421f"
 
 [[extensions]]
 path = "tests/test_application_provision.py"
@@ -73,7 +73,7 @@ sha256 = "57cd96e9c83f699bf7213094d98011b2fefd6034233dafb444278bfe1b4ee730"
 
 [[extensions]]
 path = "python/harbor_db/postgres.py"
-sha256 = "724b049921da27527cf1ce1bdc24470db468f54ede2398d2032560f22951594a"
+sha256 = "d926f12793d5828f48f019c1fdceab859e74cc57bb83aa1d64805bb3f6630458"
 
 [[extensions]]
 path = "tests/test_postgres_lifecycle.py"

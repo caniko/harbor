@@ -158,6 +158,68 @@ fn scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_tr
 }
 
 #[test]
+fn retained_success_prunes_its_incomplete_siblings_without_changing_evidence_in_both_engines() {
+    use std::os::unix::fs::MetadataExt;
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        let root = t.path().join("backups");
+        let id = "20260101T000000Z-1";
+        application_backup::capture(&c, id, false).unwrap();
+        let acceptance = root.join(id).join("acceptance.json");
+        let marker = root.join("LAST_SUCCESS");
+        let retained = (
+            fs::read(&acceptance).unwrap(),
+            fs::metadata(&acceptance).unwrap().ino(),
+            fs::read(&marker).unwrap(),
+            fs::metadata(&marker).unwrap().ino(),
+        );
+        for suffix in [
+            "partial",
+            "sealed",
+            "credentials",
+            "restore-workspace",
+            "abandoned-1",
+            "retry-credentials-2",
+        ] {
+            let path = root.join(format!("{id}.{suffix}"));
+            fs::create_dir(&path).unwrap();
+            fs::write(path.join("worker-copy"), b"duplicate output").unwrap();
+        }
+        fs::write(root.join(format!("{id}.unknown")), b"operator file").unwrap();
+        let out = prune_peer(&c, python, 1);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        for suffix in [
+            "partial",
+            "sealed",
+            "credentials",
+            "restore-workspace",
+            "abandoned-1",
+            "retry-credentials-2",
+        ] {
+            assert!(
+                !root.join(format!("{id}.{suffix}")).exists(),
+                "python={python}, suffix={suffix}"
+            );
+        }
+        assert_eq!(
+            (
+                fs::read(&acceptance).unwrap(),
+                fs::metadata(&acceptance).unwrap().ino(),
+                fs::read(&marker).unwrap(),
+                fs::metadata(&marker).unwrap().ino()
+            ),
+            retained
+        );
+        assert!(root.join(format!("{id}.intent.json")).is_file());
+        assert!(root.join(format!("{id}.unknown")).is_file());
+        assert!(prune_peer(&c, python, 1).status.success());
+    }
+}
+#[test]
 fn scheduled_pruning_rejects_contention_and_redirects_before_deletion_in_both_engines() {
     for python in [false, true] {
         let (t, c) = backup_fixture();
@@ -1367,6 +1429,77 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         assert!(provision::check(&policy, &endpoint).unwrap());
     }
     success("DROP ROLE acl_outsider", "control", "postgres");
+    success(
+        "CREATE SCHEMA unmanaged AUTHORIZATION demo_owner",
+        "control",
+        "demo",
+    );
+    let mut ownership_outcomes = Vec::new();
+    for (create, drop) in [
+        (
+            "CREATE TABLE unmanaged.outside(id int); ALTER TABLE unmanaged.outside OWNER TO demo_runtime",
+            "DROP TABLE unmanaged.outside",
+        ),
+        (
+            "CREATE SEQUENCE unmanaged.outside; ALTER SEQUENCE unmanaged.outside OWNER TO demo_runtime",
+            "DROP SEQUENCE unmanaged.outside",
+        ),
+        (
+            "CREATE VIEW unmanaged.outside AS SELECT 1; ALTER VIEW unmanaged.outside OWNER TO demo_runtime",
+            "DROP VIEW unmanaged.outside",
+        ),
+        (
+            "CREATE TYPE unmanaged.outside AS ENUM ('one'); ALTER TYPE unmanaged.outside OWNER TO demo_runtime",
+            "DROP TYPE unmanaged.outside",
+        ),
+        (
+            "CREATE FUNCTION unmanaged.outside() RETURNS int LANGUAGE sql AS 'SELECT 1'; ALTER FUNCTION unmanaged.outside() OWNER TO demo_runtime",
+            "DROP FUNCTION unmanaged.outside()",
+        ),
+        (
+            "CREATE SCHEMA runtime_owned AUTHORIZATION demo_runtime",
+            "DROP SCHEMA runtime_owned",
+        ),
+    ] {
+        success(create, "control", "demo");
+        let before = success(
+            "SELECT json_agg(json_build_array(relname,relacl::text) ORDER BY relname) FROM pg_class WHERE relnamespace='public'::regnamespace",
+            "control",
+            "demo",
+        );
+        let native_check = provision::check(&policy, &endpoint).unwrap();
+        let python_check = python_provision(&policy, "check");
+        assert!(
+            python_check.status.success(),
+            "{}",
+            String::from_utf8_lossy(&python_check.stderr)
+        );
+        let python_check = process::text(&python_check.stdout).unwrap().trim() == "true";
+        let native_rejected = provision::apply(&policy, &endpoint).is_err();
+        let python_rejected = !python_provision(&policy, "apply").status.success();
+        let after = success(
+            "SELECT json_agg(json_build_array(relname,relacl::text) ORDER BY relname) FROM pg_class WHERE relnamespace='public'::regnamespace",
+            "control",
+            "demo",
+        );
+        ownership_outcomes.push((
+            create,
+            !native_check,
+            !python_check,
+            native_rejected,
+            python_rejected,
+            before == after,
+        ));
+        success(drop, "control", "demo");
+        assert!(provision::check(&policy, &endpoint).unwrap());
+    }
+    success("DROP SCHEMA unmanaged", "control", "demo");
+    assert!(
+        ownership_outcomes
+            .iter()
+            .all(|(_, a, b, c, d, e)| *a && *b && *c && *d && *e),
+        "{ownership_outcomes:?}"
+    );
     success("CREATE DATABASE foreign_database", "control", "postgres");
     let mut foreign = policy.clone();
     foreign["database"] = json!("foreign_database");

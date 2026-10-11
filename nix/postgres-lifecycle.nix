@@ -392,12 +392,12 @@ in {
           == null
           || lib.all (path:
             lib.all (protected:
-              path != "/" && path != protected && !(lib.hasPrefix "${path}/" protected) && !(lib.hasPrefix "${protected}/" path)) [pg.dataDir cfg.stateDir])
+              path != "/" && path != protected && !(lib.hasPrefix "${path}/" protected) && !(lib.hasPrefix "${protected}/" path)) [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir])
           preparation.readWritePaths;
-        message = "Managed recovery preparation must not grant writable access to the primary or authority tree.";
+        message = "Managed recovery preparation must not grant writable access to the primary, authority or startup inhibition tree.";
       }
       {
-        assertion = preparation == null || lib.all normalizedPath (preparation.readWritePaths ++ preparation.provisionDirectories ++ [pg.dataDir cfg.stateDir]);
+        assertion = preparation == null || lib.all normalizedPath (preparation.readWritePaths ++ preparation.provisionDirectories ++ [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir]);
         message = "Managed recovery preparation requires normalized absolute writable, provisioned and protected paths before containment checks.";
       }
       {

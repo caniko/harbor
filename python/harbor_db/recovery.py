@@ -335,14 +335,18 @@ def isolated_restore(restored, authoritative, backup):
             raise
         if (info.st_dev, info.st_ino) == (restored_root.st_dev, restored_root.st_ino):
             raise ValueError("restored cluster aliases shared storage in the authoritative primary or selected backup")
-    protected = set()
+    primary = set()
     try:
         authoritative.lstat()
     except FileNotFoundError:
         pass
     else:
-        storage_identities(authoritative, protected, primary=True)
+        storage_identities(authoritative, primary, primary=True)
+    protected = set()
     storage_identities(backup, protected)
+    if primary & protected:
+        raise ValueError("selected backup aliases shared storage in the authoritative primary")
+    protected.update(primary)
     copy = set()
     storage_identities(restored, copy)
     if not protected.isdisjoint(copy):

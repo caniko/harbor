@@ -154,6 +154,15 @@ pub fn prune(config: &Value, keep: u32, incomplete_age: u64) -> Result<Value> {
                 ));
             }
             successes.push((captured, attempt.clone()));
+            // The completed point and its retry intent remain authoritative.
+            // Worker scratch is obsolete even while LAST_SUCCESS retains it.
+            let intent = root.join(format!("{attempt}.intent.json"));
+            remove.extend(
+                entries
+                    .iter()
+                    .filter(|path| **path != destination && **path != intent)
+                    .cloned(),
+            );
         } else {
             let mut newest = 0;
             for path in entries {
@@ -181,6 +190,7 @@ pub fn prune(config: &Value, keep: u32, incomplete_age: u64) -> Result<Value> {
         }
     }
     remove.sort();
+    remove.dedup();
     let mounts = mounts()?;
     let device = fs::metadata(&root)?.dev();
     for path in &remove {

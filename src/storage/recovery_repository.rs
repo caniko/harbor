@@ -3,6 +3,7 @@ use super::{Result, codec, durable, invalid, recovery, string, writer_fence};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
+    fs,
     io::Read,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -38,6 +39,192 @@ fn bounded_carrier(path: &Path, limit: u64) -> Result<Vec<u8>> {
         ));
     }
     Ok(bytes)
+}
+
+pub fn reject_retired(root: &Path, identifier: &str) -> Result<()> {
+    match fs::symlink_metadata(
+        root.join("recovery/captures")
+            .join(format!("{identifier}.retired")),
+    ) {
+        Ok(_) => Err(invalid(
+            "capture identifier is permanently retired; use a new identifier",
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn optional_carrier(path: &Path, limit: u64) -> Result<Option<Vec<u8>>> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => bounded_carrier(path, limit).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Explicit operator retirement. The exclusive repository lease excludes all
+/// capture/restore readers; the immutable tombstone makes interrupted unlinking
+/// resumable and prevents the identifier from ever being republished.
+pub fn retire(config: &Value, identifier: &str) -> Result<Value> {
+    let settings = config
+        .get("recovery")
+        .ok_or_else(|| invalid("missing recovery policy"))?;
+    if !source_local(settings)? || !valid_identifier(identifier) {
+        return Err(invalid(
+            "retirement requires source-local-v1 and a valid capture identifier",
+        ));
+    }
+    let root = recovery::absolute(Path::new(string(settings, "backup_root")?))?;
+    let major = writer_fence::major(config)?;
+    let system = string(settings, "system_identifier")?;
+    if !writer_fence::valid_identifier(system)
+        || major.is_empty()
+        || !major.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(invalid("invalid retirement repository identity"));
+    }
+    let local = root.join("recovery");
+    for name in ["pins", "captures", "snapshots"] {
+        let directory = recovery::absolute(&local.join(name))?;
+        if !fs::symlink_metadata(directory)?.is_dir() {
+            return Err(invalid(
+                "retirement requires existing repository directories",
+            ));
+        }
+    }
+    let _lease = durable::lock(
+        &recovery::absolute(&root.join("locks/mutate"))?,
+        false,
+        false,
+    )?;
+    if std::str::from_utf8(&bounded_carrier(&local.join("PROTOCOL"), 256)?)
+        .map_err(|_| invalid("invalid recovery repository protocol"))?
+        .trim()
+        != "source-local-v1"
+    {
+        return Err(invalid("invalid recovery repository protocol"));
+    }
+    if let Some(selected) = optional_carrier(&local.join("SELECTED"), 256)? {
+        let selected = std::str::from_utf8(&selected)
+            .map_err(|_| invalid("invalid capture selector"))?
+            .trim();
+        if !valid_identifier(selected) || selected == identifier {
+            return Err(invalid(
+                "cannot retire the selected capture or an uncertain selection",
+            ));
+        }
+    }
+    let names = [
+        format!("captures/{identifier}.json"),
+        format!("captures/{identifier}.wal-inventory"),
+        format!("snapshots/{identifier}.json"),
+        format!("pins/{identifier}.json"),
+    ];
+    let carriers = names
+        .iter()
+        .map(|name| optional_carrier(&local.join(name), 16 << 20))
+        .collect::<Result<Vec<_>>>()?;
+    let journal = local.join("captures").join(format!("{identifier}.retired"));
+    let header = json!({"version":1,"capture_id":identifier,"backup_root":root,"major":major,"system_identifier":system});
+    let record = if let Some(bytes) = optional_carrier(&journal, 16 << 20)? {
+        let record = codec::decode(&bytes)?;
+        let mut saved = record.clone();
+        let hashes = saved
+            .as_object_mut()
+            .ok_or_else(|| invalid("invalid capture retirement journal"))?
+            .remove("carriers")
+            .ok_or_else(|| invalid("missing retirement carriers"))?;
+        if saved != header
+            || hashes
+                .as_object()
+                .is_none_or(|hashes| hashes.len() != names.len())
+            || names.iter().any(|name| hashes.get(name).is_none())
+            || hashes[&names[3]].is_null()
+        {
+            return Err(invalid(
+                "capture retirement journal differs from repository identity",
+            ));
+        }
+        for (name, current) in names.iter().zip(&carriers) {
+            let expected = &hashes[name];
+            if (!expected.is_null()
+                && !expected.as_str().is_some_and(|hash| {
+                    hash.len() == 64
+                        && hash
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                }))
+                || current
+                    .as_ref()
+                    .is_some_and(|bytes| *expected != codec::digest(bytes))
+            {
+                return Err(invalid(
+                    "capture retirement carrier changed; preserving remaining evidence",
+                ));
+            }
+        }
+        record
+    } else {
+        let pin = carriers[3]
+            .as_ref()
+            .ok_or_else(|| invalid("capture retirement requires an existing pin"))?;
+        let metadata = codec::decode(pin)?;
+        if metadata["version"] != 1
+            || metadata["capture_id"] != identifier
+            || metadata["system_identifier"] != system
+            || writer_fence::major(&json!({"major":metadata["pg_major"]}))? != major
+            || !metadata["backup_id"].as_str().is_some_and(valid_identifier)
+            || carriers[0].as_ref().is_some_and(|bytes| bytes != pin)
+        {
+            return Err(invalid(
+                "capture retirement pin or metadata differs from repository identity",
+            ));
+        }
+        if let Some(bytes) = &carriers[2]
+            && codec::decode(bytes)?["metadata_sha256"] != codec::digest(pin)
+        {
+            return Err(invalid("capture retirement snapshot differs from its pin"));
+        }
+        let hashes = names
+            .iter()
+            .zip(&carriers)
+            .map(|(name, bytes)| {
+                (
+                    name.clone(),
+                    bytes
+                        .as_ref()
+                        .map_or(Value::Null, |bytes| json!(codec::digest(bytes))),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        let mut record = header;
+        record["carriers"] = json!(hashes);
+        durable::write_json(&journal, &record)?;
+        record
+    };
+    // Retain the journal if producer contention interrupts retirement. A retry
+    // cannot rebind the generation after its retirement has been acknowledged.
+    let _backup = durable::lock(
+        &recovery::absolute(&root.join("BACKUP_LOCK"))?,
+        false,
+        false,
+    )?;
+    // The pin is removed last, after each obsolete evidence unlink is durable.
+    for (name, bytes) in names.iter().zip(&carriers) {
+        if bytes.is_some() {
+            let path = local.join(name);
+            fs::remove_file(&path)?;
+        }
+        // Also flush absent carriers: a previous attempt may have unlinked
+        // one and died before persisting that parent directory.
+        durable::sync_directory(
+            local
+                .join(name)
+                .parent()
+                .ok_or_else(|| invalid("invalid retirement path"))?,
+        )?;
+    }
+    Ok(record)
 }
 
 /// Frozen decoded metadata and byte-derived binding; no publication authority.
@@ -105,6 +292,7 @@ pub fn select(config: &Value, settings: &Value, now: i64) -> Result<SelectedCapt
     if !valid_identifier(identifier) {
         return Err(invalid("invalid capture identifier"));
     }
+    reject_retired(&root, identifier)?;
     let metadata_path = recovery::absolute(
         &root
             .join("recovery/captures")

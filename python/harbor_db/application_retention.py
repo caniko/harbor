@@ -69,13 +69,15 @@ def prune(config, keep, incomplete_age):
                 if receipt["status"] != "verified" or receipt["attempt"] != attempt or receipt["resource"] != config["resource"]:
                     raise ValueError("scheduled retention encountered unbound successful output")
                 successes.append((captured, attempt))
+                # Retain the completed point and its retry intent, not worker scratch.
+                remove.extend(path for path in entries if path not in (destination, root / (attempt + ".intent.json")))
             elif tombstone in entries or now - max(entry.lstat().st_mtime for entry in entries) >= incomplete_age:
                 remove.extend(entries)
         successes.sort(reverse=True)
         discarded = [attempt for _, attempt in successes[keep:] if attempt != latest]
         for attempt in discarded:
             remove.extend(groups[attempt])
-        remove.sort()
+        remove = sorted(set(remove))
         mounts = {re.sub(rb"\\([0-7]{3})", lambda match: bytes([int(match[1], 8)]), line.split()[4]) for line in Path("/proc/self/mountinfo").read_bytes().splitlines()}
         for path in remove:
             check_tree(path, root.stat().st_dev, mounts)

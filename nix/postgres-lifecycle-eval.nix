@@ -199,6 +199,22 @@ in
           && !(receiptPathsAccepted {offHostReceiptFile = lib.mkForce "/srv/backups/records.json";});
       }
       {
+        name = "preparation-cannot-provision-startup-inhibition-storage";
+        message = "Preparation writable/provisioned storage must not change root-owned startup inhibition storage in either containment direction.";
+        assertion = let
+          startup = withPreparation.config.services.harbor-db.postgresql.writerFence.startupStateDir;
+          accepted = path:
+            preparationPathsAccepted {
+              services.harbor-db.postgresql.recoveryPreparation = {
+                readWritePaths = lib.mkForce [path];
+                provisionDirectories = lib.mkForce [path];
+              };
+            };
+        in
+          accepted "${startup}-sibling"
+          && lib.all (path: !accepted path) [startup "${startup}/child" (builtins.dirOf startup)];
+      }
+      {
         name = "preparation-paths-reject-traversal-before-root-provisioning";
         message = "Provisioning, writable paths and protected roots must have normalized spelling before containment and isolation checks.";
         assertion =

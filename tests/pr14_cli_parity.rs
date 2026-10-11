@@ -72,6 +72,7 @@ fn full_pr14_operator_flag_surface_matches_retained_python_parsers() {
             "prepare-recovery",
             "snapshot-records",
             "certify-recovery",
+            "retire-capture",
             "upgrade",
             "serve",
         ],

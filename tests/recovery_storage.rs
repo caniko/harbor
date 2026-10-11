@@ -967,6 +967,117 @@ fn restored_clusters_cannot_share_primary_or_selected_backup_inodes_in_both_engi
 }
 
 #[test]
+fn primary_and_selected_backup_cannot_share_inodes_even_with_an_independent_restore_in_both_engines()
+ {
+    let _workers = WORKERS.lock().unwrap();
+    let mut outcomes = Vec::new();
+    for python in [false, true] {
+        for mounted in [false, true] {
+            let f = Fixture::new();
+            f.snapshot();
+            fs::create_dir_all(f.p("data/primary-records")).unwrap();
+            fs::write(f.p("data/primary-records/row"), b"acknowledged records").unwrap();
+            if mounted {
+                fs::create_dir(f.p("data/empty-directory")).unwrap();
+                fs::create_dir(f.p("backup/base/base-1/shared-directory")).unwrap();
+            } else {
+                fs::hard_link(
+                    f.p("data/primary-records/row"),
+                    f.p("backup/base/base-1/shared-row"),
+                )
+                .unwrap();
+            }
+            let rejected = if python || mounted {
+                fs::write(f.p("config.json"), f.config.to_string()).unwrap();
+                let mut argv = if python {
+                    vec!["python3".into(),"-B".into(),"-c".into(),"import json,sys;from pathlib import Path;from harbor_db import recovery;c=json.loads(sys.argv[1]);recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,hostname='primary-host')".into(),f.config.to_string()]
+                } else {
+                    vec![
+                        env!("CARGO_BIN_EXE_harbor-db-postgres").into(),
+                        "--config".into(),
+                        f.p("config.json").display().to_string(),
+                        "certify-recovery".into(),
+                        "--socket-dir".into(),
+                        "/restore/socket".into(),
+                        "--port".into(),
+                        "55432".into(),
+                        "--data-dir".into(),
+                        f.p("restored").display().to_string(),
+                    ]
+                };
+                if mounted {
+                    let mut namespace = vec![
+                        "unshare".into(),
+                        "--user".into(),
+                        "--map-root-user".into(),
+                        "--mount".into(),
+                        "--".into(),
+                        "sh".into(),
+                        "-c".into(),
+                        "mount --bind -- \"$1\" \"$2\" || exit; shift 2; exec \"$@\"".into(),
+                        "shared-backup-fixture".into(),
+                        f.p("data/empty-directory").display().to_string(),
+                        f.p("backup/base/base-1/shared-directory")
+                            .display()
+                            .to_string(),
+                    ];
+                    namespace.append(&mut argv);
+                    argv = namespace;
+                }
+                let mut spec = harbor_db::storage::process::CommandSpec::new(argv);
+                spec.environment = Some(std::collections::BTreeMap::from([
+                    (
+                        "PYTHONPATH".into(),
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+                    ("PATH".into(), std::env::var("PATH").unwrap()),
+                ]));
+                // Preserve diagnostics here; production storage workers deliberately discard them.
+                let mut command = std::process::Command::new(&spec.argv[0]);
+                command
+                    .args(&spec.argv[1..])
+                    .env_clear()
+                    .envs(spec.environment.as_ref().unwrap())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped());
+                let output = harbor_db::storage::process::spawn(&mut command)
+                    .unwrap()
+                    .wait_with_output()
+                    .unwrap();
+                assert!(
+                    !output.status.success()
+                        && String::from_utf8_lossy(&output.stderr)
+                            .contains("selected backup aliases shared storage"),
+                    "python={python}, mounted={mounted}, {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                true
+            } else {
+                recovery::certify(
+                    &f.config,
+                    &f.p("restored"),
+                    Path::new("/restore/socket"),
+                    55432,
+                    Some(f.now),
+                    Some("primary-host"),
+                )
+                .is_err()
+            };
+            outcomes.push((
+                python,
+                mounted,
+                rejected,
+                !f.p("backup/evidence/recovery.json").exists(),
+            ));
+            assert_eq!(
+                fs::read(f.p("data/primary-records/row")).unwrap(),
+                b"acknowledged records"
+            );
+        }
+    }
+    assert!(outcomes.iter().all(|(_, _, a, b)| *a && *b), "{outcomes:?}");
+}
+#[test]
 fn hostile_receipts_cannot_claim_record_level_acceptance() {
     let _workers = WORKERS.lock().unwrap();
     let f = Fixture::new();

@@ -122,6 +122,11 @@ enum Operation {
         #[arg(long)]
         data_dir: PathBuf,
     },
+    /// Retire one obsolete source-local capture, preserving selected/in-use evidence.
+    RetireCapture {
+        #[arg(long)]
+        capture_id: String,
+    },
     Upgrade {
         #[arg(long)]
         retry_incomplete: bool,
@@ -227,6 +232,9 @@ fn operate(args: Args) -> Result<Option<Value>> {
             port,
             std::time::Duration::from_secs(wal_wait_seconds),
         )?,
+        Operation::RetireCapture { capture_id } => {
+            storage::recovery_repository::retire(&config, &capture_id)?
+        }
         Operation::CertifyRecovery {
             data_dir,
             socket_dir,

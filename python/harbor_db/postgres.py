@@ -484,6 +484,8 @@ def main():
         if command == "certify-recovery":
             recovery_parser.add_argument("--data-dir", required=True)
     migration = commands.add_parser("upgrade", help="explicit offline staged upgrade")
+    retirement = commands.add_parser("retire-capture", help="retire one obsolete source-local capture; selected/in-use evidence is preserved")
+    retirement.add_argument("--capture-id", required=True)
     migration.add_argument("--retry-incomplete", action="store_true")
     args = parser.parse_args()
     try:
@@ -522,6 +524,9 @@ def main():
             else:
                 result = writer_fence.inspect_live(config, args.token, args.socket_dir, args.port)
             print(json.dumps(result, sort_keys=True))
+        elif args.command == "retire-capture":
+            from . import recovery_repository
+            print(json.dumps(recovery_repository.retire(config, args.capture_id), sort_keys=True))
         elif args.command in ("inspect-recovery", "snapshot-records", "certify-recovery", "prepare-recovery"):
             from . import recovery
             if args.command == "inspect-recovery":

@@ -108,6 +108,173 @@ fn inventory(root: &Path) -> BTreeMap<String, (u64, Vec<u8>)> {
     result
 }
 #[test]
+fn explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines() {
+    for native in [true, false] {
+        let root = fixture();
+        let root = root.path();
+        for name in ["captures", "snapshots"] {
+            fs::create_dir(root.join("recovery").join(name)).unwrap();
+        }
+        pin(root);
+        let pin_bytes = fs::read(root.join("recovery/pins/capture-1.json")).unwrap();
+        fs::write(root.join("recovery/captures/capture-1.json"), &pin_bytes).unwrap();
+        fs::write(
+            root.join("recovery/captures/capture-1.wal-inventory"),
+            b"{}",
+        )
+        .unwrap();
+        fs::write(
+            root.join("recovery/snapshots/capture-1.json"),
+            json!({"metadata_sha256":codec::digest(&pin_bytes)}).to_string(),
+        )
+        .unwrap();
+        fs::write(root.join("recovery/SELECTED"), b"current\n").unwrap();
+        let mut current = payload(root);
+        current["capture_id"] = json!("current");
+        current["backup_id"] = json!("new");
+        current["manifest_sha256"] =
+            json!(codec::file_digest(&root.join("base/new/backup_manifest")).unwrap());
+        for name in ["pins/current.json", "captures/current.json"] {
+            fs::write(root.join("recovery").join(name), current.to_string()).unwrap();
+        }
+        fs::write(
+            root.join("recovery/snapshots/current.json"),
+            b"retained source snapshot",
+        )
+        .unwrap();
+        let selected = inventory(root)
+            .into_iter()
+            .filter(|(name, _)| name.contains("current") || name == "recovery/SELECTED")
+            .collect::<BTreeMap<_, _>>();
+        let config = root.join("config.json");
+        fs::write(&config,json!({"major":"17","recovery":{"repository_protocol":"source-local-v1","backup_root":root,"system_identifier":"123456789"}}).to_string()).unwrap();
+        let peer_retire = |id: &str, native: bool| {
+            let mut command = if native {
+                Command::new(env!("CARGO_BIN_EXE_harbor-db-postgres"))
+            } else {
+                let mut cmd = Command::new("python3");
+                cmd.args(["-B", "-m", "harbor_db.postgres"]).env(
+                    "PYTHONPATH",
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                );
+                cmd
+            };
+            command
+                .arg("--config")
+                .arg(&config)
+                .args(["retire-capture", "--capture-id", id]);
+            command.output().unwrap()
+        };
+        let retire = |id: &str| peer_retire(id, native);
+        backup::prune(root, 1, 2, SEGMENT, Some(1_000_000.0)).unwrap();
+        assert!(root.join("base/old").exists());
+        {
+            let _lease = durable::lock(&root.join("locks/mutate"), true, false).unwrap();
+            let before = inventory(root);
+            assert!(!retire("capture-1").status.success());
+            assert_eq!(inventory(root), before);
+        }
+        assert!(!retire("current").status.success());
+        {
+            let _producer = durable::lock(&root.join("BACKUP_LOCK"), false, false).unwrap();
+            assert!(!retire("capture-1").status.success());
+            assert!(root.join("recovery/captures/capture-1.retired").is_file());
+            assert_eq!(
+                fs::read(root.join("recovery/pins/capture-1.json")).unwrap(),
+                pin_bytes
+            );
+            assert!(root.join("recovery/snapshots/capture-1.json").is_file());
+        }
+        let output = retire("capture-1");
+        assert!(
+            output.status.success(),
+            "native={native}, {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        for path in [
+            "pins/capture-1.json",
+            "captures/capture-1.json",
+            "captures/capture-1.wal-inventory",
+            "snapshots/capture-1.json",
+        ] {
+            assert!(!root.join("recovery").join(path).exists());
+        }
+        let journal = root.join("recovery/captures/capture-1.retired");
+        let accepted = (
+            fs::metadata(&journal).unwrap().ino(),
+            fs::read(&journal).unwrap(),
+        );
+        assert!(peer_retire("capture-1", !native).status.success());
+        assert_eq!(
+            (
+                fs::metadata(&journal).unwrap().ino(),
+                fs::read(&journal).unwrap()
+            ),
+            accepted
+        );
+        // Reconstruct process loss after journal publication, before the final pin unlink.
+        fs::write(root.join("recovery/pins/capture-1.json"), &pin_bytes).unwrap();
+        assert!(retire("capture-1").status.success());
+        assert!(!root.join("recovery/pins/capture-1.json").exists());
+        // A substituted retry carrier is preserved and rejected before further deletion.
+        fs::write(
+            root.join("recovery/pins/capture-1.json"),
+            b"foreign content",
+        )
+        .unwrap();
+        let before = inventory(root);
+        assert!(!retire("capture-1").status.success());
+        assert_eq!(inventory(root), before);
+        fs::remove_file(root.join("recovery/pins/capture-1.json")).unwrap();
+        assert!(retire("capture-1").status.success());
+        for id in ["../escape", "capture.partial", "unknown"] {
+            let before = inventory(root);
+            assert!(!retire(id).status.success());
+            assert_eq!(inventory(root), before);
+        }
+        // A retired identifier cannot become selected again, even if the pointer changes.
+        fs::write(root.join("recovery/SELECTED"), b"capture-1\n").unwrap();
+        let c = durable::read_json(&config).unwrap();
+        assert!(
+            harbor_db::storage::recovery_repository::select(&c, &c["recovery"], 1_000_000)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("permanently retired")
+        );
+        let output = python(
+            root,
+            "import sys,json;from pathlib import Path;from harbor_db import recovery_repository;r=Path(sys.argv[1]);c=json.loads((r/'config.json').read_text());recovery_repository.select(c,c['recovery'],1000000)",
+        );
+        assert!(
+            !output.status.success()
+                && String::from_utf8_lossy(&output.stderr).contains("permanently retired")
+        );
+        fs::write(root.join("recovery/SELECTED"), b"current\n").unwrap();
+        let mut abandoned = payload(root);
+        abandoned["capture_id"] = json!("abandoned");
+        fs::write(
+            root.join("recovery/pins/abandoned.json"),
+            abandoned.to_string(),
+        )
+        .unwrap();
+        assert!(retire("abandoned").status.success());
+        backup::prune(root, 1, 2, SEGMENT, Some(1_000_000.0)).unwrap();
+        assert!(!root.join("base/old").exists());
+        assert_eq!(
+            fs::read(root.join("recovery/SELECTED")).unwrap(),
+            b"current\n"
+        );
+        let after = inventory(root);
+        for (path, state) in selected {
+            assert_eq!(after[&path].1, state.1, "{path}");
+            if path != "recovery/SELECTED" {
+                assert_eq!(after[&path].0, state.0, "{path}");
+            }
+        }
+    }
+}
+#[test]
 fn cross_carrier_pins_preserve_old_backup_and_actual_wal_floor() {
     let roots = [fixture(), fixture()];
     let produced = python(

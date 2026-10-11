@@ -52,6 +52,10 @@ Roles cannot inherit or be granted to another role. Runtime receives database
 CONNECT and schema USAGE, without database CREATE or TEMP privileges. A schema
 owned by an unrelated role cannot be taken over implicitly. PostgreSQL's initial
 `public` schema owned by `pg_database_owner` is the explicit initialization case.
+The runtime role must own no objects in any schema of the application database.
+Provisioning rejects such ownership before role or ACL mutation, and read-only
+checks inspect PostgreSQL ownership dependencies across schemas and object types,
+including tables, sequences, views, functions, types and schemas.
 
 Checks cover schema ownership, role membership, exact table/sequence privileges,
 column grants, grant options and defaults for future owner-created objects.
@@ -89,6 +93,10 @@ For explicit retention use `harbor-db-application-backup --config MANIFEST prune
 success markers and mounted deletion subtrees fail the plan before any deletion;
 deletion never follows links in abandoned worker output. Manifest/executable
 binding and immutable accepted bytes are preserved for retained restore points.
+Known incomplete siblings of a completed timer capture are removed under that
+same lease, including when `LAST_SUCCESS` retains the completed point. Its
+acceptance evidence and retry intent remain intact; partial/sealed trees,
+credentials, restore workspaces and abandoned worker outputs are obsolete.
 Selected successful deletions first rename the point durably to `.pruning`.
 Retries finish these tombstones and their siblings immediately, even if the
 acceptance file was already removed; the tombstone is removed after sibling

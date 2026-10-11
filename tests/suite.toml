@@ -1,6 +1,76 @@
 # Versioned static inventory. No discovery command, Nix evaluation, or pass verdict.
 version = 1
 
+[[coverage]]
+case = "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.retire-capture"
+dimension = "positive"
+evidence = "Both real CLIs retire an obsolete completed generation and an abandoned pin, then ordinary pruning reclaims the formerly pinned aged backup while selected carrier bytes/inodes survive. This is repository-retention evidence, not physical replay qualification."
+
+[[coverage]]
+case = "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.retire-capture"
+dimension = "rejection"
+evidence = "Both engines reject selected, unsafe and unknown identifiers and substituted retry carriers while preserving all retained repository bytes/inodes. A retired generation cannot be selected again."
+
+[[coverage]]
+case = "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.retire-capture"
+dimension = "repetition"
+evidence = "Repeated retirement retains exactly the original immutable journal bytes and inode, without recreating absent pins or snapshots."
+
+[[coverage]]
+case = "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.retire-capture"
+dimension = "concurrency"
+evidence = "A held shared repository mutation lease excludes both retirement CLIs before publication or deletion; the complete original inventory is preserved."
+
+[[coverage]]
+case = "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.retire-capture"
+dimension = "interruption"
+evidence = "A held producer BACKUP_LOCK interrupts the real retirement CLI after durable journal publication, before any generation carrier is removed. The original pin and snapshot remain. This is contention-induced interruption, not process-kill evidence."
+
+[[coverage]]
+case = "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.retire-capture"
+dimension = "recovery"
+evidence = "Retry after producer contention removes only carriers bound by the original journal. Reconstruction of a remaining pin after earlier carrier removal also resumes without rebinding the journal; a changed pin is preserved and rejects."
+
+[[coverage]]
+case = "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.retire-capture"
+dimension = "compatibility"
+evidence = "An opposite-engine CLI repeats retirement against the original native or Python journal, preserving its exact original bytes and inode."
+
+[[coverage]]
+case = "native.recovery_storage.primary_and_selected_backup_cannot_share_inodes_even_with_an_independent_restore_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.certify-recovery"
+dimension = "rejection"
+evidence = "An independent restore cannot hide a selected-backup hard link or nested empty-directory bind mount to the primary. Both engines reject before receipt publication and preserve acknowledged primary bytes."
+
+[[coverage]]
+case = "native.application_storage.retained_success_prunes_its_incomplete_siblings_without_changing_evidence_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.prune"
+dimension = "recovery"
+evidence = "Completed LAST_SUCCESS output remains byte/inode identical while known partial, sealed, credential, restore-workspace and abandoned siblings are deleted under the shared capture lease; the retry intent and unknown operator file survive repetition."
+
+[[coverage]]
+case = "native.application_storage.provisioning_native_privilege_convergence_and_read_only_drift"
+capability = "application-provision"
+operation = "harbor-db-provision.check"
+dimension = "rejection"
+evidence = "Real PostgreSQL runtime ownership of a table, sequence, view, type, function or schema outside the managed schema causes both read-only checks and mutating provisioning admission to reject. No managed ACLs change, and removing the undeclared ownership restores acceptance."
+
 [[inventories]]
 origin = "rust"
 id_prefix = "native.transition_storage."
@@ -90,7 +160,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["legacy_evidence_cannot_replace_repository_control_paths_in_both_engines"]
+selectors = ["legacy_evidence_cannot_replace_repository_control_paths_in_both_engines", "primary_and_selected_backup_cannot_share_inodes_even_with_an_independent_restore_in_both_engines"]
 
 [[inventories]]
 origin = "rust"
@@ -181,7 +251,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_transitions_in_both_engines", "scheduled_pruning_rejects_contention_and_redirects_before_deletion_in_both_engines", "interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_removed_acceptance_in_both_engines"]
+selectors = ["scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_transitions_in_both_engines", "scheduled_pruning_rejects_contention_and_redirects_before_deletion_in_both_engines", "interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_removed_acceptance_in_both_engines", "retained_success_prunes_its_incomplete_siblings_without_changing_evidence_in_both_engines"]
 
 [[coverage]]
 case = "native.application_storage.interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_removed_acceptance_in_both_engines"
@@ -1710,7 +1780,7 @@ required = ["positive", "rejection", "repetition", "concurrency", "interruption"
 
 [[capabilities]]
 id = "postgres"
-operations = ["harbor-db-postgres.check", "harbor-db-postgres.serve", "harbor-db-postgres.adopt", "harbor-db-postgres.inspect-live", "harbor-db-postgres.adopt-live", "harbor-db-postgres.inspect-recovery", "harbor-db-postgres.fence-open", "harbor-db-postgres.fence-close", "harbor-db-postgres.inspect-offline-fence.prepared", "harbor-db-postgres.inspect-offline-fence.closed", "harbor-db-postgres.inhibit-startup", "harbor-db-postgres.release-startup.prepared", "harbor-db-postgres.release-startup.closed", "harbor-db-postgres.inspect-fence", "harbor-db-postgres.prepare-recovery", "harbor-db-postgres.snapshot-records", "harbor-db-postgres.capture-backup", "harbor-db-postgres.certify-recovery", "harbor-db-postgres.upgrade"]
+operations = ["harbor-db-postgres.check", "harbor-db-postgres.serve", "harbor-db-postgres.adopt", "harbor-db-postgres.inspect-live", "harbor-db-postgres.adopt-live", "harbor-db-postgres.inspect-recovery", "harbor-db-postgres.fence-open", "harbor-db-postgres.fence-close", "harbor-db-postgres.inspect-offline-fence.prepared", "harbor-db-postgres.inspect-offline-fence.closed", "harbor-db-postgres.inhibit-startup", "harbor-db-postgres.release-startup.prepared", "harbor-db-postgres.release-startup.closed", "harbor-db-postgres.inspect-fence", "harbor-db-postgres.prepare-recovery", "harbor-db-postgres.snapshot-records", "harbor-db-postgres.capture-backup", "harbor-db-postgres.retire-capture", "harbor-db-postgres.certify-recovery", "harbor-db-postgres.upgrade"]
 required = ["positive", "rejection", "repetition", "concurrency", "interruption", "recovery", "compatibility"]
 [[capabilities.not_applicable]]
 operation = "harbor-db-postgres.check"
@@ -4972,7 +5042,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["cross_carrier_pins_preserve_old_backup_and_actual_wal_floor", "uncertainty_preserves_entire_tree_in_both_carriers", "shared_mutation_lease_rejects_native_and_python_cli_with_eagain", "source_local_requires_absolute_unredirected_root", "empty_valid_pins_use_normal_retention", "large_pinned_manifest_prunes_in_both_carriers_without_releasing_its_backup"]
+selectors = ["cross_carrier_pins_preserve_old_backup_and_actual_wal_floor", "uncertainty_preserves_entire_tree_in_both_carriers", "shared_mutation_lease_rejects_native_and_python_cli_with_eagain", "source_local_requires_absolute_unredirected_root", "empty_valid_pins_use_normal_retention", "large_pinned_manifest_prunes_in_both_carriers_without_releasing_its_backup", "explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines"]
 
 [[coverage]]
 case = "native.backup-pins.cross_carrier_pins_preserve_old_backup_and_actual_wal_floor"

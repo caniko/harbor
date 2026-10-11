@@ -449,6 +449,7 @@ pub fn finalize(
         .as_ref()
         .ok_or_else(|| invalid("missing writer fence lease"))?;
     let mutate = durable::lock(&strict(&root.join("locks/mutate"))?, false, false)?;
+    recovery_repository::reject_retired(&root, capture_id)?;
     let backup_lock = durable::lock(&strict(&root.join("BACKUP_LOCK"))?, false, false)?;
     let evidence = durable::lock(&strict(&parent.join("recovery.lock"))?, false, true)?;
     let leases = [

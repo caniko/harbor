@@ -105,7 +105,7 @@ def _apply(config, endpoint, *, require_tables):
                    "OR EXISTS (SELECT 1 FROM pg_shdepend d JOIN pg_roles r ON r.oid=d.refobjid "
                    "WHERE d.refclassid='pg_authid'::regclass AND d.deptype='o' "
                    f"AND r.rolname IN ('{policy['owner_role']}','{policy['runtime_role']}') "
-                   f"AND d.dbid<>COALESCE((SELECT oid FROM pg_database WHERE datname='{policy['database']}'),0) "
+                   f"AND (d.dbid<>COALESCE((SELECT oid FROM pg_database WHERE datname='{policy['database']}'),0) OR r.rolname='{policy['runtime_role']}') "
                    "AND NOT (d.dbid=0 AND d.classid='pg_database'::regclass "
                    f"AND d.objid=(SELECT oid FROM pg_database WHERE datname='{policy['database']}') "
                    f"AND r.rolname='{policy['owner_role']}')); ")
@@ -174,7 +174,9 @@ def _check(config, endpoint, *, require_tables):
         return False
     runtime, owner, schema, database = [policy[key] for key in
                                       ("runtime_role", "owner_role", "schema", "database")]
-    checks = [f"(SELECT pg_get_userbyid(datdba)='{owner}' FROM pg_database WHERE datname='{database}')",
+    checks = ["NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND deptype='o' "
+              f"AND refobjid=(SELECT oid FROM pg_roles WHERE rolname='{runtime}'))",
+              f"(SELECT pg_get_userbyid(datdba)='{owner}' FROM pg_database WHERE datname='{database}')",
               f"(SELECT pg_get_userbyid(nspowner)='{owner}' FROM pg_namespace WHERE nspname='{schema}')",
               f"has_schema_privilege('{runtime}','{schema}','USAGE')",
                f"NOT has_schema_privilege('{runtime}','{schema}','CREATE')",

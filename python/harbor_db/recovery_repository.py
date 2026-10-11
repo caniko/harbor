@@ -37,6 +37,91 @@ def _carrier(path, limit):
     return content
 
 
+def reject_retired(root, identifier):
+    path = root / "recovery/captures" / f"{identifier}.retired"
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return
+    raise ValueError("capture identifier is permanently retired; use a new identifier")
+
+
+def _optional_carrier(path, limit):
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return None
+    return _carrier(path, limit)
+
+
+def retire(config, identifier):
+    """Explicit retirement under the exclusive reader/producer repository lease."""
+    from . import recovery
+    from .durable import lock, sync_directory, write_json
+    settings = config["recovery"]
+    if not source_local(settings) or not valid_identifier(identifier):
+        raise ValueError("retirement requires source-local-v1 and a valid capture identifier")
+    root = recovery.absolute(settings["backup_root"])
+    major = str(config["major"])
+    if not re.fullmatch(r"[0-9]+", major) or not isinstance(settings["system_identifier"], str) or not re.fullmatch(r"[1-9][0-9]*", settings["system_identifier"]):
+        raise ValueError("invalid retirement repository identity")
+    local = root / "recovery"
+    for name in ("pins", "captures", "snapshots"):
+        path = recovery.absolute(local / name)
+        if not stat.S_ISDIR(path.lstat().st_mode):
+            raise ValueError("retirement requires existing repository directories")
+    with lock(recovery.absolute(root / "locks/mutate")):
+        if _carrier(local / "PROTOCOL", 256).decode("utf-8").strip() != "source-local-v1":
+            raise ValueError("invalid recovery repository protocol")
+        selected = _optional_carrier(local / "SELECTED", 256)
+        if selected is not None:
+            selected = selected.decode("utf-8").strip()
+            if not valid_identifier(selected) or selected == identifier:
+                raise ValueError("cannot retire the selected capture or an uncertain selection")
+        names = (f"captures/{identifier}.json", f"captures/{identifier}.wal-inventory", f"snapshots/{identifier}.json", f"pins/{identifier}.json")
+        carriers = {name: _optional_carrier(local / name, 16 << 20) for name in names}
+        journal = local / "captures" / f"{identifier}.retired"
+        header = {"version": 1, "capture_id": identifier, "backup_root": str(root), "major": major, "system_identifier": settings["system_identifier"]}
+        saved = _optional_carrier(journal, 16 << 20)
+        if saved is not None:
+            record = json.loads(saved)
+            hashes = record.get("carriers") if isinstance(record, dict) else None
+            if (not isinstance(hashes, dict) or set(hashes) != set(names) or hashes[names[3]] is None
+                    or {key: value for key, value in record.items() if key != "carriers"} != header
+                    or type(record.get("version")) is not int):
+                raise ValueError("capture retirement journal differs from repository identity")
+            for name, current in carriers.items():
+                expected = hashes[name]
+                if (expected is not None and (not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected))) or (current is not None and expected != hashlib.sha256(current).hexdigest()):
+                    raise ValueError("capture retirement carrier changed; preserving remaining evidence")
+        else:
+            pin = carriers[names[3]]
+            if pin is None:
+                raise ValueError("capture retirement requires an existing pin")
+            metadata = json.loads(pin)
+            if (not isinstance(metadata, dict) or type(metadata.get("version")) is not int or metadata["version"] != 1
+                    or metadata.get("capture_id") != identifier or metadata.get("system_identifier") != settings["system_identifier"]
+                    or str(metadata.get("pg_major")) != major or not valid_identifier(metadata.get("backup_id"))
+                    or (carriers[names[0]] is not None and carriers[names[0]] != pin)):
+                raise ValueError("capture retirement pin or metadata differs from repository identity")
+            if carriers[names[2]] is not None:
+                snapshot = json.loads(carriers[names[2]])
+                if not isinstance(snapshot, dict) or snapshot.get("metadata_sha256") != hashlib.sha256(pin).hexdigest():
+                    raise ValueError("capture retirement snapshot differs from its pin")
+            record = {**header, "carriers": {name: None if content is None else hashlib.sha256(content).hexdigest() for name, content in carriers.items()}}
+            write_json(journal, record)
+        # Producer contention leaves the acknowledged retirement journal resumable.
+        with lock(recovery.absolute(root / "BACKUP_LOCK")):
+            # Keep the pin until obsolete metadata/snapshot unlinks are durable.
+            for name, content in carriers.items():
+                path = local / name
+                if content is not None:
+                    path.unlink()
+                # Resume the flush even when a prior attempt already unlinked it.
+                sync_directory(path.parent)
+        return record
+
+
 @dataclass(frozen=True)
 class SelectedCapture:
     directory: object
@@ -65,6 +150,7 @@ def select(config, settings, now):
     identifier = content.decode("utf-8").strip()
     if not valid_identifier(identifier):
         raise ValueError("invalid capture identifier")
+    reject_retired(root, identifier)
     metadata_path = recovery.absolute(root / "recovery/captures" / f"{identifier}.json")
     snapshots = recovery.absolute(root / "recovery/snapshots")
     if not snapshots.is_dir():
