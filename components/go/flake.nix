@@ -40,7 +40,7 @@
       template = harbor-meta.lib.templateTests.eval {
         flakeNix = ./templates/default/flake.nix;
         inputs = {
-          harbor-go = self;
+          harbor = self.inputs.harborRoot;
           inherit nixpkgs treefmt-nix;
         };
       };

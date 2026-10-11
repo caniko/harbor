@@ -1,0 +1,21 @@
+--- a/skills/blender-mcp/SKILL.md
++++ b/skills/blender-mcp/SKILL.md
+@@ -50,2 +50,5 @@
+ - Encapsulate functional modules as subgroups with an explicit interface. Use Frames for processing steps inside a tree; do not turn every step into a subgroup or substitute a Frame for module encapsulation.
++- Canix: the layout rules below apply only when the user requests node
++  layout or formatting work, and the user's explicit modeling instructions
++  always take precedence; never reformat unrelated existing graphs.
+ - Every non-Frame node in a generated or reformatted tree must have a NodeFrame parent, including Group Input, Group Output, Reroute, constants, and auxiliary nodes. Root frames may be unparented. Check each generated nested tree too.
+--- a/skills/blender-mcp/references/render-workflows.md
++++ b/skills/blender-mcp/references/render-workflows.md
+@@ -29,5 +29,9 @@
+ ## Motion blur on Geometry Nodes objects
+
+-For every object that carries a Geometry Nodes modifier, disable deformation motion blur only. Blender computes deformation motion blur by interpolating vertex positions, and Geometry Nodes changes vertex topology between frames, which makes that interpolation unstable and produces broken motion vectors.
++When a render shows unstable motion vectors from topology-changing Geometry
++Nodes evaluation, disable deformation motion blur only for the affected
++object. Blender computes deformation motion blur by interpolating vertex
++positions, and topology changes between frames make that interpolation
++unstable and produce broken motion vectors.
+
+ - On the object, set `use_deform_motion = False` (Object Properties > Motion Blur, uncheck Deformation).

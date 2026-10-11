@@ -32,6 +32,7 @@
     ci = import ./harbor-ci.nix arguments;
   in {
     packages = {
+      inherit (pkgs) sccache;
       default = cli;
       harbor-rs = cli;
       harbor-ci = ci;

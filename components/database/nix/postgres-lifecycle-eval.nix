@@ -5,7 +5,8 @@
 }: let
   inherit (pkgs) lib;
   inherit (import ./eval-checks.nix {inherit pkgs;}) mkEvalCheck;
-  eval = import "${pkgs.path}/nixos/lib/eval-config.nix" {
+  # Preserve the input path during cold read-only flake qualification.
+  eval = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = "x86_64-linux";
     modules = [
       lifecycleModule

@@ -26,6 +26,8 @@
 
 ### Added
 
+- Export the native `rust-sccache` package on both macOS systems so portable
+  consumers can retain their shared compiler-cache policy.
 - Expose `rust-harbor-rs` and `rust-harbor-ci` production packages on both
   native macOS systems, with the Intel-compatible package pin and native tests
   included in the Rust component's qualification aggregate.

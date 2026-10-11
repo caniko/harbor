@@ -1,0 +1,31 @@
+--- a/src/blender_mcp/host.py
++++ b/src/blender_mcp/host.py
+@@ -9,6 +9,7 @@
+ from mcp.server.fastmcp import FastMCP
+
+ from .observability.telemetry import record_startup
++from .protocol.errors import BlenderMCPError
+ from .transport.connection import BlenderConnection
+ from .transport.constants import DEFAULT_BRIDGE_HOST, DEFAULT_BRIDGE_PORT
+ from .transport.instances import InstanceConnectionManager, discover_registry_records
+@@ -110,12 +111,11 @@
+             logger.info("Selected registered Blender instance %s", instance_manager.active_record["instance_id"])
+             return connection
+
+-        host = os.getenv("BLENDER_HOST", DEFAULT_BRIDGE_HOST)
+-        port = int(os.getenv("BLENDER_PORT", str(DEFAULT_BRIDGE_PORT)))
+-        connection = BlenderConnection(host=host, port=port)
+-        if not connection.connect():
+-            logger.error("Failed to connect to Blender")
+-            raise ConnectionError("Could not connect to Blender. Make sure the Blender addon is running.")
+-        blender_connection = connection
+-        logger.info("Created new persistent connection to Blender")
+-        return blender_connection
++        # Canix: registry-only targeting. The legacy BLENDER_HOST/BLENDER_PORT
++        # fallback can connect to an unrelated listener on a fixed port and
++        # bypasses instance identity, claims, and file-session checks.
++        raise BlenderMCPError(
++            "no_registered_instances",
++            "No registered Blender instances were found. Open Blender through the Blender (MCP) launcher so the extension registers this session, then call list_blender_instances.",
++            retryable=False,
++        )

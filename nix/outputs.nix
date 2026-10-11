@@ -52,6 +52,16 @@ inputs @ {
       then inputs.nixpkgs-darwin
       else nixpkgs
     ) (args // {inherit system;});
+  bootstrap = system:
+    import ./bootstrap.nix {
+      inherit self inputs;
+      pkgs = pkgsFor system {overlays = [inputs.rust-overlay.overlays.default];};
+    };
+  templatePlinth =
+    inputs.plinth-source
+    // {
+      packages = nixlib.genAttrs systems (system: {plinth-project = (bootstrap system).plinthProject;});
+    };
   collect = output: system:
     nixlib.foldl' (result: name: result // nixlib.mapAttrs' (key: value: nixlib.nameValuePair "${name}-${key}" value) (components.${name}.${output}.${system} or {})) {} componentNames;
   collectModules = output:
@@ -67,6 +77,16 @@ inputs @ {
     };
   in
     inputs.treefmt-nix.lib.evalModule pkgs (import ./treefmt.nix {rustfmtPackage = toolchain.rustToolchain;}));
+  companions = system: let
+    pkgs = pkgsFor system {};
+  in
+    {
+      open-pencil-cli = pkgs.callPackage ./packages/open-pencil-cli {};
+    }
+    // nixlib.optionalAttrs (system == "x86_64-linux") {
+      open-pencil-desktop = pkgs.callPackage ./packages/open-pencil-desktop {};
+    }
+    // nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (import ./packages/blender-mcp {inherit pkgs;});
 in {
   lib = {
     core = components.core.lib;
@@ -86,22 +106,42 @@ in {
       ntt = components.ntt.lib;
     };
     pins.macosSdk = (import ../components/macos-sdk/flake.nix).outputs {};
+    tooling = import ./tooling/selection.nix {lib = nixlib;};
   };
   # Transitional output adapters, not independent input/source owners.
   legacy = aliases;
   sccache = components.rust.sccache;
-  nixosModules = collectModules "nixosModules";
-  homeManagerModules = collectModules "homeManagerModules";
+  nixosModules = collectModules "nixosModules" // {default = import ./modules/nixos.nix {inherit self;};};
+  homeManagerModules =
+    collectModules "homeManagerModules"
+    // {
+      default = import ./modules/home.nix {inherit self;};
+      fleetix = import ./modules/fleetix.nix {inherit self;};
+    };
   treefmtModules = collectModules "treefmtModules";
   templates = nixlib.foldl' (result: name: result // nixlib.mapAttrs' (key: value: nixlib.nameValuePair "${name}-${key}" value) (components.${name}.templates or {})) {} componentNames;
   packages = nixlib.genAttrs systems (system:
     collect "packages" system
+    // companions system
     // nixlib.optionalAttrs (builtins.hasAttr system components.rust.packages) {
       default = components.rust.packages.${system}.harbor-rs;
     });
   checks = nixlib.genAttrs systems (system: let
     pkgs = pkgsFor system {};
-    templateContract = import ./template-contract.nix {inherit self inputs pkgs;};
+    templateContract = import ./template-contract.nix {
+      inherit self inputs pkgs;
+      plinth = templatePlinth;
+    };
+    bootstrapInputs = import ./bootstrap-contract.nix {inherit self inputs pkgs;};
+    moduleContracts = import ./tooling/tests/modules.nix {inherit self inputs pkgs;};
+    desktopChecks = nixlib.optionalAttrs (system == "x86_64-linux") (import ./tooling/tests/open-pencil.nix {
+      inherit pkgs;
+      openPencilCli = self.packages.${system}.open-pencil-cli;
+      openPencilDesktop = self.packages.${system}.open-pencil-desktop;
+    });
+    blenderCheck = nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+      blender-mcp-runtime = import ./tooling/tests/blender.nix {inherit self inputs pkgs;};
+    };
     sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
       pkgs.runCommand "harbor-component-source-materialization" {} ''
         set -euo pipefail
@@ -120,13 +160,19 @@ in {
           // nixlib.optionalAttrs (name == "core") {
             source-materialization = sourceMaterialization;
             template-contract = templateContract;
+            bootstrap-inputs = bootstrapInputs;
+            module-contracts = moduleContracts;
           }))))
     componentNames);
   in
     collect "checks" system
     // groups
+    // desktopChecks
+    // blenderCheck
     // {
       template-contract = templateContract;
+      bootstrap-inputs = bootstrapInputs;
+      harbor-modules = moduleContracts;
       formatting = formatters.${system}.config.build.check self;
     });
   formatter = nixlib.genAttrs systems (system: formatters.${system}.config.build.wrapper);
@@ -148,10 +194,10 @@ in {
     // {
       default = shell;
     }
-    // nixlib.optionalAttrs (builtins.hasAttr system inputs.simit.packages) {
+    // {
       ci = pkgs.mkShell {
         inputsFrom = [shell];
-        packages = [inputs.simit.packages.${system}.default];
+        packages = [(bootstrap system).simit];
       };
     });
 }

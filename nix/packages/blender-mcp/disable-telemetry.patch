@@ -1,0 +1,53 @@
+--- a/src/blender_mcp/observability/telemetry.py
++++ b/src/blender_mcp/observability/telemetry.py
+@@ -13,7 +13,8 @@
+ from dataclasses import dataclass
+ from enum import Enum
+ from importlib.metadata import PackageNotFoundError, version
+ from pathlib import Path
++from types import SimpleNamespace
+ from typing import Any
+
+ import httpx
+@@ -313,10 +314,41 @@
+ # Global telemetry instance
+ _telemetry_collector: TelemetryCollector | None = None
+
++# Canix: fail-closed telemetry disablement. The upstream constructor imports
++# config, creates persistent identity state, and starts a background worker
++# before honoring the disable switch, so forcing DISABLE_TELEMETRY=true in the
++# launcher is not sufficient on its own. When any disable variable is set,
++# callers receive an inert instance without touching config, disk, or network.
++_DISABLE_ENV_VARS = (
++    "DISABLE_TELEMETRY",
++    "BLENDER_MCP_DISABLE_TELEMETRY",
++    "MCP_DISABLE_TELEMETRY",
++)
++
++
++def _telemetry_disabled_by_env() -> bool:
++    for var in _DISABLE_ENV_VARS:
++        if os.environ.get(var, "").lower() in ("true", "1", "yes", "on"):
++            return True
++    return False
++
++
++_disabled_telemetry_instance: TelemetryCollector | None = None
++
++
++def _disabled_telemetry() -> TelemetryCollector:
++    global _disabled_telemetry_instance
++    if _disabled_telemetry_instance is None:
++        _disabled_telemetry_instance = TelemetryCollector.__new__(TelemetryCollector)
++        _disabled_telemetry_instance.config = SimpleNamespace(enabled=False)
++    return _disabled_telemetry_instance
++
+
+ def get_telemetry() -> TelemetryCollector:
+     """Get the global telemetry collector instance"""
+     global _telemetry_collector
++    if _telemetry_disabled_by_env():
++        return _disabled_telemetry()
+     if _telemetry_collector is None:
+         _telemetry_collector = TelemetryCollector()
+     return _telemetry_collector

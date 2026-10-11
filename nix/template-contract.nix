@@ -2,6 +2,7 @@
   self,
   inputs,
   pkgs,
+  plinth,
 }: let
   inherit (pkgs) lib;
   templates = [
@@ -28,12 +29,11 @@
       then self
       else inputs.${input})
     flake.inputs;
-    # The site template is independent of Harbor's reusable documentation
-    # APIs. Reuse the bootstrap generator's pinned site input for evaluation.
+    # The site template uses the pinned source-only bootstrap adapter.
     arguments =
       selectedInputs
       // lib.optionalAttrs (flake.inputs ? plinth) {
-        plinth = inputs.simit.inputs.plinth;
+        inherit plinth;
       };
     templateSelf =
       outputs

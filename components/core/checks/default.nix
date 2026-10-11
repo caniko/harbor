@@ -189,7 +189,7 @@ in
       must_grep combo.json fixture-beta-lsp
 
       # Openpencil joins the same document without policy collisions.
-      must_grep alpha-openpencil.json openpencil-desktop
+      must_grep alpha-openpencil.json openpencil-mcp
       must_grep alpha-openpencil.json fixture-alpha-lsp
       must_not_grep alpha-openpencil.json '"mode":"subagent"'
       must_not_grep alpha-openpencil.json '"openpencil_*":"deny"'
@@ -243,14 +243,14 @@ in
       # The openpencil flag flips the render in both directions.
       harbor-opencode sync --kind alpha --openpencil --root d-op
       ocfg=d-op/.opencode/opencode.jsonc
-      must_grep "$ocfg" openpencil-desktop
+      must_grep "$ocfg" openpencil-mcp
       must_grep "$ocfg" fixture-alpha-lsp
       must_not_grep "$ocfg" '"mode":"subagent"'
       harbor-opencode check --kind alpha --openpencil --root d-op
       expect_die 'plain check must see the openpencil render as stale' \
         harbor-opencode check --kind alpha --root d-op
       harbor-opencode sync --kind alpha --root d-op
-      must_not_grep "$ocfg" openpencil-desktop
+      must_not_grep "$ocfg" openpencil-mcp
 
       # An in-sync sync must skip the write entirely (mtime untouched).
       acfg=d-alpha/.opencode/opencode.jsonc
@@ -720,7 +720,7 @@ in
         must_grep lsp.json fixture-alpha-lsp
 
         # Openpencil and the format policy coexist in one document.
-        must_grep fixture-openpencil.json openpencil-desktop
+        must_grep fixture-openpencil.json openpencil-mcp
         must_grep fixture-openpencil.json '"alejandra *":"deny"'
         must_not_grep fixture-openpencil.json '"mode":"subagent"'
 

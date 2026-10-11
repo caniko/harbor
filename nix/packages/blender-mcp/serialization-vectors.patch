@@ -1,0 +1,15 @@
+--- a/blender_extension/nodes/serialization.py
++++ b/blender_extension/nodes/serialization.py
+@@ -75,5 +75,12 @@
+     if hasattr(value, "to_list"):
+         return _gn_json_value(value.to_list())
++    if hasattr(value, "to_tuple") and not isinstance(value, (str, bytes, dict)):
++        # Canix: mathutils Vector/Color/Euler/Quaternion expose to_tuple()
++        # but not __iter__, so without this branch they raise TypeError and
++        # socket defaults silently vanish from exports and revision hashes.
++        # A vector-only edit would then keep the old revision and defeat
++        # stale-base rejection.
++        return _gn_json_value(list(value.to_tuple()))
+     if hasattr(value, "__iter__") and not isinstance(value, bpy.types.bpy_struct):
+         return [_gn_json_value(item) for item in value]
+     raise TypeError(f"Unsupported RNA value type: {type(value).__name__}")

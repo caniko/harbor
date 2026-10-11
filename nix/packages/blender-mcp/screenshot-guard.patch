@@ -1,0 +1,15 @@
+--- a/blender_extension/bridge/scene.py
++++ b/blender_extension/bridge/scene.py
+@@ -549,6 +549,12 @@
+             if not area:
+                 return {"error": "No 3D viewport found"}
+
++            if area.width <= 0 or area.height <= 0:
++                # Canix: a viewport with no drawable area (unmapped window)
++                # makes the native crop path abort the whole process with a
++                # malloc failure. Report it as a bounded error instead.
++                return {"error": f"3D viewport has no drawable area ({area.width}x{area.height})"}
++
+             # Take screenshot with proper context override
+             with bpy.context.temp_override(area=area):
+                 bpy.ops.screen.screenshot_area(filepath=filepath)

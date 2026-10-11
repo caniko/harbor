@@ -18,6 +18,7 @@ paths = ["components/core"]
 checks = [
   { id = "history", run = "python3 scripts/check_history.py" },
   { id = "format", run = "treefmt --ci" },
+  { id = "module-platforms", run = "for system in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do nix eval --raw .#checks.$system.harbor-modules.drvPath; done", timeout_minutes = 30 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core", timeout_minutes = 90 },
 ]
 
@@ -145,6 +146,8 @@ releases = [
 depends_on = ["rust", "python"]
 checks = [
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad", timeout_minutes = 90 },
+  { id = "blender-companion", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.blender-mcp-runtime", timeout_minutes = 90 },
+  { id = "openpencil-companion", run = "nix build --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp", timeout_minutes = 180 },
 ]
 
 [[monorepo.components]]

@@ -2,9 +2,15 @@
   description = "Harbor shared build infrastructure: independent components in one repository";
 
   inputs = {
-    # Bootstrap the component generator against its independently qualified
-    # infrastructure; consumers switch only after this candidate qualifies.
-    simit.url = "git+https://github.com/caniko/simit.git?ref=feat/harbor-monorepo-components&rev=9e12b94b3ed4782ac31c29616e3ca52ae95af0d5";
+    # Consume qualified tool sources without their consumer flake graphs.
+    simit = {
+      url = "git+https://github.com/caniko/simit.git?ref=feat/harbor-monorepo-components&rev=f30d82931ea3689de3c3ea9a0ab0f0e0bfd10b8d";
+      flake = false;
+    };
+    plinth-source = {
+      url = "git+https://github.com/caniko/plinth.git?ref=fix/dioxus-0.7.10&rev=4718cc09d9d1b54cc10e23e60c37b656bf7285a6";
+      flake = false;
+    };
     # CAD's minimum FreeCAD version establishes the shared package-set floor.
     nixpkgs.url = "github:NixOS/nixpkgs/73e728ddb6b7a12d18808f510813a13ee1fe4cce";
     # Retained Intel macOS compatibility fixes qualified this maintained revision.
@@ -18,6 +24,10 @@
     };
     treefmt-nix = {
       url = "github:numtide/treefmt-nix/27b3b12a8e6375f28ebe122f07d230ca5459bbfa";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    home-manager = {
+      url = "github:nix-community/home-manager/0560d64401a6d5370732a69d08bc4a6b135962d9";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     git-hooks = {

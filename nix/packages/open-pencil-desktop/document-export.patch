@@ -1,0 +1,439 @@
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,6 +1,10 @@
+ # Changelog
+ 
+ ## Unreleased
++
++### Fixed
++
++- Export raster images from inactive documents and non-current pages using their captured content, and release the correct canvas when switching tabs.
+ 
+ ## 0.15.1 — 2026-09-18
+ 
+--- a/packages/docs/programmable/mcp-server.md
++++ b/packages/docs/programmable/mcp-server.md
+@@ -152,6 +152,8 @@
+ 8. **Close** — `close_file` to close an open document tab; it prompts to save unsaved changes.
+ 
+ Most tools accept optional `document_id` and `page_id` fields. Pass them explicitly for agent workflows instead of relying on the visible active tab/page. `create_page` only creates a page; call `switch_page` separately when the workflow should change the active page.
++
++Raster exports capture the requested page's current content, including unsaved edits, before asynchronous font preparation. They work for inactive documents without switching the visible tab or page. All requested nodes must belong to that page; edits made after capture appear in the next export.
+ 
+ ## AI Agent Skill
+ 
+--- a/playwright.config.ts
++++ b/playwright.config.ts
+@@ -54,6 +54,13 @@
+     {
+       ...appDefaults,
+       name: 'openpencil',
++      use: {
++        ...appDefaults.use,
++        launchOptions: {
++          ...appDefaults.use.launchOptions,
++          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
++        }
++      },
+       testDir: './tests/e2e',
+       testIgnore: ['**/native/**', '**/storybook/**'],
+       fullyParallel: false
+--- a/skills/open-pencil/SKILL.md
++++ b/skills/open-pencil/SKILL.md
+@@ -204,6 +204,8 @@
+ 4. **Modify** — `render`, `batch_update`, `update_node`, `set_fill`, `set_layout`, `create_shape`, `import_svg`, etc.
+ 5. **Navigate** — after creating or editing visible canvas content, call `select_nodes` and `viewport_zoom_to_fit { id }` (or `node_bounds` + `viewport_set`) so the user can see the result in the running editor.
+ 6. **Save/export** — `save_file`, `export_image`, `export_svg`, `export_pdf`, or CLI `export`.
++
++For raster exports from another open tab, pass explicit `document_id` and `page_id` from `list_documents`; activating the tab is unnecessary. Use node IDs from that page. Raster export captures unsaved content when the call starts, so export again to include later edits.
+ 7. **Close** — `close_file { document_id }` closes a document tab after the workflow; it prompts to save unsaved changes.
+ 
+ ### Browser-native WebMCP (experimental)
+--- a/src/app/automation/bridge/export-handlers.ts
++++ b/src/app/automation/bridge/export-handlers.ts
+@@ -11,7 +11,8 @@
+   const data = await store.renderExportImage(
+     nodeIds,
+     exportArgs?.scale ?? 1,
+-    (exportArgs?.format ?? 'PNG') as RasterExportFormat
++    (exportArgs?.format ?? 'PNG') as RasterExportFormat,
++    target.pageId
+   )
+   if (!data) throw new Error('Export failed')
+   const base64 = encodeBase64(data)
+--- a/src/app/automation/bridge/figma-factory.ts
++++ b/src/app/automation/bridge/figma-factory.ts
+@@ -21,7 +21,7 @@
+     zoom: store.state.zoom
+   }
+   api.exportImage = (nodeIds, opts) =>
+-    store.renderExportImage(nodeIds, opts.scale ?? 1, opts.format ?? 'PNG')
++    store.renderExportImage(nodeIds, opts.scale ?? 1, opts.format ?? 'PNG', pageId)
+   api.listAvailableFontsAsync = async () => {
+     const [systemFonts, familyOptions] = await Promise.all([listFonts(), listFamilies()])
+     const fonts = systemFonts.flatMap(({ family, styles }) =>
+--- a/src/app/document/export/files.ts
++++ b/src/app/document/export/files.ts
+@@ -7,12 +7,13 @@
+   IORegistry,
+   RasterExportFormat
+ } from '@open-pencil/core/io'
+-import { renderNodesToImage } from '@open-pencil/core/io/formats/raster'
+ import type { SceneGraph } from '@open-pencil/scene-graph'
+ 
+ import type { ExportOptions } from '@/app/document/export/types'
+ import { pickBrowserSaveFile, supportsFileSystemAccess } from '@/app/document/io/capability'
+ import { isTauri } from '@/app/tauri/env'
++
++import { renderDocumentImage } from './raster'
+ 
+ type ExportData = string | ArrayBuffer | Uint8Array
+ 
+@@ -108,14 +109,9 @@
+     format: RasterExportFormat,
+     pageId = state.currentPageId
+   ): Promise<Uint8Array | null> {
+-    const renderer = editor.renderer
+-    if (!renderer) return null
+     const ids = nodeIds.length > 0 ? nodeIds : editor.graph.getChildren(pageId).map((n) => n.id)
+     if (ids.length === 0) return null
+-    return renderNodesToImage(renderer.ck, renderer, editor.graph, pageId, ids, {
+-      scale,
+-      format
+-    })
++    return renderDocumentImage(editor.graph, pageId, ids, scale, format)
+   }
+ 
+   function getSelectionExportTarget(): ExportRequest['target'] {
+--- /dev/null
++++ b/src/app/document/export/raster.ts
+@@ -0,0 +1,60 @@
++import { SkiaRenderer } from '@open-pencil/core/canvas'
++import { getCanvasKit } from '@open-pencil/core/canvaskit'
++import { extractExportGraph, type RasterExportFormat } from '@open-pencil/core/io'
++import { renderNodesToImage } from '@open-pencil/core/io/formats/raster'
++import {
++  collectGraphFontRequirements,
++  collectNodeFontFaces,
++  fontFaceDemand,
++  fontManager,
++  fontResolver,
++  missingGraphFontScripts
++} from '@open-pencil/core/text'
++import type { SceneGraph } from '@open-pencil/scene-graph'
++
++// CanvasKit and font caches are shared. Each job owns its surface and graph;
++// serializing exports also avoids racing the initial CanvasKit load.
++let pendingExport: Promise<unknown> = Promise.resolve()
++
++export function renderDocumentImage(
++  source: SceneGraph,
++  pageId: string,
++  nodeIds: string[],
++  scale: number,
++  format: RasterExportFormat
++): Promise<Uint8Array | null> {
++  // Capture before yielding: later edits and tab switches cannot change this job.
++  const { graph } = extractExportGraph(source, { scope: 'page', pageId })
++  const ids = [...nodeIds]
++  if (graph.getNode(pageId)?.type !== 'CANVAS' || ids.some((id) => !graph.getNode(id))) {
++    return Promise.reject(new Error('Raster export nodes must belong to the requested page'))
++  }
++  const result = pendingExport.then(async () => {
++    const ck = await getCanvasKit()
++    const surface = ck.MakeSurface(1, 1)
++    if (!surface) throw new Error('Cannot create raster export surface')
++    const renderer = new SkiaRenderer(ck, surface)
++    try {
++      await renderer.loadFonts()
++      const requirements = collectGraphFontRequirements(graph, ids)
++      await Promise.all(
++        requirements.nodes
++          .flatMap(collectNodeFontFaces)
++          .map(({ family, style }) =>
++            fontResolver.demand(fontFaceDemand(family, style, requirements.characters))
++          )
++      )
++      await fontManager.ensureFallbackPack(
++        missingGraphFontScripts(requirements),
++        requirements.characters
++      )
++      // Export the captured layout. Do not install a global text measurer or
++      // recompute layout on the live editor graph while fonts are loading.
++      return renderNodesToImage(ck, renderer, graph, pageId, ids, { scale, format })
++    } finally {
++      renderer.destroy()
++    }
++  })
++  pendingExport = result.catch(() => undefined)
++  return result
++}
+--- a/src/components/EditorCanvas.vue
++++ b/src/components/EditorCanvas.vue
+@@ -27,7 +27,7 @@
+ } from '@open-pencil/vue'
+ 
+ import { useCollabInjected } from '@/app/collab/use'
+-import { useEditorStore } from '@/app/editor/active-store'
++import { getActiveEditorStore } from '@/app/editor/active-store'
+ import { useCanvasCollaborationAwareness } from '@/app/editor/canvas/collaboration-awareness'
+ import { createCanvasContextSelection } from '@/app/editor/canvas/context-selection'
+ import { appRuntimeConfig } from '@/app/runtime/config'
+@@ -42,7 +42,9 @@
+   paneId?: string
+ }>()
+ 
+-const store = useEditorStore()
++// EditorWorkspace keys this subtree by tab. Keep its owner stable through
++// unmount: the active-store proxy already points at the next tab during cleanup.
++const store = getActiveEditorStore()
+ const collab = useCollabInjected()
+ const sceneCanvasRef = ref<HTMLCanvasElement | null>(null)
+ const canvasRef = ref<HTMLCanvasElement | null>(null)
+--- /dev/null
++++ b/tests/e2e/export/document-target.spec.ts
+@@ -0,0 +1,59 @@
++import { expect, test } from '@playwright/test'
++
++import { CanvasHelper } from '#tests/helpers/canvas'
++
++test('tab switches release the correct renderer and both export bridges honor the page', async ({
++  page
++}) => {
++  const canvas = new CanvasHelper(page)
++  await page.goto('/?test')
++  await canvas.waitForInit()
++  const first = await page.evaluateHandle(async () => {
++    const tabs = await import('/src/app/tabs/index.ts')
++    const store = tabs.getActiveStore()
++    store.state.documentName = 'Export first'
++    const other = store.graph.addPage('Non-current export')
++    const node = store.graph.createNode('RECTANGLE', other.id, { width: 91, height: 37 })
++    return { store, pageId: other.id, nodeId: node.id, tabId: tabs.getActiveTabId() }
++  })
++  try {
++    await page.evaluate(async () => {
++      const tabs = await import('/src/app/tabs/index.ts')
++      tabs.createTab().store.state.documentName = 'Export second'
++    })
++    await canvas.waitForInit()
++    await expect.poll(() => first.evaluate(({ store }) => store.renderer === null)).toBe(true)
++    const exports = await first.evaluate(async ({ store, pageId, nodeId, tabId }) => {
++      const { makeFigmaFromStore } = await import('/src/app/automation/bridge/figma-factory.ts')
++      const { handleExport } = await import('/src/app/automation/bridge/export-handlers.ts')
++      const { resolveAutomationTarget } = await import('/src/app/automation/bridge/target.ts')
++      const currentPage = store.state.currentPageId
++      const api = makeFigmaFromStore(store, pageId)
++      const fromAPI = await api.exportImage([nodeId], { scale: 1, format: 'PNG' })
++      const target = resolveAutomationTarget(store, { document_id: tabId, page_id: pageId })
++      const fromHandler = await handleExport(target, { nodeIds: [nodeId] })
++      return {
++        api: fromAPI ? Array.from(fromAPI) : null,
++        handler: fromHandler,
++        currentPageUnchanged: currentPage === store.state.currentPageId
++      }
++    })
++    expect(exports.currentPageUnchanged).toBe(true)
++    expect(exports.api?.slice(0, 8)).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
++    const bytes = Buffer.from(exports.api ?? [])
++    expect([bytes.readUInt32BE(16), bytes.readUInt32BE(20)]).toEqual([91, 37])
++    expect(exports.handler).toMatchObject({
++      ok: true,
++      result: { mimeType: 'image/png', base64: bytes.toString('base64') }
++    })
++    await page.getByTestId('tabbar-tab').filter({ hasText: 'Export first' }).click()
++    await canvas.waitForInit()
++    expect(await first.evaluate(({ store }) => store.renderer?.isDestroyed())).toBe(false)
++    await page.getByTestId('tabbar-tab').filter({ hasText: 'Export second' }).click()
++    await canvas.waitForInit()
++    await expect.poll(() => first.evaluate(({ store }) => store.renderer === null)).toBe(true)
++    canvas.assertNoErrors()
++  } finally {
++    await first.dispose()
++  }
++})
+--- /dev/null
++++ b/tests/engine/app/document/export.test.ts
+@@ -0,0 +1,182 @@
++import { beforeAll, describe, expect, spyOn, test } from 'bun:test'
++
++import { SkiaRenderer } from '@open-pencil/core/canvas'
++import { getCanvasKit } from '@open-pencil/core/canvaskit'
++import { createEditor } from '@open-pencil/core/editor'
++import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
++import { getTextMeasurer } from '@open-pencil/core/layout'
++import { fontManager } from '@open-pencil/core/text'
++import { SceneGraph } from '@open-pencil/scene-graph'
++
++import { createExportTargetActions } from '@/app/document/export/files'
++
++import { expectDefined } from '#tests/helpers/assert'
++
++beforeAll(async () => {
++  fontManager.markLoaded(
++    'Inter',
++    'Regular',
++    await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
++  )
++})
++
++function fixture() {
++  const graph = new SceneGraph()
++  const page = graph.getPages()[0]
++  const node = graph.createNode('RECTANGLE', page.id, { width: 40, height: 20 })
++  const editor = createEditor({ graph })
++  const actions = createExportTargetActions(
++    editor,
++    editor.state,
++    new IORegistry(BUILTIN_IO_FORMATS)
++  )
++  return { graph, page, node, editor, ...actions }
++}
++
++async function dimensions(bytes: Uint8Array | null) {
++  const ck = await getCanvasKit()
++  const image = expectDefined(
++    ck.MakeImageFromEncoded(expectDefined(bytes, 'export bytes')),
++    'image'
++  )
++  try {
++    return [image.width(), image.height()]
++  } finally {
++    image.delete()
++  }
++}
++
++describe('document raster export', () => {
++  test('renders text pixels without rewriting missing-font metadata', async () => {
++    const f = fixture()
++    const node = f.graph.createNode('TEXT', f.page.id, {
++      text: 'Visible export',
++      fontFamily: 'CanixMissingFont',
++      fontSize: 24,
++      width: 200,
++      height: 40,
++      fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
++    })
++    const before = structuredClone(node)
++    // An unavailable remote face is deterministic; fallback shaping still uses
++    // the real bundled font and CanvasKit, including the emitted pixels.
++    const remote = spyOn(fontManager, 'loadRemoteFont').mockResolvedValue(null)
++    let bytes: Uint8Array
++    try {
++      bytes = expectDefined(await f.renderExportImage([node.id], 1, 'PNG'))
++    } finally {
++      remote.mockRestore()
++    }
++    const ck = await getCanvasKit()
++    const image = expectDefined(ck.MakeImageFromEncoded(bytes))
++    try {
++      const pixels = expectDefined(
++        image.readPixels(0, 0, {
++          width: image.width(),
++          height: image.height(),
++          colorType: ck.ColorType.RGBA_8888,
++          alphaType: ck.AlphaType.Unpremul,
++          colorSpace: ck.ColorSpace.SRGB
++        })
++      )
++      let ink = 0
++      for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) ink++
++      expect(ink).toBeGreaterThan(100)
++    } finally {
++      image.delete()
++    }
++    expect(node).toEqual(before)
++  })
++
++  test('releases export resources after font failure and leaves the live renderer usable', async () => {
++    const f = fixture()
++    const ck = await getCanvasKit()
++    const live = new SkiaRenderer(ck, expectDefined(ck.MakeSurface(1, 1)))
++    await live.loadFonts()
++    const previousProvider = fontManager.provider()
++    const previousMeasurer = getTextMeasurer()
++    const load = spyOn(fontManager, 'ensureFallbackPack').mockRejectedValueOnce(
++      new Error('font failure')
++    )
++    try {
++      await expect(f.renderExportImage([f.node.id], 1, 'PNG')).rejects.toThrow('font failure')
++      expect(fontManager.provider()).toBe(previousProvider)
++      expect(getTextMeasurer()).toBe(previousMeasurer)
++      expect(live.isDestroyed()).toBe(false)
++    } finally {
++      load.mockRestore()
++    }
++    try {
++      expect(await dimensions(await f.renderExportImage([f.node.id], 1, 'PNG'))).toEqual([40, 20])
++      expect(live.getFontProvider()).toBe(previousProvider)
++    } finally {
++      live.destroy()
++    }
++  })
++
++  test('exports an unmounted document including unsaved changes', async () => {
++    const f = fixture()
++    f.graph.updateNode(f.node.id, { width: 73 })
++    expect(f.editor.renderer).toBeNull()
++    expect(await dimensions(await f.renderExportImage([f.node.id], 1, 'PNG'))).toEqual([73, 20])
++  })
++
++  test('exports a non-current page without changing document state', async () => {
++    const f = fixture()
++    const other = f.graph.addPage('Other')
++    const node = f.graph.createNode('RECTANGLE', other.id, { width: 91, height: 37 })
++    f.editor.select([f.node.id])
++    const before = structuredClone([...f.graph.getAllNodes()])
++    const selection = [...f.editor.state.selectedIds]
++    expect(await dimensions(await f.renderExportImage([node.id], 1, 'PNG', other.id))).toEqual([
++      91, 37
++    ])
++    expect([...f.graph.getAllNodes()]).toEqual(before)
++    expect(f.editor.state.currentPageId).toBe(f.page.id)
++    expect([...f.editor.state.selectedIds]).toEqual(selection)
++  })
++
++  test('captures content before asynchronous rendering starts', async () => {
++    const f = fixture()
++    const first = f.renderExportImage([f.node.id], 1, 'PNG')
++    f.graph.updateNode(f.node.id, { width: 83 })
++    const second = f.renderExportImage([f.node.id], 1, 'PNG')
++    expect(await dimensions(await first)).toEqual([40, 20])
++    expect(await dimensions(await second)).toEqual([83, 20])
++  })
++
++  test('rejects cross-page nodes and allows the next export', async () => {
++    const f = fixture()
++    const other = f.graph.addPage('Other')
++    await expect(f.renderExportImage([f.node.id], 1, 'PNG', other.id)).rejects.toThrow()
++    expect(await dimensions(await f.renderExportImage([f.node.id], 1, 'PNG'))).toEqual([40, 20])
++  })
++
++  test('a failed export does not poison queued exports from another document', async () => {
++    const first = fixture()
++    const second = fixture()
++    second.graph.updateNode(second.node.id, { width: 109 })
++    const load = spyOn(fontManager, 'ensureFallbackPack').mockRejectedValueOnce(
++      new Error('first document failed')
++    )
++    const destroy = spyOn(SkiaRenderer.prototype, 'destroy')
++    try {
++      const results = await Promise.allSettled([
++        first.renderExportImage([first.node.id], 1, 'PNG'),
++        second.renderExportImage([second.node.id], 1, 'PNG')
++      ])
++      expect(results[0]).toMatchObject({ status: 'rejected' })
++      const successful = results[1]
++      expect(successful.status).toBe('fulfilled')
++      if (successful.status !== 'fulfilled') throw successful.reason
++      expect(await dimensions(successful.value)).toEqual([109, 20])
++      expect(destroy).toHaveBeenCalledTimes(2)
++      expect(await dimensions(await first.renderExportImage([first.node.id], 1, 'PNG'))).toEqual([
++        40, 20
++      ])
++    } finally {
++      load.mockRestore()
++      destroy.mockRestore()
++    }
++  })
++})

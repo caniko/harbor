@@ -1,0 +1,71 @@
+{
+  lib,
+  stdenv,
+  stdenvNoCC,
+  callPackage,
+  bun,
+  nodejs,
+  cacert,
+}: let
+  src = callPackage ./source.nix {};
+  modules = stdenvNoCC.mkDerivation {
+    pname = "open-pencil-node-modules";
+    version = "0.15.1";
+    inherit src;
+    nativeBuildInputs = [bun cacert];
+    dontBuild = true;
+    # Keep the relocatable workspace links and original shebangs inside an
+    # archive; fixup runs only on the eventual application closure.
+    dontFixup = true;
+    installPhase = ''
+      # Independent cold installs must agree before accepting the fixed hash.
+      # Bun's alias/bin races are repaired from the frozen graph, not by
+      # dropping entries or choosing whichever install finished first.
+      for attempt in 1 2; do
+        work="$TMPDIR/install-$attempt"
+        mkdir -p "$work" "$TMPDIR/home-$attempt"
+        tar -xf ${src} -C "$work" --strip-components=1
+        (
+          cd "$work"
+          export HOME="$TMPDIR/home-$attempt"
+          bun install --frozen-lockfile --ignore-scripts --cache-dir "$TMPDIR/cache-$attempt"
+          bun ${./normalize-links.ts}
+          find . -type d -name node_modules -prune -print0 | sort -z |
+            tar --null -T - --sort=name --mtime=@1 --owner=0 --group=0 -cf "$TMPDIR/modules-$attempt.tar"
+        )
+      done
+      cmp "$TMPDIR/modules-1.tar" "$TMPDIR/modules-2.tar"
+      mkdir -p $out
+      cp "$TMPDIR/modules-1.tar" "$out/node_modules.tar"
+    '';
+    outputHashMode = "recursive";
+    outputHashAlgo = "sha256";
+    outputHash = "sha256-yqFohcUKXZUc7MzneSW2OVTULAmvm/FQr0ZPQELCXQs=";
+  };
+in
+  stdenvNoCC.mkDerivation {
+    pname = "open-pencil-frontend";
+    version = "0.15.1-canix1";
+    inherit src;
+    patches = [./document-export.patch];
+    nativeBuildInputs = [bun nodejs];
+    env.LD_LIBRARY_PATH = lib.makeLibraryPath [stdenv.cc.cc.lib];
+    buildPhase = ''
+      export HOME=$TMPDIR/home
+      mkdir -p "$HOME"
+      tar -xf ${modules}/node_modules.tar
+      patchShebangs node_modules
+      bun run build:packages
+      bun run generate:icons --target desktop
+      bun run generate:tauri-menu
+      bunx --no-install vite build
+    '';
+    doCheck = true;
+    checkPhase = ''
+      bun test tests/engine/app/document/export.test.ts
+    '';
+    installPhase = ''
+      mkdir -p $out
+      cp -r dist desktop/icons desktop/generated $out/
+    '';
+  }

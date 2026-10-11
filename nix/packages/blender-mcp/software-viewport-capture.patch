@@ -1,0 +1,35 @@
+--- a/blender_extension/bridge/scene.py
++++ b/blender_extension/bridge/scene.py
+@@ -558,3 +558,32 @@
+             # Load and resize if needed
+             img = bpy.data.images.load(filepath)
++            # Mesa's llvmpipe GL_FRONT read can be black under Xvfb even
++            # when the window is rendered. Capture the actual current view
++            # into a GPU-owned target in that case; never synthesize pixels.
++            import gpu
++            if "llvmpipe" in gpu.platform.renderer_get().lower():
++                from array import array
++                pixels = array('f', [0.0]) * len(img.pixels)
++                img.pixels.foreach_get(pixels)
++                if not any(value for i, value in enumerate(pixels) if i % 4 != 3):
++                    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
++                    if region is None or region.width <= 0 or region.height <= 0:
++                        bpy.data.images.remove(img)
++                        return {"error": "3D viewport has no drawable window region"}
++                    offscreen = gpu.types.GPUOffScreen(region.width, region.height)
++                    try:
++                        with bpy.context.temp_override(area=area, region=region):
++                            space = area.spaces.active
++                            offscreen.draw_view3d(
++                                bpy.context.scene, bpy.context.view_layer, space, region,
++                                space.region_3d.view_matrix, space.region_3d.window_matrix)
++                            with offscreen.bind():
++                                pixels = gpu.state.active_framebuffer_get().read_color(
++                                    0, 0, region.width, region.height, 4, 0, 'FLOAT')
++                        pixels.dimensions = region.width * region.height * 4
++                        img.scale(region.width, region.height)
++                        img.colorspace_settings.name = 'Linear Rec.709'
++                        img.pixels.foreach_set(pixels)
++                    finally:
++                        offscreen.free()
+             width, height = img.size

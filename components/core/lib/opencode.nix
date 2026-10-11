@@ -28,7 +28,7 @@
     // lib.optionalAttrs openpencil {
       mcp.openpencil = {
         type = "local";
-        command = ["openpencil-desktop" "--mcp" "{env:HOME}/.local/share/openpencil/agent.op"];
+        command = ["openpencil-mcp"];
         enabled = true;
       };
     }

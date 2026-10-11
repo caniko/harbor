@@ -18,7 +18,9 @@
     raise SystemExit({"ExecCondition": 17, "ExecReload": 23}[phase])
   '';
   phaseCommand = phase: "${pkgs.python3}/bin/python3 ${phaseWriter} ${phase} HARBOR_DB_PHASE_READY ${lib.escapeShellArg literalArgument}";
-  eval = import "${pkgs.path}/nixos/lib/eval-config.nix" {
+  # Preserve the input path; string interpolation copies the source during
+  # cold read-only flake qualification.
+  eval = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = pkgs.stdenv.hostPlatform.system;
     modules = [
       module

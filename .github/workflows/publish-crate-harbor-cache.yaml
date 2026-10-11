@@ -50,6 +50,12 @@ jobs:
     - name: nix
       run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad'
       timeout-minutes: 90
+    - name: blender-companion
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.blender-mcp-runtime'
+      timeout-minutes: 90
+    - name: openpencil-companion
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp'
+      timeout-minutes: 180
     timeout-minutes: 360
   component-core:
     env:
@@ -76,6 +82,9 @@ jobs:
       timeout-minutes: 30
     - name: format
       run: nix develop --print-build-logs .#ci --command sh -ec 'treefmt --ci'
+      timeout-minutes: 30
+    - name: module-platforms
+      run: nix develop --print-build-logs .#ci --command sh -ec 'for system in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do nix eval --raw .#checks.$system.harbor-modules.drvPath; done'
       timeout-minutes: 30
     - name: nix
       run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core'

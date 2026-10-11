@@ -6,6 +6,12 @@ versions, publication settings, and licenses.
 
 ## Shared infrastructure
 
+Framework installers are available through `homeManagerModules.default` and
+`nixosModules.default`. Select full presets with `programs.harbor.frameworks`,
+override individual packages, and opt into client delivery through the Fleetix
+adapter. See [framework tooling modules](docs/tooling-modules.md) for the exact
+catalog, platform support, Blender/OpenPencil MCP and CAD runtime contracts.
+
 The root `flake.nix` and `flake.lock` own the input graph. Component output
 adapters are imported with those inputs and a component-local `self`; their
 former input declarations and lockfiles do not participate in root evaluation.
