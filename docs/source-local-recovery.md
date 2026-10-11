@@ -12,6 +12,10 @@ a firewall opening. An empty `sourceSettings.listenAddresses` also derives TCP
 listeners for those loopback families; explicit lists also retain the required
 source-local loopbacks, without duplicate addresses.
 Source and target still require the replicator password file.
+When the PostgreSQL lifecycle module is present, source-local recovery enrolls
+`replicator` in `writerFence.replicationRoles`, preserving configured peer roles
+without duplicates. A forced policy that removes `replicator` from an enabled
+writer fence fails evaluation before the receiver can lose replication admission.
 Authenticated orchestration and artifact transport connect the source to an
 independent certifier. Fleet endpoints and credentials remain consumer policy.
 

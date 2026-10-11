@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   harborDbStoragePackage,
   ...
@@ -388,7 +389,16 @@ in {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || (sourceRole && targetRole && lib.elem cfg.source.hostName ["127.0.0.1" "localhost" "::1"]);
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires role=both and a loopback source for fence-compatible WAL reception.";
           }
+          {
+            assertion = !cfg.targetSettings.sourceLocalRecovery.enable || !(config.services.harbor-db.postgresql.enable or false) || lib.elem "replicator" config.services.harbor-db.postgresql.writerFence.replicationRoles;
+            message = "services.harbor-db.pgBackup sourceLocalRecovery requires replicator in the writer-fence replication roles.";
+          }
         ];
+        # The generated receiver uses this physical-only SCRAM role while the
+        # writer fence rejects every SQL client. Preserve configured peer roles.
+        services.harbor-db = lib.optionalAttrs (options.services.harbor-db ? postgresql) {
+          postgresql.writerFence.replicationRoles = lib.mkIf (sourceRole && cfg.targetSettings.sourceLocalRecovery.enable) (lib.mkAfter ["replicator"]);
+        };
       }
 
       (mkIf sourceRole {

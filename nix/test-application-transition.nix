@@ -89,6 +89,10 @@
             "-h", "/run/postgresql", "-U", "postgres", "-d", "postgres", "-c", statement],
             capture_output=True, text=True, check=True, timeout=30, pass_fds=leases).stdout.strip()
     if stage == "capture":
+        credentials = pathlib.Path(os.environ["CREDENTIALS_DIRECTORY"])
+        assert (credentials / "token").read_text().strip() == "transition-fixture-token"
+        assert credentials.stat().st_uid == os.geteuid() and credentials.stat().st_mode & 0o777 == 0o700
+        assert (credentials / "token").stat().st_mode & 0o777 == 0o400
         backup, workspace = map(pathlib.Path, args)
         backup.mkdir()
         (backup / "records").write_bytes(old.read_bytes())
@@ -154,6 +158,7 @@
       ++ lib.optionals (withPostgres && interop) [pkgs.nix pkgs.postgresql_18 pkgs.bash pkgs.util-linux pkgs.systemd];
     system.extraDependencies = pkgs.lib.optional (!withPostgres && interop) legacyStorage;
     systemd.tmpfiles.rules = [
+      "f /run/transition-fixture-token 0400 root root - transition-fixture-token"
       "d /var/lib/demo-authority 0700 demo demo -"
       "d /var/lib/demo-old 0700 demo demo -"
       "d /var/lib/demo-new ${
@@ -171,6 +176,7 @@
       directory = "/var/lib/demo-backups";
       commands = lib.genAttrs ["capture" "restore" "verify" "cleanup"] command;
       executableFiles = [(toString adapter)];
+      credentials.token = "/run/transition-fixture-token";
     };
     systemd.timers.harbor-db-demo-backup.wantedBy = lib.mkForce [];
     system.stateVersion = "26.05";

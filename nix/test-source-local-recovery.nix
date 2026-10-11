@@ -8,7 +8,7 @@
   legacyPackage = import ./test-python-package.nix {inherit pkgs;};
   bridge = import ./test-native-bridge.nix {inherit pkgs;};
   tools = [pkgs.bash pkgs.coreutils pkgs.diffutils pkgs.util-linux pkgs.systemd pkgs.findutils pkgs.gnugrep pkgs.gnutar postgres nativePackage];
-  fixtureConfig = builtins.toJSON {
+  fixtureConfig = {
     native_package = toString nativePackage;
     legacy_package = toString legacyPackage;
     postgres_package = toString postgres;
@@ -87,10 +87,11 @@ in
       };
     };
     # The bridge supplies transport only; Rust owns ordering, waits and assertions.
-    testScript = bridge.script {
-      fixture = "${testPackage}/bin/harbor-db-source-local-recovery-fixture";
-      arguments = ["--config" fixtureConfig];
-      nodes = ["primary" "certifier"];
-      artifact = "source-local-recovery-acceptance.json";
-    };
+    testScript = {nodes, ...}:
+      bridge.script {
+        fixture = "${testPackage}/bin/harbor-db-source-local-recovery-fixture";
+        arguments = ["--config" (builtins.toJSON (fixtureConfig // {replication_roles = nodes.primary.services.harbor-db.postgresql.writerFence.replicationRoles;}))];
+        nodes = ["primary" "certifier"];
+        artifact = "source-local-recovery-acceptance.json";
+      };
   }

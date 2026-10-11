@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  utils,
   harborDbStoragePackage,
   ...
 }: let
@@ -10,6 +11,10 @@
   roots = map (p: p.backup.directory) (lib.attrValues projects);
   storagePaths = import ./storage-paths.nix {inherit lib;};
   package = harborDbStoragePackage;
+  mountUnits = backup:
+    map (mount: "${utils.escapeSystemdPath mount}.mount")
+    (lib.filter (mount: mount == "/" || mount == backup.directory || lib.hasPrefix "${mount}/" backup.directory)
+      (lib.attrNames config.fileSystems));
   manifest = name: backup:
     pkgs.writeText "harbor-db-${name}-backup.json" (builtins.toJSON {
       version = 2;
@@ -17,6 +22,7 @@
       resource = name;
       root = backup.directory;
       inherit (backup) commands;
+      inherit (backup) credentials;
       executable_files = backup.executableFiles;
       timeout_seconds = backup.timeoutSeconds;
       maximum_age_seconds = backup.maximumAgeSeconds;
@@ -110,7 +116,7 @@ in {
             message = "Harbor DB ${name} backup credential names must be filename-safe ASCII IDs of 1..255 bytes, excluding '.' and '..'.";
           }
           {
-            assertion = lib.all (path: lib.hasPrefix "/" path && !(lib.hasPrefix "/nix/store/" path)) (lib.attrValues p.backup.credentials);
+            assertion = lib.all (path: lib.hasPrefix "/" path && path != "/nix/store" && !(lib.hasPrefix "/nix/store/" path)) (lib.attrValues p.backup.credentials);
             message = "Harbor DB backup credentials must be runtime paths outside the store.";
           }
         ])
@@ -125,8 +131,11 @@ in {
     ]) (lib.attrValues projects);
     systemd.services = lib.mapAttrs' (name: p:
       lib.nameValuePair "harbor-db-${name}-backup" {
-        requires = p.backup.requires;
-        after = p.backup.requires;
+        # RequiresMountsFor discovers runtime mounts; explicit declared ancestors
+        # also fail closed if a mount is masked and disappears from discovery.
+        requires = p.backup.requires ++ mountUnits p.backup;
+        after = p.backup.requires ++ mountUnits p.backup;
+        unitConfig.RequiresMountsFor = [p.backup.directory];
         serviceConfig = {
           Type = "oneshot";
           User = "root";

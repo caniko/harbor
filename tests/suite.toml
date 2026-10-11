@@ -13,7 +13,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines"]
+selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines", "credential_sources_require_bounded_names_and_runtime_paths_in_both_engines"]
 
 [[inventories]]
 origin = "rust"

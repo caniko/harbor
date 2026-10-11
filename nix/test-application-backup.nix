@@ -49,6 +49,13 @@ in
     name = "harbor-db-application-backup";
     nodes.machine = {lib, ...}: {
       imports = [module];
+      virtualisation.emptyDiskImages = [256];
+      virtualisation.fileSystems."/var/lib/demo-backup" = {
+        device = "/dev/vdb";
+        fsType = "ext4";
+        autoFormat = true;
+        options = ["nofail"];
+      };
       users.users = {
         demo = {
           isSystemUser = true;
@@ -91,9 +98,12 @@ in
       system.stateVersion = "26.05";
     };
     testScript = ''
+      import shlex
       # reboot() reconnects only when QEMU was started with reboot support.
       machine.start(allow_reboot=True)
       machine.wait_for_unit("multi-user.target")
+      machine.wait_until_succeeds("mountpoint -q /var/lib/demo-backup")
+      machine.succeed("systemd-tmpfiles --create")
       machine.succeed("systemctl start backup-fd-holder.service")
       machine.wait_until_succeeds("test -S /run/backup-fd/socket")
       machine.succeed("install -d -m 0700 /run/python-backup-credentials; install -m 0400 /etc/backup-fixture-token /run/python-backup-credentials/token")
@@ -119,7 +129,15 @@ in
       machine.succeed("systemctl start harbor-db-demo-backup.service")
       machine.reboot()
       machine.wait_for_unit("multi-user.target")
+      machine.wait_until_succeeds("mountpoint -q /var/lib/demo-backup")
       for point in points:
           machine.succeed(f"runuser -u reader -- cat /var/lib/demo-backup/{point}/records")
+      machine.succeed("systemctl start backup-fd-holder.service")
+      machine.wait_until_succeeds("test -S /run/backup-fd/socket")
+      mount = machine.succeed("systemd-escape --path --suffix=mount /var/lib/demo-backup").strip()
+      machine.succeed(f"systemctl stop {shlex.quote(mount)}; systemctl mask --runtime {shlex.quote(mount)}")
+      machine.succeed("install -d -m 2750 -o root -g demo-backup /var/lib/demo-backup; install -m 0640 -o root -g demo-backup /dev/null /var/lib/demo-backup/lock")
+      machine.fail("systemctl start harbor-db-demo-backup.service")
+      machine.succeed("test ! -e /var/lib/demo-backup/LAST_SUCCESS; test $(find /var/lib/demo-backup -mindepth 1 -maxdepth 1 | wc -l) = 1")
     '';
   }

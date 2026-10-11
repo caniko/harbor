@@ -82,7 +82,9 @@
       then throw "Harbor-DB guarded writer command must use an absolute executable without systemd privilege/argv modifiers: ${name}"
       else "${cfg.package}/bin/harbor-db-cutover serve --contract ${manifest} --host ${config.networking.hostName} --resource ${lib.head names} -- ${command}";
     startupCheck = "+${cfg.package}/bin/harbor-db-cutover check --contract ${manifest} --host ${config.networking.hostName} --phase startup";
-    commands = lib.filterAttrs (key: _: lib.elem key ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload" "ExecStop" "ExecStopPost"]) service;
+    # Quiescing inhibits startup before stopping writers. Their graceful shutdown
+    # hooks must remain callable until systemd has drained the existing service.
+    commands = lib.filterAttrs (key: _: lib.elem key ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload"]) service;
   in
     if !cfg.enable || names == []
     then service

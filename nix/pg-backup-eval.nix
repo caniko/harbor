@@ -76,11 +76,54 @@
         }
       ];
     }).config;
+  fencedLocal =
+    (localEval.extendModules {
+      modules = [./postgres-lifecycle.nix {services.harbor-db.postgresql.enable = true;}];
+    }).config;
+  blockedFence =
+    (localEval.extendModules {
+      modules = [
+        ./postgres-lifecycle.nix
+        {
+          services.harbor-db.postgresql = {
+            enable = true;
+            writerFence.replicationRoles = lib.mkForce [];
+          };
+        }
+      ];
+    }).config;
+  explicitFence =
+    (localEval.extendModules {
+      modules = [
+        ./postgres-lifecycle.nix
+        {
+          services.harbor-db.postgresql = {
+            enable = true;
+            writerFence.replicationRoles = ["peer" "replicator"];
+          };
+        }
+      ];
+    }).config;
 in
   mkEvalCheck {
     name = "harbor-db-pg-backup-eval";
     resultMessage = "harbor-db PostgreSQL backup creates slots before streaming and verifies base backups";
     assertions = [
+      {
+        name = "source-local-fence-admits-generated-receiver";
+        assertion = lib.elem "replicator" fencedLocal.services.harbor-db.postgresql.writerFence.replicationRoles;
+        message = "The generated source-local WAL receiver must reconnect under the default writer fence.";
+      }
+      {
+        name = "source-local-fence-preserves-peer-roles-without-duplicates";
+        assertion = explicitFence.services.harbor-db.postgresql.writerFence.replicationRoles == ["peer" "replicator"];
+        message = "Automatic receiver enrollment must preserve explicitly configured replication peers and avoid duplicate fence roles.";
+      }
+      {
+        name = "source-local-forced-empty-fence-rejected";
+        assertion = lib.any (a: !a.assertion && lib.hasInfix "replicator" a.message) blockedFence.assertions;
+        message = "An explicit forced fence override must not silently disconnect source-local recovery.";
+      }
       {
         name = "flush-wal-on-receipt";
         assertion = lib.hasInfix "--synchronous" receive.ExecStart;

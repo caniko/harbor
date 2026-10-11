@@ -65,6 +65,10 @@ absolute capture/restore/verify/cleanup commands and bounded execution limits.
 The systemd service loads credentials from runtime paths. Its timer is independent
 of schema migration or backend selection. `lib.applicationBackup = 2` advertises
 protected publication. Physical cluster backups remain a separate `pgBackup` contract.
+The service requires the mount containing its backup directory, including mounts
+configured with `nofail`, before it can capture or publish a restore point.
+Declared filesystem ancestors also have explicit `Requires`/`After` dependencies,
+so masking their units cannot remove the storage requirement through mount discovery.
 
 Generated backup manifests use version 2 and declare `worker_user`. The coordinator
 and backup namespace are root-owned; adapters run as the declared unprivileged
@@ -100,6 +104,13 @@ also require `{workspace}`.
 Embedded fragments such as `--backup={backup}` do not satisfy this contract.
 Credential IDs use `[A-Za-z0-9_.-]{1,255}`, excluding `.` and `..`, and credential
 paths remain runtime paths outside the Nix store.
+Generated version-2 manifests bind those credential names and runtime source paths.
+Scheduled captures use systemd's loaded credentials; forced transition captures
+resolve the same declared sources directly. Both coordinators copy only the selected
+credentials into a private worker-owned directory with `0400` files, bounded to
+1 MiB each, and remove it when the attempt finishes. Runtime secret aliases such as
+agenix paths are resolved before opening a regular file. Credential contents are
+never serialized into the policy or acceptance evidence.
 
 Arguments equal to `{backup}` and `{workspace}` are substituted as single argv
 elements, without a shell. Capture creates a new directory and writes all artifacts,
@@ -220,6 +231,9 @@ The sequence is:
 2. `prepare` installs and verifies effective client barriers, drains writers,
    captures/restores the source, and waits for independently executed restore
    evidence. A repeated call uses the same immutable intent and retained snapshot.
+   Startup and reload commands remain admission-guarded. `ExecStop` and
+   `ExecStopPost` retain their original commands so graceful shutdown and cleanup
+   can finish while the journal is `quiescing` and ordinary startup is inhibited.
 3. Import runs once per successful preparation; interrupted imports must resume
    idempotently for that snapshot. Whole-primary PostgreSQL recovery evidence is
    refreshed by the owning recovery coordinator **after** import. Preparation

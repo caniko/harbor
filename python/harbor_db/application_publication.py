@@ -1,6 +1,7 @@
 """Root-coordinated copies isolate accepted bytes from worker-owned inodes."""
 import os
 import pwd
+import re
 import shutil
 import stat
 from pathlib import Path
@@ -24,23 +25,43 @@ def worker_directory(path, account):
     os.chown(path, account.pw_uid, account.pw_gid)
 
 
+def validate_credentials(sources):
+    if not isinstance(sources, dict):
+        raise ValueError("invalid backup credential sources")
+    for name, path in sources.items():
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,255}", name) or name in (".", ".."):
+            raise ValueError("invalid backup credential name")
+        if not isinstance(path, str) or not Path(path).is_absolute() or Path(path).is_relative_to("/nix/store"):
+            raise ValueError("backup credentials require runtime paths outside the store")
+
+
 class Worker:
-    def __init__(self, user, credentials):
+    def __init__(self, user, credentials, sources=None):
         self.account = pwd.getpwnam(user)
         if self.account.pw_uid == 0:
             raise ValueError("backup adapters require an unprivileged worker account")
         self.credentials = None
-        if source := os.environ.get("CREDENTIALS_DIRECTORY"):
+        inherited = os.environ.get("CREDENTIALS_DIRECTORY")
+        if sources is not None:
+            validate_credentials(sources)
+            inputs = [(name, Path(inherited) / name if inherited else Path(path).resolve(strict=True))
+                      for name, path in sources.items()]
+        else:
+            inputs = [(path.name, path) for path in Path(inherited).iterdir()] if inherited else []
+        if inputs:
             credentials.mkdir(mode=0o700)
             self.credentials = credentials
             try:
-                for path in Path(source).iterdir():
+                for name, path in inputs:
                     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
                     with os.fdopen(descriptor, "rb") as input_file:
                         if not stat.S_ISREG(os.fstat(input_file.fileno()).st_mode):
                             raise ValueError("credential source is not regular")
-                        with (credentials / path.name).open("xb") as output:
-                            shutil.copyfileobj(input_file, output)
+                        with (credentials / name).open("xb") as output:
+                            data = input_file.read((1 << 20) + 1)
+                            if len(data) > 1 << 20:
+                                raise ValueError("backup credential exceeds the byte limit")
+                            output.write(data)
                             os.fchmod(output.fileno(), 0o400)
                             os.fchown(output.fileno(), self.account.pw_uid, self.account.pw_gid)
                 os.chown(credentials, self.account.pw_uid, self.account.pw_gid)

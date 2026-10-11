@@ -35,6 +35,7 @@ struct Config {
     coreutils_package: String,
     shell: String,
     tool_roots: Vec<String>,
+    replication_roles: Vec<String>,
 }
 fn require(ok: bool, message: impl Into<String>) -> Result<()> {
     if ok {
@@ -260,7 +261,7 @@ fn run(args: Args) -> Result<()> {
         "invalid system identity",
     )?;
     let config = json!({"resource":"source-local-fixture","state_dir":"/var/lib/demo-primary-authority","data_dir":"/var/lib/postgresql/18","major":"18","package":c.postgres_package,"required_mounts":[],
-        "writer_fence":{"control_role":"postgres","replication_roles":["replicator"],"allowed_preload_libraries":[]},
+        "writer_fence":{"control_role":"postgres","replication_roles":c.replication_roles,"allowed_preload_libraries":[]},
         "recovery":{"repository_protocol":"source-local-v1","require_writer_fence":true,"system_identifier":identifier,"source_hostname":source_host,"backup_root":ROOT,"snapshot_file":format!("{ROOT}/evidence/snapshot.json"),"receipt_file":format!("{ROOT}/evidence/receipt.json"),"off_host_receipt_file":format!("{ROOT}/evidence/off-host.json"),"max_age_seconds":3600,"verify_timeout_seconds":900,"record_checks":[{"name":"full-records","database":"postgres","sql":RECORDS}]}});
     g.publish(
         "primary",

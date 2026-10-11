@@ -19,6 +19,13 @@
 
 ### Fixed
 
+- Preserve graceful shutdown and post-stop hooks while transitions inhibit startup.
+- Bind runtime credential sources into version-2 backup policies so forced transition
+  captures receive private worker credentials without depending on a service environment.
+- Enroll source-local WAL receivers in the writer fence's physical replication policy,
+  preserving peer roles and rejecting overrides that remove the required receiver.
+- Require application backup storage mounts before scheduled capture, including `nofail`
+  and masked declared mounts, to prevent publishing hidden restore points on the parent filesystem.
 - Publish version-2 application backups onto fresh root-owned inodes while running
   adapters unprivileged with private credentials and workspaces. Backup accounts
   cannot chmod or replace accepted bytes, including through retained staging handles.

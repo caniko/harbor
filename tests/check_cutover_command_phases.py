@@ -91,6 +91,22 @@ def main():
             subprocess.run(certify, check=True, capture_output=True, text=True, timeout=15)
             results.append({"phase": phase, "exit_code": expected_exit, "literal_arguments_preserved": True,
                             "exclusive_lease_blocked_until_exit": True, "certification_resumed_after_exit": True})
+        # Quiescing deliberately rejects ordinary startup. Shutdown hooks must
+        # still reach the application, preserving literal argv and exit status.
+        (authority / "transition.json").write_text(json.dumps({"phase": "quiescing"}))
+        startup = [fixture["checker"], "check", "--contract", str(contract), "--host", "fixture", "--phase", "startup"]
+        blocked = subprocess.run(startup, check=False, capture_output=True, text=True, timeout=15)
+        assert blocked.returncode != 0, "unfinished transition admitted ordinary custody inspection"
+        for phase, expected_exit in (("ExecStop", 31), ("ExecStopPost", 37)):
+            commands = fixture["commands"][phase]
+            assert len(commands) == 1, (phase, commands)
+            command = shlex.split(commands[0])
+            ready = root / f"{phase}-ready.json"
+            command[command.index("HARBOR_DB_PHASE_READY")] = str(ready)
+            completed = subprocess.run(command, input="x", capture_output=True, text=True, timeout=15)
+            assert completed.returncode == expected_exit, (phase, completed.returncode, completed.stderr)
+            assert json.loads(ready.read_text()) == {"phase": phase, "arguments": [fixture["literalArgument"]]}
+            results.append({"phase": phase, "exit_code": expected_exit, "quiescing_shutdown_executed": True})
         print(json.dumps({"status": "ok", "commands": results}))
 
 

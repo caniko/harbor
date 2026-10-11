@@ -37,6 +37,7 @@
         group = "fixture";
         directory = "/var/lib/fixture-backup";
         commands = backupCommands;
+        credentials.token = "/run/fixture-secret";
       };
       transition = {
         enable = true;
@@ -59,6 +60,16 @@
     };
   eval = evaluate [module];
   defaultEval = evaluate [defaultModule];
+  mountedEval = evaluate [
+    module
+    {
+      fileSystems = pkgs.lib.genAttrs ["/var/lib" "/var/lib/fixture-backup" "/var/lib/fixture-backup-sibling"] (_: {
+        device = "/dev/fixture";
+        fsType = "ext4";
+        options = ["nofail"];
+      });
+    }
+  ];
   backupNameAccepted = name: let
     configured = evaluate [
       module
@@ -169,6 +180,26 @@ in
     name = "harbor-db-native-storage-eval";
     resultMessage = "Native storage package is selected through the module argument";
     assertions = [
+      {
+        name = "backup-storage-mount-required";
+        message = "Backup captures must require their storage mount even when it is nofail.";
+        assertion = (eval.config.systemd.services.harbor-db-fixture-backup.unitConfig.RequiresMountsFor or []) == ["/var/lib/fixture-backup"];
+      }
+      {
+        name = "backup-declared-mount-dependencies-survive-masking";
+        assertion = let
+          service = mountedEval.config.systemd.services.harbor-db-fixture-backup;
+          mounts = ["var-lib.mount" "var-lib-fixture\\x2dbackup.mount"];
+        in
+          pkgs.lib.all (mount: pkgs.lib.elem mount service.requires && pkgs.lib.elem mount service.after) mounts
+          && !(pkgs.lib.elem "var-lib-fixture\\x2dbackup\\x2dsibling.mount" service.requires);
+        message = "Declared backup mount ancestors must retain explicit Requires/After edges even when masked; sibling mounts must not be required.";
+      }
+      {
+        name = "backup-credential-sources-bound-for-forced-capture";
+        message = "The immutable selected backup policy must retain runtime credential references for captures outside its scheduled service.";
+        assertion = ((builtins.fromJSON (builtins.unsafeDiscardStringContext eval.config.environment.etc."harbor-db/fixture-backup.json".source.text)).credentials or {}) == {token = "/run/fixture-secret";};
+      }
       {
         name = "transition-only-resource-name-boundaries";
         message = "Transition-only projects must use the runtime's bounded resource-name grammar.";

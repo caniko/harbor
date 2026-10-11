@@ -48,8 +48,39 @@ pub(super) struct Worker {
     pub identity: process::Identity,
     pub credentials: Option<PathBuf>,
 }
+pub(super) fn validate_credentials(sources: &serde_json::Value) -> Result<()> {
+    let sources = sources
+        .as_object()
+        .ok_or_else(|| invalid("invalid backup credential sources"))?;
+    for (name, source) in sources {
+        if name.is_empty()
+            || name.len() > 255
+            || matches!(name.as_str(), "." | "..")
+            || !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        {
+            return Err(invalid("invalid backup credential name"));
+        }
+        let source = Path::new(
+            source
+                .as_str()
+                .ok_or_else(|| invalid("invalid backup credential source"))?,
+        );
+        if !source.is_absolute() || source.starts_with("/nix/store") {
+            return Err(invalid(
+                "backup credentials require runtime paths outside the store",
+            ));
+        }
+    }
+    Ok(())
+}
 impl Worker {
-    pub fn new(user: &str, credentials: &Path) -> Result<Self> {
+    pub fn new(
+        user: &str,
+        credentials: &Path,
+        sources: Option<&serde_json::Value>,
+    ) -> Result<Self> {
         let identity = process::account(user)?;
         if identity.uid == 0 {
             return Err(invalid(
@@ -60,18 +91,43 @@ impl Worker {
             identity,
             credentials: None,
         };
-        if let Some(source) = std::env::var_os("CREDENTIALS_DIRECTORY") {
+        let inherited = std::env::var_os("CREDENTIALS_DIRECTORY").map(PathBuf::from);
+        let mut inputs = Vec::new();
+        if let Some(sources) = sources {
+            validate_credentials(sources)?;
+            for (name, source) in sources.as_object().unwrap() {
+                let path = if let Some(directory) = &inherited {
+                    directory.join(name)
+                } else {
+                    // The immutable policy explicitly selects this runtime secret.
+                    // Resolve agenix-style aliases, then open a direct regular file.
+                    fs::canonicalize(source.as_str().unwrap())?
+                };
+                inputs.push((name.clone(), path));
+            }
+        } else if let Some(directory) = inherited {
+            for entry in fs::read_dir(directory)? {
+                let entry = entry?;
+                let name = entry
+                    .file_name()
+                    .into_string()
+                    .map_err(|_| invalid("invalid backup credential name"))?;
+                inputs.push((name, entry.path()));
+            }
+        }
+        if !inputs.is_empty() {
             fs::DirBuilder::new().mode(0o700).create(credentials)?;
             worker.credentials = Some(credentials.to_owned());
-            for entry in fs::read_dir(source)? {
-                let entry = entry?;
-                let mut input = durable::open_regular(&entry.path(), false)?;
+            for (name, source) in inputs {
+                let input = durable::open_regular(&source, false)?;
                 let mut output = OpenOptions::new()
                     .write(true)
                     .create_new(true)
                     .mode(0o400)
-                    .open(credentials.join(entry.file_name()))?;
-                io::copy(&mut input, &mut output)?;
+                    .open(credentials.join(name))?;
+                if io::copy(&mut input.take((1 << 20) + 1), &mut output)? > 1 << 20 {
+                    return Err(invalid("backup credential exceeds the byte limit"));
+                }
                 // Use the opened destination, not a worker-controlled alias.
                 let status = unsafe {
                     libc::fchown(output.as_raw_fd(), worker.identity.uid, worker.identity.gid)
@@ -168,6 +224,51 @@ pub(super) fn reader_permissions(path: &Path, gid: u32) -> Result<()> {
 mod tests {
     use super::*;
     use std::io::{Seek, SeekFrom, Write};
+
+    #[test]
+    fn credential_sources_require_bounded_names_and_runtime_paths_in_both_engines() {
+        use serde_json::json;
+        for (sources, accepted) in [
+            (json!({}), true),
+            (json!({"A_0-z.token":"/run/fixture-secret"}), true),
+            (json!({"a".repeat(255):"/run/fixture-secret"}), true),
+            (json!({"a".repeat(256):"/run/fixture-secret"}), false),
+            (json!({"":"/run/fixture-secret"}), false),
+            (json!({".":"/run/fixture-secret"}), false),
+            (json!({"..":"/run/fixture-secret"}), false),
+            (json!({"../token":"/run/fixture-secret"}), false),
+            (json!({"token":"relative-secret"}), false),
+            (json!({"token":"/nix/store/secret"}), false),
+            (json!({"token":null}), false),
+            (json!([]), false),
+            (json!(null), false),
+        ] {
+            assert_eq!(validate_credentials(&sources).is_ok(), accepted);
+            let script = r#"import json,sys
+from harbor_db.application_publication import validate_credentials
+try: validate_credentials(json.loads(sys.argv[1]))
+except ValueError: accepted=False
+else: accepted=True
+assert accepted == json.loads(sys.argv[2])
+"#;
+            let mut spec = process::CommandSpec::new(vec![
+                "python3".into(),
+                "-B".into(),
+                "-c".into(),
+                script.into(),
+                sources.to_string(),
+                accepted.to_string(),
+            ]);
+            spec.environment = Some(std::collections::BTreeMap::from([
+                (
+                    "PYTHONPATH".into(),
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ),
+                ("PATH".into(), std::env::var("PATH").unwrap()),
+            ]));
+            process::execute(&spec).unwrap();
+        }
+    }
 
     #[test]
     fn sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines() {

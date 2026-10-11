@@ -15,7 +15,7 @@
     pending.write_text(json.dumps({"phase": phase, "arguments": sys.argv[3:]}))
     pending.replace(ready)
     sys.stdin.read(1)
-    raise SystemExit({"ExecCondition": 17, "ExecReload": 23}[phase])
+    raise SystemExit({"ExecCondition": 17, "ExecReload": 23, "ExecStop": 31, "ExecStopPost": 37}[phase])
   '';
   phaseCommand = phase: "${pkgs.python3}/bin/python3 ${phaseWriter} ${phase} HARBOR_DB_PHASE_READY ${lib.escapeShellArg literalArgument}";
   descendantRules = [
@@ -61,8 +61,8 @@
         systemd.services.archive.serviceConfig.ExecCondition = [(phaseCommand "ExecCondition")];
         systemd.services.archive.serviceConfig.ExecReload = phaseCommand "ExecReload";
         systemd.services.archive.serviceConfig.ExecStartPost = ["${pkgs.coreutils}/bin/true"];
-        systemd.services.archive.serviceConfig.ExecStop = "${pkgs.coreutils}/bin/true";
-        systemd.services.archive.serviceConfig.ExecStopPost = ["${pkgs.coreutils}/bin/true"];
+        systemd.services.archive.serviceConfig.ExecStop = phaseCommand "ExecStop";
+        systemd.services.archive.serviceConfig.ExecStopPost = [(phaseCommand "ExecStopPost")];
       }
     ];
   };
@@ -88,12 +88,13 @@
   in
     result.success && result.value;
   succeeds = harborFailures config.assertions == [];
-  commandPhases = ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload" "ExecStop" "ExecStopPost"];
+  commandPhases = ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload"];
+  shutdownPhases = ["ExecStop" "ExecStopPost"];
   commandPhaseFixture = pkgs.writeText "harbor-db-cutover-command-phases.json" (builtins.toJSON {
     manifest = config.services.harbor-db.cutover.manifest;
     checker = "${config.services.harbor-db.cutover.package}/bin/harbor-db-cutover";
     inherit literalArgument;
-    commands = lib.genAttrs commandPhases (phase: lib.toList config.systemd.services.archive.serviceConfig.${phase});
+    commands = lib.genAttrs (commandPhases ++ shutdownPhases) (phase: lib.toList config.systemd.services.archive.serviceConfig.${phase});
   });
   tmpfilesFixture = pkgs.writeText "harbor-db-cutover-tmpfiles.conf" (lib.concatStringsSep "\n" (map
     (lib.replaceStrings ["archive archive"] ["- -"])
@@ -165,12 +166,17 @@ in
         message = "the real service process must retain custody's shared authority lease";
       }
       {
-        name = "all-seven-command-phases-retain-resource-lease";
+        name = "startup-and-reload-command-phases-retain-resource-lease";
         assertion = lib.all (phase:
           lib.all (command: lib.hasInfix "harbor-db-cutover serve" command || lib.hasInfix "--phase startup" command)
           (lib.toList config.systemd.services.archive.serviceConfig.${phase}))
         commandPhases;
-        message = "conditions, reloads and every startup/shutdown command must retain the writer authority lease";
+        message = "conditions, reloads and every startup command must retain the writer authority lease";
+      }
+      {
+        name = "shutdown-hooks-remain-available-during-quiescing";
+        assertion = lib.all (phase: lib.toList config.systemd.services.archive.serviceConfig.${phase} == [(phaseCommand phase)]) shutdownPhases;
+        message = "Graceful stop and post-stop hooks must execute while the transition inhibits ordinary startup.";
       }
       {
         name = "activation-does-not-create-missing-history";

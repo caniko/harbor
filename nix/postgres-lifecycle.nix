@@ -178,7 +178,8 @@ in {
       replicationRoles = mkOption {
         type = types.listOf (types.strMatching "[a-z_][a-z0-9_]*");
         default = [];
-        description = "Physical-only localhost SCRAM replication roles admitted during an explicit writer fence. They cannot open SQL connections.";
+        apply = lib.unique;
+        description = "Physical-only localhost SCRAM replication roles admitted during an explicit writer fence. They cannot open SQL connections. Source-local recovery automatically includes its replicator receiver role.";
       };
       allowedPreloadLibraries = mkOption {
         type = types.listOf (types.strMatching "[A-Za-z0-9_.-]+");

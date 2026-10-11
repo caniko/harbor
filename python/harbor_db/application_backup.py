@@ -33,6 +33,9 @@ def validate(config, *, check_root=True):
     protected = config.get("version") == 2
     if protected:
         required.add("worker_user")
+        if "credentials" in config:
+            required.add("credentials")
+            publication.validate_credentials(config["credentials"])
     if set(config) != required or config["version"] not in (1, 2):
         raise ValueError("unsupported application backup manifest")
     if protected and not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", config["worker_user"]):
@@ -152,7 +155,7 @@ def capture(config, attempt, *, retry_incomplete=False):
             if workspace.exists():
                 if workspace.is_symlink() or not workspace.is_dir():
                     raise ValueError("incomplete restore workspace is redirected")
-                retry_worker = publication.Worker(config["worker_user"], root / f"{attempt}.retry-credentials-{time.time_ns()}") if protected else None
+                retry_worker = publication.Worker(config["worker_user"], root / f"{attempt}.retry-credentials-{time.time_ns()}", config.get("credentials")) if protected else None
                 try:
                     execute(config, "cleanup", partial, workspace, lease, retry_worker)
                 finally:
@@ -168,7 +171,7 @@ def capture(config, attempt, *, retry_incomplete=False):
             sync_directory(abandoned)
             sync_directory(root)
         write_json(intent_file, attempt_intent)
-        worker = publication.Worker(config["worker_user"], credentials) if protected else None
+        worker = publication.Worker(config["worker_user"], credentials, config.get("credentials")) if protected else None
         try:
             return capture_attempt(config, attempt, root, staging, partial, sealed, destination, workspace, tools, lease, worker)
         finally:

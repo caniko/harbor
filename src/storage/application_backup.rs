@@ -33,6 +33,10 @@ pub fn validate(c: &Value, check_root: bool) -> Result<PathBuf> {
     ];
     if protected {
         keys.push("worker_user");
+        if c.get("credentials").is_some() {
+            keys.push("credentials");
+            publication::validate_credentials(&c["credentials"])?;
+        }
     }
     if !exact(c, &keys) || (!protected && c["version"] != 1) {
         return Err(invalid("unsupported application backup manifest"));
@@ -386,6 +390,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
                 Some(publication::Worker::new(
                     string(c, "worker_user")?,
                     &root.join(format!("{attempt}.retry-credentials-{}", unique()?)),
+                    c.get("credentials"),
                 )?)
             } else {
                 None
@@ -428,6 +433,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
         Some(publication::Worker::new(
             string(c, "worker_user")?,
             &credentials,
+            c.get("credentials"),
         )?)
     } else {
         None
