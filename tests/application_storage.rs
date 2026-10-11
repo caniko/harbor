@@ -80,6 +80,74 @@ fn last(t: &Path) -> Value {
     durable::read_json(&t.join("backups/LAST_SUCCESS")).unwrap()
 }
 
+#[test]
+fn automatic_manual_capture_remains_pinned_after_scheduled_retention_in_both_engines() {
+    let mut outcomes = Vec::new();
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        let config = t.path().join("config.json");
+        durable::write_json(&config, &c).unwrap();
+        let mut command = if python {
+            let mut command = std::process::Command::new("python3");
+            command.args(["-B", "-m", "harbor_db.application_backup"]);
+            command.env(
+                "PYTHONPATH",
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            );
+            command
+        } else {
+            std::process::Command::new(env!("CARGO_BIN_EXE_harbor-db-application-backup"))
+        };
+        let result = command
+            .arg("--config")
+            .arg(&config)
+            .arg("capture")
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let receipt: Value = serde_json::from_slice(&result.stdout).unwrap();
+        let id = receipt["attempt"].as_str().unwrap();
+        let root = t.path().join("backups");
+        let original = fs::read(root.join(id).join("acceptance.json")).unwrap();
+        let scheduled = command.arg("--scheduled").output().unwrap();
+        assert!(
+            scheduled.status.success(),
+            "{}",
+            String::from_utf8_lossy(&scheduled.stderr)
+        );
+        let scheduled: Value = serde_json::from_slice(&scheduled.stdout).unwrap();
+        assert!(scheduled["attempt"].as_str().unwrap().starts_with("timer-"));
+        // Equal capture clocks still rank newer IDs after the automatic manual
+        // point. Exercise the formerly ambiguous timestamp/PID shape too.
+        for name in [
+            "20990101T000000Z-1",
+            "timer-20990101T000000Z-1",
+            "timer-20990101T000001Z-1",
+        ] {
+            application_backup::capture(&c, name, false).unwrap();
+        }
+        assert!(prune_peer(&c, python, 1).status.success());
+        outcomes.push((
+            python,
+            fs::read(root.join(id).join("acceptance.json")).ok() == Some(original),
+            root.join("20990101T000000Z-1/acceptance.json").is_file(),
+            !root.join("timer-20990101T000000Z-1").exists(),
+            root.join("timer-20990101T000001Z-1/acceptance.json")
+                .is_file(),
+        ));
+    }
+    assert!(
+        outcomes
+            .iter()
+            .all(|(_, manual, legacy, pruned, latest)| *manual && *legacy && *pruned && *latest),
+        "{outcomes:?}"
+    );
+}
+
 fn prune_peer(c: &Value, python: bool, keep: u32) -> std::process::Output {
     let t = tempfile::tempdir().unwrap();
     let config = t.path().join("config.json");
@@ -116,15 +184,15 @@ fn scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_tr
         let (t, c) = backup_fixture();
         let root = t.path().join("backups");
         for id in [
-            "20260101T000000Z-1",
-            "20260101T000001Z-1",
-            "20260101T000002Z-1",
+            "timer-20260101T000000Z-1",
+            "timer-20260101T000001Z-1",
+            "timer-20260101T000002Z-1",
             "transition-fixed-run",
         ] {
             application_backup::capture(&c, id, false).unwrap();
         }
         let original = fs::read(root.join("LAST_SUCCESS")).unwrap();
-        for id in ["20260101T000003Z-1", "transition-incomplete"] {
+        for id in ["timer-20260101T000003Z-1", "transition-incomplete"] {
             fs::write(t.path().join("fail_restore"), b"").unwrap();
             assert!(application_backup::capture(&c, id, false).is_err());
             for suffix in [".partial", ".intent.json"] {
@@ -145,11 +213,17 @@ fn scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_tr
             "python={python}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        assert!(!root.join("20260101T000000Z-1").exists());
-        assert!(!root.join("20260101T000000Z-1.intent.json").exists());
-        assert!(!root.join("20260101T000003Z-1.partial").exists());
-        assert!(root.join("20260101T000001Z-1/acceptance.json").is_file());
-        assert!(root.join("20260101T000002Z-1/acceptance.json").is_file());
+        assert!(!root.join("timer-20260101T000000Z-1").exists());
+        assert!(!root.join("timer-20260101T000000Z-1.intent.json").exists());
+        assert!(!root.join("timer-20260101T000003Z-1.partial").exists());
+        assert!(
+            root.join("timer-20260101T000001Z-1/acceptance.json")
+                .is_file()
+        );
+        assert!(
+            root.join("timer-20260101T000002Z-1/acceptance.json")
+                .is_file()
+        );
         assert!(root.join("transition-fixed-run/acceptance.json").is_file());
         assert!(root.join("transition-incomplete.partial").is_dir());
         assert_eq!(fs::read(root.join("LAST_SUCCESS")).unwrap(), original);
@@ -163,7 +237,7 @@ fn retained_success_prunes_its_incomplete_siblings_without_changing_evidence_in_
     for python in [false, true] {
         let (t, c) = backup_fixture();
         let root = t.path().join("backups");
-        let id = "20260101T000000Z-1";
+        let id = "timer-20260101T000000Z-1";
         application_backup::capture(&c, id, false).unwrap();
         let acceptance = root.join(id).join("acceptance.json");
         let marker = root.join("LAST_SUCCESS");
@@ -224,19 +298,25 @@ fn scheduled_pruning_rejects_contention_and_redirects_before_deletion_in_both_en
     for python in [false, true] {
         let (t, c) = backup_fixture();
         let root = t.path().join("backups");
-        application_backup::capture(&c, "20260101T000000Z-1", false).unwrap();
+        application_backup::capture(&c, "timer-20260101T000000Z-1", false).unwrap();
         let lease = durable::lock(&root.join("lock"), true, false).unwrap();
         assert!(!prune_peer(&c, python, 1).status.success());
-        assert!(root.join("20260101T000000Z-1/acceptance.json").is_file());
+        assert!(
+            root.join("timer-20260101T000000Z-1/acceptance.json")
+                .is_file()
+        );
         drop(lease);
         std::os::unix::fs::symlink(
             t.path().join("adapter.py"),
-            root.join("20260101T000001Z-1.partial"),
+            root.join("timer-20260101T000001Z-1.partial"),
         )
         .unwrap();
         assert!(!prune_peer(&c, python, 1).status.success());
         assert!(t.path().join("adapter.py").is_file());
-        assert!(root.join("20260101T000000Z-1/acceptance.json").is_file());
+        assert!(
+            root.join("timer-20260101T000000Z-1/acceptance.json")
+                .is_file()
+        );
     }
 }
 
@@ -246,17 +326,17 @@ fn interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_r
     for python in [false, true] {
         let (t, c) = backup_fixture();
         let root = t.path().join("backups");
-        for id in ["20260101T000000Z-1", "20260101T000001Z-1"] {
+        for id in ["timer-20260101T000000Z-1", "timer-20260101T000001Z-1"] {
             application_backup::capture(&c, id, false).unwrap();
         }
         let latest = fs::read(root.join("LAST_SUCCESS")).unwrap();
-        let tombstone = root.join("20260101T000000Z-1.pruning");
-        fs::rename(root.join("20260101T000000Z-1"), &tombstone).unwrap();
+        let tombstone = root.join("timer-20260101T000000Z-1.pruning");
+        fs::rename(root.join("timer-20260101T000000Z-1"), &tombstone).unwrap();
         durable::sync_directory(&root).unwrap();
         fs::remove_file(tombstone.join("acceptance.json")).unwrap();
         // Fresh siblings must also retire immediately, rather than wait for the
         // incomplete grace once deletion has already been durably selected.
-        fs::write(root.join("20260101T000000Z-1.intent.json"), b"{}").unwrap();
+        fs::write(root.join("timer-20260101T000000Z-1.intent.json"), b"{}").unwrap();
         let output = prune_peer(&c, python, 1);
         assert!(
             output.status.success(),
@@ -264,8 +344,11 @@ fn interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_r
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(!tombstone.exists());
-        assert!(!root.join("20260101T000000Z-1.intent.json").exists());
-        assert!(root.join("20260101T000001Z-1/acceptance.json").is_file());
+        assert!(!root.join("timer-20260101T000000Z-1.intent.json").exists());
+        assert!(
+            root.join("timer-20260101T000001Z-1/acceptance.json")
+                .is_file()
+        );
         assert_eq!(fs::read(root.join("LAST_SUCCESS")).unwrap(), latest);
         assert!(prune_peer(&c, python, 1).status.success());
     }
@@ -1429,6 +1512,28 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         assert!(provision::check(&policy, &endpoint).unwrap());
     }
     success("DROP ROLE acl_outsider", "control", "postgres");
+    for python in [false, true] {
+        let prefix = if python {
+            "peer_custom"
+        } else {
+            "native_custom"
+        };
+        let custom = json!({"database":prefix,"owner_role":format!("{prefix}_owner"),"runtime_role":format!("{prefix}_runtime"),"schema":"managed"});
+        if python {
+            assert!(python_provision(&custom, "apply").status.success());
+        } else {
+            provision::apply(&custom, &endpoint).unwrap();
+        }
+        assert!(provision::check(&custom, &endpoint).unwrap());
+        let peer = python_provision(&custom, "check");
+        assert!(peer.status.success() && process::text(&peer.stdout).unwrap().trim() == "true");
+        success(&format!("DROP DATABASE {prefix}"), "control", "postgres");
+        success(
+            &format!("DROP ROLE {prefix}_runtime;DROP ROLE {prefix}_owner"),
+            "control",
+            "postgres",
+        );
+    }
     success(
         "CREATE SCHEMA unmanaged AUTHORIZATION demo_owner",
         "control",
@@ -1444,6 +1549,26 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         (
             "GRANT USAGE ON SCHEMA unmanaged TO demo_runtime",
             "REVOKE USAGE ON SCHEMA unmanaged FROM demo_runtime",
+        ),
+        (
+            "GRANT USAGE ON SCHEMA unmanaged TO PUBLIC",
+            "REVOKE USAGE ON SCHEMA unmanaged FROM PUBLIC",
+        ),
+        (
+            "GRANT USAGE ON SCHEMA unmanaged TO PUBLIC;GRANT UPDATE ON unmanaged.records TO PUBLIC",
+            "REVOKE UPDATE ON unmanaged.records FROM PUBLIC;REVOKE USAGE ON SCHEMA unmanaged FROM PUBLIC",
+        ),
+        (
+            "GRANT UPDATE ON unmanaged.records TO PUBLIC",
+            "REVOKE UPDATE ON unmanaged.records FROM PUBLIC",
+        ),
+        (
+            "GRANT UPDATE(id) ON unmanaged.records TO PUBLIC",
+            "REVOKE UPDATE(id) ON unmanaged.records FROM PUBLIC",
+        ),
+        (
+            "GRANT USAGE ON SEQUENCE unmanaged.cursor TO PUBLIC",
+            "REVOKE USAGE ON SEQUENCE unmanaged.cursor FROM PUBLIC",
         ),
         (
             "GRANT UPDATE ON unmanaged.records TO demo_runtime",

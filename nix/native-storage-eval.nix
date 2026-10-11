@@ -251,7 +251,7 @@ in
         in
           pkgs.lib.hasInfix " prune --keep 96 --incomplete-age-seconds 604800" service.ExecStartPre
           && service.ExecStartPost == service.ExecStartPre
-          && pkgs.lib.hasSuffix " capture" service.ExecStart
+          && pkgs.lib.hasSuffix " capture --scheduled" service.ExecStart
           && backupPolicyAccepted {}
           && !backupPolicyAccepted {retention.incompleteAgeSeconds = 30;};
       }

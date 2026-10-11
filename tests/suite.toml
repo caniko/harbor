@@ -251,7 +251,14 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_transitions_in_both_engines", "scheduled_pruning_rejects_contention_and_redirects_before_deletion_in_both_engines", "interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_removed_acceptance_in_both_engines", "retained_success_prunes_its_incomplete_siblings_without_changing_evidence_in_both_engines"]
+selectors = ["scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_transitions_in_both_engines", "scheduled_pruning_rejects_contention_and_redirects_before_deletion_in_both_engines", "interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_removed_acceptance_in_both_engines", "retained_success_prunes_its_incomplete_siblings_without_changing_evidence_in_both_engines", "automatic_manual_capture_remains_pinned_after_scheduled_retention_in_both_engines"]
+
+[[coverage]]
+case = "native.application_storage.automatic_manual_capture_remains_pinned_after_scheduled_retention_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.prune"
+dimension = "compatibility"
+evidence = "Both actual CLIs perform automatic manual and explicitly scheduled captures. Pruning newer timer-prefixed points preserves the manual acceptance bytes and ambiguous legacy timestamp/PID point, while deleting an older scheduled point."
 
 [[coverage]]
 case = "native.application_storage.interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_removed_acceptance_in_both_engines"
@@ -413,6 +420,27 @@ capability = "backup-retention"
 operation = "harbor-db-backup-prune.invoke"
 dimension = "rejection"
 evidence = "Evaluation rejects WAL sizes below 1 MiB, above 1 GiB and non-powers of two before generating the dependent prune/basebackup services. All eleven supported powers of two remain accepted."
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.application-publication."
+selector_prefix = "storage::application_publication::tests::"
+source = "src/storage/application_publication.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--lib"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 600
+resources = { cpu = 1, memory_mib = 512, disk_mib = 2048, exclusive = [] }
+selectors = ["sealed_copy_streams_complete_large_artifacts_in_both_engines"]
+
+[[coverage]]
+case = "native.application-publication.storage::application_publication::tests::sealed_copy_streams_complete_large_artifacts_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "compatibility"
+evidence = "Both production protected-publication copies stream an actual regular artifact larger than 1 GiB, including a record beyond the old limit. Complete byte hashes and lengths match, and copied inodes are independent."
 
 [[inventories]]
 origin = "rust"

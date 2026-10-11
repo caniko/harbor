@@ -11,11 +11,12 @@ use std::{
 
 fn scheduled_entry(name: &str) -> Option<&str> {
     let (attempt, suffix) = name.split_once('.').unwrap_or((name, ""));
-    if !attempt.is_ascii()
-        || attempt.len() < 18
-        || attempt.as_bytes()[16] != b'-'
-        || !attempt[17..].bytes().all(|b| b.is_ascii_digit())
-        || chrono::NaiveDateTime::parse_from_str(&attempt[..16], "%Y%m%dT%H%M%SZ").is_err()
+    let timestamp = attempt.strip_prefix("timer-")?;
+    if !timestamp.is_ascii()
+        || timestamp.len() < 18
+        || timestamp.as_bytes()[16] != b'-'
+        || !timestamp[17..].bytes().all(|b| b.is_ascii_digit())
+        || chrono::NaiveDateTime::parse_from_str(&timestamp[..16], "%Y%m%dT%H%M%SZ").is_err()
     {
         return None;
     }

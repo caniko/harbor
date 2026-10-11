@@ -172,7 +172,7 @@ in {
           UMask = "0077";
           ExecStartPre = "${package}/bin/harbor-db-application-backup --config ${manifest name p.backup} prune --keep ${toString p.backup.retention.keepSuccessful} --incomplete-age-seconds ${toString p.backup.retention.incompleteAgeSeconds}";
           ExecStartPost = "${package}/bin/harbor-db-application-backup --config ${manifest name p.backup} prune --keep ${toString p.backup.retention.keepSuccessful} --incomplete-age-seconds ${toString p.backup.retention.incompleteAgeSeconds}";
-          ExecStart = "${package}/bin/harbor-db-application-backup --config ${manifest name p.backup} capture";
+          ExecStart = "${package}/bin/harbor-db-application-backup --config ${manifest name p.backup} capture --scheduled";
           TimeoutStartSec = "${toString (4 * p.backup.timeoutSeconds + 60)}s";
           NoNewPrivileges = true;
           ProtectSystem = "strict";

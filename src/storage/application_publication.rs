@@ -184,11 +184,7 @@ fn copy_directory(input: &File, destination: &Path) -> Result<()> {
                 .create_new(true)
                 .mode(0o600)
                 .open(target)?;
-            if io::copy(&mut source.take((1 << 30) + 1), &mut output)? > 1 << 30 {
-                return Err(invalid(
-                    "backup artifact exceeds the complete-file byte limit",
-                ));
-            }
+            io::copy(&mut &source, &mut output)?;
         } else {
             return Err(invalid(
                 "backup contains redirected, shared or special files",
@@ -323,6 +319,55 @@ assert os.stat(source/'records').st_ino != os.stat(destination/'records').st_ino
                 writer.metadata().unwrap().ino()
             );
         }
+    }
+
+    #[test]
+    fn sealed_copy_streams_complete_large_artifacts_in_both_engines() {
+        use super::super::codec;
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("staging");
+        fs::create_dir(&source).unwrap();
+        let artifact = source.join("database.dump");
+        let mut file = File::create(&artifact).unwrap();
+        file.set_len((1 << 30) + 65536).unwrap();
+        file.write_all(b"archive header").unwrap();
+        file.seek(SeekFrom::Start((1 << 30) + 32768)).unwrap();
+        file.write_all(b"record beyond the former limit").unwrap();
+        drop(file);
+        let expected = codec::file_digest(&artifact).unwrap();
+        let mut results = vec![];
+        for python in [false, true] {
+            let destination = root.path().join(if python { "python" } else { "native" });
+            let accepted = if python {
+                let mut spec = process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),"from pathlib import Path;import sys;from harbor_db.application_publication import copy_tree;copy_tree(*map(Path,sys.argv[1:]))".into(),source.display().to_string(),destination.display().to_string()]);
+                spec.environment = Some(std::collections::BTreeMap::from([
+                    (
+                        "PYTHONPATH".into(),
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+                    ("PATH".into(), std::env::var("PATH").unwrap()),
+                ]));
+                spec.timeout = std::time::Duration::from_secs(120);
+                process::execute(&spec).is_ok()
+            } else {
+                copy_tree(&source, &destination).is_ok()
+            };
+            if accepted {
+                let copied = destination.join("database.dump");
+                assert_eq!(
+                    fs::metadata(&copied).unwrap().len(),
+                    fs::metadata(&artifact).unwrap().len()
+                );
+                assert_eq!(codec::file_digest(&copied).unwrap(), expected);
+                assert_ne!(
+                    fs::metadata(&copied).unwrap().ino(),
+                    fs::metadata(&artifact).unwrap().ino()
+                );
+            }
+            results.push((python, accepted));
+            fs::remove_dir_all(destination).unwrap();
+        }
+        assert!(results.iter().all(|(_, accepted)| *accepted), "{results:?}");
     }
 
     #[test]

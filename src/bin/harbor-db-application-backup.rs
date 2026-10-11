@@ -17,8 +17,10 @@ enum Action {
         incomplete_age_seconds: u64,
     },
     Capture {
-        #[arg(long)]
+        #[arg(long, conflicts_with = "scheduled")]
         attempt: Option<String>,
+        #[arg(long, conflicts_with = "retry_incomplete")]
+        scheduled: bool,
         #[arg(long)]
         retry_incomplete: bool,
     },
@@ -40,11 +42,13 @@ fn run(a: Args) -> Result<()> {
         } => application_backup::prune(&c, keep, incomplete_age_seconds)?,
         Action::Capture {
             attempt,
+            scheduled,
             retry_incomplete,
         } => {
             let attempt = attempt.unwrap_or_else(|| {
                 format!(
-                    "{}-{}",
+                    "{}-{}-{}",
+                    if scheduled { "timer" } else { "manual" },
                     chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),
                     std::process::id()
                 )

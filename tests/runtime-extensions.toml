@@ -37,7 +37,7 @@ sha256 = "e81febd4d715af053ea15c619da8b7e8549ec09034b7dd081d225fb86b73ae99"
 
 [[extensions]]
 path = "python/harbor_db/provision.py"
-sha256 = "a90d66e60ac96c9c49a067426bc81cca5b2f02bd286283a9e43930af7aff91dd"
+sha256 = "f5d1bc8cbcada931dfe0ad0362cb095c276b9dc37144e7f9721aa8028c71a556"
 
 [[extensions]]
 path = "tests/test_application_provision.py"
@@ -53,7 +53,7 @@ sha256 = "272ba7f286bcc31b4af7282076a1c79c6f7a2334cd74506d1339d12c139281a8"
 
 [[extensions]]
 path = "python/harbor_db/application_backup.py"
-sha256 = "5ba3a1da7e01a608bf6a9de1b5f624cc8b3a76502ea6710de59329673c9ed5ad"
+sha256 = "14fcf800be72b59659851bf151d38f6569897a80e3335275aa711a8633715afc"
 
 [[extensions]]
 path = "python/harbor_db/durable.py"

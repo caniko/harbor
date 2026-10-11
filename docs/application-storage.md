@@ -61,6 +61,11 @@ policy can reconcile. Grants on other schemas, relations, columns, sequences,
 functions, types or defaults reject before role/ACL mutation. Read-only checking
 uses the same database-wide dependency check; foreign database/shared-object grants
 cannot be hidden by the managed schema's valid ACLs.
+Effective schema, table, column and sequence privileges are checked across all
+non-system schemas too, including access inherited through `PUBLIC`. PostgreSQL's
+system catalogs remain readable. Existing undeclared PUBLIC access requires
+explicit operator reconciliation; a newly created dedicated database with a
+custom managed schema clears its bootstrap `public` schema grants.
 
 Checks cover schema ownership, role membership, exact table/sequence privileges,
 column grants, grant options and defaults for future owner-created objects.
@@ -91,10 +96,15 @@ plus the point named by `LAST_SUCCESS`. `incompleteAgeSeconds = 604800` expires
 incomplete timer attempts after seven days; it must exceed all five capture/retry
 stage budgets plus termination slack. Pruning uses the same exclusive backup
 lock as capture, so active inspection and transition leases block deletion.
-Timestamp/PID attempts (`YYYYMMDDTHHMMSSZ-PID`) and their known partial, sealed,
+The timer explicitly invokes `capture --scheduled`, generating
+`timer-YYYYMMDDTHHMMSSZ-PID`. These attempts and their known partial, sealed,
 credential, intent and restore-workspace siblings belong to the timer namespace.
-Other names, including every `transition-*` capture and interrupted transition
-attempt, remain operator-retained even while no transition process holds a lease.
+Automatic manual captures use `manual-YYYYMMDDTHHMMSSZ-PID`. Other names, including
+every `transition-*` capture, interrupted transition and legacy unprefixed
+timestamp/PID attempt, remain operator-retained even while no transition process
+holds a lease. Legacy origin is ambiguous, so pruning cannot infer it retroactively.
+Use `--attempt ID` to retry an existing timer attempt; `--scheduled` selects a new
+attempt and cannot be combined with `--attempt` or `--retry-incomplete`.
 For explicit retention use `harbor-db-application-backup --config MANIFEST prune
 --keep N --incomplete-age-seconds SECONDS`. Redirected top-level attempts, invalid
 success markers and mounted deletion subtrees fail the plan before any deletion;
@@ -117,6 +127,9 @@ checked again, and published as `0440` files beneath `0750` reader directories. 
 backup account cannot change modes or replace entries, and a writable descriptor
 retained from staging cannot modify the published copy. `LAST_SUCCESS` and the
 persistent lease also remain root-owned. Enrolled readers retain group read access.
+Regular artifacts are streamed completely with bounded copy buffers; publication
+has no implicit 1-GiB file-size limit. Credential files retain their separate
+explicit 1-MiB limit.
 
 Version-1 manifests remain compatible with self-operated library fixtures; their
 owner controls publication storage. They do not meet the protected-publication

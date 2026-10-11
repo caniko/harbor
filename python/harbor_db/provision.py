@@ -110,6 +110,22 @@ def unexpected_runtime_grants(policy):
     )
 
 
+def unexpected_runtime_access(policy):
+    """Effective privileges include PUBLIC outside PostgreSQL's system catalogs."""
+    runtime, schema = policy["runtime_role"], policy["schema"]
+    outside = f"n.nspname<>'{schema}' AND n.nspname !~ '^pg_' AND n.nspname<>'information_schema'"
+    return (
+        "EXISTS (SELECT 1 FROM pg_namespace n,pg_roles runtime "
+        f"WHERE runtime.rolname='{runtime}' AND {outside} "
+        "AND has_schema_privilege(runtime.oid,n.oid,'USAGE,CREATE')) "
+        "OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,pg_roles runtime "
+        f"WHERE runtime.rolname='{runtime}' AND {outside} AND c.relkind IN ('r','p','v','m','f','S') "
+        "AND CASE WHEN c.relkind='S' THEN has_sequence_privilege(runtime.oid,c.oid,'USAGE,SELECT,UPDATE') "
+        "ELSE has_table_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') "
+        "OR has_any_column_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') END)"
+    )
+
+
 def _apply(config, endpoint, *, require_tables):
     policy = validate(config)
     database, owner, runtime, schema = [identifier(policy[key]) for key in
@@ -144,6 +160,8 @@ def _apply(config, endpoint, *, require_tables):
         raise ValueError("conflicting application object ownership; explicit adoption is required")
     if query(endpoint, policy["database"] if exists else "postgres", f"SELECT {unexpected_runtime_grants(policy)};") == "t":
         raise ValueError("runtime role has undeclared grants outside the managed application policy; explicit adoption is required")
+    if exists and query(endpoint, policy["database"], f"SELECT {unexpected_runtime_access(policy)};") == "t":
+        raise ValueError("runtime role has undeclared effective privileges outside the managed application policy; explicit adoption is required")
     sql = [f"SELECT pg_advisory_lock(hashtextextended('harbor-db:{policy['database']}',0));"]
     for role in (owner, runtime):
         name = role.strip('"')
@@ -154,6 +172,9 @@ def _apply(config, endpoint, *, require_tables):
                 f"(SELECT 1 FROM pg_database WHERE datname='{policy['database']}')\\gexec",
                 ])
     query(endpoint, "postgres", "\n".join(sql))
+    if not exists and policy["schema"] != "public":
+        # Bootstrap reconciliation is restricted to a newly created database.
+        query(endpoint, policy["database"], f"REVOKE ALL ON SCHEMA public FROM PUBLIC, {runtime};")
     unsafe_objects = query(endpoint, policy["database"], unsafe_objects_sql)
     if unsafe_objects == "t":
         raise ValueError("conflicting application object ownership; explicit adoption is required")
@@ -202,6 +223,7 @@ def _check(config, endpoint, *, require_tables):
     runtime, owner, schema, database = [policy[key] for key in
                                       ("runtime_role", "owner_role", "schema", "database")]
     checks = [f"NOT ({unexpected_runtime_grants(policy)})",
+              f"NOT ({unexpected_runtime_access(policy)})",
               "NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND deptype='o' "
               f"AND refobjid=(SELECT oid FROM pg_roles WHERE rolname='{runtime}'))",
               f"(SELECT pg_get_userbyid(datdba)='{owner}' FROM pg_database WHERE datname='{database}')",

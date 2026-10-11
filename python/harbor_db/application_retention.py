@@ -13,10 +13,10 @@ from .durable import lock, read_json, sync_directory
 
 def scheduled_entry(name):
     attempt, _, suffix = name.partition(".")
-    if not re.fullmatch(r"[0-9]{8}T[0-9]{6}Z-[0-9]+", attempt):
+    if not re.fullmatch(r"timer-[0-9]{8}T[0-9]{6}Z-[0-9]+", attempt):
         return None
     try:
-        datetime.strptime(attempt[:16], "%Y%m%dT%H%M%SZ")
+        datetime.strptime(attempt[6:22], "%Y%m%dT%H%M%SZ")
     except ValueError:
         return None
     if suffix not in ("", "partial", "sealed", "credentials", "restore-workspace", "intent.json", "pruning") and not re.fullmatch(r"(?:abandoned|retry-credentials)-[0-9]+", suffix):

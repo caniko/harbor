@@ -90,11 +90,7 @@ def copy_directory(descriptor, destination):
                 copy_directory(source, target)
             elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
                 with os.fdopen(os.dup(source), "rb") as input_file, target.open("xb") as output:
-                    copied = 0
                     while chunk := input_file.read(128 * 1024):
-                        copied += len(chunk)
-                        if copied > 1 << 30:
-                            raise ValueError("backup artifact exceeds the complete-file byte limit")
                         output.write(chunk)
             else:
                 raise ValueError("backup contains redirected, shared or special files")

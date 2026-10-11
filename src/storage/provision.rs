@@ -169,6 +169,18 @@ fn unexpected_runtime_grants(p: &Value) -> Result<String> {
     ))
 }
 
+fn unexpected_runtime_access(p: &Value) -> Result<String> {
+    let r = string(p, "runtime_role")?;
+    let s = string(p, "schema")?;
+    // Effective privileges include PUBLIC. PostgreSQL's system catalogs remain
+    // readable; all other schemas and relation/column/sequence ACLs are enrolled.
+    let outside =
+        format!("n.nspname<>'{s}' AND n.nspname !~ '^pg_' AND n.nspname<>'information_schema'");
+    Ok(format!(
+        "EXISTS (SELECT 1 FROM pg_namespace n,pg_roles runtime WHERE runtime.rolname='{r}' AND {outside} AND has_schema_privilege(runtime.oid,n.oid,'USAGE,CREATE')) OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,pg_roles runtime WHERE runtime.rolname='{r}' AND {outside} AND c.relkind IN ('r','p','v','m','f','S') AND CASE WHEN c.relkind='S' THEN has_sequence_privilege(runtime.oid,c.oid,'USAGE,SELECT,UPDATE') ELSE has_table_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') OR has_any_column_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') END)"
+    ))
+}
+
 fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
     let _lease = durable::lock(Path::new(string(e, "lock_file")?), false, false)?;
     let p = validate(c)?;
@@ -223,6 +235,17 @@ fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
             "runtime role has undeclared grants outside the managed application policy; explicit adoption is required",
         ));
     }
+    if exists
+        && query(
+            e,
+            db,
+            &format!("SELECT {};", unexpected_runtime_access(&p)?),
+        )? == "t"
+    {
+        return Err(invalid(
+            "runtime role has undeclared effective privileges outside the managed application policy; explicit adoption is required",
+        ));
+    }
     let mut sql = vec![format!(
         "SELECT pg_advisory_lock(hashtextextended('harbor-db:{db}',0));"
     )];
@@ -232,6 +255,15 @@ fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
     }
     sql.push(format!("SELECT 'CREATE DATABASE {database} OWNER {owner}' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='{db}')\\gexec"));
     query(e, "postgres", &sql.join("\n"))?;
+    if !exists && s != "public" {
+        // Only a newly created dedicated database may reconcile its bootstrap
+        // public schema. Existing namespaces require explicit operator adoption.
+        query(
+            e,
+            db,
+            &format!("REVOKE ALL ON SCHEMA public FROM PUBLIC, {runtime};"),
+        )?;
+    }
     if query(e, db, &unsafe_objects)? == "t" {
         return Err(invalid(
             "conflicting application object ownership; explicit adoption is required",
@@ -312,6 +344,7 @@ fn check_phase(c: &Value, e: &Value, require_tables: bool) -> Result<bool> {
     }
     let mut checks = vec![
         format!("NOT ({})", unexpected_runtime_grants(&p)?),
+        format!("NOT ({})", unexpected_runtime_access(&p)?),
         format!(
             "NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND deptype='o' AND refobjid=(SELECT oid FROM pg_roles WHERE rolname='{r}'))"
         ),

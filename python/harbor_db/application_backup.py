@@ -312,7 +312,9 @@ def main():
     pruning.add_argument("--keep", type=int, required=True)
     pruning.add_argument("--incomplete-age-seconds", type=int, required=True)
     capture_parser = sub.add_parser("capture")
-    capture_parser.add_argument("--attempt", default=None)
+    origin = capture_parser.add_mutually_exclusive_group()
+    origin.add_argument("--attempt", default=None)
+    origin.add_argument("--scheduled", action="store_true", help="generate a timer-retained attempt; automatic manual captures stay pinned")
     capture_parser.add_argument("--retry-incomplete", action="store_true", help="drain and retain an interrupted attempt with unchanged immutable intent")
     inspection = sub.add_parser("inspect")
     inspection.add_argument("backup", type=Path)
@@ -326,7 +328,10 @@ def main():
             from .application_retention import prune
             result = prune(config, args.keep, args.incomplete_age_seconds)
         elif args.command == "capture":
-            result = capture(config, args.attempt or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + f"-{os.getpid()}",
+            if args.scheduled and args.retry_incomplete:
+                raise ValueError("scheduled captures cannot retry an unnamed attempt; select --attempt explicitly")
+            prefix = "timer" if args.scheduled else "manual"
+            result = capture(config, args.attempt or prefix + "-" + time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + f"-{os.getpid()}",
                              retry_incomplete=args.retry_incomplete)
         elif args.command == "certify":
             result = certify(config, args.backup, args.state)
