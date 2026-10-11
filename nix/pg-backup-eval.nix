@@ -110,6 +110,14 @@ in
     resultMessage = "harbor-db PostgreSQL backup creates slots before streaming and verifies base backups";
     assertions = [
       {
+        name = "source-local-recovery-requires-wal-receiver";
+        assertion = let
+          blocked = (localEval.extendModules {modules = [{services.harbor-db.pgBackup.targetSettings.receiveWal.enable = false;}];}).config;
+        in
+          lib.any (a: !a.assertion && lib.hasInfix "sourceLocalRecovery requires receiveWal" a.message) blocked.assertions;
+        message = "Base backups alone cannot establish source-local post-target WAL coverage.";
+      }
+      {
         name = "source-local-fence-admits-generated-receiver";
         assertion = lib.elem "replicator" fencedLocal.services.harbor-db.postgresql.writerFence.replicationRoles;
         message = "The generated source-local WAL receiver must reconnect under the default writer fence.";

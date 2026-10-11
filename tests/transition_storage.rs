@@ -57,6 +57,44 @@ impl Fixture {
     }
 }
 
+fn python_transition_validation(config: &serde_json::Value) -> String {
+    // Model the Nix builder's fixture-owned paths as root-owned, as in the
+    // other transition tests; keep all path and mode admission checks active.
+    let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import transition_manifest
+root_uid=int(sys.argv[2])
+if root_uid:
+    original_lstat=Path.lstat
+    def mapped_lstat(path):
+        info=original_lstat(path)
+        if info.st_uid!=root_uid: return info
+        fields=list(info); fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped_lstat).start()
+try: transition_manifest.validate(json.loads(sys.argv[1]))
+except ValueError as error: print(str(error))
+else: print('ACCEPTED')
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    String::from_utf8(process::execute(&spec).unwrap()).unwrap()
+}
+
 #[test]
 fn transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines() {
     transition_capture_fixture(false, false);
@@ -141,27 +179,7 @@ fn transition_source_and_target_roots_must_be_disjoint_before_any_writes_in_both
         target["directories"] = json!([directory]);
         durable::write_json(&f.temp.path().join("target.json"), &target).unwrap();
         let native = transition_manifest::validate(&f.config);
-        let script = r#"import json,sys
-from harbor_db import transition_manifest
-try: transition_manifest.validate(json.loads(sys.argv[1]))
-except ValueError as error: print(str(error))
-else: print('ACCEPTED')
-"#;
-        let mut spec = process::CommandSpec::new(vec![
-            "python3".into(),
-            "-B".into(),
-            "-c".into(),
-            script.into(),
-            f.config.to_string(),
-        ]);
-        spec.environment = Some(std::collections::BTreeMap::from([
-            (
-                "PYTHONPATH".into(),
-                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
-            ),
-            ("PATH".into(), std::env::var("PATH").unwrap()),
-        ]));
-        let peer = String::from_utf8(process::execute(&spec).unwrap()).unwrap();
+        let peer = python_transition_validation(&f.config);
         assert!(native.is_err(), "overlapping import target accepted");
         assert!(
             native
@@ -190,6 +208,54 @@ else: print('ACCEPTED')
     );
     durable::write_json(&f.temp.path().join("source.json"), &f.source).unwrap();
     durable::write_json(&f.temp.path().join("target.json"), &f.target).unwrap();
+    transition_manifest::validate(&f.config).unwrap();
+}
+
+#[test]
+fn transition_backup_root_must_be_disjoint_from_both_corpora_in_both_engines() {
+    let f = Fixture::new();
+    for corpus in ["old", "new"] {
+        for directory in [
+            f.temp.path().join(corpus),
+            f.temp.path().join(corpus).join("backup"),
+        ] {
+            durable::write_json(
+                &f.temp.path().join("backup.json"),
+                &json!({"root":directory,"maximum_age_seconds":3600}),
+            )
+            .unwrap();
+            let peer = python_transition_validation(&f.config);
+            let error = transition_manifest::validate(&f.config).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("backup and corpus roots must be disjoint"),
+                "{error}"
+            );
+            assert!(
+                peer.contains("backup and corpus roots must be disjoint"),
+                "{peer}"
+            );
+            assert!(!f.temp.path().join("authority/transition.json").exists());
+            assert!(!f.temp.path().join("barrier/inhibited.json").exists());
+        }
+    }
+    // A backup ancestor overlaps a nested corpus, even with no shared text prefix
+    // between the source and target themselves.
+    let mut source = f.source.clone();
+    source["directories"] = json!([f.temp.path().join("old/nested")]);
+    durable::write_json(&f.temp.path().join("source.json"), &source).unwrap();
+    durable::write_json(
+        &f.temp.path().join("backup.json"),
+        &json!({"root":f.temp.path().join("old"),"maximum_age_seconds":3600}),
+    )
+    .unwrap();
+    assert!(transition_manifest::validate(&f.config).is_err());
+    durable::write_json(
+        &f.temp.path().join("backup.json"),
+        &json!({"root":f.temp.path().join("old-sibling"),"maximum_age_seconds":3600}),
+    )
+    .unwrap();
     transition_manifest::validate(&f.config).unwrap();
 }
 
@@ -1385,7 +1451,7 @@ try:
     before = marker.read_bytes()
     with transition.pin_source(f.config, transition.status(f.config), []) as leases:
         assert len(leases) == 1
-        with open(f.root / 'lock', 'rb') as contender:
+        with open(f.backup / 'lock', 'rb') as contender:
             try:
                 fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:

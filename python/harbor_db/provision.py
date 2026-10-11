@@ -189,11 +189,22 @@ def _check(config, endpoint, *, require_tables):
         f"AND pg_get_userbyid(c.relowner)<>'{owner}')",
         "NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace, "
         "LATERAL aclexplode(c.relacl) acl WHERE "
-        f"n.nspname='{schema}' AND (acl.grantee=0 OR "
+        f"n.nspname='{schema}' AND (acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{owner}','{runtime}')) OR "
         f"(acl.grantee=(SELECT oid FROM pg_roles WHERE rolname='{runtime}') AND acl.is_grantable)))",
         "NOT EXISTS (SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid "
         "JOIN pg_namespace n ON n.oid=c.relnamespace, LATERAL aclexplode(a.attacl) acl "
-        f"WHERE n.nspname='{schema}' AND acl.grantee IN (0,(SELECT oid FROM pg_roles WHERE rolname='{runtime}')))"
+        f"WHERE n.nspname='{schema}' AND acl.grantee<>(SELECT oid FROM pg_roles WHERE rolname='{owner}'))",
+        "NOT EXISTS (SELECT 1 FROM pg_database d, LATERAL aclexplode(d.datacl) acl "
+        f"WHERE d.datname='{database}' AND (acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{owner}','{runtime}')) OR "
+        f"(acl.grantee=(SELECT oid FROM pg_roles WHERE rolname='{runtime}') AND acl.is_grantable)))",
+        "NOT EXISTS (SELECT 1 FROM pg_namespace n, LATERAL aclexplode(n.nspacl) acl "
+        f"WHERE n.nspname='{schema}' AND (acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{owner}','{runtime}')) OR "
+        f"(acl.grantee=(SELECT oid FROM pg_roles WHERE rolname='{runtime}') AND acl.is_grantable)))",
+        "NOT EXISTS (SELECT 1 FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) acl "
+        f"WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{owner}') "
+        f"AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{schema}')) "
+        "AND d.defaclobjtype IN ('r','S') "
+        f"AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{owner}','{runtime}')))"
     ])
     if require_tables:
         for table in policy["tables"]:

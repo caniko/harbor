@@ -330,6 +330,18 @@ in {
         message = "PostgreSQL recovery admission requires consumer record-level checks.";
       }
       {
+        assertion =
+          cfg.recovery
+          == null
+          || lib.length (lib.unique ([cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile))
+          == (
+            if cfg.recovery.offHostReceiptFile == null
+            then 2
+            else 3
+          );
+        message = "PostgreSQL recovery snapshots, local receipts and off-host receipts must use distinct paths.";
+      }
+      {
         assertion = cfg.recovery == null || cfg.switchAdoption == null || cfg.recovery.systemIdentifier == cfg.switchAdoption.systemIdentifier;
         message = "Recovery and switch adoption must name the same authoritative cluster.";
       }

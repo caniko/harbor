@@ -97,6 +97,10 @@
     selected = (withPreparation.extendModules {modules = [overrides];}).config;
   in
     lib.all (entry: entry.assertion || !(lib.hasPrefix "Managed recovery preparation" entry.message || lib.hasPrefix "Managed recovery provisioning" entry.message)) selected.assertions;
+  receiptPathsAccepted = overrides: let
+    selected = (eval.extendModules {modules = [{services.harbor-db.postgresql.recovery = overrides;}];}).config;
+  in
+    lib.all (entry: entry.assertion || entry.message != "PostgreSQL recovery snapshots, local receipts and off-host receipts must use distinct paths.") selected.assertions;
 in
   mkEvalCheck {
     name = "harbor-db-postgres-lifecycle-eval";
@@ -107,6 +111,16 @@ in
         ${pkgs.systemd}/bin/systemd-run ${pkgs.systemd}/bin/systemctl
     '';
     assertions = [
+      {
+        name = "recovery-receipt-paths-are-distinct";
+        message = "Local and off-host recovery receipts cannot alias one another or overwrite the snapshot.";
+        assertion =
+          receiptPathsAccepted {}
+          && receiptPathsAccepted {offHostReceiptFile = lib.mkForce null;}
+          && !(receiptPathsAccepted {offHostReceiptFile = lib.mkForce "/srv/backups/recovery.json";})
+          && !(receiptPathsAccepted {receiptFile = lib.mkForce "/srv/backups/records.json";})
+          && !(receiptPathsAccepted {offHostReceiptFile = lib.mkForce "/srv/backups/records.json";});
+      }
       {
         name = "preparation-paths-reject-traversal-before-root-provisioning";
         message = "Provisioning, writable paths and protected roots must have normalized spelling before containment and isolation checks.";

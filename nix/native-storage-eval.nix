@@ -108,6 +108,12 @@
     rejected == [];
   withoutPlaceholder = stage: placeholder:
     backupCommands // {${stage} = builtins.filter (arg: arg != placeholder) backupCommands.${stage};};
+  backupFileManifest = executableFiles:
+    (evaluate [module {services.harbor-db.projects.fixture.backup = {inherit executableFiles;};}]).config.environment.etc."harbor-db/fixture-backup.json".source;
+  redirectedExecutable = pkgs.runCommand "harbor-db-redirected-adapter" {} ''
+    mkdir "$out"
+    ln -s /proc/version "$out/adapter"
+  '';
   transitionCommands = pkgs.lib.genAttrs ["import" "verify-target" "verify-source" "health"] (_: {
     user = "fixture";
     argv = ["${pkgs.coreutils}/bin/true"];
@@ -179,6 +185,20 @@ in
   (import ./eval-checks.nix {inherit pkgs;}).mkEvalCheck {
     name = "harbor-db-native-storage-eval";
     resultMessage = "Native storage package is selected through the module argument";
+    runtimeScript = let
+      regular = backupFileManifest ["${pkgs.coreutils}/bin/true"];
+      invalid = map backupFileManifest [["${pkgs.coreutils}/bin"] ["${pkgs.coreutils}/bin/absent-harbor-adapter"] ["${redirectedExecutable}/adapter"]];
+    in ''
+      (${regular.executableValidation})
+      test -f ${regular}
+      ${pkgs.lib.concatMapStringsSep "\n" (manifest: ''
+          if (${manifest.executableValidation}); then
+            echo 'Invalid additional backup file admitted by manifest construction.' >&2
+            exit 1
+          fi
+        '')
+        invalid}
+    '';
     assertions = [
       {
         name = "backup-storage-mount-required";
@@ -279,6 +299,14 @@ in
           && pkgs.lib.all (stage: !backupPolicyAccepted {commands = pkgs.lib.mkForce (withoutPlaceholder stage "{backup}");}) ["capture" "restore" "verify" "cleanup"]
           && pkgs.lib.all (stage: !backupPolicyAccepted {commands = pkgs.lib.mkForce (withoutPlaceholder stage "{workspace}");}) ["restore" "verify" "cleanup"]
           && !backupPolicyAccepted {commands = pkgs.lib.mkForce (backupCommands // {capture = ["${pkgs.coreutils}/bin/true" "--backup={backup}"];});};
+      }
+      {
+        name = "additional-backup-executables-are-immutable-files";
+        assertion =
+          backupPolicyAccepted {executableFiles = ["${pkgs.coreutils}/bin/true"];}
+          && pkgs.lib.all (path: !backupPolicyAccepted {executableFiles = [path];}) ["relative-adapter" "/absent/adapter" "/run/runtime-adapter" "${pkgs.coreutils}/bin/../bin/true" "${pkgs.coreutils}/bin//true"]
+          && (let manifest = backupFileManifest ["${pkgs.coreutils}/bin/true"]; in pkgs.lib.hasPrefix manifest.executableValidation manifest.buildCommand);
+        message = "Additional adapters require normalized immutable paths during evaluation and regular files before the backup manifest is built; the exact production validation rejects directories and nonexistent files at realization without IFD.";
       }
       {
         name = "backup-credential-name-boundaries";

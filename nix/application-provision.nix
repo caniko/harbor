@@ -15,6 +15,17 @@
   # Keep malformed names out of typed systemd fields so the project assertion
   # reports the error before any PostgreSQL or unit configuration is generated.
   renderedPolicies = lib.filterAttrs (name: _: safeProjectName name) policies;
+  orderingEdges = lib.concatLists (lib.mapAttrsToList (name: p: let
+    provision = "harbor-db-${name}-provision.service";
+    permissions = "harbor-db-${name}-permissions.service";
+  in
+    [["postgresql.service" provision] ["postgresql-setup.service" provision] [provision permissions]]
+    ++ map (schema: [provision schema]) p.schemaUnits
+    ++ map (schema: [schema permissions]) p.schemaUnits
+    ++ map (runtime: [permissions runtime]) p.runtimeUnits)
+  renderedPolicies);
+  orderingUnits = lib.unique (lib.concatLists orderingEdges);
+  ordering = lib.toposort (before: after: lib.elem [before after] orderingEdges) orderingUnits;
   package = harborDbStoragePackage;
   manifest = name: policy:
     pkgs.writeText "harbor-db-${name}-provision.json" (builtins.toJSON {
@@ -93,6 +104,10 @@ in {
   config = lib.mkIf (projects != {}) {
     assertions =
       [
+        {
+          assertion = !(ordering ? cycle);
+          message = "Harbor DB provisioning ordering must be acyclic across all enabled projects.";
+        }
         {
           assertion = config.services.postgresql.enable;
           message = "Harbor DB application provisioning requires the host PostgreSQL service.";

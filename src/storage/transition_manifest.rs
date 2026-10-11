@@ -175,6 +175,17 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
     }) {
         return Err(invalid("source and target corpus roots must be disjoint"));
     }
+    let backup = durable::read_config_json(Path::new(string(config, "backup_manifest")?))?;
+    let backup_root = Path::new(string(&backup, "root")?);
+    custody::validate_path(string(&backup, "root")?)?;
+    super::recovery::absolute(backup_root)?;
+    if source_roots
+        .iter()
+        .chain(&target_roots)
+        .any(|corpus| backup_root.starts_with(corpus) || corpus.starts_with(backup_root))
+    {
+        return Err(invalid("backup and corpus roots must be disjoint"));
+    }
     validate_workers(config)?;
     custody_entry(config, &target)?;
     Ok((source, target))

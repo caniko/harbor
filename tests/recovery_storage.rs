@@ -84,6 +84,66 @@ recovery.validate_receipt(c,c['recovery'],source,binding,receipt,'off-host resto
     ]));
     harbor_db::storage::process::execute(&spec).unwrap();
 }
+#[test]
+fn local_and_off_host_receipt_paths_cannot_alias_in_admission() {
+    let _workers = WORKERS.lock().unwrap();
+    let mut f = Fixture::new();
+    f.snapshot();
+    f.config["recovery"]["off_host_receipt_file"] = f.config["recovery"]["receipt_file"].clone();
+    let error = recovery::policy(&f.config).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("local and off-host recovery receipts must be distinct"),
+        "{error}"
+    );
+    let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
+        "python3".into(), "-B".into(), "-c".into(),
+        "import json,sys; from harbor_db import recovery; c=json.loads(sys.argv[1]);\ntry: recovery.policy(c)\nexcept ValueError as e: assert 'local and off-host recovery receipts must be distinct' in str(e)\nelse: raise AssertionError('aliased receipt paths admitted')".into(),
+        f.config.to_string(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    harbor_db::storage::process::execute(&spec).unwrap();
+    assert!(!f.p("backup/evidence/recovery.json").exists());
+    assert!(
+        recovery::certify(
+            &f.config,
+            &f.p("restored"),
+            Path::new("/restore/socket"),
+            55432,
+            Some(f.now),
+            Some("primary-host"),
+        )
+        .is_err()
+    );
+    assert!(!f.p("backup/evidence/recovery.json").exists());
+    let remote = recovery::certify(
+        &f.config,
+        &f.p("restored"),
+        Path::new("/restore/socket"),
+        55432,
+        Some(f.now),
+        Some("independent-host"),
+    )
+    .unwrap();
+    assert_eq!(remote["executor_host"], "independent-host");
+    assert!(recovery::check(&f.config, Some(f.now)).is_err());
+    // Shared output selection belongs only to certification. Admission still
+    // requires independent and local executions retained under separate paths.
+    f.config["recovery"]["receipt_file"] = json!(f.p("backup/evidence/local.json"));
+    f.certify();
+    assert_eq!(
+        recovery::check(&f.config, Some(f.now)).unwrap()["off_host"],
+        "independent-host"
+    );
+}
+
 impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().unwrap();

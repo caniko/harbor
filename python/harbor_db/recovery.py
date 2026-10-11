@@ -41,6 +41,10 @@ def fresh(timestamp, now, max_age):
 
 
 def policy(config):
+    return _policy(config)
+
+
+def _policy(config, *, certifier_host=None):
     settings = config["recovery"]
     recovery_repository.source_local(settings)
     if type(settings.get("require_writer_fence", False)) is not bool:
@@ -48,8 +52,12 @@ def policy(config):
     paths = [settings["snapshot_file"], settings["receipt_file"]]
     if settings.get("off_host_receipt_file"):
         paths.append(settings["off_host_receipt_file"])
-    # A certifier on the independent host may select off_host_receipt_file as
-    # its receipt output, but neither output may overwrite the source snapshot.
+    # Independent certification may select its off-host output directly;
+    # local capture, import and recovery admission require two receipt paths.
+    independent = (bool(certifier_host) and bool(settings.get("source_hostname"))
+                   and certifier_host != settings["source_hostname"])
+    if settings.get("off_host_receipt_file") == settings["receipt_file"] and not independent:
+        raise ValueError("local and off-host recovery receipts must be distinct")
     if settings["snapshot_file"] in paths[1:]:
         raise ValueError("recovery receipts must not overwrite the record snapshot")
     if not re.fullmatch(r"[1-9][0-9]*", settings["system_identifier"]):
@@ -308,7 +316,8 @@ def isolated_restore(restored, authoritative, backup):
 
 
 def certify(config, data_dir, socket_dir, port, *, now=None, hostname=None):
-    settings = policy(config)
+    executor = socket.gethostname() if hostname is None else hostname
+    settings = _policy(config, certifier_host=executor)
     now = int(time.time()) if now is None else now
     restored = absolute(data_dir)
     if restored == absolute(config["data_dir"]):
@@ -332,7 +341,7 @@ def certify(config, data_dir, socket_dir, port, *, now=None, hostname=None):
         result = {"version": 1, "status": "ready", **binding, "completed_at": now,
                   "record_contract_sha256": contract(settings), "records": actual,
                    "snapshot_sha256": digest(source_snapshot_path(config, settings)),
-                  "executor_host": socket.gethostname() if hostname is None else hostname,
+                   "executor_host": executor,
                   "restored_data_dir": str(restored), "replay_lsn": observed["replay_lsn"]}
         write_json(absolute(settings["receipt_file"]), result)
     return result

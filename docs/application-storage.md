@@ -13,7 +13,8 @@ enabling a lifecycle migration. Database and roles must be unique across project
 Provision project names use 1..128 ASCII letters, digits, underscores or hyphens.
 Owner and runtime OS users must differ: one peer identity cannot be authorized as
 both the schema owner and the restricted runtime role. `schemaUnits` and
-`runtimeUnits` must be disjoint to keep permission reconciliation acyclic.
+`runtimeUnits` must be disjoint. The combined provisioning order across enabled
+projects must also be acyclic, including shared schema and runtime units.
 `lib.applicationProvisioning = 2` advertises strict post-schema reconciliation.
 
 `schemaUnits` require the generated provision service. `runtimeUnits` require
@@ -54,6 +55,9 @@ owned by an unrelated role cannot be taken over implicitly. PostgreSQL's initial
 
 Checks cover schema ownership, role membership, exact table/sequence privileges,
 column grants, grant options and defaults for future owner-created objects.
+Database, schema, relation and default ACLs reject undeclared grantees. Column
+ACLs permit only the owner; explicit runtime privileges belong at table scope.
+An unrelated grantee requires explicit operator reconciliation before admission.
 PostgreSQL 18 is the qualified privilege surface, including MAINTAIN. Ordinary
 provisioning services retain the PostgreSQL fence startup condition; intentional
 maintenance under a fence uses the declared OS-peer control channel explicitly.
@@ -101,6 +105,12 @@ before changing publication permissions and during accepted-point inspection.
 This prevents a mutable external pathname from modifying an accepted artifact.
 Every stage requires a literal `{backup}` argument; restore, verify and cleanup
 also require `{workspace}`.
+Additional `executableFiles` require normalized immutable Nix store paths during
+evaluation. The backup manifest is constructed only after every declared file
+resolves to a regular file inside the immutable store; directories, missing files
+and mutable link targets fail realization before timer installation. Store-local
+links retain native/Python file-hashing compatibility. Evaluation does not realize
+adapter packages.
 Embedded fragments such as `--backup={backup}` do not satisfy this contract.
 Credential IDs use `[A-Za-z0-9_.-]{1,255}`, excluding `.` and `..`, and credential
 paths remain runtime paths outside the Nix store.
@@ -211,6 +221,9 @@ start policies and lock anchors cannot be shared or shadow another project's
 ownership. Disabled projects do not reserve units or namespaces.
 The barrier must also be disjoint from source and target storage roots and the
 authority directory in both containment directions; it cannot be their ancestor.
+The selected backup root must also be disjoint from both source and target corpora
+in either containment direction. Filesystem custody roots are globally disjoint
+across resources so a corpus has exactly one resource lease.
 Every runtime writer declared by the custody policy must belong to the
 transition's active or retired unit set. Both engines enforce this in manifest
 admission before preparation and recheck it before inventory, so custody cannot

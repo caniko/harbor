@@ -75,10 +75,10 @@ print(json.dumps({"version":1,"status":"verified","semantic_sha256":"a"*64}))
         storage.mkdir()
         (storage / "harbor-db-application-backup").symlink_to(sys.executable)
         self.config["storage_package"] = str(storage)
-        (self.root / "lock").touch(mode=0o600)
-        write_json(self.root / "backup-config.json", {"maximum_age_seconds": 3600, "root": str(self.root)})
+        write_json(self.root / "backup-config.json", {"maximum_age_seconds": 3600, "root": str(self.root / "backup")})
         self.backup = self.root / "backup"
         self.backup.mkdir()
+        (self.backup / "lock").touch(mode=0o600)
         self.snapshot = {"status": "verified", "consistency": "quiesced", "semantic_sha256": "a" * 64,
                          "executor_machine_sha256": "b" * 64, "executor": "source-fixture", "resource": "demo",
                          "manifest_sha256": identity({"fixture": True}), "executables": {}}

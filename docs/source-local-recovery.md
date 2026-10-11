@@ -6,7 +6,8 @@ Recovery capture runs on the source using its existing PostgreSQL OS account and
 local peer SQL endpoint. WAL is received locally, or through a separately
 qualified localhost relay, so the existing writer fence remains authoritative.
 With `pgBackup.targetSettings.sourceLocalRecovery.enable`, select `role = "both"`
-and a loopback `source.hostName`. The module generates SCRAM replication HBA
+and a loopback `source.hostName`, with `targetSettings.receiveWal.enable = true`
+for continuous post-target WAL coverage. The module generates SCRAM replication HBA
 rules for that address (`localhost` admits both loopback families) without adding
 a firewall opening. An empty `sourceSettings.listenAddresses` also derives TCP
 listeners for those loopback families; explicit lists also retain the required
@@ -53,6 +54,9 @@ recaptured and recertified; readers do not invent or upgrade accepted evidence.
 Local restore acceptance must name the declared source host, while off-host
 acceptance must name an independent host. Copying an independent receipt into
 both evidence paths cannot satisfy the two execution requirements.
+Snapshot, local receipt and off-host receipt paths must be distinct at admission.
+Only a certifier identified as an independent host may select the off-host path
+directly as its output; local inspection, capture and import enforce distinctness.
 Managed source-local preparation requires `requireWriterFence = true` at module
 evaluation. Read-only independent certification and retired bootstrap enrollment
 can disable the local fence requirement while consuming the same bound capture.

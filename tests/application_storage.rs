@@ -1098,6 +1098,57 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         provision::apply(&policy, &endpoint).unwrap();
         assert!(provision::check(&policy, &endpoint).unwrap());
     }
+    success("CREATE ROLE acl_outsider LOGIN", "control", "postgres");
+    for (grant, revoke) in [
+        (
+            "GRANT SELECT ON documents TO acl_outsider",
+            "REVOKE SELECT ON documents FROM acl_outsider",
+        ),
+        (
+            "GRANT USAGE ON SEQUENCE cursor TO acl_outsider",
+            "REVOKE USAGE ON SEQUENCE cursor FROM acl_outsider",
+        ),
+        (
+            "GRANT SELECT(id) ON documents TO acl_outsider",
+            "REVOKE SELECT(id) ON documents FROM acl_outsider",
+        ),
+        (
+            "GRANT CONNECT ON DATABASE demo TO acl_outsider",
+            "REVOKE CONNECT ON DATABASE demo FROM acl_outsider",
+        ),
+        (
+            "GRANT USAGE ON SCHEMA public TO acl_outsider",
+            "REVOKE USAGE ON SCHEMA public FROM acl_outsider",
+        ),
+        (
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner GRANT SELECT ON TABLES TO acl_outsider",
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner REVOKE SELECT ON TABLES FROM acl_outsider",
+        ),
+        (
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public GRANT USAGE ON SEQUENCES TO acl_outsider",
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public REVOKE USAGE ON SEQUENCES FROM acl_outsider",
+        ),
+    ] {
+        success(grant, "control", "demo");
+        assert!(!provision::check(&policy, &endpoint).unwrap(), "{grant}");
+        assert_eq!(
+            process::text(&python_provision(&policy, "check").stdout)
+                .unwrap()
+                .trim(),
+            "false",
+            "{grant}"
+        );
+        assert!(provision::reconcile(&policy, &endpoint).is_err(), "{grant}");
+        assert!(
+            !python_provision(&policy, "reconcile").status.success(),
+            "{grant}"
+        );
+        success(revoke, "control", "demo");
+        provision::reconcile(&policy, &endpoint).unwrap();
+        assert!(python_provision(&policy, "reconcile").status.success());
+        assert!(provision::check(&policy, &endpoint).unwrap());
+    }
+    success("DROP ROLE acl_outsider", "control", "postgres");
     success("CREATE DATABASE foreign_database", "control", "postgres");
     let mut foreign = policy.clone();
     foreign["database"] = json!("foreign_database");

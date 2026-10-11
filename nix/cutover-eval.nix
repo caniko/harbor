@@ -112,6 +112,32 @@ in
         message = "non-normalized directory paths must not bypass historical custody protection";
       }
       {
+        name = "custody-roots-are-globally-disjoint";
+        assertion =
+          lib.all (directory:
+            !custodyAccepted {
+              services.harbor-db.cutover.resources.peer = {
+                user = "archive";
+                authority = {
+                  state_dir = "/var/lib/peer-authority";
+                  directories = [directory];
+                  binding.backend = "files";
+                };
+              };
+            }) ["/srv/history" "/srv/history/nested" "/srv"]
+          && custodyAccepted {
+            services.harbor-db.cutover.resources.peer = {
+              user = "archive";
+              authority = {
+                state_dir = "/var/lib/peer-authority";
+                directories = ["/srv/history-sibling"];
+                binding.backend = "files";
+              };
+            };
+          };
+        message = "Every filesystem corpus must belong to one custody resource lease, including across resources.";
+      }
+      {
         name = "custody-roots-require-normalized-absolute-paths";
         assertion = lib.all (path:
           !custodyAccepted {services.harbor-db.cutover.resources.history.authority.directories = lib.mkForce [path];})

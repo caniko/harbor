@@ -364,6 +364,7 @@ fn absent_extension_manifest_keeps_original_runtime_hash_requirement() {
         "tests/test_application_provision.py",
         "tests/test_fence_recovery.py",
         "tests/test_application_backup.py",
+        "tests/test_application_transition.py",
     ] {
         fs::copy(
             root.path().join("tests/oracles/pr14").join(path),

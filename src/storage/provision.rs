@@ -296,10 +296,19 @@ fn check_phase(c: &Value, e: &Value, require_tables: bool) -> Result<bool> {
             "NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='{s}' AND c.relkind IN ('r','p','v','m','f','S') AND pg_get_userbyid(c.relowner)<>'{o}')"
         ),
         format!(
-            "NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace, LATERAL aclexplode(c.relacl) acl WHERE n.nspname='{s}' AND (acl.grantee=0 OR (acl.grantee=(SELECT oid FROM pg_roles WHERE rolname='{r}') AND acl.is_grantable)))"
+            "NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace, LATERAL aclexplode(c.relacl) acl WHERE n.nspname='{s}' AND (acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}')) OR (acl.grantee=(SELECT oid FROM pg_roles WHERE rolname='{r}') AND acl.is_grantable)))"
         ),
         format!(
-            "NOT EXISTS (SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace, LATERAL aclexplode(a.attacl) acl WHERE n.nspname='{s}' AND acl.grantee IN (0,(SELECT oid FROM pg_roles WHERE rolname='{r}'))) "
+            "NOT EXISTS (SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace, LATERAL aclexplode(a.attacl) acl WHERE n.nspname='{s}' AND acl.grantee<>(SELECT oid FROM pg_roles WHERE rolname='{o}')) "
+        ),
+        format!(
+            "NOT EXISTS (SELECT 1 FROM pg_database d, LATERAL aclexplode(d.datacl) acl WHERE d.datname='{db}' AND (acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}')) OR (acl.grantee=(SELECT oid FROM pg_roles WHERE rolname='{r}') AND acl.is_grantable)))"
+        ),
+        format!(
+            "NOT EXISTS (SELECT 1 FROM pg_namespace n, LATERAL aclexplode(n.nspacl) acl WHERE n.nspname='{s}' AND (acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}')) OR (acl.grantee=(SELECT oid FROM pg_roles WHERE rolname='{r}') AND acl.is_grantable)))"
+        ),
+        format!(
+            "NOT EXISTS (SELECT 1 FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND d.defaclobjtype IN ('r','S') AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}')))"
         ),
     ];
     let grants = privileges(&p["table_privileges"], TABLE)?;

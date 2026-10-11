@@ -71,6 +71,10 @@ pub fn fresh(timestamp: &Value, now: i64, max_age: i64) -> Result<()> {
     Ok(())
 }
 pub fn policy(config: &Value) -> Result<&Value> {
+    policy_for_executor(config, None)
+}
+
+fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> Result<&'a Value> {
     let settings = config
         .get("recovery")
         .filter(|v| v.is_object())
@@ -85,6 +89,22 @@ pub fn policy(config: &Value) -> Result<&Value> {
         ));
     }
     let snapshot = string(settings, "snapshot_file")?;
+    // Only an independently identified certifier may select its off-host output
+    // directly. Local capture, import and recovery admission require two paths.
+    let independent = certifier_host.is_some_and(|host| {
+        !host.is_empty()
+            && settings["source_hostname"]
+                .as_str()
+                .is_some_and(|source| !source.is_empty() && source != host)
+    });
+    if settings["off_host_receipt_file"]
+        .as_str()
+        .is_some_and(|remote| settings["receipt_file"].as_str() == Some(remote) && !independent)
+    {
+        return Err(invalid(
+            "local and off-host recovery receipts must be distinct",
+        ));
+    }
     if snapshot == string(settings, "receipt_file")?
         || settings
             .get("off_host_receipt_file")
@@ -661,7 +681,11 @@ pub fn certify(
     now: Option<i64>,
     host: Option<&str>,
 ) -> Result<Value> {
-    let settings = policy(config)?;
+    let executor = match host {
+        Some(host) => host.to_owned(),
+        None => hostname()?,
+    };
+    let settings = policy_for_executor(config, Some(&executor))?;
     let now = clock(now)?;
     let restored = absolute(data)?;
     if restored == absolute(&path(config, "data_dir")?)? {
@@ -716,10 +740,7 @@ pub fn certify(
     result["record_contract_sha256"] = json!(contract(settings)?);
     result["records"] = actual;
     result["snapshot_sha256"] = json!(digest(&source_snapshot_path(config, settings)?)?);
-    result["executor_host"] = json!(match host {
-        Some(host) => host.to_owned(),
-        None => hostname()?,
-    });
+    result["executor_host"] = json!(executor);
     result["restored_data_dir"] = json!(restored);
     result["replay_lsn"] = observed["replay_lsn"].clone();
     durable::write_json(&absolute(&path(settings, "receipt_file")?)?, &result)?;

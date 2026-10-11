@@ -79,6 +79,13 @@ def validate(config):
     if any(Path(s).is_relative_to(t) or Path(t).is_relative_to(s)
            for s in source["directories"] for t in target["directories"]):
         raise ValueError("source and target corpus roots must be disjoint")
+    backup_root = Path(read_json(config["backup_manifest"])["root"])
+    cutover.validate_path(str(backup_root))
+    if backup_root.resolve() != backup_root:
+        raise ValueError("recovery path must be absolute and not redirected")
+    if any(backup_root.is_relative_to(path) or Path(path).is_relative_to(backup_root)
+           for path in source["directories"] + target["directories"]):
+        raise ValueError("backup and corpus roots must be disjoint")
     units = config["units"] + config["retired_units"]
     if (not units or len(set(units)) != len(units)
             or any(not re.fullmatch(r"[A-Za-z0-9_@.:-]+\.service", unit) for unit in units)

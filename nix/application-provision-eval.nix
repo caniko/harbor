@@ -92,6 +92,32 @@ in
         message = "A service cannot be ordered both before and after privilege reconciliation.";
       }
       {
+        name = "cross-project-ordering-cycle-rejection";
+        assertion = rejected (evaluate {
+          services.harbor-db.projects.other.postgres.provision =
+            provision
+            // {
+              schemaUnits = ["demo.service"];
+              runtimeUnits = ["demo-schema.service"];
+            };
+        }) "provisioning ordering must be acyclic";
+        message = "Schema and runtime dependencies must be checked as one graph across enabled projects.";
+      }
+      {
+        name = "cross-project-shared-acyclic-unit-admission";
+        assertion =
+          failed (evaluate {
+            services.harbor-db.projects.other.postgres.provision =
+              provision
+              // {
+                schemaUnits = ["demo-schema.service"];
+                runtimeUnits = ["demo.service"];
+              };
+          })
+          == [];
+        message = "Shared units remain valid when their combined ordering graph has no cycle.";
+      }
+      {
         name = "shared-owner-runtime-os-user-rejection";
         assertion = rejected (evaluate {services.harbor-db.projects.demo.postgres.provision.ownerOsUser = "demo";}) "ownerOsUser and runtimeOsUser must differ";
         message = "One peer OS account must never match both schema-owner and restricted-runtime HBA rules.";
