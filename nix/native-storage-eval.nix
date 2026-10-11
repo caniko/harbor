@@ -203,6 +203,31 @@ in
     '') [backupFileManifest transitionFileManifest];
     assertions = [
       {
+        name = "scheduled-backup-retention-precedes-capture";
+        message = "Every recurring backup installs serialized pruning before capture, with positive bounded retention beyond capture/retry deadlines.";
+        assertion = let
+          service = eval.config.systemd.services.harbor-db-fixture-backup.serviceConfig;
+        in
+          pkgs.lib.hasInfix " prune --keep 96 --incomplete-age-seconds 604800" service.ExecStartPre
+          && service.ExecStartPost == service.ExecStartPre
+          && pkgs.lib.hasSuffix " capture" service.ExecStart
+          && backupPolicyAccepted {}
+          && !backupPolicyAccepted {retention.incompleteAgeSeconds = 30;};
+      }
+      {
+        name = "transition-evidence-cannot-select-barrier-control-storage";
+        message = "Nix admission reserves every enabled barrier plus the systemd control namespace for transition state before writer inhibition.";
+        assertion = let
+          accepted = independentReceipt: let
+            selected = evaluate [module {services.harbor-db.projects.fixture.transition.independentReceipt = pkgs.lib.mkForce independentReceipt;}];
+          in
+            pkgs.lib.all (a: a.assertion || !(pkgs.lib.hasInfix "transition independent receipts" a.message)) selected.config.assertions;
+        in
+          accepted "/var/lib/fixture-evidence/independent.json"
+          && !accepted "/var/lib/harbor-db-transitions/fixture/inhibited.json"
+          && !accepted "/etc/systemd/system.control/fixture.service.d/receipt.json";
+      }
+      {
         name = "backup-storage-mount-required";
         message = "Backup captures must require their storage mount even when it is nofail.";
         assertion = (eval.config.systemd.services.harbor-db-fixture-backup.unitConfig.RequiresMountsFor or []) == ["/var/lib/fixture-backup"];

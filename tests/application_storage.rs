@@ -80,6 +80,135 @@ fn last(t: &Path) -> Value {
     durable::read_json(&t.join("backups/LAST_SUCCESS")).unwrap()
 }
 
+fn prune_peer(c: &Value, python: bool, keep: u32) -> std::process::Output {
+    let t = tempfile::tempdir().unwrap();
+    let config = t.path().join("config.json");
+    durable::write_json(&config, c).unwrap();
+    let mut command = if python {
+        let mut command = std::process::Command::new("python3");
+        command.args(["-B", "-m", "harbor_db.application_backup"]);
+        command.env(
+            "PYTHONPATH",
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        );
+        command
+    } else {
+        std::process::Command::new(env!("CARGO_BIN_EXE_harbor-db-application-backup"))
+    };
+    command
+        .arg("--config")
+        .arg(config)
+        .args([
+            "prune",
+            "--keep",
+            &keep.to_string(),
+            "--incomplete-age-seconds",
+            "120",
+        ])
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_transitions_in_both_engines()
+ {
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        let root = t.path().join("backups");
+        for id in [
+            "20260101T000000Z-1",
+            "20260101T000001Z-1",
+            "20260101T000002Z-1",
+            "transition-fixed-run",
+        ] {
+            application_backup::capture(&c, id, false).unwrap();
+        }
+        let original = fs::read(root.join("LAST_SUCCESS")).unwrap();
+        for id in ["20260101T000003Z-1", "transition-incomplete"] {
+            fs::write(t.path().join("fail_restore"), b"").unwrap();
+            assert!(application_backup::capture(&c, id, false).is_err());
+            for suffix in [".partial", ".intent.json"] {
+                let path = root.join(format!("{id}{suffix}"));
+                fs::File::open(path)
+                    .unwrap()
+                    .set_times(
+                        fs::FileTimes::new().set_modified(
+                            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1),
+                        ),
+                    )
+                    .unwrap();
+            }
+        }
+        let output = prune_peer(&c, python, 2);
+        assert!(
+            output.status.success(),
+            "python={python}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!root.join("20260101T000000Z-1").exists());
+        assert!(!root.join("20260101T000000Z-1.intent.json").exists());
+        assert!(!root.join("20260101T000003Z-1.partial").exists());
+        assert!(root.join("20260101T000001Z-1/acceptance.json").is_file());
+        assert!(root.join("20260101T000002Z-1/acceptance.json").is_file());
+        assert!(root.join("transition-fixed-run/acceptance.json").is_file());
+        assert!(root.join("transition-incomplete.partial").is_dir());
+        assert_eq!(fs::read(root.join("LAST_SUCCESS")).unwrap(), original);
+        assert!(prune_peer(&c, python, 2).status.success());
+    }
+}
+
+#[test]
+fn scheduled_pruning_rejects_contention_and_redirects_before_deletion_in_both_engines() {
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        let root = t.path().join("backups");
+        application_backup::capture(&c, "20260101T000000Z-1", false).unwrap();
+        let lease = durable::lock(&root.join("lock"), true, false).unwrap();
+        assert!(!prune_peer(&c, python, 1).status.success());
+        assert!(root.join("20260101T000000Z-1/acceptance.json").is_file());
+        drop(lease);
+        std::os::unix::fs::symlink(
+            t.path().join("adapter.py"),
+            root.join("20260101T000001Z-1.partial"),
+        )
+        .unwrap();
+        assert!(!prune_peer(&c, python, 1).status.success());
+        assert!(t.path().join("adapter.py").is_file());
+        assert!(root.join("20260101T000000Z-1/acceptance.json").is_file());
+    }
+}
+
+#[test]
+fn interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_removed_acceptance_in_both_engines()
+ {
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        let root = t.path().join("backups");
+        for id in ["20260101T000000Z-1", "20260101T000001Z-1"] {
+            application_backup::capture(&c, id, false).unwrap();
+        }
+        let latest = fs::read(root.join("LAST_SUCCESS")).unwrap();
+        let tombstone = root.join("20260101T000000Z-1.pruning");
+        fs::rename(root.join("20260101T000000Z-1"), &tombstone).unwrap();
+        durable::sync_directory(&root).unwrap();
+        fs::remove_file(tombstone.join("acceptance.json")).unwrap();
+        // Fresh siblings must also retire immediately, rather than wait for the
+        // incomplete grace once deletion has already been durably selected.
+        fs::write(root.join("20260101T000000Z-1.intent.json"), b"{}").unwrap();
+        let output = prune_peer(&c, python, 1);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!tombstone.exists());
+        assert!(!root.join("20260101T000000Z-1.intent.json").exists());
+        assert!(root.join("20260101T000001Z-1/acceptance.json").is_file());
+        assert_eq!(fs::read(root.join("LAST_SUCCESS")).unwrap(), latest);
+        assert!(prune_peer(&c, python, 1).status.success());
+    }
+}
+
 fn backup_peer(
     c: &Value,
     operation: &str,

@@ -64,6 +64,18 @@ in {
           type = types.str;
           default = "*:0/15";
         };
+        retention = {
+          keepSuccessful = mkOption {
+            type = types.ints.between 1 4096;
+            default = 96;
+            description = "Scheduled restore points to retain, plus LAST_SUCCESS and all manual/transition attempts. Retention is serialized with capture and inspection.";
+          };
+          incompleteAgeSeconds = mkOption {
+            type = types.ints.between 1 (90 * 86400);
+            default = 7 * 86400;
+            description = "Minimum age before deleting incomplete timer attempts, including partial, sealed and abandoned workspaces. Must exceed all five capture/retry stage budgets.";
+          };
+        };
         requires = mkOption {
           type = types.listOf types.str;
           default = [];
@@ -104,6 +116,10 @@ in {
           {
             assertion = lib.all immutableFiles.storePath p.backup.executableFiles;
             message = "Harbor DB ${name} backup executableFiles must be normalized immutable store paths; manifest realization requires regular files.";
+          }
+          {
+            assertion = p.backup.retention.incompleteAgeSeconds >= 5 * p.backup.timeoutSeconds + 60;
+            message = "Harbor DB ${name} backup incomplete retention age must exceed all capture/retry stage budgets.";
           }
           {
             assertion = lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) (lib.attrValues p.backup.commands);
@@ -148,6 +164,8 @@ in {
           User = "root";
           Group = p.backup.group;
           UMask = "0077";
+          ExecStartPre = "${package}/bin/harbor-db-application-backup --config ${manifest name p.backup} prune --keep ${toString p.backup.retention.keepSuccessful} --incomplete-age-seconds ${toString p.backup.retention.incompleteAgeSeconds}";
+          ExecStartPost = "${package}/bin/harbor-db-application-backup --config ${manifest name p.backup} prune --keep ${toString p.backup.retention.keepSuccessful} --incomplete-age-seconds ${toString p.backup.retention.incompleteAgeSeconds}";
           ExecStart = "${package}/bin/harbor-db-application-backup --config ${manifest name p.backup} capture";
           TimeoutStartSec = "${toString (4 * p.backup.timeoutSeconds + 60)}s";
           NoNewPrivileges = true;

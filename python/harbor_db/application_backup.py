@@ -294,6 +294,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     sub = parser.add_subparsers(dest="command", required=True)
+    pruning = sub.add_parser("prune", help="retain scheduled restore points under the capture lease; preserve transition/manual attempts")
+    pruning.add_argument("--keep", type=int, required=True)
+    pruning.add_argument("--incomplete-age-seconds", type=int, required=True)
     capture_parser = sub.add_parser("capture")
     capture_parser.add_argument("--attempt", default=None)
     capture_parser.add_argument("--retry-incomplete", action="store_true", help="drain and retain an interrupted attempt with unchanged immutable intent")
@@ -305,7 +308,10 @@ def main():
     args = parser.parse_args()
     try:
         config = read_json(args.config)
-        if args.command == "capture":
+        if args.command == "prune":
+            from .application_retention import prune
+            result = prune(config, args.keep, args.incomplete_age_seconds)
+        elif args.command == "capture":
             result = capture(config, args.attempt or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + f"-{os.getpid()}",
                              retry_incomplete=args.retry_incomplete)
         elif args.command == "certify":

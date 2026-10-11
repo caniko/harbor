@@ -314,6 +314,26 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
     let barrier = Path::new(string(config, "barrier_dir")?);
     let authority = Path::new(string(source, "state_dir")?);
     let drop_in = Path::new(string(config, "drop_in_root")?);
+    let receipt = Path::new(string(config, "independent_receipt")?);
+    custody::validate_path(string(config, "independent_receipt")?)?;
+    super::recovery::absolute(receipt)?;
+    let mut controls = vec![barrier.to_owned(), drop_in.to_owned()];
+    controls.extend(
+        ["identity.json", "transition.json", "lock", "custody.json"]
+            .iter()
+            .map(|name| authority.join(name)),
+    );
+    if let Some(entry) = custody_entry(config, target)? {
+        controls.push(PathBuf::from(string(&entry, "custody_file")?));
+    }
+    if controls
+        .iter()
+        .any(|control| receipt.starts_with(control) || control.starts_with(receipt))
+    {
+        return Err(invalid(
+            "independent receipt and transition control storage must be disjoint",
+        ));
+    }
     if resolve(barrier)? != barrier || resolve(drop_in)? != drop_in {
         return Err(invalid("transition barrier storage is redirected"));
     }

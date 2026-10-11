@@ -134,6 +134,55 @@ fn external_backup_manifest_cannot_share_a_transition_barrier_in_both_engines() 
 }
 
 #[test]
+fn independent_receipts_cannot_alias_transition_control_storage_in_both_engines() {
+    let mut f = Fixture::new();
+    for suffix in [
+        "authority/identity.json",
+        "authority/transition.json",
+        "authority/lock",
+        "authority/custody.json",
+        "barrier/inhibited.json",
+        "barrier/retired/inhibited.json",
+        "barrier/lock",
+        "systemd/demo.service.d/zzzz-harbor-db-backend-transition.conf",
+    ] {
+        f.config["independent_receipt"] = json!(f.temp.path().join(suffix));
+        let error = transition_manifest::validate(&f.config).unwrap_err();
+        assert!(
+            error.to_string().contains("receipt and transition control"),
+            "{suffix}: {error}"
+        );
+        assert!(python_transition_validation(&f.config).contains("receipt and transition control"));
+        assert!(!f.temp.path().join("barrier/inhibited.json").exists());
+        assert!(!f.temp.path().join("authority/transition.json").exists());
+        assert!(!f.temp.path().join("barrier/lock").exists());
+    }
+    f.config["independent_receipt"] =
+        json!(f.temp.path().join("authority-sibling/independent.json"));
+    transition_manifest::validate(&f.config).unwrap();
+    assert_eq!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+    let custody = f.temp.path().join("authority/custom-custody.json");
+    let selected = f.temp.path().join("custody-manifest.json");
+    durable::write_json(
+        &selected,
+        &json!({"kind":"filesystem","authority":f.target,"custody_file":custody}),
+    )
+    .unwrap();
+    f.config["custody_manifest"] = json!(selected);
+    f.config["independent_receipt"] = json!(custody);
+    assert!(
+        transition_manifest::validate(&f.config)
+            .unwrap_err()
+            .to_string()
+            .contains("receipt and transition control")
+    );
+    assert!(python_transition_validation(&f.config).contains("receipt and transition control"));
+    f.config["independent_receipt"] = json!(f.temp.path().join("authority/independent.json"));
+    transition_manifest::validate(&f.config).unwrap();
+    assert_eq!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+}
+
+#[test]
 fn repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines()
  {
     transition_capture_fixture(false, true);

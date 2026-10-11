@@ -46,7 +46,20 @@ def policy(config):
 
 def _policy(config, *, certifier_host=None):
     settings = config["recovery"]
-    recovery_repository.source_local(settings)
+    if recovery_repository.source_local(settings):
+        declared = [settings[key] for key in ("backup_root", "snapshot_file", "receipt_file", "off_host_receipt_file") if settings.get(key) is not None]
+        if any(not isinstance(raw, str) or not raw.startswith("/") or any(part in ("", ".", "..") for part in raw.split("/")[1:]) for raw in declared):
+            raise ValueError("source-local evidence must use normalized paths outside repository control paths")
+        root = absolute(settings["backup_root"])
+        snapshot = absolute(settings["snapshot_file"])
+        controls = [root / name for name in ("recovery", "base", "wal", "locks", "BACKUP_LOCK", "LAST_SUCCESS")]
+        controls.append(snapshot.parent / "recovery.lock")
+        for key in ("snapshot_file", "receipt_file", "off_host_receipt_file"):
+            if key == "off_host_receipt_file" and settings.get(key) is None:
+                continue
+            evidence = absolute(settings[key])
+            if any(evidence.is_relative_to(control) or control.is_relative_to(evidence) for control in controls):
+                raise ValueError("source-local evidence must stay outside repository control paths")
     if type(settings.get("require_writer_fence", False)) is not bool:
         raise ValueError("recovery writer fence requirement must be a boolean")
     paths = [settings["snapshot_file"], settings["receipt_file"]]

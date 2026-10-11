@@ -79,7 +79,62 @@ fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> R
         .get("recovery")
         .filter(|v| v.is_object())
         .ok_or_else(|| invalid("missing recovery policy"))?;
-    super::recovery_repository::source_local(settings)?;
+    if super::recovery_repository::source_local(settings)? {
+        for key in [
+            "backup_root",
+            "snapshot_file",
+            "receipt_file",
+            "off_host_receipt_file",
+        ] {
+            if key == "off_host_receipt_file" && settings[key].is_null() {
+                continue;
+            }
+            let raw = string(settings, key)?;
+            if !raw.starts_with('/')
+                || raw
+                    .split('/')
+                    .skip(1)
+                    .any(|part| matches!(part, "" | "." | ".."))
+            {
+                return Err(invalid(
+                    "source-local evidence must use normalized paths outside repository control paths",
+                ));
+            }
+        }
+        let root = absolute(&path(settings, "backup_root")?)?;
+        let snapshot = absolute(&path(settings, "snapshot_file")?)?;
+        let mut controls: Vec<_> = [
+            "recovery",
+            "base",
+            "wal",
+            "locks",
+            "BACKUP_LOCK",
+            "LAST_SUCCESS",
+        ]
+        .iter()
+        .map(|name| root.join(name))
+        .collect();
+        controls.push(
+            snapshot
+                .parent()
+                .ok_or_else(|| invalid("invalid snapshot parent"))?
+                .join("recovery.lock"),
+        );
+        for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+            if key == "off_host_receipt_file" && settings[key].is_null() {
+                continue;
+            }
+            let evidence = absolute(&path(settings, key)?)?;
+            if controls
+                .iter()
+                .any(|control| evidence.starts_with(control) || control.starts_with(&evidence))
+            {
+                return Err(invalid(
+                    "source-local evidence must stay outside repository control paths",
+                ));
+            }
+        }
+    }
     if settings
         .get("require_writer_fence")
         .is_some_and(|v| !v.is_boolean())

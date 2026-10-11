@@ -74,6 +74,26 @@ configured with `nofail`, before it can capture or publish a restore point.
 Declared filesystem ancestors also have explicit `Requires`/`After` dependencies,
 so masking their units cannot remove the storage requirement through mount discovery.
 
+Scheduled captures run serialized retention before and after capture. The default
+`backup.retention.keepSuccessful = 96` retains the newest 96 timer restore points
+plus the point named by `LAST_SUCCESS`. `incompleteAgeSeconds = 604800` expires
+incomplete timer attempts after seven days; it must exceed all five capture/retry
+stage budgets plus termination slack. Pruning uses the same exclusive backup
+lock as capture, so active inspection and transition leases block deletion.
+Timestamp/PID attempts (`YYYYMMDDTHHMMSSZ-PID`) and their known partial, sealed,
+credential, intent and restore-workspace siblings belong to the timer namespace.
+Other names, including every `transition-*` capture and interrupted transition
+attempt, remain operator-retained even while no transition process holds a lease.
+For explicit retention use `harbor-db-application-backup --config MANIFEST prune
+--keep N --incomplete-age-seconds SECONDS`. Redirected top-level attempts, invalid
+success markers and mounted deletion subtrees fail the plan before any deletion;
+deletion never follows links in abandoned worker output. Manifest/executable
+binding and immutable accepted bytes are preserved for retained restore points.
+Selected successful deletions first rename the point durably to `.pruning`.
+Retries finish these tombstones and their siblings immediately, even if the
+acceptance file was already removed; the tombstone is removed after sibling
+cleanup so interruption cannot restart the incomplete grace period.
+
 Generated backup manifests use version 2 and declare `worker_user`. The coordinator
 and backup namespace are root-owned; adapters run as the declared unprivileged
 account with private per-attempt credentials and workspaces. Verified artifacts
@@ -195,6 +215,11 @@ the old disposable restore first; partial bytes and intent are moved into a priv
 abandoned directory before a fresh capture. Existing accepted points are immutable.
 
 ## Backend transitions (version 1)
+
+Independent restore receipts must use normalized, non-redirected paths outside
+authority identity/journal/lock/custody files and all barrier/systemd control
+namespaces. Both engines reject aliases before acquiring transition locks or
+inhibiting writers; the selected custody file is reserved even with a custom name.
 
 `projects.<name>.transition` and `lib.applicationBackendTransition = 1` expose the
 shared journal engine. Source and target resource manifests identify one authority

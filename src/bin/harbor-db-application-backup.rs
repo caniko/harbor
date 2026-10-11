@@ -10,6 +10,12 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Action {
+    Prune {
+        #[arg(long)]
+        keep: u32,
+        #[arg(long)]
+        incomplete_age_seconds: u64,
+    },
     Capture {
         #[arg(long)]
         attempt: Option<String>,
@@ -28,6 +34,10 @@ enum Action {
 fn run(a: Args) -> Result<()> {
     let c = durable::read_config_json(&a.config)?;
     let result = match a.command {
+        Action::Prune {
+            keep,
+            incomplete_age_seconds,
+        } => application_backup::prune(&c, keep, incomplete_age_seconds)?,
         Action::Capture {
             attempt,
             retry_incomplete,

@@ -62,6 +62,15 @@ def validate(config):
         if not path.is_absolute() or any(c.isspace() or c in "\\%" for c in str(path)):
             raise ValueError("transition paths must be explicit, absolute and systemd-safe")
     barrier, authority = Path(config["barrier_dir"]), Path(source["state_dir"])
+    from . import cutover, recovery
+    cutover.validate_path(config["independent_receipt"])
+    receipt = recovery.absolute(config["independent_receipt"])
+    controls = [barrier, Path(config["drop_in_root"])] + [authority / name for name in ("identity.json", "transition.json", "lock", "custody.json")]
+    entry = custody_entry(config, target)
+    if entry is not None:
+        controls.append(Path(entry["custody_file"]))
+    if any(receipt.is_relative_to(control) or control.is_relative_to(receipt) for control in controls):
+        raise ValueError("independent receipt and transition control storage must be disjoint")
     if barrier.resolve() != barrier or Path(config["drop_in_root"]).resolve() != Path(config["drop_in_root"]):
         raise ValueError("transition barrier storage is redirected")
     startup_inhibition.owned_ancestors(barrier)

@@ -1,4 +1,5 @@
 //! Executed application captures with durable restore acceptance.
+pub use super::application_retention::prune;
 use super::{
     Result, application_publication as publication, codec, durable, invalid, process, string,
 };

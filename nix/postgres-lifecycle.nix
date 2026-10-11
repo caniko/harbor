@@ -6,7 +6,8 @@
   ...
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
-  normalizedPath = (import ./storage-paths.nix {inherit lib;}).normalizedAbsolute;
+  storagePaths = import ./storage-paths.nix {inherit lib;};
+  normalizedPath = storagePaths.normalizedAbsolute;
   cfg = config.services.harbor-db.postgresql;
   pg = config.services.postgresql;
   manifest = pkgs.writeText "harbor-db-postgresql.json" (builtins.toJSON ({
@@ -348,6 +349,18 @@ in {
       {
         assertion = cfg.recovery == null || cfg.switchAdoption == null || cfg.recovery.systemIdentifier == cfg.switchAdoption.systemIdentifier;
         message = "Recovery and switch adoption must name the same authoritative cluster.";
+      }
+      {
+        assertion =
+          cfg.recovery
+          == null
+          || cfg.recovery.repositoryProtocol != "source-local-v1"
+          || (let
+            evidence = [cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
+            controls = map (name: "${cfg.recovery.backupRoot}/${name}") ["recovery" "base" "wal" "locks" "BACKUP_LOCK" "LAST_SUCCESS"] ++ ["${builtins.dirOf cfg.recovery.snapshotFile}/recovery.lock"];
+          in
+            cfg.recovery.backupRoot != "/" && lib.all normalizedPath (evidence ++ [cfg.recovery.backupRoot]) && lib.all (path: lib.all (control: storagePaths.disjoint [path control]) controls) evidence);
+        message = "Source-local recovery evidence must use normalized paths outside producer repository control namespaces and evidence lock files.";
       }
       {
         assertion = preparation == null || (cfg.recovery != null && lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) ([preparation.readinessCommand preparation.backupCommand preparation.restoreCommand] ++ lib.optional (preparation.exportCommand != []) preparation.exportCommand));

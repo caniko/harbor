@@ -21,6 +21,11 @@ a firewall opening. An empty `sourceSettings.listenAddresses` also derives TCP
 listeners for those loopback families; explicit lists also retain the required
 source-local loopbacks, without duplicate addresses.
 Source and target still require the replicator password file.
+Source-local snapshot and receipt outputs reserve a separate evidence namespace.
+They cannot select `recovery/`, `base/`, `wal/`, `locks/`, `BACKUP_LOCK`,
+`LAST_SUCCESS` or the snapshot parent's `recovery.lock`. Nix and both runtime
+engines reject these aliases before publication, including off-host receipt
+imports. The dedicated `<backupRoot>/evidence/` subtree remains supported.
 When a backup target shares a host with an enabled primary, every derived
 per-source backup root must be normalized and disjoint from the primary data
 directory in both containment directions. Equality, nested outputs and ambiguous

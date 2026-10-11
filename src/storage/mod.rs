@@ -2,6 +2,7 @@
 mod accounts;
 pub mod application_backup;
 mod application_publication;
+mod application_retention;
 pub mod application_transition;
 pub mod backup;
 mod backup_manifest;

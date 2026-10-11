@@ -144,6 +144,58 @@ fn local_and_off_host_receipt_paths_cannot_alias_in_admission() {
     );
 }
 
+#[test]
+fn source_local_evidence_cannot_replace_repository_control_paths_in_both_engines() {
+    let mut f = Fixture::new();
+    f.config["recovery"]["repository_protocol"] = json!("source-local-v1");
+    let original = f.config.clone();
+    for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+        for suffix in [
+            "recovery/SELECTED",
+            "recovery/snapshots/point.json",
+            "base/point/backup_manifest",
+            "wal/segment",
+            "locks/mutate",
+            "BACKUP_LOCK",
+            "LAST_SUCCESS",
+            "evidence/recovery.lock",
+            "evidence/../recovery/SELECTED",
+            "evidence//receipt.json",
+        ] {
+            f.config = original.clone();
+            f.config["recovery"][key] = json!(f.p(&format!("backup/{suffix}")));
+            let error = recovery::policy(&f.config).unwrap_err();
+            assert!(
+                error.to_string().contains("repository control"),
+                "{key}/{suffix}: {error}"
+            );
+            let script = r#"import json,sys
+from harbor_db import recovery
+try: recovery.policy(json.loads(sys.argv[1]))
+except ValueError as error: assert 'repository control' in str(error)
+else: raise AssertionError('producer control path admitted as evidence')
+"#;
+            let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
+                "python3".into(),
+                "-B".into(),
+                "-c".into(),
+                script.into(),
+                f.config.to_string(),
+            ]);
+            spec.environment = Some(std::collections::BTreeMap::from([
+                (
+                    "PYTHONPATH".into(),
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ),
+                ("PATH".into(), std::env::var("PATH").unwrap()),
+            ]));
+            harbor_db::storage::process::execute(&spec).unwrap();
+        }
+    }
+    recovery::policy(&original).unwrap();
+    assert!(!f.p("backup/evidence/recovery.lock").exists());
+}
+
 impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().unwrap();

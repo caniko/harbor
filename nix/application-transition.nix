@@ -137,6 +137,10 @@ in {
             assertion = lib.all immutableFiles.storePath p.transition.executableFiles;
             message = "Harbor DB ${name} transition executableFiles must be normalized immutable store paths; manifest realization requires regular files.";
           }
+          {
+            assertion = storagePaths.normalizedAbsolute p.transition.independentReceipt && lib.all (control: storagePaths.disjoint [p.transition.independentReceipt control]) (barriers ++ ["/etc/systemd/system.control"]);
+            message = "Harbor DB ${name} transition independent receipts must stay outside normalized barrier and systemd control namespaces; runtime admission also reserves authority control files.";
+          }
         ])
         projects);
     systemd.tmpfiles.rules = lib.concatMap (p: [
