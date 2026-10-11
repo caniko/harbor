@@ -30,8 +30,18 @@
           export HOME="$TMPDIR/home-$attempt"
           bun install --frozen-lockfile --ignore-scripts --cache-dir "$TMPDIR/cache-$attempt"
           bun ${./normalize-links.ts}
+          if [ "$attempt" = 1 ]; then
+            bun ${./audit-dependencies.ts}
+          fi
           find . -type d -name node_modules -prune -print0 | sort -z |
             tar --null -T - --sort=name --mtime=@1 --owner=0 --group=0 -cf "$TMPDIR/modules-$attempt.tar"
+          if [ "$attempt" = 1 ]; then
+            printf 'DEPENDENCY_ARCHIVE '
+            sha256sum "$TMPDIR/modules-$attempt.tar"
+            tar -tvf "$TMPDIR/modules-$attempt.tar" |
+              awk '{ modes[$1]++; owners[$2]++ } END { for (mode in modes) print "ARCHIVE_MODE", mode, modes[mode]; for (owner in owners) print "ARCHIVE_OWNER", owner, owners[owner] }' |
+              sort
+          fi
         )
       done
       cmp "$TMPDIR/modules-1.tar" "$TMPDIR/modules-2.tar"

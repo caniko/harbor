@@ -147,7 +147,7 @@ depends_on = ["rust", "python"]
 checks = [
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad", timeout_minutes = 90 },
   { id = "blender-companion", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.blender-mcp-runtime", timeout_minutes = 90 },
-  { id = "openpencil-companion", run = "nix build --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp", timeout_minutes = 180 },
+  { id = "openpencil-companion", run = "nix build --print-build-logs --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp", timeout_minutes = 180 },
 ]
 
 [[monorepo.components]]

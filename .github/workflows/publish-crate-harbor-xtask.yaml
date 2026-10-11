@@ -54,7 +54,7 @@ jobs:
       run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.blender-mcp-runtime'
       timeout-minutes: 90
     - name: openpencil-companion
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp'
+      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --print-build-logs --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp'
       timeout-minutes: 180
     timeout-minutes: 360
   component-core:
