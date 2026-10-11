@@ -28,6 +28,7 @@
   durable = "${storagePackage}/bin/harbor-db-durable";
   pruneTool = "${storagePackage}/bin/harbor-db-backup-prune";
   storagePaths = import ./storage-paths.nix {inherit lib;};
+  custodyNamespaces = import ./custody-namespaces.nix {inherit config lib options;};
   sourceLocalTablespaceCheck = pkgs.writeShellScript "pg-backup-source-local-tablespaces" ''
     set -euo pipefail
     tablespaces=${lib.escapeShellArg "${config.services.postgresql.dataDir}/pg_tblspc"}
@@ -105,7 +106,8 @@
     systemd.services."pg-receivewal${suffix}" = mkIf cfg.targetSettings.receiveWal.enable {
       description = "Receive WAL segments from ${sourceId}";
       unitConfig.RequiresMountsFor = backupRoot;
-      after = ["network-online.target"];
+      after = ["network-online.target"] ++ lib.optionals cfg.targetSettings.sourceLocalRecovery.enable ["postgresql.service" "postgresql-setup.service"];
+      requires = lib.optionals cfg.targetSettings.sourceLocalRecovery.enable ["postgresql.service" "postgresql-setup.service"];
       wants = ["network-online.target"];
       wantedBy = ["multi-user.target"];
       serviceConfig = {
@@ -151,8 +153,8 @@
     systemd.services."pg-basebackup${suffix}" = mkIf cfg.targetSettings.baseBackup.enable {
       description = "Pull base backup from ${sourceId}";
       unitConfig.RequiresMountsFor = backupRoot;
-      after = ["network-online.target" "pg-backup-prune${suffix}.service"];
-      requires = ["pg-backup-prune${suffix}.service"];
+      after = ["network-online.target" "pg-backup-prune${suffix}.service"] ++ lib.optionals cfg.targetSettings.sourceLocalRecovery.enable ["postgresql.service" "pg-receivewal${suffix}.service"];
+      requires = ["pg-backup-prune${suffix}.service"] ++ lib.optionals cfg.targetSettings.sourceLocalRecovery.enable ["postgresql.service" "pg-receivewal${suffix}.service"];
       wants = ["network-online.target"];
       serviceConfig = {
         Type = "oneshot";
@@ -415,6 +417,15 @@ in {
           {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || (sourceRole && targetRole && lib.elem cfg.source.hostName ["127.0.0.1" "localhost" "::1"]);
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires role=both and a loopback source for fence-compatible WAL reception.";
+          }
+          {
+            assertion =
+              !targetRole
+              || lib.all (source: let
+                paths = [(backupRootFor source)] ++ custodyNamespaces;
+              in
+                lib.all storagePaths.normalizedAbsolute paths && storagePaths.disjoint paths) (lib.attrValues targetSources);
+            message = "services.harbor-db.pgBackup target backup roots must be normalized absolute and disjoint from all enabled custody namespaces, including PostgreSQL lifecycle and startup state.";
           }
           {
             assertion = !targetRole || !cfg.targetSettings.receiveWal.enable || !cfg.targetSettings.baseBackup.enable || cfg.targetSettings.receiveWal.slotName != cfg.targetSettings.baseBackup.slotName;

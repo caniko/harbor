@@ -43,8 +43,10 @@ provisioned directories, writable preparation paths and the protected primary
 and authority roots before containment checks or root-run directory creation.
 
 Global namespace admission includes every filesystem corpus and authority-state
-root plus the data and lifecycle-state paths read from each enrolled PostgreSQL
-policy. All must be pairwise disjoint in both containment directions. Before
+root plus the data, lifecycle-state and startup-inhibition paths read from each
+enrolled PostgreSQL policy. All must be pairwise disjoint in both containment
+directions. The startup namespace remains protected during inode inspection too,
+so marker/policy writes cannot invalidate a filesystem custody receipt. Before
 dispatching user-scoped inspection or certification workers, the coordinator also
 compares complete inode inventories across these namespaces, including directory
 roots and mounted descendants. Hard links, root bind mounts and nested empty

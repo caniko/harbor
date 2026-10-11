@@ -147,7 +147,7 @@ trailing separators are rejected before comparing roots. Roots must be pairwise
 non-ancestral so another project's directory ownership cannot block traversal.
 Nix admission also keeps each enabled backup root disjoint from every enabled
 cutover corpus and authority-state namespace, including enrolled PostgreSQL
-primary and lifecycle state roots, in both containment directions.
+primary, lifecycle state and startup-inhibition roots, in both containment directions.
 Transition admission also keeps the selected backup root disjoint from the
 shared source/target authority state in both containment directions. Otherwise
 the nested backup coordinator could contend with the transition's own authority
@@ -307,7 +307,7 @@ transition authority. Barrier directories are dedicated normalized namespaces,
 pairwise non-overlapping with each other and enabled backup roots, so persistent
 start policies and lock anchors cannot be shared or shadow another project's
 ownership. Nix admission checks barriers against every enabled cutover corpus,
-authority state, and enrolled PostgreSQL primary/lifecycle state too. Disabled
+authority state, and enrolled PostgreSQL primary/lifecycle/startup state too. Disabled
 projects do not reserve units or namespaces.
 Writer release and abort validate every selected inhibition marker before updating
 `start-policy.json` or removing any marker. Rejection preserves the retained startup

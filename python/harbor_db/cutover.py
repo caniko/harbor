@@ -78,6 +78,12 @@ def namespace_roots(manifest):
             for key, primary in (("data_dir", True), ("state_dir", False)):
                 validate_path(database.get(key))
                 roots.append((Path(database[key]), primary))
+            startup = database.get("startup_inhibition")
+            if startup is not None:
+                if not isinstance(startup, dict):
+                    raise ValueError("invalid PostgreSQL startup inhibition policy")
+                validate_path(startup.get("state_dir"))
+                roots.append((Path(startup["state_dir"]), False))
         else:
             roots.extend((Path(path), False) for path in [entry["authority"]["state_dir"], *entry["authority"]["directories"]])
     return roots

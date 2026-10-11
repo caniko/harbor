@@ -233,7 +233,7 @@ in
         assertion =
           custodyStorageAccepted "backup" "/srv/peer-history-sibling" true
           && custodyStorageAccepted "backup" "/srv/peer-history/backups" false
-          && pkgs.lib.all (path: !custodyStorageAccepted "backup" path true) ["/srv/peer-history" "/srv/peer-history/backups" "/srv" "/var/lib/peer-authority" "/var/lib/peer-authority/backups" "/var/lib" "/var/lib/postgresql/18/backups" "/var/lib/harbor-db/postgresql/backups"];
+          && pkgs.lib.all (path: !custodyStorageAccepted "backup" path true) ["/srv/peer-history" "/srv/peer-history/backups" "/srv" "/var/lib/peer-authority" "/var/lib/peer-authority/backups" "/var/lib" "/var/lib/postgresql/18/backups" "/var/lib/harbor-db/postgresql/backups" "/var/lib/harbor-db/postgresql-startup" "/var/lib/harbor-db/postgresql-startup/backups"];
       }
       {
         name = "transition-barriers-exclude-all-custody-namespaces";
@@ -241,7 +241,7 @@ in
         assertion =
           custodyStorageAccepted "transition" "/srv/peer-history-sibling" true
           && custodyStorageAccepted "transition" "/srv/peer-history/barriers" false
-          && pkgs.lib.all (path: !custodyStorageAccepted "transition" path true) ["/srv/peer-history" "/srv/peer-history/barriers" "/srv" "/var/lib/peer-authority" "/var/lib/peer-authority/barriers" "/var/lib" "/var/lib/postgresql/18/barriers" "/var/lib/harbor-db/postgresql/barriers"];
+          && pkgs.lib.all (path: !custodyStorageAccepted "transition" path true) ["/srv/peer-history" "/srv/peer-history/barriers" "/srv" "/var/lib/peer-authority" "/var/lib/peer-authority/barriers" "/var/lib" "/var/lib/postgresql/18/barriers" "/var/lib/harbor-db/postgresql/barriers" "/var/lib/harbor-db/postgresql-startup" "/var/lib/harbor-db/postgresql-startup/barriers"];
       }
       {
         name = "scheduled-backup-retention-precedes-capture";

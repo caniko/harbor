@@ -21,6 +21,11 @@ a firewall opening. An empty `sourceSettings.listenAddresses` also derives TCP
 listeners for those loopback families; explicit lists also retain the required
 source-local loopbacks, without duplicate addresses.
 Source and target still require the replicator password file.
+Source-local WAL reception requires and starts after the local primary and its
+role/password setup service. Each local base backup requires and starts after
+the primary and WAL receiver, whose pre-start step establishes the continuous
+receiver slot. This also orders persistent timer catch-up during boot. Remote
+targets retain their independent service dependencies.
 Source-local recovery requires at least two replication slots and three WAL
 senders: the continuous receiver holds one slot/sender while a streaming base
 backup uses the second slot and two concurrent connections. Evaluation checks
@@ -38,9 +43,15 @@ rejection leaves primary records queryable.
 All recovery snapshot and receipt outputs reserve a separate evidence namespace,
 including the default legacy protocol.
 They cannot select `recovery/`, `base/`, `wal/`, `locks/`, `BACKUP_LOCK`,
-`LAST_SUCCESS` or the snapshot parent's `recovery.lock`. Nix and both runtime
+`LAST_SUCCESS` or the snapshot parent's `recovery.lock`, `preparation.lock` and
+`preparation.json`. Nix and both runtime
 engines reject these aliases before publication, including off-host receipt
 imports. The dedicated `<backupRoot>/evidence/` subtree remains supported.
+Every generated physical backup root must also be outside all enabled custody
+corpus/authority namespaces and enrolled PostgreSQL data, lifecycle-state and
+startup-inhibition roots, including on target-only hosts. Equality and either
+containment direction reject before WAL reception, publication or pruning can
+mutate certified storage; disjoint per-source siblings remain supported.
 A read-only fence-only policy may omit a backup repository. Evidence-producing
 operations still require an explicit root, as does source-local policy admission.
 

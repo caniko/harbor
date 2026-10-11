@@ -148,6 +148,14 @@ fn namespace_roots(manifest: &Value) -> Result<Vec<(PathBuf, bool)>> {
                 validate_path(path)?;
                 roots.push((PathBuf::from(path), primary));
             }
+            if let Some(startup) = database
+                .get("startup_inhibition")
+                .filter(|value| !value.is_null())
+            {
+                let path = string(startup, "state_dir")?;
+                validate_path(path)?;
+                roots.push((PathBuf::from(path), false));
+            }
         } else {
             roots.push((
                 PathBuf::from(string(&entry["authority"], "state_dir")?),

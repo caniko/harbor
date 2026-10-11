@@ -171,6 +171,8 @@ fn evidence_cannot_replace_repository_controls(protocol: Option<&str>) {
             "BACKUP_LOCK",
             "LAST_SUCCESS",
             "evidence/recovery.lock",
+            "evidence/preparation.lock",
+            "evidence/preparation.json",
             "evidence/../recovery/SELECTED",
             "evidence//receipt.json",
         ] {
@@ -206,6 +208,58 @@ else: raise AssertionError('producer control path admitted as evidence')
     }
     recovery::policy(&original).unwrap();
     assert!(!f.p("backup/evidence/recovery.lock").exists());
+    assert!(!f.p("backup/evidence/preparation.lock").exists());
+    assert!(!f.p("backup/evidence/preparation.json").exists());
+    let preparation = f.preparation();
+    let anchor = f.p("backup/evidence/preparation.lock");
+    let journal = f.p("backup/evidence/preparation.json");
+    let _lease = durable::lock(&anchor, false, true).unwrap();
+    fs::write(&journal, b"retained preparation binding").unwrap();
+    use std::os::unix::fs::MetadataExt;
+    let identities = [&anchor, &journal].map(|path| {
+        let info = path.metadata().unwrap();
+        (info.dev(), info.ino(), fs::read(path).unwrap())
+    });
+    for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+        for selected in [&anchor, &journal] {
+            f.config = original.clone();
+            f.config["recovery"][key] = json!(selected);
+            assert!(
+                f.prepare(&preparation)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("repository control")
+            );
+            let script = r#"import json,sys
+from harbor_db import recovery
+try: recovery.prepare(json.loads(sys.argv[1]),json.loads(sys.argv[2]),'/run/postgresql',5432)
+except ValueError as error: assert 'repository control' in str(error),str(error)
+else: raise AssertionError('preparation control collision admitted')
+"#;
+            let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
+                "python3".into(),
+                "-B".into(),
+                "-c".into(),
+                script.into(),
+                f.config.to_string(),
+                preparation.to_string(),
+            ]);
+            spec.environment = Some(std::collections::BTreeMap::from([
+                (
+                    "PYTHONPATH".into(),
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ),
+                ("PATH".into(), std::env::var("PATH").unwrap()),
+            ]));
+            harbor_db::storage::process::execute(&spec).unwrap();
+            let observed = [&anchor, &journal].map(|path| {
+                let info = path.metadata().unwrap();
+                (info.dev(), info.ino(), fs::read(path).unwrap())
+            });
+            assert_eq!(observed, identities);
+            assert!(!f.p("preparation.log").exists());
+        }
+    }
 }
 
 impl Fixture {

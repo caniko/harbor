@@ -195,7 +195,7 @@ case = "native.recovery_storage.legacy_evidence_cannot_replace_repository_contro
 capability = "postgres"
 operation = "harbor-db-postgres.certify-recovery"
 dimension = "rejection"
-evidence = "Both engines reserve repository controls for all snapshot/local/off-host outputs under omitted/default and explicit legacy protocols, before locks or publication. Dedicated evidence files remain supported and source-local admission retains the same protection."
+evidence = "Both engines reserve repository controls plus recovery/preparation locks and the preparation journal for all snapshot/local/off-host outputs under omitted/default and explicit legacy protocols. Actual preparation entrypoints reject collisions before executing commands, preserving held preparation-lock/journal bytes and inodes. Dedicated evidence files remain supported and source-local admission retains the same protection."
 
 [[coverage]]
 case = "native.transition_storage.independent_receipts_cannot_alias_backup_publication_storage_before_inhibition_in_both_engines"
@@ -300,7 +300,7 @@ case = "native.recovery_storage.source_local_evidence_cannot_replace_repository_
 capability = "postgres"
 operation = "harbor-db-postgres.certify-recovery"
 dimension = "rejection"
-evidence = "Native and Python policy reject snapshot/local/off-host evidence paths in producer recovery, base, WAL and lock namespaces or marker/evidence-lock files before mutation. Dedicated evidence paths remain accepted."
+evidence = "Native/Python policy rejects snapshot/local/off-host paths in producer recovery/base/WAL/lock namespaces and marker/evidence-lock files, including preparation.lock and preparation.json. Actual preparation entrypoints reject colliding controls before commands and preserve an exclusively held preparation anchor and journal by bytes/inodes. Dedicated evidence paths remain accepted."
 
 [[coverage]]
 case = "native.transition_storage.independent_receipts_cannot_alias_transition_control_storage_in_both_engines"
@@ -412,7 +412,7 @@ case = "nix.x86_64-linux.pg-backup-eval"
 capability = "postgres"
 operation = "harbor-db-postgres.capture-backup"
 dimension = "rejection"
-evidence = "Source-local recovery cannot disable fresh verified base-backup production while retaining WAL reception; source/effective configurations below two slots or three senders reject. The real PG18 fixture accepts an empty tablespace inventory, rejects missing/unreadable/redirected/nonempty inventories, reproduces unmapped same-host basebackup failure and preserves queryable primary records; generated setup/receiver/basebackup share the guard. On primary hosts, evaluation also rejects overlapping or unnormalized per-source backup roots before services write. Complete source-local policies, disjoint siblings and independent target-only/WAL-only hosts admit."
+evidence = "Source-local recovery requires base-backup/WAL production and source/effective floors of two slots/three senders. Generated local Requires/After edges wait for primary/setup/receiver slot establishment, while remote targets remain independent. Every physical per-source root excludes enabled custody corpus/authority and enrolled PostgreSQL data/lifecycle/startup namespaces, including target-only hosts; equal/nested/containing roots reject and siblings/disabled custody admit. The real PG18 fixture reproduces unmapped same-host basebackup failure and generated tablespace admission preserves primary records."
 
 [[coverage]]
 case = "nix.x86_64-linux.pg-backup-eval"
@@ -496,7 +496,7 @@ case = "native.cutover_storage.enrolled_postgres_primary_and_state_exclude_files
 capability = "cutover"
 operation = "harbor-db-cutover.check.startup"
 dimension = "rejection"
-evidence = "Both engines read enrolled PostgreSQL data/state paths from the selected policy and reject filesystem corpus/authority overlap in both containment directions before locks or workers. Nix evaluation rejects the same global namespace conflicts."
+evidence = "Both engines read enrolled PostgreSQL data/state/startup-inhibition paths and reject filesystem corpus/authority overlap in both containment directions before locks or workers. Actual startup-root hard links to corpus records reject global inode inspection without authority publication. Removing the alias admits inspection, and legacy policies without startup inhibition remain supported. Nix rejects the same lexical conflicts."
 
 [[coverage]]
 case = "native.cutover_storage.cross_resource_inode_aliases_reject_before_workers_in_both_engines"

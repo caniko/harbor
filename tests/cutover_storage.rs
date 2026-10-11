@@ -113,9 +113,11 @@ fn enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_eng
     let config = f.temp.path().join("postgres.json");
     let data = f.temp.path().join("postgres-data");
     let state = f.temp.path().join("postgres-state");
+    let startup = f.temp.path().join("postgres-startup");
     fs::write(
         &config,
-        json!({"data_dir":data,"state_dir":state}).to_string(),
+        json!({"data_dir":data,"state_dir":state,"startup_inhibition":{"state_dir":startup}})
+            .to_string(),
     )
     .unwrap();
     let mut base = f.manifest();
@@ -138,7 +140,7 @@ fn enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_eng
         );
     };
     check(&base, true);
-    for root in [data, state] {
+    for root in [&data, &state, &startup] {
         for path in [
             root.clone(),
             root.join("nested"),
@@ -157,6 +159,30 @@ fn enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_eng
             }
         }
     }
+    for directory in [&data, &state, &startup] {
+        fs::create_dir(directory).unwrap();
+    }
+    let alias = startup.join("foreign-corpus");
+    fs::hard_link(f.source.join("history"), &alias).unwrap();
+    assert!(cutover::validate_storage_namespaces(&base).is_err());
+    let result = output(std::process::Command::new("python3").args([
+        "-B", "-c",
+        "import json,sys;from harbor_db import cutover\ntry:cutover.validate_storage_namespaces(json.loads(sys.argv[1]))\nexcept ValueError as e: assert 'alias shared storage' in str(e),str(e)\nelse: raise AssertionError('startup storage inode alias admitted')",
+        &base.to_string(),
+    ]).env("PYTHONPATH",format!("{}/python",env!("CARGO_MANIFEST_DIR"))));
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    fs::remove_file(alias).unwrap();
+    cutover::validate_storage_namespaces(&base).unwrap();
+    fs::write(
+        &config,
+        json!({"data_dir":data,"state_dir":state}).to_string(),
+    )
+    .unwrap();
+    check(&base, true);
     assert!(!f.state.join("lock").exists());
 }
 

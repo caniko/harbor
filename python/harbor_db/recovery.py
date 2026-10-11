@@ -55,7 +55,7 @@ def validate_evidence_paths(settings, source_local):
         raise ValueError("missing recovery backup root")
     snapshot = absolute(settings["snapshot_file"])
     controls = [root / name for name in ("recovery", "base", "wal", "locks", "BACKUP_LOCK", "LAST_SUCCESS")] if root is not None else []
-    controls.append(snapshot.parent / "recovery.lock")
+    controls.extend(snapshot.parent / name for name in ("recovery.lock", "preparation.lock", "preparation.json"))
     for key in ("snapshot_file", "receipt_file", "off_host_receipt_file"):
         if key == "off_host_receipt_file" and settings.get(key) is None:
             continue

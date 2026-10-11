@@ -135,7 +135,7 @@ in
             lib.all (a: a.assertion || !(lib.hasPrefix "PostgreSQL recovery evidence" a.message)) selected.assertions;
         in
           accepted {receiptFile = lib.mkForce "/srv/backups/evidence/local.json";}
-          && lib.all (key: lib.all (suffix: !accepted {${key} = lib.mkForce "/srv/backups/${suffix}";}) ["recovery/SELECTED" "base/point/backup_manifest" "wal/segment" "locks/mutate" "BACKUP_LOCK" "LAST_SUCCESS" "recovery.lock"]) ["snapshotFile" "receiptFile" "offHostReceiptFile"];
+          && lib.all (key: lib.all (suffix: !accepted {${key} = lib.mkForce "/srv/backups/${suffix}";}) ["recovery/SELECTED" "base/point/backup_manifest" "wal/segment" "locks/mutate" "BACKUP_LOCK" "LAST_SUCCESS" "recovery.lock" "preparation.lock" "preparation.json"]) ["snapshotFile" "receiptFile" "offHostReceiptFile"];
       }
       {
         name = "legacy-evidence-also-reserves-producer-control-namespaces";
@@ -147,7 +147,7 @@ in
             lib.all (entry: entry.assertion || !(lib.hasPrefix "PostgreSQL recovery evidence" entry.message)) selected.assertions;
         in
           accepted {receiptFile = lib.mkForce "/srv/backups/evidence/local.json";}
-          && lib.all (key: lib.all (suffix: !accepted {${key} = lib.mkForce "/srv/backups/${suffix}";}) ["recovery/SELECTED" "base/point/backup_manifest" "wal/segment" "locks/mutate" "BACKUP_LOCK" "LAST_SUCCESS" "recovery.lock"]) ["snapshotFile" "receiptFile" "offHostReceiptFile"];
+          && lib.all (key: lib.all (suffix: !accepted {${key} = lib.mkForce "/srv/backups/${suffix}";}) ["recovery/SELECTED" "base/point/backup_manifest" "wal/segment" "locks/mutate" "BACKUP_LOCK" "LAST_SUCCESS" "recovery.lock" "preparation.lock" "preparation.json"]) ["snapshotFile" "receiptFile" "offHostReceiptFile"];
       }
       {
         name = "upgrade-validator-requires-an-absolute-executable";

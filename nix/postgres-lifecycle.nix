@@ -373,7 +373,7 @@ in {
           == null
           || (let
             evidence = [cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
-            controls = map (name: "${cfg.recovery.backupRoot}/${name}") ["recovery" "base" "wal" "locks" "BACKUP_LOCK" "LAST_SUCCESS"] ++ ["${builtins.dirOf cfg.recovery.snapshotFile}/recovery.lock"];
+            controls = map (name: "${cfg.recovery.backupRoot}/${name}") ["recovery" "base" "wal" "locks" "BACKUP_LOCK" "LAST_SUCCESS"] ++ map (name: "${builtins.dirOf cfg.recovery.snapshotFile}/${name}") ["recovery.lock" "preparation.lock" "preparation.json"];
           in
             cfg.recovery.backupRoot != "/" && lib.all normalizedPath (evidence ++ [cfg.recovery.backupRoot]) && lib.all (path: lib.all (control: storagePaths.disjoint [path control]) controls) evidence);
         message = "PostgreSQL recovery evidence must use normalized paths outside producer repository control namespaces and evidence lock files.";

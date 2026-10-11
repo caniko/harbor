@@ -118,11 +118,11 @@ fn validate_evidence_paths(settings: &Value, source_local: bool) -> Result<()> {
     } else {
         Vec::new()
     };
-    controls.push(
-        snapshot
-            .parent()
-            .ok_or_else(|| invalid("invalid snapshot parent"))?
-            .join("recovery.lock"),
+    let parent = snapshot
+        .parent()
+        .ok_or_else(|| invalid("invalid snapshot parent"))?;
+    controls.extend(
+        ["recovery.lock", "preparation.lock", "preparation.json"].map(|name| parent.join(name)),
     );
     for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
         if key == "off_host_receipt_file" && settings[key].is_null() {

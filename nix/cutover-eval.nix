@@ -142,7 +142,7 @@ in
       }
       {
         name = "filesystem-custody-excludes-enrolled-postgresql-storage";
-        message = "Every filesystem authority/corpus must be disjoint from the automatically enrolled PostgreSQL primary and lifecycle state roots.";
+        message = "Every filesystem authority/corpus must be disjoint from the automatically enrolled PostgreSQL primary, lifecycle and startup-inhibition roots.";
         assertion = let
           accepted = kind: path:
             custodyAccepted {
@@ -151,6 +151,7 @@ in
               services.harbor-db.postgresql = {
                 enable = true;
                 stateDir = "/srv/postgres-state";
+                writerFence.startupStateDir = "/srv/postgres-startup";
               };
               services.harbor-db.cutover.resources.history.authority.${kind} = lib.mkForce (
                 if kind == "directories"
@@ -166,7 +167,7 @@ in
         in
           lib.all (kind:
             accepted kind "/srv/postgres-primary-sibling"
-            && lib.all (path: !accepted kind path) ["/srv/postgres-primary" "/srv/postgres-primary/nested" "/srv/postgres-state" "/srv/postgres-state/nested" "/srv"])
+            && lib.all (path: !accepted kind path) ["/srv/postgres-primary" "/srv/postgres-primary/nested" "/srv/postgres-state" "/srv/postgres-state/nested" "/srv/postgres-startup" "/srv/postgres-startup/nested" "/srv"])
           ["directories" "state_dir"];
       }
       {

@@ -152,6 +152,72 @@ in
     '';
     assertions = [
       {
+        name = "physical-backup-roots-exclude-global-custody-namespaces";
+        message = "Target-only and local producers cannot mutate an enabled filesystem corpus, authority, or enrolled PostgreSQL primary/lifecycle/startup namespace.";
+        assertion = let
+          accepted = configuration: enabled: kind: path: override: let
+            selected =
+              (configuration.extendModules {
+                modules = [
+                  ./module.nix
+                  ./cutover.nix
+                  ./postgres-lifecycle.nix
+                  {
+                    services.postgresql = {
+                      enable = lib.mkForce (kind == "postgres" || configuration.config.services.postgresql.enable);
+                      dataDir = "/srv/pg-primary";
+                    };
+                    services.harbor-db.cutover = {
+                      enable = enabled;
+                      resources.history = {
+                        user = "archive";
+                        custody_file = "/srv/archive-state/custody.json";
+                        authority = {
+                          state_dir = "/srv/archive-state";
+                          directories = ["/srv/archive"];
+                          binding.backend = "files";
+                        };
+                      };
+                    };
+                    services.harbor-db.postgresql = {
+                      enable = kind == "postgres";
+                      stateDir = "/srv/pg-state";
+                      writerFence.startupStateDir = "/srv/pg-startup";
+                    };
+                    services.harbor-db.pgBackup.targetSettings.backupDir = lib.mkForce path;
+                  }
+                  override
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !(lib.hasInfix "custody namespaces" a.message || lib.hasPrefix "services.harbor-db.pgBackup" a.message)) selected.assertions;
+        in
+          lib.all (configuration:
+            accepted configuration true "files" "/srv/archive-sibling" {}
+            && accepted configuration false "files" "/srv/archive/backups" {}
+            && accepted configuration true "files" "/srv" {}
+            && lib.all (path: !accepted configuration true "files" path {}) ["/srv/archive" "/srv/archive/backups" "/srv/archive-state" "/srv/archive-state/backups"]
+            && lib.all (path: !accepted configuration true "postgres" path {}) ["/srv/pg-state" "/srv/pg-state/backups" "/srv/pg-startup" "/srv/pg-startup/backups"]
+            && lib.all (suffix:
+              !accepted configuration true "files" "/srv/backups" {
+                services.harbor-db.cutover.resources.history.authority.directories = lib.mkForce ["/srv/backups/${configuration.config.services.harbor-db.pgBackup.source.hostName}${suffix}"];
+              }) ["" "/nested"])
+          [eval localEval];
+      }
+      {
+        name = "local-backup-waits-for-primary-and-wal-slot";
+        message = "Local receiver requires the ready primary/setup, and the base backup requires/orders after primary plus receiver; remote targets retain independence.";
+        assertion = let
+          local = localEval.config.systemd.services;
+          remote = eval.config.systemd.services;
+        in
+          lib.all (unit: lib.elem unit local.pg-receivewal.requires && lib.elem unit local.pg-receivewal.after) ["postgresql.service" "postgresql-setup.service"]
+          && lib.all (unit: lib.elem unit local.pg-basebackup.requires && lib.elem unit local.pg-basebackup.after) ["postgresql.service" "pg-receivewal.service"]
+          && lib.all (unit: !(lib.elem unit remote.pg-basebackup.requires) && !(lib.elem unit remote.pg-basebackup.after)) ["postgresql.service" "pg-receivewal.service"]
+          && !(lib.elem "postgresql.service" remote.pg-receivewal.requires)
+          && !(lib.elem "pg-receivewal.service" local.postgresql.after);
+      }
+      {
         name = "source-local-tablespaces-reject-before-replication";
         message = "Source setup, receiver and basebackup invoke the same tablespace admission before any replication connection; independent targets have no local-primary guard.";
         assertion =
