@@ -319,6 +319,10 @@ in {
         message = "services.harbor-db.postgresql requires services.postgresql.enable.";
       }
       {
+        assertion = lib.length cfg.writerFence.setupUnits == lib.length (lib.unique cfg.writerFence.setupUnits) && !(lib.elem "postgresql.service" cfg.writerFence.setupUnits);
+        message = "Writer-fence setup units must be unique and distinct from the primary postgresql.service unit.";
+      }
+      {
         assertion = cfg.stateDir != pg.dataDir && !(lib.hasPrefix "${pg.dataDir}/" cfg.stateDir);
         message = "Harbor DB identity state must be outside the PostgreSQL data directory.";
       }
@@ -354,13 +358,12 @@ in {
         assertion =
           cfg.recovery
           == null
-          || cfg.recovery.repositoryProtocol != "source-local-v1"
           || (let
             evidence = [cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
             controls = map (name: "${cfg.recovery.backupRoot}/${name}") ["recovery" "base" "wal" "locks" "BACKUP_LOCK" "LAST_SUCCESS"] ++ ["${builtins.dirOf cfg.recovery.snapshotFile}/recovery.lock"];
           in
             cfg.recovery.backupRoot != "/" && lib.all normalizedPath (evidence ++ [cfg.recovery.backupRoot]) && lib.all (path: lib.all (control: storagePaths.disjoint [path control]) controls) evidence);
-        message = "Source-local recovery evidence must use normalized paths outside producer repository control namespaces and evidence lock files.";
+        message = "PostgreSQL recovery evidence must use normalized paths outside producer repository control namespaces and evidence lock files.";
       }
       {
         assertion = preparation == null || (cfg.recovery != null && lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) ([preparation.readinessCommand preparation.backupCommand preparation.restoreCommand] ++ lib.optional (preparation.exportCommand != []) preparation.exportCommand));

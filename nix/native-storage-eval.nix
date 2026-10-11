@@ -225,7 +225,10 @@ in
         in
           accepted "/var/lib/fixture-evidence/independent.json"
           && !accepted "/var/lib/harbor-db-transitions/fixture/inhibited.json"
-          && !accepted "/etc/systemd/system.control/fixture.service.d/receipt.json";
+          && !accepted "/etc/systemd/system.control/fixture.service.d/receipt.json"
+          && !accepted "/var/lib/fixture-backup/lock"
+          && !accepted "/var/lib/fixture-backup/LAST_SUCCESS"
+          && !accepted "/var/lib/fixture-backup/point/acceptance.json";
       }
       {
         name = "backup-storage-mount-required";

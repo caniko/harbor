@@ -74,36 +74,37 @@ pub fn policy(config: &Value) -> Result<&Value> {
     policy_for_executor(config, None)
 }
 
-fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> Result<&'a Value> {
-    let settings = config
-        .get("recovery")
-        .filter(|v| v.is_object())
-        .ok_or_else(|| invalid("missing recovery policy"))?;
-    if super::recovery_repository::source_local(settings)? {
-        for key in [
-            "backup_root",
-            "snapshot_file",
-            "receipt_file",
-            "off_host_receipt_file",
-        ] {
-            if key == "off_host_receipt_file" && settings[key].is_null() {
-                continue;
-            }
-            let raw = string(settings, key)?;
-            if !raw.starts_with('/')
-                || raw
-                    .split('/')
-                    .skip(1)
-                    .any(|part| matches!(part, "" | "." | ".."))
-            {
-                return Err(invalid(
-                    "source-local evidence must use normalized paths outside repository control paths",
-                ));
-            }
+fn validate_evidence_paths(settings: &Value, source_local: bool) -> Result<()> {
+    for key in [
+        "backup_root",
+        "snapshot_file",
+        "receipt_file",
+        "off_host_receipt_file",
+    ] {
+        // Fence-only policy admission has no selected repository. Producers and
+        // readers still require an explicit root before any evidence mutation.
+        if key == "backup_root" && settings.get(key).is_none() && !source_local {
+            continue;
         }
+        if key == "off_host_receipt_file" && settings[key].is_null() {
+            continue;
+        }
+        let raw = string(settings, key)?;
+        if !raw.starts_with('/')
+            || raw
+                .split('/')
+                .skip(1)
+                .any(|part| matches!(part, "" | "." | ".."))
+        {
+            return Err(invalid(
+                "recovery evidence must use normalized paths outside repository control paths",
+            ));
+        }
+    }
+    let snapshot = absolute(&path(settings, "snapshot_file")?)?;
+    let mut controls: Vec<PathBuf> = if settings.get("backup_root").is_some() {
         let root = absolute(&path(settings, "backup_root")?)?;
-        let snapshot = absolute(&path(settings, "snapshot_file")?)?;
-        let mut controls: Vec<_> = [
+        [
             "recovery",
             "base",
             "wal",
@@ -113,28 +114,40 @@ fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> R
         ]
         .iter()
         .map(|name| root.join(name))
-        .collect();
-        controls.push(
-            snapshot
-                .parent()
-                .ok_or_else(|| invalid("invalid snapshot parent"))?
-                .join("recovery.lock"),
-        );
-        for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
-            if key == "off_host_receipt_file" && settings[key].is_null() {
-                continue;
-            }
-            let evidence = absolute(&path(settings, key)?)?;
-            if controls
-                .iter()
-                .any(|control| evidence.starts_with(control) || control.starts_with(&evidence))
-            {
-                return Err(invalid(
-                    "source-local evidence must stay outside repository control paths",
-                ));
-            }
+        .collect()
+    } else {
+        Vec::new()
+    };
+    controls.push(
+        snapshot
+            .parent()
+            .ok_or_else(|| invalid("invalid snapshot parent"))?
+            .join("recovery.lock"),
+    );
+    for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+        if key == "off_host_receipt_file" && settings[key].is_null() {
+            continue;
+        }
+        let evidence = absolute(&path(settings, key)?)?;
+        if controls
+            .iter()
+            .any(|control| evidence.starts_with(control) || control.starts_with(&evidence))
+        {
+            return Err(invalid(
+                "recovery evidence must stay outside repository control paths",
+            ));
         }
     }
+    Ok(())
+}
+
+fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> Result<&'a Value> {
+    let settings = config
+        .get("recovery")
+        .filter(|v| v.is_object())
+        .ok_or_else(|| invalid("missing recovery policy"))?;
+    let source_local = super::recovery_repository::source_local(settings)?;
+    validate_evidence_paths(settings, source_local)?;
     if settings
         .get("require_writer_fence")
         .is_some_and(|v| !v.is_boolean())

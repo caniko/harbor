@@ -196,6 +196,12 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
     {
         return Err(invalid("backup and corpus roots must be disjoint"));
     }
+    let receipt = Path::new(string(config, "independent_receipt")?);
+    if receipt.starts_with(backup_root) || backup_root.starts_with(receipt) {
+        return Err(invalid(
+            "independent receipt and backup publication storage must be disjoint",
+        ));
+    }
     validate_workers(config)?;
     custody_entry(config, &target)?;
     Ok((source, target))

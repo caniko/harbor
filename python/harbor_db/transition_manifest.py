@@ -99,6 +99,8 @@ def validate(config):
     if any(backup_root.is_relative_to(path) or Path(path).is_relative_to(backup_root)
            for path in source["directories"] + target["directories"]):
         raise ValueError("backup and corpus roots must be disjoint")
+    if receipt.is_relative_to(backup_root) or backup_root.is_relative_to(receipt):
+        raise ValueError("independent receipt and backup publication storage must be disjoint")
     units = config["units"] + config["retired_units"]
     if (not units or len(set(units)) != len(units)
             or any(not re.fullmatch(r"[A-Za-z0-9_@.:-]+\.service", unit) for unit in units)

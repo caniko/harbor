@@ -146,8 +146,20 @@ fn local_and_off_host_receipt_paths_cannot_alias_in_admission() {
 
 #[test]
 fn source_local_evidence_cannot_replace_repository_control_paths_in_both_engines() {
+    evidence_cannot_replace_repository_controls(Some("source-local-v1"));
+}
+
+#[test]
+fn legacy_evidence_cannot_replace_repository_control_paths_in_both_engines() {
+    evidence_cannot_replace_repository_controls(None);
+    evidence_cannot_replace_repository_controls(Some("legacy"));
+}
+
+fn evidence_cannot_replace_repository_controls(protocol: Option<&str>) {
     let mut f = Fixture::new();
-    f.config["recovery"]["repository_protocol"] = json!("source-local-v1");
+    if let Some(protocol) = protocol {
+        f.config["recovery"]["repository_protocol"] = json!(protocol);
+    }
     let original = f.config.clone();
     for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
         for suffix in [
@@ -610,6 +622,11 @@ fn contract_hash_matches_legacy_sorted_ascii_json() {
 fn policy_rejects_overwrites_boolean_ages_and_duplicate_records() {
     let settings = json!({"system_identifier":"12345","snapshot_file":"/a","receipt_file":"/b","max_age_seconds":10,"record_checks":[{"name":"rows","database":"postgres","sql":"SELECT 1"}]});
     assert!(recovery::policy(&json!({"recovery":settings})).is_ok());
+    let mut complete = settings.clone();
+    complete["backup_root"] = json!("/backups");
+    assert!(recovery::policy(&json!({"recovery":complete})).is_ok());
+    complete["backup_root"] = json!(null);
+    assert!(recovery::policy(&json!({"recovery":complete})).is_err());
     for (key, value) in [
         ("receipt_file", json!("/a")),
         ("max_age_seconds", json!(true)),

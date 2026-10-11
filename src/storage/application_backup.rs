@@ -604,12 +604,38 @@ pub fn certify(c: &Value, b: &Path, state: &Path) -> Result<Value> {
         return Err(invalid("certifier executable changed during restoration"));
     }
     let hash = codec::file_digest(&b.join("acceptance.json"))?;
-    for (k,v) in json!({"source_acceptance_sha256":hash,"certified_at":now()?,"manifest_sha256":identity(c)?,"executables":tools,"resource":c["resource"]}).as_object().unwrap() { result[k]=v.clone(); }
     let path = state.join(format!("{hash}.json"));
-    if path.exists() && durable::read_json(&path)? != result {
-        return Err(invalid(
-            "independent restore receipt already exists; retain its original evidence",
-        ));
+    let current = now()?;
+    let previous = match fs::symlink_metadata(&path) {
+        Ok(_) => Some(durable::read_json(&path)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let certified_at = if let Some(previous) = &previous {
+        previous["certified_at"]
+            .as_i64()
+            .filter(|time| {
+                source["captured_at"]
+                    .as_i64()
+                    .is_some_and(|captured| captured <= *time)
+                    && *time <= current
+            })
+            .ok_or_else(|| {
+                invalid("independent restore receipt already exists; retain its original evidence")
+            })?
+    } else {
+        current
+    };
+    for (k,v) in json!({"source_acceptance_sha256":hash,"certified_at":certified_at,"manifest_sha256":identity(c)?,"executables":tools,"resource":c["resource"]}).as_object().unwrap() { result[k]=v.clone(); }
+    if let Some(previous) = previous {
+        if previous != result {
+            return Err(invalid(
+                "independent restore receipt already exists; retain its original evidence",
+            ));
+        }
+        // Restore, bytes, tools and the complete receipt were revalidated. Keep
+        // its timestamp, inode and bytes when the earlier response was lost.
+        return Ok(previous);
     }
     durable::write_json(&path, &result)?;
     Ok(result)

@@ -969,6 +969,95 @@ fn independent_certification_checks_host_privacy_hashes_and_retains_receipts() {
     fs::set_permissions(&state, fs::Permissions::from_mode(0o755)).unwrap();
     assert!(application_backup::certify(&c, &b, &state).is_err());
 }
+
+fn certify_peer(c: &Value, backup: &Path, state: &Path) -> harbor_db::storage::Result<Value> {
+    let script = r#"import json,sys
+from unittest.mock import patch
+from harbor_db import application_backup
+if sys.argv[4]:
+    original_digest=application_backup.digest
+    patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[4] if str(path)=='/etc/machine-id' else path)).start()
+try: print(json.dumps({'ok':application_backup.certify(json.loads(sys.argv[1]),sys.argv[2],sys.argv[3])}))
+except ValueError as error: print(json.dumps({'error':str(error)}))
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        c.to_string(),
+        backup.to_string_lossy().into_owned(),
+        state.to_string_lossy().into_owned(),
+        option_env!("HARBOR_DB_TEST_MACHINE_ID")
+            .unwrap_or("")
+            .into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    let response: Value = serde_json::from_slice(&process::execute(&spec)?).unwrap();
+    if let Some(error) = response["error"].as_str() {
+        return Err(harbor_db::storage::StorageError::Invalid(error.into()));
+    }
+    Ok(response["ok"].clone())
+}
+
+#[test]
+fn independent_certification_retries_preserve_original_evidence_across_engines_and_later_seconds() {
+    use std::os::unix::fs::MetadataExt;
+    for python_first in [false, true] {
+        let (t, c) = backup_fixture();
+        application_backup::capture(&c, "good", false).unwrap();
+        let backup = t.path().join("backups/good");
+        let acceptance = backup.join("acceptance.json");
+        let mut source = durable::read_json(&acceptance).unwrap();
+        source["executor"] = json!("foreign-host");
+        source["executor_machine_sha256"] = json!("0".repeat(64));
+        durable::write_json(&acceptance, &source).unwrap();
+        let state = t.path().join("certifier");
+        fs::create_dir(&state).unwrap();
+        fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(state.join("lock"), b"").unwrap();
+        let original = if python_first {
+            certify_peer(&c, &backup, &state).unwrap()
+        } else {
+            application_backup::certify(&c, &backup, &state).unwrap()
+        };
+        let path = state.join(format!("{}.json", codec::file_digest(&acceptance).unwrap()));
+        let bytes = fs::read(&path).unwrap();
+        let inode = fs::metadata(&path).unwrap().ino();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        assert!(chrono::Utc::now().timestamp() > original["certified_at"].as_i64().unwrap());
+        assert_eq!(
+            application_backup::certify(&c, &backup, &state).unwrap(),
+            original
+        );
+        assert_eq!(certify_peer(&c, &backup, &state).unwrap(), original);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(fs::metadata(&path).unwrap().ino(), inode);
+        for (key, bad) in [
+            ("certified_at", json!(chrono::Utc::now().timestamp() + 3600)),
+            ("semantic_sha256", json!("f".repeat(64))),
+        ] {
+            let mut invalid = original.clone();
+            invalid[key] = bad;
+            durable::write_json(&path, &invalid).unwrap();
+            assert!(application_backup::certify(&c, &backup, &state).is_err());
+            assert!(certify_peer(&c, &backup, &state).is_err());
+            assert_eq!(durable::read_json(&path).unwrap(), invalid);
+        }
+        for invalid in [json!(null), json!([]), json!(true), json!("unbound")] {
+            durable::write_json(&path, &invalid).unwrap();
+            assert!(application_backup::certify(&c, &backup, &state).is_err());
+            assert!(certify_peer(&c, &backup, &state).is_err());
+            assert_eq!(durable::read_json(&path).unwrap(), invalid);
+        }
+    }
+}
 #[test]
 fn provisioning_validation() {
     let mut p = json!({"database":"app","owner_role":"owner","runtime_role":"runtime"});

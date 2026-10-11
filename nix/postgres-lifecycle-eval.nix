@@ -112,13 +112,39 @@ in
     '';
     assertions = [
       {
+        name = "writer-fence-setup-units-are-unique-and-not-the-primary";
+        message = "Evaluation must reject setup unit lists that runtime inhibition rejects before installing a persistent gate.";
+        assertion = let
+          accepted = setupUnits: let
+            selected = (eval.extendModules {modules = [{services.harbor-db.postgresql.writerFence.setupUnits = lib.mkForce setupUnits;}];}).config;
+          in
+            lib.all (entry: entry.assertion || !(lib.hasPrefix "Writer-fence setup units" entry.message)) selected.assertions;
+        in
+          accepted []
+          && accepted ["postgresql-setup.service" "fixture-setup.service"]
+          && !accepted ["postgresql.service"]
+          && !accepted ["postgresql-setup.service" "postgresql-setup.service"];
+      }
+      {
         name = "source-local-evidence-reserves-producer-control-namespaces";
         message = "Snapshots and receipts must not replace repository selectors, locks, base backups or WAL; the dedicated evidence subtree remains supported.";
         assertion = let
           accepted = overrides: let
             selected = (eval.extendModules {modules = [{services.harbor-db.postgresql.recovery = {repositoryProtocol = "source-local-v1";} // overrides;}];}).config;
           in
-            lib.all (a: a.assertion || !(lib.hasPrefix "Source-local recovery evidence" a.message)) selected.assertions;
+            lib.all (a: a.assertion || !(lib.hasPrefix "PostgreSQL recovery evidence" a.message)) selected.assertions;
+        in
+          accepted {receiptFile = lib.mkForce "/srv/backups/evidence/local.json";}
+          && lib.all (key: lib.all (suffix: !accepted {${key} = lib.mkForce "/srv/backups/${suffix}";}) ["recovery/SELECTED" "base/point/backup_manifest" "wal/segment" "locks/mutate" "BACKUP_LOCK" "LAST_SUCCESS" "recovery.lock"]) ["snapshotFile" "receiptFile" "offHostReceiptFile"];
+      }
+      {
+        name = "legacy-evidence-also-reserves-producer-control-namespaces";
+        message = "Default legacy recovery must reserve selectors, locks, base and WAL storage for every evidence output, while accepting dedicated evidence files.";
+        assertion = let
+          accepted = overrides: let
+            selected = (eval.extendModules {modules = [{services.harbor-db.postgresql.recovery = overrides;}];}).config;
+          in
+            lib.all (entry: entry.assertion || !(lib.hasPrefix "PostgreSQL recovery evidence" entry.message)) selected.assertions;
         in
           accepted {receiptFile = lib.mkForce "/srv/backups/evidence/local.json";}
           && lib.all (key: lib.all (suffix: !accepted {${key} = lib.mkForce "/srv/backups/${suffix}";}) ["recovery/SELECTED" "base/point/backup_manifest" "wal/segment" "locks/mutate" "BACKUP_LOCK" "LAST_SUCCESS" "recovery.lock"]) ["snapshotFile" "receiptFile" "offHostReceiptFile"];

@@ -13,6 +13,69 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["legacy_evidence_cannot_replace_repository_control_paths_in_both_engines"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.transition_storage."
+selector_prefix = ""
+source = "tests/transition_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "transition_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["independent_receipts_cannot_alias_backup_publication_storage_before_inhibition_in_both_engines"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.application_storage."
+selector_prefix = ""
+source = "tests/application_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "application_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
+selectors = ["independent_certification_retries_preserve_original_evidence_across_engines_and_later_seconds"]
+
+[[coverage]]
+case = "native.recovery_storage.legacy_evidence_cannot_replace_repository_control_paths_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.certify-recovery"
+dimension = "rejection"
+evidence = "Both engines reserve repository controls for all snapshot/local/off-host outputs under omitted/default and explicit legacy protocols, before locks or publication. Dedicated evidence files remain supported and source-local admission retains the same protection."
+
+[[coverage]]
+case = "native.transition_storage.independent_receipts_cannot_alias_backup_publication_storage_before_inhibition_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.prepare"
+dimension = "rejection"
+evidence = "Both engines reject independent receipts anywhere in the selected backup publication namespace, including lock, success, acceptance, partial, intent, credential and pruning paths, before journals or writer inhibition. Disjoint evidence siblings remain supported."
+
+[[coverage]]
+case = "native.application_storage.independent_certification_retries_preserve_original_evidence_across_engines_and_later_seconds"
+capability = "application-backup"
+operation = "harbor-db-application-backup.certify"
+dimension = "repetition"
+evidence = "Native-first and Python-first independent certification receipts survive retries by both engines in later seconds with identical timestamp, bytes and inode. Complete restore and source/tool validation still execute; altered semantics and future timestamps reject without rewriting the retained receipt."
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.recovery_storage."
+selector_prefix = ""
+source = "tests/recovery_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "recovery_storage"]
+argv_suffix = ["--", "--exact"]
+profile = "integration"
+maturity = "crystallized"
+platforms = ["x86_64-linux", "aarch64-linux"]
+deadline_seconds = 120
+resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
 selectors = ["source_local_evidence_cannot_replace_repository_control_paths_in_both_engines"]
 
 [[inventories]]
@@ -577,7 +640,7 @@ case = "nix.x86_64-linux.postgres-lifecycle-eval"
 capability = "nixos"
 operation = "nixos.postgres-lifecycle"
 dimension = "rejection"
-evidence = "Preparation evaluation rejects provisioned and writable paths containing parent or dot components, repeated or trailing separators, and non-normalized protected roots before containment checks. Parent traversal into both the primary and authority tree rejects; a normalized disposable descendant remains valid."
+evidence = "Preparation evaluation rejects provisioned and writable paths containing parent or dot components, repeated or trailing separators, and non-normalized protected roots before containment checks. Parent traversal into both the primary and authority tree rejects; a normalized disposable descendant remains valid. Recovery evidence under default legacy and source-local protocols cannot select producer controls. Duplicate setup units and the implicitly included primary unit reject; empty and distinct setup lists admit."
 
 [[inventories]]
 origin = "rust"
@@ -620,7 +683,7 @@ case = "nix.x86_64-linux.native-storage-eval"
 capability = "nixos"
 operation = "nixos.application-transition"
 dimension = "rejection"
-evidence = "nix/native-storage-eval.nix rejects empty argv, an empty executable and a relative executable independently for each transition worker. Cross-project active/retired writer overlap, duplicate writer declarations and shared, nested, aliased or backup-overlapping barrier roots reject too. Transition-only project names reject dots, @, non-ASCII, empty and overlong names; valid ASCII and the 128-byte boundary pass. Valid disjoint projects and disabled-project overlap are admitted."
+evidence = "nix/native-storage-eval.nix rejects empty argv, an empty executable and a relative executable independently for each transition worker. Cross-project active/retired writer overlap, duplicate writer declarations and shared, nested, aliased or backup-overlapping barrier roots reject too. Independent receipts cannot select enabled backup, barrier or systemd-control namespaces. Transition-only project names reject dots, @, non-ASCII, empty and overlong names; valid ASCII and the 128-byte boundary pass. Valid disjoint projects and disabled-project overlap are admitted."
 
 [[coverage]]
 case = "native.supervisor.detached_nix_case_retains_launcher_path_without_service_manager_environment"

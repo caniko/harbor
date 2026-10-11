@@ -281,11 +281,25 @@ def certify(config, backup, state):
         verify_bytes(config, backup)
         if executables(config) != tools:
             raise ValueError("certifier executable changed during restoration")
-        result.update({"source_acceptance_sha256": digest(backup / "acceptance.json"), "certified_at": int(time.time()),
-                       "manifest_sha256": identity(config), "executables": tools, "resource": config["resource"]})
-        path = state / f"{result['source_acceptance_sha256']}.json"
-        if path.exists() and read_json(path) != result:
-            raise ValueError("independent restore receipt already exists; retain its original evidence")
+        acceptance_sha256 = digest(backup / "acceptance.json")
+        path = state / f"{acceptance_sha256}.json"
+        current = int(time.time())
+        previous = None
+        if os.path.lexists(path):
+            previous = read_json(path)
+            if not isinstance(previous, dict):
+                raise ValueError("independent restore receipt already exists; retain its original evidence")
+        certified_at = current
+        if previous is not None:
+            certified_at = previous.get("certified_at")
+            if type(certified_at) is not int or not source["captured_at"] <= certified_at <= current:
+                raise ValueError("independent restore receipt already exists; retain its original evidence")
+        result.update({"source_acceptance_sha256": acceptance_sha256, "certified_at": certified_at,
+                        "manifest_sha256": identity(config), "executables": tools, "resource": config["resource"]})
+        if previous is not None:
+            if previous != result:
+                raise ValueError("independent restore receipt already exists; retain its original evidence")
+            return previous
         write_json(path, result)
         return result
 

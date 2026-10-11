@@ -138,8 +138,8 @@ in {
             message = "Harbor DB ${name} transition executableFiles must be normalized immutable store paths; manifest realization requires regular files.";
           }
           {
-            assertion = storagePaths.normalizedAbsolute p.transition.independentReceipt && lib.all (control: storagePaths.disjoint [p.transition.independentReceipt control]) (barriers ++ ["/etc/systemd/system.control"]);
-            message = "Harbor DB ${name} transition independent receipts must stay outside normalized barrier and systemd control namespaces; runtime admission also reserves authority control files.";
+            assertion = storagePaths.normalizedAbsolute p.transition.independentReceipt && lib.all (control: storagePaths.disjoint [p.transition.independentReceipt control]) (barriers ++ backupRoots ++ ["/etc/systemd/system.control"]);
+            message = "Harbor DB ${name} transition independent receipts must stay outside normalized backup, barrier and systemd control namespaces; runtime admission also reserves authority control files.";
           }
         ])
         projects);

@@ -196,6 +196,11 @@ are never overwritten. `inspect BACKUP` rechecks bytes, contracts and freshness.
 The private state directory and persistent `lock` inode must already exist. Its
 receipt binds the original acceptance hash, actual machine identity, executables
 and semantic identity. Execution on the original machine cannot claim independence.
+If a caller loses the response after receipt publication, retry executes restore
+and all byte/tool/semantic checks again, then returns the matching retained receipt
+with its original `certified_at`, bytes and inode. Conflicting evidence or a
+timestamp outside the source-capture/current-time interval rejects without
+rewriting the receipt. Native and Python peers can resume one another's result.
 Copying bytes or trusting an application's unexecuted assertion is insufficient.
 Adapters must retain inherited leases through child work and drain descendants
 before returning. Native and Python bounded workers kill surviving process-group
@@ -220,6 +225,10 @@ Independent restore receipts must use normalized, non-redirected paths outside
 authority identity/journal/lock/custody files and all barrier/systemd control
 namespaces. Both engines reject aliases before acquiring transition locks or
 inhibiting writers; the selected custody file is reserved even with a custom name.
+Receipts must also be disjoint from the selected backup publication root, including
+its lock, success marker, restore points and attempt workspaces. Keep independent
+restore evidence in a separate directory so admission can reject control aliases
+before stopping writers.
 
 `projects.<name>.transition` and `lib.applicationBackendTransition = 1` expose the
 shared journal engine. Source and target resource manifests identify one authority

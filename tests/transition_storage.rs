@@ -183,6 +183,38 @@ fn independent_receipts_cannot_alias_transition_control_storage_in_both_engines(
 }
 
 #[test]
+fn independent_receipts_cannot_alias_backup_publication_storage_before_inhibition_in_both_engines()
+{
+    let mut f = Fixture::new();
+    for suffix in [
+        "backup-root",
+        "backup-root/lock",
+        "backup-root/LAST_SUCCESS",
+        "backup-root/point/acceptance.json",
+        "backup-root/point.partial/capture.json",
+        "backup-root/point.intent.json",
+        "backup-root/point.credentials/token",
+        "backup-root/point.pruning/acceptance.json",
+    ] {
+        f.config["independent_receipt"] = json!(f.temp.path().join(suffix));
+        assert!(
+            transition_manifest::validate(&f.config)
+                .unwrap_err()
+                .to_string()
+                .contains("receipt and backup publication")
+        );
+        assert!(python_transition_validation(&f.config).contains("receipt and backup publication"));
+        assert!(!f.temp.path().join("barrier/inhibited.json").exists());
+        assert!(!f.temp.path().join("authority/transition.json").exists());
+        assert!(!f.temp.path().join("barrier/lock").exists());
+    }
+    f.config["independent_receipt"] =
+        json!(f.temp.path().join("backup-root-sibling/independent.json"));
+    transition_manifest::validate(&f.config).unwrap();
+    assert_eq!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+}
+
+#[test]
 fn repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines()
  {
     transition_capture_fixture(false, true);
