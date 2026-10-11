@@ -14,7 +14,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from .durable import lock, read_json, sync_directory, sync_tree, write_json
+from .durable import immutable_store_reference, lock, read_json, sync_directory, sync_tree, write_json
 from . import process
 from . import application_publication as publication
 
@@ -54,6 +54,11 @@ def validate(config, *, check_root=True):
                 or not Path(argv[0]).is_absolute() or "{backup}" not in argv
                 or (stage != "capture" and "{workspace}" not in argv)):
             raise ValueError("commands require an absolute executable and explicit artifact/workspace arguments")
+        if protected:
+            immutable_store_reference(argv[0], executable=True)
+    if protected:
+        for path in config["executable_files"]:
+            immutable_store_reference(path)
     return root
 
 
@@ -61,7 +66,7 @@ def executables(config):
     paths = set(config["executable_files"] + [argv[0] for argv in config["commands"].values()])
     if any(not Path(path).is_absolute() or not Path(path).is_file() for path in paths):
         raise ValueError("backup executable or adapter file is absent")
-    return {path: digest(path) for path in sorted(paths)}
+    return {path: digest(immutable_store_reference(path) if config["version"] == 2 else path) for path in sorted(paths)}
 
 
 def inventory(path):
@@ -92,6 +97,8 @@ def inventory(path):
 
 
 def execute(config, stage, backup, workspace, lease, worker=None):
+    if config["version"] == 2:
+        immutable_store_reference(config["commands"][stage][0], executable=True)
     substitutions = {"{backup}": str(backup), "{workspace}": str(workspace)}
     argv = [substitutions.get(arg, arg) for arg in config["commands"][stage]]
     allowed = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "CREDENTIALS_DIRECTORY"}

@@ -81,6 +81,96 @@ fn last(t: &Path) -> Value {
 }
 
 #[test]
+fn protected_backup_admits_only_immutable_command_and_adapter_files_in_both_engines() {
+    use std::os::unix::fs::{MetadataExt, symlink};
+    let (t, mut config) = backup_fixture();
+    config["version"] = json!(2);
+    config["worker_user"] = json!("nobody");
+    let executable = fs::canonicalize(config["commands"]["capture"][0].as_str().unwrap()).unwrap();
+    config["executable_files"] = json!([]);
+    for stage in ["capture", "restore", "verify", "cleanup"] {
+        config["commands"][stage] = json!([executable, "{backup}", "{workspace}"]);
+    }
+    let mutable = t.path().join("worker-adapter");
+    fs::write(&mutable, b"#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(&mutable, fs::Permissions::from_mode(0o755)).unwrap();
+    let alias = t.path().join("store-alias");
+    symlink(&executable, &alias).unwrap();
+    let anchor = t.path().join("backups/lock");
+    let original = fs::metadata(&anchor).unwrap();
+    let mut rejected = Vec::new();
+    for stage in ["capture", "restore", "verify", "cleanup"] {
+        for path in [&mutable, &alias, t.path(), &t.path().join("absent")] {
+            let mut selected = config.clone();
+            selected["commands"][stage][0] = json!(path);
+            rejected.push(selected);
+        }
+        if let Some(file) = option_env!("HARBOR_DB_TEST_MACHINE_ID") {
+            let mut selected = config.clone();
+            selected["commands"][stage][0] = json!(file);
+            rejected.push(selected);
+        }
+    }
+    let mut selected = config.clone();
+    selected["executable_files"] = json!([mutable]);
+    rejected.push(selected);
+    for selected in &rejected {
+        let result = application_backup::validate(selected, true);
+        assert!(
+            result.is_err(),
+            "protected worker-controlled file admitted: {selected}"
+        );
+    }
+    if let Some(file) = option_env!("HARBOR_DB_TEST_MACHINE_ID") {
+        config["executable_files"] = json!([file]);
+    }
+    application_backup::validate(&config, true).unwrap();
+    let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import application_backup
+config,rejected=json.loads(sys.argv[1]),json.loads(sys.argv[2]);uid=int(sys.argv[3])
+if uid:
+    original=Path.lstat
+    def mapped(path):
+        info=original(path)
+        if info.st_uid!=uid: return info
+        fields=list(info);fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped).start()
+for selected in rejected:
+    try: application_backup.validate(selected)
+    except (OSError,ValueError): pass
+    else: raise AssertionError('protected worker-controlled file admitted')
+application_backup.validate(config)
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        serde_json::to_string(&rejected).unwrap(),
+        option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&spec).unwrap();
+    let retained = fs::metadata(&anchor).unwrap();
+    assert_eq!(
+        (original.dev(), original.ino()),
+        (retained.dev(), retained.ino())
+    );
+    assert_eq!(fs::read(&mutable).unwrap(), b"#!/bin/sh\nexit 0\n");
+    assert_eq!(fs::read_dir(t.path().join("backups")).unwrap().count(), 1);
+}
+
+#[test]
 fn automatic_manual_capture_remains_pinned_after_scheduled_retention_in_both_engines() {
     let mut outcomes = Vec::new();
     for python in [false, true] {

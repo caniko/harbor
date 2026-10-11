@@ -75,9 +75,30 @@ pub fn validate(c: &Value, check_root: bool) -> Result<PathBuf> {
                 "commands require an absolute executable and explicit artifact/workspace arguments",
             ));
         }
+        if protected {
+            immutable_file(&argv[0], true)?;
+        }
     }
-    argv(&c["executable_files"])?;
+    for path in argv(&c["executable_files"])? {
+        if protected {
+            immutable_file(&path, false)?;
+        }
+    }
     Ok(root)
+}
+fn immutable_file(path: &str, executable: bool) -> Result<PathBuf> {
+    super::cutover::validate_path(path)?;
+    let resolved = durable::immutable_store_reference(Path::new(path)).map_err(|error| {
+        invalid(format!(
+            "protected backup requires immutable store files: {error}"
+        ))
+    })?;
+    if executable && fs::metadata(&resolved)?.mode() & 0o111 == 0 {
+        return Err(invalid(
+            "protected backup command requires an executable store file",
+        ));
+    }
+    Ok(resolved)
 }
 fn argv(v: &Value) -> Result<Vec<String>> {
     v.as_array()
@@ -110,7 +131,12 @@ fn executables(c: &Value) -> Result<Value> {
         if !p.is_absolute() || !p.is_file() {
             return Err(invalid("backup executable or adapter file is absent"));
         }
-        let digest = codec::file_digest(&fs::canonicalize(p)?)?;
+        let resolved = if c["version"] == 2 {
+            immutable_file(&s, false)?
+        } else {
+            fs::canonicalize(p)?
+        };
+        let digest = codec::file_digest(&resolved)?;
         result.insert(s, json!(digest));
     }
     Ok(Value::Object(result))
@@ -168,7 +194,14 @@ fn execute(
     lease: RawFd,
     worker: Option<&publication::Worker>,
 ) -> Result<Vec<u8>> {
-    let args = argv(&c["commands"][stage])?
+    let command = argv(&c["commands"][stage])?;
+    if c["version"] == 2 {
+        immutable_file(
+            command.first().ok_or_else(|| invalid("empty command"))?,
+            true,
+        )?;
+    }
+    let args = command
         .into_iter()
         .map(|s| match s.as_str() {
             "{backup}" => backup.to_string_lossy().into_owned(),

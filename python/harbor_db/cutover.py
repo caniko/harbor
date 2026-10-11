@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from . import postgres, recovery, resource
-from .durable import read_json, write_json
+from .durable import immutable_store_reference, read_json, write_json
 
 
 def validate_manifest(value, host):
@@ -239,36 +239,7 @@ def require_database_paths(inventories, requirements, *, roots=(), git_executabl
 
 def immutable_git_executable(executable):
     validate_path(executable)
-    store = Path("/nix/store")
-    def reference(path, depth=0):
-        if not path.is_relative_to(store) or depth > 64:
-            raise ValueError("Git integrity requires an immutable store executable")
-        for selected in (path, *path.parents):
-            if selected == store:
-                break
-            info = selected.lstat()
-            if info.st_uid != 0:
-                raise ValueError("Git integrity requires root-owned immutable store paths")
-            if stat.S_ISLNK(info.st_mode):
-                target = selected.readlink()
-                reference(target if target.is_absolute() else selected.parent.resolve(strict=True) / target, depth + 1)
-            elif info.st_mode & 0o222:
-                raise ValueError("Git integrity requires read-only immutable store paths")
-    path = Path(executable)
-    reference(path)
-    resolved = path.resolve(strict=True)
-    if not re.fullmatch(r"/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9+._?=-]+(?:/[^/]+)*", str(resolved)):
-        raise ValueError("Git integrity requires an immutable store executable")
-    for parent in resolved.parents:
-        if parent == store:
-            break
-        info = parent.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222:
-            raise ValueError("Git integrity requires immutable store ancestors")
-    info = resolved.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222 or not info.st_mode & 0o111:
-        raise ValueError("Git integrity requires an executable immutable store file")
-    return str(resolved)
+    return str(immutable_store_reference(executable, executable=True))
 
 
 def validate_git_repository(path, requirement, executable):

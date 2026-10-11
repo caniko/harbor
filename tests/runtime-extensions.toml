@@ -33,7 +33,7 @@ sha256 = "f60c33c1f418b52532ce819f0fae1c6b0ebfbc802b6b5f8927bd14baa8199e5c"
 
 [[extensions]]
 path = "python/harbor_db/cutover.py"
-sha256 = "de8eb1527ee779cd9ed686f12dd4c94021181a6a4bbaac34783b4d041857e3ee"
+sha256 = "0026e0107697a183a13453fc6a68827fa5f07d3efcb3efc157a7706623824687"
 
 [[extensions]]
 path = "python/harbor_db/provision.py"
@@ -53,11 +53,11 @@ sha256 = "272ba7f286bcc31b4af7282076a1c79c6f7a2334cd74506d1339d12c139281a8"
 
 [[extensions]]
 path = "python/harbor_db/application_backup.py"
-sha256 = "9c9f1f931022eb3e644a66eb2738fa2e89a5f82fa7b78d183c62583132a18268"
+sha256 = "97255584fe9ca29ef0406311bdb0bbe85dea2346568892b660c2ea096bd0d4e7"
 
 [[extensions]]
 path = "python/harbor_db/durable.py"
-sha256 = "6aadb28cecea0ddff75ce6fc80982816770e1e614051a51356834b566cb41053"
+sha256 = "d776fe23812536d42108e41c37204a84ddb33a64da6974b2f4b11124260fd985"
 
 [[extensions]]
 path = "python/harbor_db/postgres_drill.py"

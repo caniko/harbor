@@ -43,6 +43,33 @@
       os.close(fd); connection.close()
       (root / "written").touch()
   '';
+  admission = pkgs.writeText "protected-backup-command-admission.py" ''
+    import hashlib, json, pathlib, subprocess, sys
+    source, native, peer = sys.argv[1:]
+    config = json.loads(pathlib.Path(source).read_text())
+    root = pathlib.Path(config["root"])
+    def retained():
+      result = {}
+      for path in [root, *sorted(root.rglob("*"))]:
+        info = path.lstat()
+        result[str(path)] = [info.st_dev, info.st_ino, info.st_uid, info.st_gid, info.st_mode,
+                            hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None]
+      return result
+    before = retained()
+    adapter = pathlib.Path("/var/lib/worker-adapter/executable")
+    alias = adapter.with_name("store-alias")
+    for engine, binary in enumerate((native, peer)):
+      for stage in ("capture", "restore", "verify", "cleanup"):
+        for kind, executable in enumerate((adapter, alias)):
+          selected = json.loads(json.dumps(config))
+          selected["commands"][stage][0] = str(executable)
+          policy = pathlib.Path("/run/rejected-backup-policy.json")
+          policy.write_text(json.dumps(selected))
+          result = subprocess.run([binary, "--config", str(policy), "capture", "--attempt", f"rejected-{engine}-{stage}-{kind}"], capture_output=True, text=True)
+          assert result.returncode != 0 and "immutable store" in result.stderr, (engine, stage, kind, result.stderr)
+          assert retained() == before, "rejected admission mutated protected backup state"
+    assert not adapter.with_name("executed").exists(), "mutable adapter executed"
+  '';
 in
   pkgs.testers.runNixOSTest {
     extraDriverArgs = ["--junit-xml" "junit.xml"];
@@ -125,6 +152,8 @@ in
           machine.succeed(f"python3 -c 'import json,os; i=os.stat(\"/var/lib/demo-backup/{point}/records\"); assert [i.st_dev,i.st_ino]!=json.load(open(\"/run/backup-fd/inode\"))'")
           machine.succeed("rm /run/backup-fd/attack /run/backup-fd/written")
       machine.succeed("test $(stat -c %a /var/lib/demo-backup/lock) = 640")
+      machine.succeed("install -d -m 0750 -o demo -g demo /var/lib/worker-adapter; printf '#!/bin/sh\\ntouch /var/lib/worker-adapter/executed\\n' > /var/lib/worker-adapter/executable; chown demo:demo /var/lib/worker-adapter/executable; chmod 0750 /var/lib/worker-adapter/executable; ln -s ${pkgs.python3}/bin/python3 /var/lib/worker-adapter/store-alias")
+      machine.succeed("python3 ${admission} $(readlink -f /etc/harbor-db/demo-backup.json) $(command -v harbor-db-application-backup) ${pythonPeer}/bin/harbor-db-application-backup")
       machine.fail("runuser -u reader -- cat /etc/backup-fixture-token")
       machine.succeed("systemctl start harbor-db-demo-backup.service")
       machine.reboot()

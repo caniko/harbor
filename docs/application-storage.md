@@ -174,12 +174,18 @@ before changing publication permissions and during accepted-point inspection.
 This prevents a mutable external pathname from modifying an accepted artifact.
 Every stage requires a literal `{backup}` argument; restore, verify and cleanup
 also require `{workspace}`.
-Additional `executableFiles` require normalized immutable Nix store paths during
-evaluation. The backup manifest is constructed only after every declared file
-resolves to a regular file inside the immutable store; directories, missing files
+Version-2 command entrypoints and additional `executableFiles` require normalized
+immutable Nix store paths during evaluation. The backup manifest is constructed
+only after every command and declared file resolves to a regular file inside the
+immutable store; directories, missing files
 and mutable link targets fail realization before timer installation. Store-local
 links retain native/Python file-hashing compatibility. Evaluation does not realize
 adapter packages.
+Both runtimes repeat immutable-file admission before capture/inspection and before
+each command execution. Entrypoints must be executable; additional interpreter or
+adapter files may be non-executable. Mutable aliases to store executables reject,
+so worker replacement cannot race pathname reopening while restoring a previously
+hashed executable. Version-1 legacy capture compatibility remains unchanged.
 
 Transition `executableFiles` use the same evaluation and realization contract.
 Across all enabled provisioning projects, runtime OS accounts must be disjoint

@@ -19,6 +19,7 @@
     (lib.filter (mount: mount == "/" || mount == backup.directory || lib.hasPrefix "${mount}/" backup.directory)
       (lib.attrNames config.fileSystems));
   manifest = name: backup: let
+    entrypoints = lib.concatMap (argv: lib.optional (argv != []) (builtins.head argv)) (lib.attrValues backup.commands);
     document = pkgs.writeText "harbor-db-${name}-backup.json" (builtins.toJSON {
       version = 2;
       worker_user = backup.user;
@@ -31,7 +32,7 @@
       maximum_age_seconds = backup.maximumAgeSeconds;
     });
   in
-    immutableFiles.checkedManifest "Harbor DB ${name} backup" backup.executableFiles document;
+    immutableFiles.checkedManifest "Harbor DB ${name} backup" (lib.unique (backup.executableFiles ++ entrypoints)) document;
 in {
   imports = [./storage-package-argument.nix];
   options.services.harbor-db.projects = mkOption {
@@ -43,7 +44,7 @@ in {
         directory = mkOption {type = types.strMatching "/[A-Za-z0-9_./-]+";};
         commands = mkOption {
           type = types.attrsOf (types.listOf types.str);
-          description = "Absolute capture/restore/verify/cleanup argv. Exact {backup} and {workspace} arguments are replaced without a shell.";
+          description = "Immutable store capture/restore/verify/cleanup executable argv. Exact {backup} and {workspace} arguments are replaced without a shell.";
         };
         executableFiles = mkOption {
           type = types.listOf types.str;
@@ -128,8 +129,8 @@ in {
             message = "Harbor DB ${name} backup incomplete retention age must exceed all capture/retry stage budgets.";
           }
           {
-            assertion = lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) (lib.attrValues p.backup.commands);
-            message = "Harbor DB ${name} backup commands must be absolute.";
+            assertion = lib.all (argv: argv != [] && immutableFiles.storePath (builtins.head argv)) (lib.attrValues p.backup.commands);
+            message = "Harbor DB ${name} backup commands must name normalized immutable store executables; manifest realization requires regular store files.";
           }
           {
             assertion = lib.all (stage: let

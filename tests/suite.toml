@@ -2,6 +2,16 @@
 version = 1
 [[inventories]]
 origin = "rust"
+id_prefix = "native.application_storage."
+selector_prefix = ""
+source = "tests/application_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "application_storage"]
+argv_suffix = ["--", "--exact"]
+maturity = "crystallized"
+selectors = ["protected_backup_admits_only_immutable_command_and_adapter_files_in_both_engines"]
+
+[[inventories]]
+origin = "rust"
 id_prefix = "native.supervisor."
 selector_prefix = ""
 source = "tests/supervisor.rs"

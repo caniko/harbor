@@ -110,6 +110,15 @@
     backupCommands // {${stage} = builtins.filter (arg: arg != placeholder) backupCommands.${stage};};
   backupFileManifest = executableFiles:
     (evaluate [module {services.harbor-db.projects.fixture.backup = {inherit executableFiles;};}]).config.environment.etc."harbor-db/fixture-backup.json".source;
+  backupCommandManifest = files:
+    (evaluate [
+      module
+      {
+        services.harbor-db.projects.fixture.backup.commands =
+          pkgs.lib.mkForce
+          (pkgs.lib.genAttrs ["capture" "restore" "verify" "cleanup"] (_: [(builtins.head files) "{backup}" "{workspace}"]));
+      }
+    ]).config.environment.etc."harbor-db/fixture-backup.json".source;
   transitionFileManifest = executableFiles:
     (evaluate [module {services.harbor-db.projects.fixture.transition = {inherit executableFiles;};}]).config.environment.etc."harbor-db/fixture-transition.json".source;
   redirectedExecutable = pkgs.runCommand "harbor-db-redirected-adapter" {} ''
@@ -225,8 +234,21 @@ in
           fi
         '')
         invalid}
-    '') [backupFileManifest transitionFileManifest];
+    '') [backupFileManifest transitionFileManifest backupCommandManifest];
     assertions = [
+      {
+        name = "protected-backup-commands-require-immutable-store-files";
+        message = "Every protected command entrypoint must reject mutable paths and ambiguous store spelling before worker execution.";
+        assertion =
+          backupPolicyAccepted {commands = pkgs.lib.mkForce backupCommands;}
+          && pkgs.lib.all (stage:
+            pkgs.lib.all (path:
+              !backupPolicyAccepted {
+                commands = pkgs.lib.mkForce (backupCommands // {${stage} = [path "{backup}" "{workspace}"];});
+              })
+            ["relative-adapter" "/var/lib/app/backup-adapter" "/run/store-alias" "${pkgs.coreutils}/bin/../bin/true" "${pkgs.coreutils}/bin//true"])
+          ["capture" "restore" "verify" "cleanup"];
+      }
       {
         name = "backup-coordinator-retains-unbounded-publication-and-retention";
         message = "The service must not kill valid coordinator copy/prune work after bounded adapter stages; each stage still carries its configured deadline.";
