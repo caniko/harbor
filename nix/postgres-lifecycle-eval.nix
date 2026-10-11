@@ -173,6 +173,22 @@ in
           accepted "/srv/harbor-state" && lib.all (path: !accepted path) ["/" "" "relative" "/srv/state/" "/srv//state" "/srv/./state" "/srv/../state" "/srv/state other" "/srv/state\nother"];
       }
       {
+        name = "startup-state-is-normalized-and-disjoint";
+        message = "Startup inhibition requires normalized storage disjoint in both directions from identity state and PostgreSQL data, including default-path overlaps.";
+        assertion = let
+          accepted = overrides: let
+            selected = (eval.extendModules {modules = [overrides];}).config;
+          in
+            lib.all (entry: entry.assertion || !(lib.hasPrefix "PostgreSQL startup inhibition" entry.message)) selected.assertions;
+          startup = path: {services.harbor-db.postgresql.writerFence.startupStateDir = lib.mkForce path;};
+        in
+          accepted (startup "/srv/startup-state")
+          && accepted (startup "/srv/postgres/authority-other")
+          && lib.all (path: !accepted (startup path)) ["/" "/srv/startup/" "/srv//startup" "/srv/./startup" "/srv/../startup" "/srv/startup other" "/srv/startup%other" "/srv/startup\\other" "/srv/postgres/authority" "/srv/postgres/authority/child" "/srv/postgres/18" "/srv/postgres/18/child" "/srv/postgres"]
+          && !accepted {services.harbor-db.postgresql.stateDir = lib.mkForce "/var/lib/harbor-db";}
+          && !accepted {services.postgresql.dataDir = lib.mkForce "/var/lib/harbor-db";};
+      }
+      {
         name = "recovery-receipt-paths-are-distinct";
         message = "Local and off-host recovery receipts cannot alias one another or overwrite the snapshot.";
         assertion =

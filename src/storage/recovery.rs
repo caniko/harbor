@@ -376,6 +376,10 @@ pub fn query_leased(
         .filter(|(k, _)| !k.starts_with("PG"))
         .collect::<BTreeMap<_, _>>();
     env.insert("PGCONNECT_TIMEOUT".into(), "5".into());
+    // The explicit connection string carries only the escaped database name and
+    // fixed session settings; inherited libpq routing/options remain scrubbed.
+    let database = database.replace('\\', "\\\\").replace('\'', "\\'");
+    let options = "-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex -c standard_conforming_strings=on -c default_transaction_read_only=on";
     let mut spec = process::CommandSpec::new(vec![
         path(config, "package")?
             .join("bin/psql")
@@ -387,14 +391,19 @@ pub fn query_leased(
         format!("--host={}", socket.display()),
         format!("--port={port}"),
         "--username=postgres".into(),
-        format!("--dbname={database}"),
+        format!("--dbname=dbname='{database}' options='{options}'"),
         "--set=ON_ERROR_STOP=1".into(),
         "--tuples-only".into(),
         "--no-align".into(),
+        // \bind uses the extended protocol even without parameters. Its Parse
+        // message rejects multiple statements before any part can execute.
+        // PREPARE accepts query/DML grammar, never transaction control or CALL/DO.
         "--command".into(),
-        format!(
-            "BEGIN READ ONLY; SET LOCAL TimeZone = 'UTC'; SET LOCAL DateStyle = 'ISO,YMD'; SET LOCAL bytea_output = 'hex';\n{sql}\n;COMMIT;"
-        ),
+        "\\bind".into(),
+        "--command".into(),
+        format!("PREPARE harbor_db_recovery_query AS {sql}"),
+        "--command".into(),
+        "BEGIN READ ONLY; SET LOCAL TimeZone = 'UTC'; SET LOCAL DateStyle = 'ISO,YMD'; SET LOCAL bytea_output = 'hex'; EXECUTE harbor_db_recovery_query; COMMIT;".into(),
     ]);
     spec.environment = Some(env);
     spec.leases = leases.to_vec();

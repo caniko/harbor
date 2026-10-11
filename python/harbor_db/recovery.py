@@ -153,15 +153,21 @@ def query(config, socket_dir, port, database, sql):
         raise ValueError("recovery queries require a local Unix socket and valid port")
     env = {key: value for key, value in os.environ.items() if not key.startswith("PG")}
     env["PGCONNECT_TIMEOUT"] = "5"
-    # Consumer SQL is declarative trusted configuration, never interpolated
-    # user data. Run every check in an explicit read-only transaction.
+    database = database.replace("\\", "\\\\").replace("'", "\\'")
+    options = ("-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex "
+               "-c standard_conforming_strings=on -c default_transaction_read_only=on")
+    # \bind forces a single-statement extended-protocol Parse. PREPARE accepts
+    # query/DML grammar, never transaction control or CALL/DO. Only its execution
+    # enters the explicit read-only transaction, retaining normalized output.
     return postgres.run([
         Path(config["package"]) / "bin/psql", "--no-psqlrc", "--no-password", "--quiet",
-        f"--host={socket_dir}", f"--port={port}", "--username=postgres", f"--dbname={database}",
+        f"--host={socket_dir}", f"--port={port}", "--username=postgres",
+        f"--dbname=dbname='{database}' options='{options}'",
         "--set=ON_ERROR_STOP=1", "--tuples-only", "--no-align",
+        "--command", "\\bind", "--command", f"PREPARE harbor_db_recovery_query AS {sql}",
         "--command", ("BEGIN READ ONLY; SET LOCAL TimeZone = 'UTC'; "
-                      "SET LOCAL DateStyle = 'ISO,YMD'; SET LOCAL bytea_output = 'hex';\n"
-                      f"{sql}\n;COMMIT;"),
+                      "SET LOCAL DateStyle = 'ISO,YMD'; SET LOCAL bytea_output = 'hex'; "
+                      "EXECUTE harbor_db_recovery_query; COMMIT;"),
     ], env=env, capture_output=True, text=True, timeout=60).stdout
 
 

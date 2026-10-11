@@ -331,6 +331,19 @@ in {
         message = "Harbor DB identity state requires a dedicated normalized absolute directory.";
       }
       {
+        assertion = let
+          state = cfg.writerFence.startupStateDir;
+        in
+          state
+          != "/"
+          && normalizedPath state
+          && builtins.match "[^[:space:]]*" state != null
+          && !(lib.hasInfix "\\" state || lib.hasInfix "%" state)
+          && lib.all normalizedPath [pg.dataDir cfg.stateDir]
+          && lib.all (protected: storagePaths.disjoint [state protected]) [pg.dataDir cfg.stateDir];
+        message = "PostgreSQL startup inhibition requires a normalized dedicated path disjoint from identity state and PostgreSQL data storage.";
+      }
+      {
         assertion = cfg.upgrade == null || (cfg.upgrade.validateCommand != [] && lib.hasPrefix "/" (lib.head cfg.upgrade.validateCommand));
         message = "Staged PostgreSQL upgrades require consumer validation with an absolute executable path.";
       }

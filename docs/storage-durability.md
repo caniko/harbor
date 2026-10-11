@@ -54,6 +54,13 @@ The launcher supplies `fsync=on`, `full_page_writes=on` and
 `synchronous_commit`; consumers must set it locally in every acknowledged write
 transaction. A generated configuration default alone is insufficient.
 
+## Startup inhibition
+
+`writerFence.startupStateDir` must be a normalized, dedicated absolute path,
+separate in both containment directions from the cluster data and identity state.
+Nix evaluation rejects overlapping defaults after a parent-directory override,
+as well as traversal, duplicate separators and unsafe startup-path spellings.
+
 ## Offline major upgrades
 
 Set `upgrade.oldPackage`, `oldDataDir`, `initdbArgs`, optional `extraConfig`, and
@@ -117,6 +124,20 @@ This contract cannot retrofit immutable generations created before the guard.
 Certify rollback targets after installing guards and application compatibility
 checks. Hardware must honor PostgreSQL/filesystem flush requests; software tests
 do not certify a drive's power-loss behavior.
+
+## Recovery SQL checks
+
+Configured recovery record and compatibility checks execute as one prepared SQL
+statement inside an explicit read-only transaction. `psql`'s zero-parameter
+`\bind` uses PostgreSQL's extended protocol, which rejects multiple statements
+before executing any part of the input. The SQL `PREPARE` grammar also excludes
+transaction control, `CALL`, `DO` and client meta-commands. Modifying queries are
+rejected by the read-only transaction. Quoted semicolons, comments and escaped
+strings are parsed by PostgreSQL itself. A fixed, explicitly escaped connection
+string pins timezone, date/bytea formatting, standard string quoting and a read-only
+session default before parsing, so typed SQL literals have consistent semantics; inherited
+libpq routing/options stay scrubbed. Checks require `psql` 16 or newer; older
+clients fail admission rather than falling back to simple-query execution.
 
 ## Consumer storage authority
 

@@ -171,6 +171,7 @@ def install_barriers(config, record):
     require_root()
     state = Path(config["barrier_dir"])
     startup_inhibition.owned_ancestors(state)
+    validate_barrier_markers(config, record)
     startup_inhibition.provision_directory(state, 0o700)
     retired = state / "retired"
     if config["retired_units"]:
@@ -186,8 +187,6 @@ def install_barriers(config, record):
             check_transition_drop_in(config, path, selected, unit)
         else:
             atomic_write(path, transition_content(config, selected, unit))
-    if (state / "inhibited.json").exists() and read_json(state / "inhibited.json")["intent"] != record["intent"]:
-        raise ValueError("another transition owns the persistent startup barrier")
     write_json(state / "inhibited.json", {"intent": record["intent"], "candidate": record["barrier_candidate"]})
     if config["retired_units"]:
         write_json(retired / "inhibited.json", {"resource": config["resource"], "units": config["retired_units"]})
@@ -233,10 +232,14 @@ def startup_unit(state, unit):
     resource.check(read_json(policy["authority_manifest"]))
 
 
-def release_barriers(config, record, *, aborted=False):
+def validate_barrier_markers(config, record):
     state = Path(config["barrier_dir"])
+    if os.path.lexists(state):
+        startup_inhibition.owned(state, directory=True)
     paths = [state / "inhibited.json"]
     if config["retired_units"]:
+        if os.path.lexists(state / "retired"):
+            startup_inhibition.owned(state / "retired", directory=True)
         paths.append(state / "retired/inhibited.json")
     for path in paths:
         if os.path.lexists(path):
@@ -246,6 +249,12 @@ def release_barriers(config, record, *, aborted=False):
                         if path.parent.name == "retired" else {"intent": record["intent"], "candidate": record["barrier_candidate"]})
             if marker != expected:
                 raise ValueError("another transition owns the startup barrier")
+    return paths
+
+
+def release_barriers(config, record, *, aborted=False):
+    state = Path(config["barrier_dir"])
+    paths = validate_barrier_markers(config, record)
     write_json(state / "start-policy.json", {"version": 1,
                "generation": record["source_generation"] if aborted else record["candidate"],
                "authority_manifest": config["source_manifest"] if aborted else config["target_manifest"],

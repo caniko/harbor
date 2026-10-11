@@ -496,7 +496,7 @@ impl Fixture {
         fs::write(self.p("rows"), "actual records\n").unwrap();
         fs::write(self.p("primary.json"), json!({"data_dir":self.p("data"), "major":"18", "system_identifier":"12345", "fsync":"on", "full_page_writes":"on", "synchronous_commit":"on", "in_recovery":false}).to_string()).unwrap();
         fs::write(self.p("restored.json"), json!({"data_dir":self.p("restored"), "major":"18", "system_identifier":"12345", "read_only":"on", "in_recovery":false, "replay_lsn":"0/200"}).to_string()).unwrap();
-        self.executable("package/bin/psql", &format!("for arg in \"$@\"; do case \"$arg\" in *default_transaction_read_only*) cat '{}'; exit;; *pg_control_system*) cat '{}'; exit;; esac; done; cat '{}'", self.p("restored.json").display(), self.p("primary.json").display(), self.p("rows").display()));
+        self.executable("package/bin/psql", &format!("for arg in \"$@\"; do case \"$arg\" in *current_setting*default_transaction_read_only*) cat '{}'; exit;; *pg_control_system*) cat '{}'; exit;; esac; done; cat '{}'", self.p("restored.json").display(), self.p("primary.json").display(), self.p("rows").display()));
         let selected =
             recovery_repository::select(&self.config, &self.config["recovery"], self.now).unwrap();
         let mut source = selected.binding().clone();
@@ -661,7 +661,7 @@ fn primary_snapshot_retry_returns_frozen_generation_without_republishing() {
     let fence = writer_fence::open_fence(&f.config, "12345").unwrap();
     let record = writer_fence::startup(&f.config).unwrap().unwrap();
     fs::write(f.p("fence.json"),json!({"data_dir":f.config["data_dir"],"major":"18","system_identifier":"12345","hba_file":record["hba_file"],"control_role":"postgres","in_recovery":false,"fsync":"on","full_page_writes":"on","synchronous_commit":"on","preload_libraries":[],"logical_subscriptions":0,"prepared_transactions":0,"other_writers":0}).to_string()).unwrap();
-    f.executable("package/bin/psql",&format!("for arg in \"$@\"; do case \"$arg\" in *prepared_transactions*) cat '{}'; exit;; *default_transaction_read_only*) cat '{}'; exit;; *pg_control_system*) cat '{}'; exit;; esac; done; cat '{}'",f.p("fence.json").display(),f.p("restored.json").display(),f.p("primary.json").display(),f.p("rows").display()));
+    f.executable("package/bin/psql",&format!("for arg in \"$@\"; do case \"$arg\" in *prepared_transactions*) cat '{}'; exit;; *current_setting*default_transaction_read_only*) cat '{}'; exit;; *pg_control_system*) cat '{}'; exit;; esac; done; cat '{}'",f.p("fence.json").display(),f.p("restored.json").display(),f.p("primary.json").display(),f.p("rows").display()));
     f.meta["writer_fence_token"] = fence["token"].clone();
     f.meta["epoch_id"] = fence["token"].clone();
     f.meta["completed_at"] = json!(f.now - 10);

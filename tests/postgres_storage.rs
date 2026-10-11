@@ -652,6 +652,114 @@ fn native_postmaster_retains_main_pid_lease_and_logical_restore_is_private() {
         "CREATE TABLE records(id int,revision bigint);INSERT INTO records VALUES(1,7)".into(),
     ]);
     run("psql", sql);
+    let mut legacy_quoting = endpoint.clone();
+    legacy_quoting.extend(["-c".into(), "ALTER DATABASE postgres SET standard_conforming_strings = off; ALTER DATABASE postgres SET TimeZone = 'Pacific/Auckland'; ALTER DATABASE postgres SET DateStyle = 'SQL,DMY'; ALTER DATABASE postgres SET bytea_output = 'escape'".into()]);
+    run("psql", legacy_quoting);
+    // Every configured check must retain the read-only boundary, in both engines.
+    // This is a disposable real primary, so also inspect its rows after rejected SQL.
+    let attacks = [
+        "COMMIT; DELETE FROM records; SELECT 1",
+        "ROLLBACK; DELETE FROM records; SELECT 1",
+        "END; DELETE FROM records; SELECT 1",
+        "SELECT 1; COMMIT; DELETE FROM records; SELECT 1",
+        "/* outer /* nested */ comment */ COMMIT; DELETE FROM records",
+        "SET TRANSACTION READ WRITE; DELETE FROM records; SELECT 1",
+        "WITH removed AS (DELETE FROM records RETURNING id) SELECT id FROM removed",
+        "DO $$ BEGIN COMMIT; DELETE FROM records; END $$",
+        "SELECT 1; SELECT 2",
+        "COMMIT",
+        "-- leading comment\nCOMMIT",
+        "SELECT set_config('transaction_read_only','off',true)",
+        "SELECT E'continued'\n'\\'';COMMIT;DELETE FROM records;--'",
+        "\\! echo escaped-client-command",
+        "SELECT 1; -- misleading tail\nROLLBACK; DELETE FROM records",
+        "PREPARE TRANSACTION 'escape'",
+    ];
+    let positive = [
+        ("SELECT id,revision FROM records ORDER BY id;", "1|7\n"),
+        (
+            "/* outer /* nested */ comment */ SELECT ';COMMIT;DELETE' -- tail",
+            ";COMMIT;DELETE\n",
+        ),
+        ("SELECT $tag$;COMMIT;DELETE$tag$;", ";COMMIT;DELETE\n"),
+        (
+            "SELECT E'escaped\\';COMMIT;DELETE';",
+            "escaped';COMMIT;DELETE\n",
+        ),
+        (
+            "WITH retained AS (SELECT id FROM records) SELECT id FROM retained;",
+            "1\n",
+        ),
+        ("SELECT true", "t\n"),
+        (
+            "SELECT '2000-01-02 03:04:05'::timestamptz,decode('42','hex')",
+            "2000-01-02 03:04:05+00|\\x42\n",
+        ),
+        ("SELECT 1 AS \"semi;colon\"", "1\n"),
+        (
+            "SELECT E'continued'\n'\\';COMMIT;DELETE'",
+            "continued';COMMIT;DELETE\n",
+        ),
+        (
+            r"SELECT '\'';COMMIT;DELETE FROM records;--'",
+            "\\';COMMIT;DELETE FROM records;--\n",
+        ),
+    ];
+    let mut rejections = Vec::new();
+    for native in [true, false] {
+        let query = |statement: &str| {
+            if native {
+                harbor_db::storage::recovery::query(&config, &socket, 55440, "postgres", statement)
+                    .map_err(|e| e.to_string())
+            } else {
+                let mut spec = CommandSpec::new(vec![
+                    "python3".into(), "-B".into(), "-c".into(),
+                    "import json,sys;from harbor_db import recovery;print(recovery.query(json.loads(sys.argv[1]),sys.argv[2],55440,'postgres',sys.argv[3]),end='')".into(),
+                    config.to_string(), socket.display().to_string(), statement.into(),
+                ]);
+                spec.environment = Some(std::collections::BTreeMap::from([
+                    ("PATH".into(), std::env::var("PATH").unwrap()),
+                    (
+                        "PYTHONPATH".into(),
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+                ]));
+                process::execute(&spec)
+                    .and_then(|result| process::text(&result))
+                    .map_err(|e| e.to_string())
+            }
+        };
+        for statement in attacks {
+            let rejected = query(statement).is_err();
+            let mut inspect = endpoint.clone();
+            inspect.extend([
+                "-XAt".into(),
+                "-c".into(),
+                "SELECT id,revision FROM records ORDER BY id".into(),
+            ]);
+            let retained = run("psql", inspect).trim() == "1|7";
+            rejections.push((native, statement, rejected, retained));
+            if !retained {
+                let mut reset = endpoint.clone();
+                reset.extend([
+                    "-c".into(),
+                    "DELETE FROM records; INSERT INTO records VALUES(1,7)".into(),
+                ]);
+                run("psql", reset);
+            }
+        }
+        for (statement, expected) in positive {
+            let actual = query(statement)
+                .unwrap_or_else(|error| panic!("native={native}, sql={statement:?}: {error}"));
+            assert_eq!(actual, expected, "native={native}, sql={statement}");
+        }
+    }
+    assert!(
+        rejections
+            .iter()
+            .all(|(_, _, rejected, retained)| *rejected && *retained),
+        "{rejections:?}"
+    );
     let mut dump = endpoint;
     dump.extend([
         "--format=custom".into(),

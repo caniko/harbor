@@ -1737,6 +1737,191 @@ transition_manifest.release_barriers(c,r,aborted=True)
     process::execute(&spec).unwrap();
 }
 #[test]
+fn rejected_barrier_installation_preserves_policy_markers_and_drop_ins_in_both_engines() {
+    use std::{
+        os::unix::fs::{MetadataExt, PermissionsExt},
+        path::Path,
+    };
+    if unsafe { libc::geteuid() } != 0 {
+        let root = tempfile::tempdir().unwrap();
+        // A private filesystem root gives namespace-root-owned ancestors, without
+        // changing host ownership or bypassing the production ownership checks.
+        let launch = r#"import os,subprocess,sys
+from pathlib import Path
+sys.stderr=sys.stdout
+root=Path(sys.argv[1]);source=Path(sys.argv[2]);binary=sys.argv[3]
+for path in (Path('/nix'),Path('/proc'),Path('/dev'),source):
+    target=root/path.relative_to('/');target.mkdir(parents=True,exist_ok=True)
+    subprocess.run(['mount','--rbind',str(path),str(target)],check=True,stderr=subprocess.STDOUT)
+(root/'tmp').mkdir(mode=0o1777)
+(root/'etc').mkdir()
+(root/'etc/passwd').write_text('root:x:0:0:fixture:/tmp:/bin/sh\n')
+(root/'etc/group').write_text('root:x:0:\n')
+os.chroot(root);os.chdir(source);os.environ['TMPDIR']='/tmp'
+os.execv(binary,[binary,*sys.argv[4:]])
+"#;
+        let mut spec = process::CommandSpec::new(vec![
+            "unshare".into(),
+            "--user".into(),
+            "--map-root-user".into(),
+            "--mount".into(),
+            "--".into(),
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            launch.into(),
+            root.path().display().to_string(),
+            env!("CARGO_MANIFEST_DIR").into(),
+            std::env::current_exe().unwrap().display().to_string(),
+            "--exact".into(),
+            "rejected_barrier_installation_preserves_policy_markers_and_drop_ins_in_both_engines"
+                .into(),
+            "--nocapture".into(),
+        ]);
+        spec.timeout = std::time::Duration::from_secs(120);
+        let output = process::run(&spec).unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    std::panic::set_hook(Box::new(|failure| {
+        println!("barrier qualification failure: {failure}")
+    }));
+    let f = Fixture::new();
+    let mut config = f.config.clone();
+    config["retired_units"] = json!(["legacy.service"]);
+    let record = json!({"intent":"selected-intent","barrier_candidate":"selected-candidate", "source_generation":"selected-source"});
+    let state = Path::new(config["barrier_dir"].as_str().unwrap());
+    fs::create_dir(state.join("retired")).unwrap();
+    let policy = state.join("start-policy.json");
+    let primary = state.join("inhibited.json");
+    let retired = state.join("retired/inhibited.json");
+    let drop_ins = f.temp.path().join("systemd");
+    fs::create_dir(&drop_ins).unwrap();
+    let owned_dir = drop_ins.join("retained.service.d");
+    fs::create_dir(&owned_dir).unwrap();
+    let retained_drop_in = owned_dir.join("zzzz-harbor-db-backend-transition.conf");
+    fs::write(&retained_drop_in, "retained original condition").unwrap();
+    let command = f.temp.path().join("readback.py");
+    let python = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|p| p.join("python3"))
+        .find(|p| p.is_file())
+        .unwrap();
+    fs::write(&command, format!("#!{}\nimport json,sys\nfrom pathlib import Path\nr=Path({:?})\nif sys.argv[1]=='daemon-reload': (r/'reloaded').write_text('yes')\nelif sys.argv[1]=='show': print(r/'systemd'/(sys.argv[2]+'.d')/'zzzz-harbor-db-backend-transition.conf')\nelse:\n state=r/'barrier'\n if 'legacy' in sys.argv[4]: state=state/'retired'\n print(json.dumps({{'type':'a(sbbsi)','data':[['ConditionPathExists',False,True,str(state/'inhibited.json'),0]]}}))\n",python.display(),f.temp.path().display().to_string())).unwrap();
+    fs::set_permissions(&command, fs::Permissions::from_mode(0o700)).unwrap();
+    config["systemctl"] = json!(command);
+    config["busctl"] = json!(command);
+    let expected_primary =
+        json!({"intent":record["intent"],"candidate":record["barrier_candidate"]});
+    let expected_retired = json!({"resource":"demo","units":["legacy.service"]});
+    let mut failures = Vec::new();
+    for bad_retired in [false, true] {
+        durable::write_json(&policy, &json!({"retain":"legitimate startup policy"})).unwrap();
+        durable::write_json(
+            &primary,
+            &if bad_retired {
+                expected_primary.clone()
+            } else {
+                json!({"intent":"foreign","candidate":null})
+            },
+        )
+        .unwrap();
+        durable::write_json(
+            &retired,
+            &if bad_retired {
+                json!({"resource":"foreign","units":[]})
+            } else {
+                expected_retired.clone()
+            },
+        )
+        .unwrap();
+        let before: Vec<_> = [&policy, &primary, &retired, &retained_drop_in]
+            .iter()
+            .map(|p| (fs::read(p).unwrap(), fs::metadata(p).unwrap().ino()))
+            .collect();
+        let rejected = transition_manifest::install_barriers(&config, &record).is_err();
+        let preserved = [&policy, &primary, &retired, &retained_drop_in]
+            .iter()
+            .zip(before)
+            .all(|(p, (b, i))| fs::read(p).unwrap() == b && fs::metadata(p).unwrap().ino() == i);
+        failures.push((
+            bad_retired,
+            rejected,
+            preserved,
+            !drop_ins.join("demo.service.d").exists(),
+            !drop_ins.join("legacy.service.d").exists(),
+            !f.temp.path().join("reloaded").exists(),
+        ));
+    }
+    let script = r#"import json,sys
+from pathlib import Path
+from harbor_db import transition_manifest
+from harbor_db.durable import write_json
+sys.stderr=sys.stdout
+c,r=map(json.loads,sys.argv[1:]);state=Path(c['barrier_dir']);policy=state/'start-policy.json';primary=state/'inhibited.json';retired=state/'retired/inhibited.json';dropins=Path(c['drop_in_root'])
+failures=[]
+for bad_retired in (False,True):
+    write_json(policy,{'retain':'legitimate startup policy'})
+    write_json(primary,{'intent':r['intent'],'candidate':r['barrier_candidate']} if bad_retired else {'intent':'foreign','candidate':None})
+    write_json(retired,{'resource':'foreign','units':[]} if bad_retired else {'resource':'demo','units':['legacy.service']})
+    before=[(p.read_bytes(),p.stat().st_ino) for p in (policy,primary,retired)]
+    try: transition_manifest.install_barriers(c,r)
+    except ValueError: rejected=True
+    else: rejected=False
+    failures.append((bad_retired,rejected,before==[(p.read_bytes(),p.stat().st_ino) for p in (policy,primary,retired)],not (dropins/'new.service.d').exists()))
+assert all(all(result[1:]) for result in failures),failures
+write_json(primary,{'intent':r['intent'],'candidate':r['barrier_candidate']})
+write_json(retired,{'resource':c['resource'],'units':c['retired_units']})
+transition_manifest.install_barriers(c,r)
+transition_manifest.install_barriers(c,r)
+"#;
+    let mut python_config = config.clone();
+    python_config["units"] = json!(["new.service"]);
+    let mut spec = process::CommandSpec::new(vec![
+        python.display().to_string(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        python_config.to_string(),
+        record.to_string(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    let python_result = process::run(&spec).unwrap();
+    assert!(
+        failures.iter().all(
+            |(_, rejected, preserved, no_primary, no_retired, no_reload)| *rejected
+                && *preserved
+                && *no_primary
+                && *no_retired
+                && *no_reload
+        ),
+        "{failures:?}; Python: {python_result:?}"
+    );
+    assert!(
+        python_result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&python_result.stdout)
+    );
+    durable::write_json(&primary, &expected_primary).unwrap();
+    durable::write_json(&retired, &expected_retired).unwrap();
+    transition_manifest::install_barriers(&config, &record).unwrap();
+    transition_manifest::install_barriers(&config, &record).unwrap();
+    assert_eq!(
+        durable::read_json(&policy).unwrap()["generation"],
+        record["source_generation"]
+    );
+}
+#[test]
 fn backup_pin_and_borrowed_fence_require_declared_retained_anchors() {
     let f = Fixture::new();
     let (_, mut record) = captured_source(&f);

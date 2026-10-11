@@ -13,7 +13,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["partial_or_extended_custody_cannot_authorize_transition_retries_in_both_engines", "rejected_barrier_release_preserves_all_markers_and_startup_policy_in_both_engines"]
+selectors = ["partial_or_extended_custody_cannot_authorize_transition_retries_in_both_engines", "rejected_barrier_release_preserves_all_markers_and_startup_policy_in_both_engines", "rejected_barrier_installation_preserves_policy_markers_and_drop_ins_in_both_engines"]
 
 [[inventories]]
 origin = "rust"
@@ -28,6 +28,20 @@ platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
 selectors = ["git_integrity_rejects_mutable_checkers_before_execution_in_both_engines"]
+
+[[coverage]]
+case = "native.transition_storage.rejected_barrier_installation_preserves_policy_markers_and_drop_ins_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.prepare"
+dimension = "rejection"
+evidence = "Foreign primary/retired markers reject installation before any policy or drop-in mutation in a private root namespace, preserving bytes/inodes and avoiding daemon reload. Both engines accept and repeat owned installation."
+
+[[coverage]]
+case = "native.postgres_storage.native_postmaster_retains_main_pid_lease_and_logical_restore_is_private"
+capability = "postgres"
+operation = "harbor-db-postgres.snapshot-records"
+dimension = "rejection"
+evidence = "Both engines reject transaction controls, multi-statement SQL, client meta-commands and modifying CTEs against a real primary without changing sentinel rows. Quoted semicolons/comments/continued escape strings retain query output under a conflicting database quoting default."
 
 [[coverage]]
 case = "native.transition_storage.partial_or_extended_custody_cannot_authorize_transition_retries_in_both_engines"

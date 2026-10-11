@@ -259,7 +259,7 @@ impl Fixture {
         executable(
             &root.path().join("package/bin/psql"),
             &format!(
-                "for arg in \"$@\"; do case \"$arg\" in *prepared_transactions*) cat '{}'; exit;; *default_transaction_read_only*) cat '{}'; exit;; *pg_control_system*) cat '{}'; exit;; esac; done; cat '{}'",
+                "for arg in \"$@\"; do case \"$arg\" in *prepared_transactions*) cat '{}'; exit;; *current_setting*default_transaction_read_only*) cat '{}'; exit;; *pg_control_system*) cat '{}'; exit;; esac; done; cat '{}'",
                 root.path().join("fence.json").display(),
                 root.path().join("restored.json").display(),
                 root.path().join("primary.json").display(),

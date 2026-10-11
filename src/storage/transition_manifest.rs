@@ -546,6 +546,7 @@ pub fn install_barriers(config: &Value, record: &Value) -> Result<()> {
     require_root()?;
     let state = Path::new(string(config, "barrier_dir")?);
     owned_ancestors(state)?;
+    validate_barrier_markers(config, record)?;
     provision_directory(state, 0o700)?;
     let retired = state.join("retired");
     if !array(config, "retired_units")?.is_empty() {
@@ -576,11 +577,6 @@ pub fn install_barriers(config: &Value, record: &Value) -> Result<()> {
         }
     }
     let marker = state.join("inhibited.json");
-    if marker.exists() && durable::read_json(&marker)?["intent"] != record["intent"] {
-        return Err(invalid(
-            "another transition owns the persistent startup barrier",
-        ));
-    }
     durable::write_json(
         &marker,
         &json!({"intent":record["intent"],"candidate":record["barrier_candidate"]}),
@@ -742,10 +738,16 @@ pub fn startup_unit(state: &Path, unit: &str) -> Result<()> {
     )?))?)?;
     Ok(())
 }
-pub fn release_barriers(config: &Value, record: &Value, aborted: bool) -> Result<()> {
+fn validate_barrier_markers(config: &Value, record: &Value) -> Result<Vec<PathBuf>> {
     let state = Path::new(string(config, "barrier_dir")?);
+    if super::writer_fence::exists(state) {
+        owned(state, true)?;
+    }
     let mut paths = vec![state.join("inhibited.json")];
     if !array(config, "retired_units")?.is_empty() {
+        if super::writer_fence::exists(&state.join("retired")) {
+            owned(&state.join("retired"), true)?;
+        }
         paths.push(state.join("retired/inhibited.json"));
     }
     for path in &paths {
@@ -765,6 +767,11 @@ pub fn release_barriers(config: &Value, record: &Value, aborted: bool) -> Result
             }
         }
     }
+    Ok(paths)
+}
+pub fn release_barriers(config: &Value, record: &Value, aborted: bool) -> Result<()> {
+    let state = Path::new(string(config, "barrier_dir")?);
+    let paths = validate_barrier_markers(config, record)?;
     durable::write_json(
         &state.join("start-policy.json"),
         &json!({"version":1,"generation":record[if aborted{"source_generation"}else{"candidate"}],"authority_manifest":config[if aborted{"source_manifest"}else{"target_manifest"}],"units":if aborted{json!(units(config)?)}else{config["units"].clone()}}),

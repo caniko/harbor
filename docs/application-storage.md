@@ -335,6 +335,13 @@ The sequence is:
    startup policy remains retained. Authorizing
    a new backend or generation uses another explicit qualified transition.
 
+Barrier installation validates every existing primary and retired inhibition
+marker before provisioning startup policy or any unit drop-in. A foreign or
+malformed marker preserves the retained policy, markers and drop-ins, including
+their bytes and inodes, and cannot install conditions for new units. Release and
+abort use the same ownership check before policy publication or marker removal.
+An owned installation can be retried after partial publication.
+
 Before writer enablement, `abort` requires the exact retained source generation
 selected with clients still inhibited and intact source semantic evidence. It
 restores old authority/custody using compare-and-swap, preserving target bytes.
