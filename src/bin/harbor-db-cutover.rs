@@ -161,7 +161,9 @@ fn run(cli: Cli) -> Result<i32> {
                     timeout,
                     extra: &extra,
                     command_name: "certify-worker",
-                    as_root: false,
+                    // Inspect private global namespaces in the certifying child
+                    // before it permanently drops to the selected resource user.
+                    as_root: unsafe { libc::geteuid() } == 0,
                 },
             )?;
             Ok(0)
@@ -174,7 +176,8 @@ fn run(cli: Cli) -> Result<i32> {
             database_requirements,
             ..
         } => {
-            cutover::validate_restore_roots(&manifest, &certify_roots)?;
+            cutover::validate_restore_namespaces(&manifest, &certify_roots)?;
+            cutover::enter_certification_user(select(&worker)?)?;
             let requirements = harbor_db::storage::codec::decode_str(&database_requirements)?;
             cutover::certify_filesystem(
                 select(&worker)?,

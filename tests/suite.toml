@@ -524,7 +524,7 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines", "credential_sources_require_bounded_names_and_runtime_paths_in_both_engines"]
+selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines", "credential_sources_require_bounded_names_and_runtime_paths_in_both_engines", "worker_credentials_reject_untrusted_sources_before_creating_private_copies_in_both_engines"]
 
 [[inventories]]
 origin = "rust"
@@ -928,7 +928,21 @@ argv_prefix = ["cargo", "test", "--locked", "--all-features", "--test", "transit
 argv_suffix = ["--", "--exact"]
 profile = "integration"
 maturity = "crystallized"
-selectors = ["operator_policy_requires_every_declared_manifest_to_be_immutable"]
+selectors = ["operator_policy_requires_every_declared_manifest_to_be_immutable", "operator_transition_entrypoints_reject_mutable_files_and_aliases_in_both_engines"]
+
+[[coverage]]
+case = "native.transition_storage.operator_transition_entrypoints_reject_mutable_files_and_aliases_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.plan"
+dimension = "rejection"
+evidence = "Every transition worker and coordinator entrypoint in native/Python operator admission rejects mutable commands, worker-controlled store aliases and non-executable immutable files; real immutable executables remain accepted. Nix independently checks every stage and realizes worker/coordinator entrypoints with declared adapter files."
+
+[[coverage]]
+case = "native.application-publication.storage::application_publication::tests::worker_credentials_reject_untrusted_sources_before_creating_private_copies_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "rejection"
+evidence = "Native/Python credential admission rejects worker-controlled source paths before private-copy mutation. The actual root CLI VM rejects unsafe source ownership, writable ancestors, mutable alias hops, writable files, special files, alias cycles and oversized sources while preserving complete protected inventory; scheduled and forced captures with trusted root-controlled runtime alias chains still succeed."
 
 [[coverage]]
 case = "native.transition_storage.operator_policy_requires_every_declared_manifest_to_be_immutable"

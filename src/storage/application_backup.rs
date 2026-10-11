@@ -384,6 +384,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     let protected = c["version"] == 2;
     if protected {
         publication::require_namespace(&root)?;
+        publication::check_credential_sources(c.get("credentials"))?;
     }
     let lease = durable::lock(&root.join("lock"), false, false)?;
     let staging = root.join(format!("{attempt}.partial"));

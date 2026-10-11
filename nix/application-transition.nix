@@ -16,6 +16,7 @@
   immutableFiles = import ./immutable-files.nix {inherit lib;};
   package = harborDbStoragePackage;
   manifest = name: p: let
+    entrypoints = lib.concatMap (worker: lib.optional (worker.argv != []) (builtins.head worker.argv)) (lib.attrValues p.commands);
     document = pkgs.writeText "harbor-db-${name}-transition.json" (builtins.toJSON {
       version = 1;
       resource = name;
@@ -40,7 +41,7 @@
       timeout_seconds = p.timeoutSeconds;
     });
   in
-    immutableFiles.checkedManifest "Harbor DB ${name} transition" p.executableFiles document;
+    immutableFiles.checkedManifest "Harbor DB ${name} transition" (lib.unique (p.executableFiles ++ entrypoints ++ ["${pkgs.systemd}/bin/systemctl" "${pkgs.systemd}/bin/busctl" "${pkgs.util-linux}/bin/runuser"])) document;
 in {
   imports = [./storage-package-argument.nix];
   options.services.harbor-db.projects = mkOption {
@@ -136,8 +137,8 @@ in {
             message = "Harbor DB ${name} transitions require all semantic workers and explicit runtime units.";
           }
           {
-            assertion = lib.all (worker: worker.argv != [] && lib.hasPrefix "/" (lib.head worker.argv)) (lib.attrValues p.transition.commands);
-            message = "Harbor DB ${name} transition workers require nonempty argv with an absolute executable.";
+            assertion = lib.all (worker: worker.argv != [] && immutableFiles.storePath (lib.head worker.argv)) (lib.attrValues p.transition.commands);
+            message = "Harbor DB ${name} transition workers require nonempty argv with a normalized immutable store executable.";
           }
           {
             assertion = lib.all immutableFiles.storePath p.transition.executableFiles;

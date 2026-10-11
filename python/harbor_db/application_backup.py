@@ -146,6 +146,7 @@ def capture(config, attempt, *, retry_incomplete=False):
     protected = config["version"] == 2
     if protected:
         publication.require_namespace(root)
+        publication.check_credential_sources(config.get("credentials"))
     with lock(root / "lock") as lease:
         staging, destination = root / f"{attempt}.partial", root / attempt
         partial = staging / "artifacts" if protected else staging

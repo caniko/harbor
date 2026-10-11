@@ -182,6 +182,26 @@ impl Gate {
     }
 
     fn client_permissions(&mut self, args: &Args, phase: &str) -> Result<()> {
+        for (label, statement) in [
+            ("function", "SELECT hidden_write()"),
+            ("procedure", "CALL hidden_procedure()"),
+        ] {
+            self.command(
+                Self::sql_argv(args, "demo", "demo_runtime", statement),
+                1,
+                &format!("{phase}:undeclared-{label}-execution-rejected"),
+            )?;
+        }
+        self.command(
+            Self::sql_argv(
+                args,
+                "postgres",
+                "postgres",
+                "BEGIN; SET ROLE demo_owner; SELECT hidden_write(); ROLLBACK",
+            ),
+            0,
+            &format!("{phase}:owner-function-execution-retained"),
+        )?;
         self.command(Self::sql_argv(args, "demo", "demo_runtime",
             "BEGIN; SELECT * FROM documents ORDER BY id; SELECT * FROM history ORDER BY id; INSERT INTO documents VALUES (9); UPDATE documents SET id=10 WHERE id=9; DELETE FROM documents WHERE id=10; INSERT INTO history VALUES (9); ROLLBACK;"),
             0, &format!("{phase}:runtime-allowed-sql"))?;
@@ -336,6 +356,72 @@ fn run(args: Args) -> Result<()> {
         "boot:python-accepts-native-policy",
     )?;
     gate.client_permissions(&args, "boot")?;
+    gate.command(Gate::sql_argv(&args, "postgres", "postgres", "SET ROLE demo_owner; CREATE FUNCTION future_function() RETURNS int LANGUAGE sql AS 'SELECT 87'"), 0, "future-owner-function-created")?;
+    gate.command(
+        Gate::sql_argv(&args, "demo", "demo_runtime", "SELECT future_function()"),
+        1,
+        "future-function-default-public-execution-revoked",
+    )?;
+    for (implementation, executable) in [
+        ("native", &args.native_provision),
+        ("python", &args.python_provision),
+    ] {
+        for (label, grant) in [
+            (
+                "public-function",
+                "GRANT EXECUTE ON FUNCTION hidden_write() TO PUBLIC",
+            ),
+            (
+                "runtime-procedure",
+                "GRANT EXECUTE ON PROCEDURE hidden_procedure() TO demo_runtime",
+            ),
+            (
+                "public-global-default",
+                "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner GRANT EXECUTE ON FUNCTIONS TO PUBLIC",
+            ),
+            (
+                "runtime-schema-default",
+                "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO demo_runtime",
+            ),
+        ] {
+            gate.command(
+                Gate::sql_argv(&args, "postgres", "postgres", grant),
+                0,
+                &format!("{implementation}:{label}-injected"),
+            )?;
+            for (checking, checker) in [
+                ("native", &args.native_provision),
+                ("python", &args.python_provision),
+            ] {
+                gate.provision(
+                    &args,
+                    checker,
+                    "check",
+                    2,
+                    &format!("{implementation}:{label}:{checking}-check-rejects"),
+                )?;
+            }
+            gate.provision(
+                &args,
+                executable,
+                "reconcile",
+                0,
+                &format!("{implementation}:{label}-reconciled"),
+            )?;
+            for (checking, checker) in [
+                ("native", &args.native_provision),
+                ("python", &args.python_provision),
+            ] {
+                gate.provision(
+                    &args,
+                    checker,
+                    "check",
+                    0,
+                    &format!("{implementation}:{label}:{checking}-check-accepts"),
+                )?;
+            }
+        }
+    }
     let mut baseline = gate.projection(&args)?;
     require(
         baseline["records"] == json!({"documents":[1],"history":[1]}),

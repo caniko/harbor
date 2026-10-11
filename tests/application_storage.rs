@@ -1557,13 +1557,34 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         "false"
     );
     success(
-        "CREATE TABLE documents(id int);CREATE TABLE history(id int);CREATE TABLE immutable(id int);CREATE SEQUENCE cursor;",
+        "CREATE TABLE documents(id int);CREATE TABLE history(id int);CREATE TABLE immutable(id int);CREATE SEQUENCE cursor;CREATE FUNCTION hidden_write() RETURNS int LANGUAGE sql SECURITY DEFINER AS 'INSERT INTO immutable VALUES(86) RETURNING id';CREATE PROCEDURE hidden_procedure() LANGUAGE sql AS 'SELECT 1';",
         "demo_owner",
         "demo",
     );
     provision::reconcile(&policy, &endpoint).unwrap();
     assert!(provision::check(&policy, &endpoint).unwrap());
     assert!(python_provision(&policy, "reconcile").status.success());
+    for statement in ["SELECT hidden_write()", "CALL hidden_procedure()"] {
+        assert!(
+            !sql(statement, "demo_runtime", "demo").status.success(),
+            "runtime executed undeclared routine: {statement}"
+        );
+    }
+    assert_eq!(
+        success("SELECT count(*) FROM immutable", "control", "demo"),
+        "0"
+    );
+    assert_eq!(success("SELECT hidden_write()", "demo_owner", "demo"), "86");
+    success(
+        "CREATE FUNCTION future_function() RETURNS int LANGUAGE sql AS 'SELECT 87'",
+        "demo_owner",
+        "demo",
+    );
+    assert!(
+        !sql("SELECT future_function()", "demo_runtime", "demo")
+            .status
+            .success()
+    );
     let mut missing = policy.clone();
     missing["tables"]["missing_history"] = json!(["SELECT", "INSERT"]);
     let grants = success(
@@ -1616,6 +1637,11 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
             .success()
     );
     for statement in [
+        "GRANT EXECUTE ON FUNCTION hidden_write() TO PUBLIC",
+        "GRANT EXECUTE ON FUNCTION hidden_write() TO demo_runtime",
+        "GRANT EXECUTE ON PROCEDURE hidden_procedure() TO PUBLIC",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner GRANT EXECUTE ON FUNCTIONS TO PUBLIC",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO demo_runtime",
         "GRANT UPDATE ON history TO demo_runtime",
         "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public GRANT UPDATE ON TABLES TO demo_runtime",
         "GRANT UPDATE(id) ON history TO demo_runtime",
@@ -1634,9 +1660,23 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         );
         provision::apply(&policy, &endpoint).unwrap();
         assert!(provision::check(&policy, &endpoint).unwrap());
+        assert_eq!(
+            process::text(&python_provision(&policy, "check").stdout)
+                .unwrap()
+                .trim(),
+            "true"
+        );
     }
     success("CREATE ROLE acl_outsider LOGIN", "control", "postgres");
     for (grant, revoke) in [
+        (
+            "GRANT EXECUTE ON FUNCTION hidden_write() TO acl_outsider",
+            "REVOKE EXECUTE ON FUNCTION hidden_write() FROM acl_outsider",
+        ),
+        (
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO acl_outsider",
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM acl_outsider",
+        ),
         (
             "GRANT SELECT ON documents TO acl_outsider",
             "REVOKE SELECT ON documents FROM acl_outsider",
@@ -1714,12 +1754,16 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         "demo",
     );
     success(
-        "CREATE TABLE unmanaged.records(id int); CREATE SEQUENCE unmanaged.cursor; CREATE FUNCTION unmanaged.read_record() RETURNS int LANGUAGE sql AS 'SELECT 1'; CREATE TYPE unmanaged.record_kind AS ENUM ('one')",
+        "CREATE TABLE unmanaged.records(id int); CREATE SEQUENCE unmanaged.cursor; CREATE FUNCTION unmanaged.read_record() RETURNS int LANGUAGE sql AS 'SELECT 1'; REVOKE ALL ON FUNCTION unmanaged.read_record() FROM PUBLIC; CREATE TYPE unmanaged.record_kind AS ENUM ('one')",
         "control",
         "demo",
     );
     let mut grant_outcomes = Vec::new();
     for (grant, revoke) in [
+        (
+            "GRANT EXECUTE ON FUNCTION unmanaged.read_record() TO PUBLIC",
+            "REVOKE EXECUTE ON FUNCTION unmanaged.read_record() FROM PUBLIC",
+        ),
         (
             "GRANT USAGE ON SCHEMA unmanaged TO demo_runtime",
             "REVOKE USAGE ON SCHEMA unmanaged FROM demo_runtime",

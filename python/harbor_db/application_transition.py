@@ -12,9 +12,9 @@ import pwd
 from pathlib import Path
 
 from . import application_backup, resource
-from .durable import lock, read_json, sync_directory, write_json
+from .durable import immutable_store_reference, lock, read_json, sync_directory, write_json
 from .transition_manifest import (candidate_path, custody_entry, fence, generation, inspect_barriers, install_barriers,
-                                  intent, release_barriers, require_root, stop_units, validate, worker, write_owned)
+                                  intent, release_barriers, require_root, stop_units, validate, validate_operator_policy, worker, write_owned)
 
 
 def journal_path(config):
@@ -486,11 +486,8 @@ def main():
     args = parser.parse_args()
     try:
         config = read_json(args.config)
-        policy_keys = ("source_manifest", "target_manifest", "backup_manifest") + tuple(
-            key for key in ("postgres_manifest", "custody_manifest") if config.get(key) is not None)
-        if not str(args.config).startswith("/nix/store/") or any(not str(config[key]).startswith("/nix/store/")
-                for key in policy_keys):
-            raise ValueError("operator transition manifests must be immutable store files")
+        immutable_store_reference(args.config)
+        validate_operator_policy(config)
         if args.command == "plan":
             result = plan(config, args.candidate, args.writer_fence_token)
         elif args.command == "bind-candidate":

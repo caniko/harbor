@@ -167,6 +167,32 @@ in
     '';
     assertions = [
       {
+        name = "source-local-port-matches-effective-primary";
+        message = "Source-local producer ports must match the effective local primary; independent remote targets retain distinct ports.";
+        assertion = let
+          accepted = local: primary: source: let
+            selected =
+              (localEval.extendModules {
+                modules = [
+                  {
+                    services.postgresql.settings.port = lib.mkForce primary;
+                    services.harbor-db.pgBackup = {
+                      source.port = lib.mkForce source;
+                      targetSettings.sourceLocalRecovery.enable = lib.mkForce local;
+                    };
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "source-local port" a.message) selected.assertions;
+        in
+          accepted true 5432 5432
+          && accepted true 55486 55486
+          && !accepted true 55486 5432
+          && !accepted true 5432 55486
+          && accepted false 55486 5432;
+      }
+      {
         name = "replication-slot-names-reject-before-producer-services";
         message = "Enabled receiver/base-backup slots require 1-63 lowercase ASCII letters, digits or underscores; disabled operations retain inert settings.";
         assertion = let

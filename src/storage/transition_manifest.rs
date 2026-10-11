@@ -25,6 +25,20 @@ pub fn require_root() -> Result<()> {
 }
 /// Operator admission is stricter than the mutable library fixtures.
 pub fn validate_operator_policy(config: &Value) -> Result<()> {
+    let executable = |path: &str| -> Result<()> {
+        custody::validate_path(path)?;
+        let file = durable::immutable_store_reference(Path::new(path)).map_err(|error| {
+            invalid(format!(
+                "operator transition commands require immutable store executables: {error}"
+            ))
+        })?;
+        if fs::metadata(file)?.mode() & 0o111 == 0 {
+            return Err(invalid(
+                "operator transition commands require executable immutable store files",
+            ));
+        }
+        Ok(())
+    };
     for key in [
         "source_manifest",
         "target_manifest",
@@ -42,6 +56,29 @@ pub fn validate_operator_policy(config: &Value) -> Result<()> {
                 "operator transition manifests must be immutable store files ({key}): {error}"
             ))
         })?;
+    }
+    if let Some(commands) = config.get("commands").and_then(Value::as_object) {
+        for command in commands.values() {
+            let argv = array(command, "argv")?;
+            let path = argv
+                .first()
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid("empty transition command"))?;
+            executable(path)?;
+        }
+    }
+    for key in ["runuser", "systemctl", "busctl"] {
+        if config.get(key).is_some() {
+            executable(string(config, key)?)?;
+        }
+    }
+    if let Some(files) = config.get("executable_files").and_then(Value::as_array) {
+        for file in files {
+            durable::immutable_store_reference(Path::new(
+                file.as_str()
+                    .ok_or_else(|| invalid("invalid adapter file"))?,
+            ))?;
+        }
     }
     Ok(())
 }

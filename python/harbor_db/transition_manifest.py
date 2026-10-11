@@ -10,11 +10,25 @@ import subprocess
 from pathlib import Path
 
 from . import application_backup, process, resource, startup_inhibition
-from .durable import atomic_write, lock, read_json, sync_directory, write_json
+from .durable import atomic_write, immutable_store_reference, lock, read_json, sync_directory, write_json
 
 
 def require_root():
     startup_inhibition.require_root()
+
+
+def validate_operator_policy(config):
+    for key in ("source_manifest", "target_manifest", "backup_manifest", "postgres_manifest", "custody_manifest"):
+        if key in ("postgres_manifest", "custody_manifest") and config.get(key) is None:
+            continue
+        immutable_store_reference(config[key])
+    for command in config.get("commands", {}).values():
+        immutable_store_reference(command["argv"][0], executable=True)
+    for key in ("runuser", "systemctl", "busctl"):
+        if key in config:
+            immutable_store_reference(config[key], executable=True)
+    for path in config.get("executable_files", []):
+        immutable_store_reference(path)
 
 
 def candidate_path(candidate, config):

@@ -704,6 +704,104 @@ for key in ('postgres_manifest','custody_manifest'):
 }
 
 #[test]
+fn operator_transition_entrypoints_reject_mutable_files_and_aliases_in_both_engines() {
+    let f = Fixture::new();
+    let mut config = f.config.clone();
+    let fixture =
+        std::path::Path::new(env!("HARBOR_DB_TEST_CONFIG_FIXTURE")).join("postgresql.json");
+    for key in ["source_manifest", "target_manifest", "backup_manifest"] {
+        config[key] = json!(fixture);
+    }
+    config["postgres_manifest"] = serde_json::Value::Null;
+    config["custody_manifest"] = serde_json::Value::Null;
+    let executable = fs::canonicalize(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("python3"))
+            .find(|path| path.is_file())
+            .unwrap(),
+    )
+    .unwrap();
+    for stage in ["import", "verify-target", "verify-source", "health"] {
+        config["commands"][stage]["argv"][0] = json!(executable);
+    }
+    config["executable_files"] = json!([]);
+    for key in ["runuser", "systemctl", "busctl"] {
+        config[key] = json!(executable);
+    }
+    let mutable = f.temp.path().join("worker-command");
+    fs::write(&mutable, b"#!/bin/sh\nexit 0\n").unwrap();
+    let alias = f.temp.path().join("worker-alias");
+    symlink(&executable, &alias).unwrap();
+    for stage in ["import", "verify-target", "verify-source", "health"] {
+        for path in [&mutable, &alias, &fixture] {
+            let mut selected = config.clone();
+            selected["commands"][stage]["argv"][0] = json!(path);
+            assert!(
+                transition_manifest::validate_operator_policy(&selected).is_err(),
+                "mutable/nonexecutable transition entrypoint admitted: {stage}"
+            );
+        }
+    }
+    transition_manifest::validate_operator_policy(&config).unwrap();
+    for key in ["runuser", "systemctl", "busctl"] {
+        for path in [&mutable, &alias, &fixture] {
+            let mut selected = config.clone();
+            selected[key] = json!(path);
+            assert!(
+                transition_manifest::validate_operator_policy(&selected).is_err(),
+                "mutable/nonexecutable coordinator admitted: {key}"
+            );
+        }
+    }
+    let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db.transition_manifest import validate_operator_policy
+config=json.loads(sys.argv[1]);mutable,alias,fixture=sys.argv[2:5];uid=int(sys.argv[5])
+if uid:
+    original=Path.lstat
+    def mapped(path):
+        info=original(path)
+        if info.st_uid!=uid: return info
+        fields=list(info);fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped).start()
+validate_operator_policy(config)
+for stage in ('import','verify-target','verify-source','health'):
+    for path in (mutable,alias,fixture):
+        selected=json.loads(json.dumps(config));selected['commands'][stage]['argv'][0]=path
+        try: validate_operator_policy(selected)
+        except (ValueError,OSError): pass
+        else: raise AssertionError('mutable/nonexecutable transition worker admitted')
+for key in ('runuser','systemctl','busctl'):
+    for path in (mutable,alias,fixture):
+        selected=json.loads(json.dumps(config));selected[key]=path
+        try: validate_operator_policy(selected)
+        except (ValueError,OSError): pass
+        else: raise AssertionError('mutable/nonexecutable transition coordinator admitted')
+"#;
+    let mut command = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        mutable.display().to_string(),
+        alias.display().to_string(),
+        fixture.display().to_string(),
+        option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+    ]);
+    command.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&command).unwrap();
+}
+
+#[test]
 fn python_and_rust_preserve_hash_sensitive_transition_intent_and_journal_phases() {
     use harbor_db::storage::process;
     let mut f = Fixture::new();

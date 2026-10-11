@@ -121,6 +121,18 @@
     ]).config.environment.etc."harbor-db/fixture-backup.json".source;
   transitionFileManifest = executableFiles:
     (evaluate [module {services.harbor-db.projects.fixture.transition = {inherit executableFiles;};}]).config.environment.etc."harbor-db/fixture-transition.json".source;
+  transitionCommandManifest = files:
+    (evaluate [
+      module
+      {
+        services.harbor-db.projects.fixture.transition.commands =
+          pkgs.lib.mkForce
+          (pkgs.lib.genAttrs ["import" "verify-target" "verify-source" "health"] (_: {
+            user = "fixture";
+            argv = [(builtins.head files)];
+          }));
+      }
+    ]).config.environment.etc."harbor-db/fixture-transition.json".source;
   redirectedExecutable = pkgs.runCommand "harbor-db-redirected-adapter" {} ''
     mkdir "$out"
     ln -s /proc/version "$out/adapter"
@@ -234,8 +246,24 @@ in
           fi
         '')
         invalid}
-    '') [backupFileManifest transitionFileManifest backupCommandManifest];
+    '') [backupFileManifest transitionFileManifest backupCommandManifest transitionCommandManifest];
     assertions = [
+      {
+        name = "transition-worker-entrypoints-require-immutable-store-files";
+        message = "Every transition worker command rejects mutable entrypoints and runtime store aliases.";
+        assertion = pkgs.lib.all (stage:
+          transitionCommandsAccepted transitionCommands
+          && pkgs.lib.all (path:
+            !transitionCommandsAccepted (transitionCommands
+              // {
+                ${stage} = {
+                  user = "fixture";
+                  argv = [path];
+                };
+              }))
+          ["/var/lib/fixture/adapter" "/run/store-alias" "${pkgs.coreutils}/bin/../bin/true"])
+        ["import" "verify-target" "verify-source" "health"];
+      }
       {
         name = "protected-backup-commands-require-immutable-store-files";
         message = "Every protected command entrypoint must reject mutable paths and ambiguous store spelling before worker execution.";

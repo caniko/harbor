@@ -32,9 +32,9 @@ for engine in args.engine or ("native", "python"):
         command = ([args.native, "certify-worker", "--contract", str(contract), "--host", "fixture",
                     "--phase", "certify", "--worker", "crossroot", "--certify-identity", "history",
                     "--certify-roots", str(restored_a), str(restored_b)] if engine == "native" else
-                   [sys.executable, "-B", "-c", "import json,sys; from harbor_db import cutover; "
-                    "cutover.certify_filesystem(json.loads(sys.argv[1]),json.loads(sys.argv[2]),'history')",
-                    json.dumps(resource), json.dumps([str(restored_a), str(restored_b)])])
+                   [sys.executable, "-B", "-m", "harbor_db.cutover", "certify-worker",
+                    "--contract", str(contract), "--host", "fixture", "--phase", "certify",
+                    "--worker", "crossroot", "--certify-identity", "history", "--certify-roots", str(restored_a), str(restored_b)])
         # Bind mounts retain nlink=1 and pass path canonicalization. Include a
         # file-only and empty-directory alias so root identity checks alone
         # cannot make this regression pass.
@@ -45,7 +45,7 @@ for engine in args.engine or ("native", "python"):
                 assert os.stat(restore).st_ino == os.stat(source).st_ino
                 assert os.stat(restored_a / "history").st_nlink == 1
                 result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-                assert result.returncode != 0 and "aliases" in result.stderr, (engine, name, result.stdout, result.stderr)
+                assert result.returncode != 0 and "alias" in result.stderr, (engine, name, result.stdout, result.stderr)
                 assert not (state / "identity.json").exists()
                 assert not (state / "custody.json").exists()
                 assert not (a / ".harbor-db-crossroot-identity.json").exists()
@@ -71,11 +71,12 @@ for engine in args.engine or ("native", "python"):
             source, restore = (other, restored_a) if not name else (other / name, restored_a / name)
             subprocess.run(["mount", "--bind", str(source), str(restore)], check=True)
             try:
-                result = subprocess.run(coordinator, capture_output=True, text=True, timeout=30)
-                assert result.returncode != 0 and "alias" in result.stderr, (engine, name, result.stdout, result.stderr)
-                assert not (state / "identity.json").exists()
-                assert not (state / "custody.json").exists()
-                assert not (a / ".harbor-db-crossroot-identity.json").exists()
+                for invocation in (coordinator, command):
+                    result = subprocess.run(invocation, capture_output=True, text=True, timeout=30)
+                    assert result.returncode != 0 and "alias" in result.stderr, (engine, name, invocation, result.stdout, result.stderr)
+                    assert not (state / "identity.json").exists()
+                    assert not (state / "custody.json").exists()
+                    assert not (a / ".harbor-db-crossroot-identity.json").exists()
             finally:
                 subprocess.run(["umount", str(restore)], check=True)
         # An unprivileged mapped-root namespace explicitly denies setgroups,
@@ -89,6 +90,7 @@ for engine in args.engine or ("native", "python"):
         assert (state / "custody.json").is_file()
         results.append({"engine": engine, "crossRootBindAliasRejected": True,
                         "otherEnrolledCorpusRootFileAndEmptyDirectoryAliasesRejected": True,
+                        "directWorkerGlobalAliasesRejected": True,
                         "independentCopyAcceptance": "direct-worker" if groups_denied else "coordinator",
                         "fileOnlyAndEmptyDirectoryAliasesRejected": True,
                         "noAliasPublication": True, "independentCopiesAccepted": True})

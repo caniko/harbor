@@ -478,9 +478,16 @@ def main():
             if database:
                 extra = ["--database-snapshot", database, "--database-requirements", json.dumps(requirements), *extra]
             execute_worker(args.contract, args.resource, config, "certify",
-                           manifest.get("activation_timeout_seconds", 900), extra, command_name="certify-worker")
+                           manifest.get("activation_timeout_seconds", 900), extra, command_name="certify-worker", as_root=os.geteuid() == 0)
         elif args.command == "certify-worker":
-            validate_restore_roots(manifest, args.certify_roots)
+            validate_restore_namespaces(manifest, args.certify_roots)
+            account = pwd.getpwnam(manifest["resources"][args.worker]["user"])
+            if os.geteuid() != account.pw_uid:
+                if os.geteuid() != 0:
+                    raise ValueError("certification requires the declared resource service user")
+                os.setgroups(os.getgrouplist(account.pw_name, account.pw_gid))
+                os.setgid(account.pw_gid)
+                os.setuid(account.pw_uid)
             certify_filesystem(manifest["resources"][args.worker], args.certify_roots,
                                 args.certify_identity, database_snapshot=args.database_snapshot,
                                 database_requirements=args.database_requirements)

@@ -68,6 +68,18 @@
           result = subprocess.run([binary, "--config", str(policy), "capture", "--attempt", f"rejected-{engine}-{stage}-{kind}"], capture_output=True, text=True)
           assert result.returncode != 0 and "immutable store" in result.stderr, (engine, stage, kind, result.stderr)
           assert retained() == before, "rejected admission mutated protected backup state"
+      for kind, credential in enumerate((
+          "/var/lib/worker-adapter/secret", "/var/lib/worker-adapter/root-secret", "/var/lib/worker-adapter/secret-link",
+          "/run/credential-trust/worker-link", "/run/credential-writable/secret", "/run/credential-trust/group-secret",
+          "/run/credential-trust/oversize", "/run/credential-trust/fifo", "/run/credential-trust/loop",
+      )):
+        selected = json.loads(json.dumps(config))
+        selected["credentials"] = {"token": credential}
+        policy = pathlib.Path("/run/rejected-backup-policy.json")
+        policy.write_text(json.dumps(selected))
+        result = subprocess.run([binary, "--config", str(policy), "capture", "--attempt", f"credential-rejected-{engine}-{kind}"], capture_output=True, text=True, timeout=30)
+        assert result.returncode != 0 and "credential" in result.stderr, (engine, credential, result.stderr)
+        assert retained() == before, "rejected credential source mutated protected backup state"
     assert not adapter.with_name("executed").exists(), "mutable adapter executed"
   '';
 in
@@ -135,7 +147,9 @@ in
       machine.wait_until_succeeds("test -S /run/backup-fd/socket")
       machine.succeed("install -d -m 0700 /run/python-backup-credentials; install -m 0400 /etc/backup-fixture-token /run/python-backup-credentials/token")
       points = []
-      for capture in ["systemctl start harbor-db-demo-backup.service", "CREDENTIALS_DIRECTORY=/run/python-backup-credentials ${pythonPeer}/bin/harbor-db-application-backup --config $(readlink -f /etc/harbor-db/demo-backup.json) capture --attempt python-peer"]:
+      machine.succeed("install -d -m 0700 /run/credential-trust; ln -s /etc/backup-fixture-token /run/credential-trust/token-source; ln -s token-source /run/credential-trust/token-alias")
+      machine.succeed("python3 -c 'import json; p=json.load(open(\"/etc/harbor-db/demo-backup.json\")); p[\"credentials\"]={\"token\":\"/run/credential-trust/token-alias\"}; json.dump(p,open(\"/run/forced-backup-policy.json\",\"w\"))'")
+      for capture in ["systemctl start harbor-db-demo-backup.service", "CREDENTIALS_DIRECTORY=/run/python-backup-credentials ${pythonPeer}/bin/harbor-db-application-backup --config $(readlink -f /etc/harbor-db/demo-backup.json) capture --attempt python-peer", "harbor-db-application-backup --config /run/forced-backup-policy.json capture --attempt native-forced", "${pythonPeer}/bin/harbor-db-application-backup --config /run/forced-backup-policy.json capture --attempt python-forced"]:
           machine.succeed(capture)
           point = machine.succeed("python3 -c 'import json; print(json.load(open(\"/var/lib/demo-backup/LAST_SUCCESS\"))[\"attempt\"])'").strip()
           points.append(point)
@@ -153,6 +167,8 @@ in
           machine.succeed("rm /run/backup-fd/attack /run/backup-fd/written")
       machine.succeed("test $(stat -c %a /var/lib/demo-backup/lock) = 640")
       machine.succeed("install -d -m 0750 -o demo -g demo /var/lib/worker-adapter; printf '#!/bin/sh\\ntouch /var/lib/worker-adapter/executed\\n' > /var/lib/worker-adapter/executable; chown demo:demo /var/lib/worker-adapter/executable; chmod 0750 /var/lib/worker-adapter/executable; ln -s ${pkgs.python3}/bin/python3 /var/lib/worker-adapter/store-alias")
+      machine.succeed("install -m 0400 -o demo -g demo /etc/backup-fixture-token /var/lib/worker-adapter/secret; install -m 0600 /etc/backup-fixture-token /var/lib/worker-adapter/root-secret; ln -s /etc/backup-fixture-token /var/lib/worker-adapter/secret-link; chown -h demo:demo /var/lib/worker-adapter/secret-link")
+      machine.succeed("ln -s /etc/backup-fixture-token /run/credential-trust/worker-link; chown -h demo:demo /run/credential-trust/worker-link; install -d -m 0770 -g demo /run/credential-writable; install -m 0400 /etc/backup-fixture-token /run/credential-writable/secret; install -m 0660 -g demo /etc/backup-fixture-token /run/credential-trust/group-secret; truncate -s 1048577 /run/credential-trust/oversize; chmod 0600 /run/credential-trust/oversize; mkfifo -m 0600 /run/credential-trust/fifo; ln -s loop /run/credential-trust/loop")
       machine.succeed("python3 ${admission} $(readlink -f /etc/harbor-db/demo-backup.json) $(command -v harbor-db-application-backup) ${pythonPeer}/bin/harbor-db-application-backup")
       machine.fail("runuser -u reader -- cat /etc/backup-fixture-token")
       machine.succeed("systemctl start harbor-db-demo-backup.service")

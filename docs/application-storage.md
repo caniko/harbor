@@ -66,7 +66,7 @@ policy can reconcile. Grants on other schemas, relations, columns, sequences,
 functions, types or defaults reject before role/ACL mutation. Read-only checking
 uses the same database-wide dependency check; foreign database/shared-object grants
 cannot be hidden by the managed schema's valid ACLs.
-Effective schema, table, column and sequence privileges are checked across all
+Effective schema, table, column, sequence and routine privileges are checked across all
 non-system schemas too, including access inherited through `PUBLIC`. PostgreSQL's
 system catalogs remain readable. Existing undeclared PUBLIC access requires
 explicit operator reconciliation; a newly created dedicated database with a
@@ -77,6 +77,11 @@ column grants, grant options and defaults for future owner-created objects.
 Database, schema, relation and default ACLs reject undeclared grantees. Column
 ACLs permit only the owner; explicit runtime privileges belong at table scope.
 An unrelated grantee requires explicit operator reconciliation before admission.
+Runtime execution of user-schema functions or procedures is undeclared. Reconciliation
+revokes both direct runtime and implicit `PUBLIC` execution on managed routines,
+including security-definer functions, and clears global and schema-scoped owner
+defaults for future functions. The owner retains execution; checking rejects
+routine ownership, outsider ACLs, execution grants and function-default drift.
 PostgreSQL 18 is the qualified privilege surface, including MAINTAIN. Ordinary
 provisioning and dependent runtime services retain the PostgreSQL fence startup
 condition. A skipped provisioning prerequisite cannot admit a dependent runtime
@@ -199,7 +204,11 @@ Scheduled captures use systemd's loaded credentials; forced transition captures
 resolve the same declared sources directly. Both coordinators copy only the selected
 credentials into a private worker-owned directory with `0400` files, bounded to
 1 MiB each, and remove it when the attempt finishes. Runtime secret aliases such as
-agenix paths are resolved before opening a regular file. Credential contents are
+agenix paths are traversed through pinned directory and alias descriptors. Every
+source, alias and ancestor must be root-owned; regular files and directories
+must not be group- or other-writable. Untrusted aliases, writable ancestor paths,
+special files and oversized sources reject before attempt-state mutation. The
+opened source inode is retained through the private copy. Credential contents are
 never serialized into the policy or acceptance evidence.
 
 Arguments equal to `{backup}` and `{workspace}` are substituted as single argv
@@ -304,6 +313,14 @@ plus capture, restore, verify and cleanup) and 60 seconds of termination/IO slac
 Operator policy references must be immutable store files, including non-null
 PostgreSQL and custody manifests. Store-internal aliases retain their original
 contract spelling; mutable-location aliases are rejected before dispatch.
+Every operator transition worker entrypoint and coordinator command (`runuser`,
+`systemctl`, `busctl`) is an executable immutable store file; declared adapter
+files share the backup admission and realization rules.
+Certification checks the complete enrolled inode namespaces in both coordinator
+and directly callable worker. Coordinated children inspect private global roots
+while privileged, then permanently drop to the resource account before leasing
+or publishing. Direct service-account calls fail closed if global roots cannot
+be inspected, and reject bind aliases of another resource's corpus or state.
 Custody inventories reject regular files with external hard links in metadata
 and content checks. Database inventory queries supply paths and attributes;
 the policy's root index remains authoritative and query-supplied `root` fields

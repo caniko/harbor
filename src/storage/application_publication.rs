@@ -1,6 +1,7 @@
 //! Privileged publication copies worker-owned bytes onto protected fresh inodes.
 use super::{Result, durable, invalid, process};
 use std::{
+    collections::VecDeque,
     ffi::CString,
     fs::{self, File, OpenOptions},
     io::{self, Read},
@@ -13,6 +14,101 @@ use std::{
     },
     path::{Path, PathBuf},
 };
+
+/// Bind every alias component through descriptors before reading a privileged
+/// source. Neither a worker rename nor a symlink swap can redirect this copy.
+fn credential_source(path: &Path) -> Result<File> {
+    if !path.is_absolute() {
+        return Err(invalid("credential source must be absolute"));
+    }
+    let root = || -> Result<File> {
+        Ok(OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open("/")?)
+    };
+    let mut current = root()?;
+    let mut pending: VecDeque<_> = path
+        .components()
+        .skip(1)
+        .map(|part| part.as_os_str().to_owned())
+        .collect();
+    let root_uid = durable::root_owner_uid()?;
+    let mut links = 0;
+    while let Some(name) = pending.pop_front() {
+        let parent = current.metadata()?;
+        if !parent.is_dir() || parent.uid() != root_uid || parent.mode() & 0o022 != 0 {
+            return Err(invalid("untrusted credential source ancestor"));
+        }
+        let name = CString::new(name.as_bytes())
+            .map_err(|_| invalid("invalid credential source component"))?;
+        let fd = unsafe {
+            libc::openat(
+                current.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        let selected = unsafe { File::from_raw_fd(fd) };
+        let meta = selected.metadata()?;
+        if meta.uid() != root_uid || (!meta.file_type().is_symlink() && meta.mode() & 0o022 != 0) {
+            return Err(invalid(
+                "untrusted credential source ownership or permissions",
+            ));
+        }
+        if meta.file_type().is_symlink() {
+            links += 1;
+            if links > 40 {
+                return Err(invalid("credential source has too many alias hops"));
+            }
+            let mut target = vec![0u8; 4097];
+            let length = unsafe {
+                libc::readlinkat(
+                    selected.as_raw_fd(),
+                    c"".as_ptr(),
+                    target.as_mut_ptr().cast(),
+                    target.len(),
+                )
+            };
+            if length < 0 {
+                return Err(io::Error::last_os_error().into());
+            }
+            if length as usize == target.len() {
+                return Err(invalid("credential alias target is too long"));
+            }
+            target.truncate(length as usize);
+            let target = Path::new(std::ffi::OsStr::from_bytes(&target));
+            if target.is_absolute() {
+                current = root()?;
+            }
+            let mut parts: VecDeque<_> = target
+                .components()
+                .filter(|part| !matches!(part, std::path::Component::RootDir))
+                .map(|part| part.as_os_str().to_owned())
+                .collect();
+            parts.append(&mut pending);
+            pending = parts;
+        } else {
+            current = selected;
+        }
+    }
+    let meta = current.metadata()?;
+    if !meta.is_file() || meta.uid() != root_uid || meta.mode() & 0o022 != 0 {
+        return Err(invalid("credential source must be a trusted regular file"));
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(format!("/proc/self/fd/{}", current.as_raw_fd()))?;
+    let opened = file.metadata()?;
+    if (opened.dev(), opened.ino()) != (meta.dev(), meta.ino()) {
+        return Err(invalid("credential source inode changed"));
+    }
+    Ok(file)
+}
 
 pub(super) fn require_namespace(root: &Path) -> Result<()> {
     if unsafe { libc::geteuid() } != 0 {
@@ -91,35 +187,11 @@ impl Worker {
             identity,
             credentials: None,
         };
-        let inherited = std::env::var_os("CREDENTIALS_DIRECTORY").map(PathBuf::from);
-        let mut inputs = Vec::new();
-        if let Some(sources) = sources {
-            validate_credentials(sources)?;
-            for (name, source) in sources.as_object().unwrap() {
-                let path = if let Some(directory) = &inherited {
-                    directory.join(name)
-                } else {
-                    // The immutable policy explicitly selects this runtime secret.
-                    // Resolve agenix-style aliases, then open a direct regular file.
-                    fs::canonicalize(source.as_str().unwrap())?
-                };
-                inputs.push((name.clone(), path));
-            }
-        } else if let Some(directory) = inherited {
-            for entry in fs::read_dir(directory)? {
-                let entry = entry?;
-                let name = entry
-                    .file_name()
-                    .into_string()
-                    .map_err(|_| invalid("invalid backup credential name"))?;
-                inputs.push((name, entry.path()));
-            }
-        }
+        let inputs = credential_inputs(sources)?;
         if !inputs.is_empty() {
             fs::DirBuilder::new().mode(0o700).create(credentials)?;
             worker.credentials = Some(credentials.to_owned());
-            for (name, source) in inputs {
-                let input = durable::open_regular(&source, false)?;
+            for (name, input) in inputs {
                 let mut output = OpenOptions::new()
                     .write(true)
                     .create_new(true)
@@ -144,6 +216,47 @@ impl Worker {
         }
         Ok(worker)
     }
+}
+
+fn credential_inputs(sources: Option<&serde_json::Value>) -> Result<Vec<(String, File)>> {
+    let inherited = std::env::var_os("CREDENTIALS_DIRECTORY").map(PathBuf::from);
+    let mut selected = Vec::new();
+    if let Some(sources) = sources {
+        validate_credentials(sources)?;
+        for (name, source) in sources.as_object().unwrap() {
+            let path = inherited.as_ref().map_or_else(
+                || PathBuf::from(source.as_str().unwrap()),
+                |directory| directory.join(name),
+            );
+            selected.push((name.clone(), path));
+        }
+    } else if let Some(directory) = inherited {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            selected.push((
+                entry
+                    .file_name()
+                    .into_string()
+                    .map_err(|_| invalid("invalid backup credential name"))?,
+                entry.path(),
+            ));
+        }
+    }
+    selected
+        .into_iter()
+        .map(|(name, path)| {
+            let file = credential_source(&path)?;
+            if file.metadata()?.len() > 1 << 20 {
+                return Err(invalid("backup credential exceeds the byte limit"));
+            }
+            Ok((name, file))
+        })
+        .collect()
+}
+
+pub(super) fn check_credential_sources(sources: Option<&serde_json::Value>) -> Result<()> {
+    credential_inputs(sources)?;
+    Ok(())
 }
 impl Drop for Worker {
     fn drop(&mut self) {
@@ -220,6 +333,56 @@ pub(super) fn reader_permissions(path: &Path, gid: u32) -> Result<()> {
 mod tests {
     use super::*;
     use std::io::{Seek, SeekFrom, Write};
+
+    #[test]
+    fn worker_credentials_reject_untrusted_sources_before_creating_private_copies_in_both_engines()
+    {
+        use serde_json::json;
+        assert!(std::env::var_os("CREDENTIALS_DIRECTORY").is_none());
+        let user = std::env::var("USER").unwrap();
+        let account = process::account(&user).unwrap();
+        assert_ne!(account.uid, 0);
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("worker-secret");
+        fs::write(&source, b"confidential source bytes").unwrap();
+        let copied = root.path().join("credentials");
+        let sources = json!({"token":source});
+        let result = Worker::new(&user, &copied, Some(&sources));
+        assert!(
+            result.is_err(),
+            "worker-controlled credential source was copied"
+        );
+        assert!(
+            !copied.exists(),
+            "credential rejection mutated the copy namespace"
+        );
+        let script = r#"import os,sys
+from pathlib import Path
+from harbor_db.application_publication import Worker
+root=Path(sys.argv[2]);copied=root/'python-credentials'
+try: Worker(sys.argv[1],copied,{'token':str(root/'worker-secret')})
+except (ValueError,OSError): pass
+else: raise AssertionError('worker-controlled credential source was copied')
+assert not copied.exists(),'credential rejection mutated the copy namespace'
+assert (root/'worker-secret').read_bytes()==b'confidential source bytes'
+"#;
+        let mut spec = process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            user,
+            root.path().display().to_string(),
+        ]);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        process::execute(&spec).unwrap();
+    }
 
     #[test]
     fn credential_sources_require_bounded_names_and_runtime_paths_in_both_engines() {

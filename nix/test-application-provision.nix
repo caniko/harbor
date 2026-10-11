@@ -7,6 +7,12 @@
 }: let
   legacyStorage = import ./test-python-package.nix {inherit pkgs;};
   bridge = import ./test-native-bridge.nix {inherit pkgs;};
+  schema = pkgs.writeText "demo-schema.sql" ''
+    CREATE TABLE IF NOT EXISTS documents(id int);
+    CREATE TABLE IF NOT EXISTS history(id int);
+    CREATE OR REPLACE FUNCTION hidden_write() RETURNS int LANGUAGE sql SECURITY DEFINER AS $$ INSERT INTO documents VALUES (86) RETURNING id $$;
+    CREATE OR REPLACE PROCEDURE hidden_procedure() LANGUAGE sql AS $$ SELECT 1 $$;
+  '';
 in
   assert !interop || testPackage != null;
     pkgs.testers.runNixOSTest {
@@ -49,7 +55,7 @@ in
         systemd.services.demo-schema = {
           serviceConfig = {
             Type = "oneshot";
-            ExecStart = "${pkgs.postgresql_18}/bin/psql -X -w -v ON_ERROR_STOP=1 -d demo -U demo_owner -c 'CREATE TABLE IF NOT EXISTS documents(id int); CREATE TABLE IF NOT EXISTS history(id int)'";
+            ExecStart = "${pkgs.postgresql_18}/bin/psql -X -w -v ON_ERROR_STOP=1 -d demo -U demo_owner -f ${schema}";
           };
         };
         services.harbor-db.projects.incomplete.postgres.provision = {
@@ -124,6 +130,8 @@ in
           machine.succeed("runuser -u postgres -- psql -d demo -c 'GRANT UPDATE ON history TO demo_runtime'")
           machine.fail("runuser -u postgres -- harbor-db-provision --config /etc/harbor-db/demo-provision.json check")
           machine.succeed("systemctl restart harbor-db-demo-permissions.service")
+          machine.fail("runuser -u demo -- ${pkgs.postgresql_18}/bin/psql -X -w -h /run/postgresql -d demo -U demo_runtime -c 'SELECT hidden_write()'")
+          machine.fail("runuser -u demo -- ${pkgs.postgresql_18}/bin/psql -X -w -h /run/postgresql -d demo -U demo_runtime -c 'CALL hidden_procedure()'")
           machine.succeed("runuser -u postgres -- harbor-db-provision --config /etc/harbor-db/demo-provision.json check")
           machine.reboot()
           machine.wait_for_unit("demo.service")

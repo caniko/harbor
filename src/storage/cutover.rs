@@ -198,7 +198,7 @@ pub fn validate_restore_roots(manifest: &Value, restores: &[PathBuf]) -> Result<
     Ok(())
 }
 
-/// The privileged coordinator also rejects bind-mounted aliases before dispatch.
+/// Both coordinator and certifying child reject complete global inode aliases.
 pub fn validate_restore_namespaces(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
     validate_restore_roots(manifest, restores)?;
     let mut roots = namespace_roots(manifest)?;
@@ -233,6 +233,30 @@ fn inspect_namespace_roots(roots: Vec<(PathBuf, bool)>, deadline: Instant) -> Re
             ));
         }
         protected.extend(identities);
+    }
+    Ok(())
+}
+
+/// Certifying children inspect private namespaces while privileged, then publish
+/// exclusively as the declared service account. Direct user calls do the same
+/// global check and fail closed when another enrolled namespace is unreadable.
+pub fn enter_certification_user(config: &Value) -> Result<()> {
+    let account = process::account(string(config, "user")?)?;
+    let uid = unsafe { libc::geteuid() };
+    if uid == account.uid {
+        return Ok(());
+    }
+    if uid != 0 {
+        return Err(invalid(
+            "certification requires the declared resource service user",
+        ));
+    }
+    if unsafe {
+        libc::setgroups(account.groups.len(), account.groups.as_ptr()) != 0
+            || libc::setgid(account.gid) != 0
+            || libc::setuid(account.uid) != 0
+    } {
+        return Err(std::io::Error::last_os_error().into());
     }
     Ok(())
 }
