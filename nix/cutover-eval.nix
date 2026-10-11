@@ -104,6 +104,25 @@ in
     name = "harbor-db-cutover-eval";
     assertions = [
       {
+        name = "custody-authority-and-corpus-namespaces-are-isolated";
+        message = "An authority state directory cannot share or contain another authority/corpus or be nested inside one, before any namespace ownership is emitted.";
+        assertion = let
+          peer = {
+            user = "archive";
+            authority = {
+              state_dir = "/var/lib/peer-authority";
+              directories = ["/srv/peer-history"];
+              binding.backend = "files";
+            };
+          };
+          accepted = override: custodyAccepted {services.harbor-db.cutover.resources = {peer = lib.recursiveUpdate peer override;};};
+        in
+          accepted {}
+          && lib.all (state: !accepted {authority.state_dir = state;}) ["/srv/history" "/srv/history/state" "/srv" "/var/lib/authority" "/var/lib/authority/nested" "/var/lib"]
+          && lib.all (directory: !accepted {authority.directories = [directory];}) ["/var/lib/authority" "/var/lib/authority/corpus" "/var/lib"]
+          && accepted {authority.state_dir = "/var/lib/authority-sibling";};
+      }
+      {
         name = "ambiguous-custody-paths-fail-before-directory-creation";
         assertion = lib.all (path:
           !custodyAccepted {services.harbor-db.dataDirectories = lib.mkForce [{inherit path;}];}

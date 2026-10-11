@@ -394,6 +394,10 @@ in {
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires receiveWal.enable for continuous post-target WAL coverage.";
           }
           {
+            assertion = !cfg.targetSettings.sourceLocalRecovery.enable || cfg.targetSettings.baseBackup.enable;
+            message = "services.harbor-db.pgBackup sourceLocalRecovery requires baseBackup.enable for fresh verified recovery base backups.";
+          }
+          {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || !(config.services.harbor-db.postgresql.enable or false) || lib.elem "replicator" config.services.harbor-db.postgresql.writerFence.replicationRoles;
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires replicator in the writer-fence replication roles.";
           }

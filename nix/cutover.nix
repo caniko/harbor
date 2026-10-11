@@ -43,6 +43,11 @@
     if entry.kind == "filesystem"
     then entry.authority.directories
     else []) (lib.attrValues resources);
+  authorityDirectories = lib.concatMap (entry:
+    if entry.kind == "filesystem"
+    then [entry.authority.state_dir]
+    else []) (lib.attrValues resources);
+  custodyNamespaces = protectedDirectories ++ authorityDirectories;
   storagePaths = import ./storage-paths.nix {inherit lib;};
   normalizedPath = storagePaths.normalizedAbsolute;
   protectedPath = path:
@@ -237,11 +242,11 @@ in {
     (lib.mkIf cfg.enable {
       assertions = [
         {
-          assertion = storagePaths.disjoint protectedDirectories;
-          message = "Harbor-DB filesystem custody roots must be globally pairwise disjoint across resources.";
+          assertion = storagePaths.disjoint custodyNamespaces;
+          message = "Harbor-DB filesystem custody roots and authority namespaces must be globally pairwise disjoint across resources.";
         }
         {
-          assertion = lib.all normalizedPath protectedDirectories && lib.all (entry: normalizedPath entry.path) declaredDirectories;
+          assertion = lib.all normalizedPath custodyNamespaces && lib.all (entry: normalizedPath entry.path) declaredDirectories;
           message = "Harbor-DB custody roots and dataDirectories must use normalized absolute paths without '.', '..', repeated or trailing separators.";
         }
         {

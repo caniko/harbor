@@ -185,6 +185,10 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
             "backup and transition barrier roots must be disjoint",
         ));
     }
+    let authority = Path::new(string(&source, "state_dir")?);
+    if backup_root.starts_with(authority) || authority.starts_with(backup_root) {
+        return Err(invalid("backup and authority roots must be disjoint"));
+    }
     if source_roots
         .iter()
         .chain(&target_roots)

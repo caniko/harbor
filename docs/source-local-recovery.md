@@ -12,7 +12,10 @@ local peer SQL endpoint. WAL is received locally, or through a separately
 qualified localhost relay, so the existing writer fence remains authoritative.
 With `pgBackup.targetSettings.sourceLocalRecovery.enable`, select `role = "both"`
 and a loopback `source.hostName`, with `targetSettings.receiveWal.enable = true`
-for continuous post-target WAL coverage. The module generates SCRAM replication HBA
+for continuous post-target WAL coverage and `targetSettings.baseBackup.enable = true`
+for fresh verified base-backup production. Disabling either operation fails
+evaluation because capture finalization requires both. Independent WAL-only
+targets remain supported outside source-local recovery. The module generates SCRAM replication HBA
 rules for that address (`localhost` admits both loopback families) without adding
 a firewall opening. An empty `sourceSettings.listenAddresses` also derives TCP
 listeners for those loopback families; explicit lists also retain the required

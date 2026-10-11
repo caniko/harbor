@@ -112,6 +112,18 @@ in
     '';
     assertions = [
       {
+        name = "upgrade-validator-requires-an-absolute-executable";
+        message = "Evaluated upgrades must supply a validator executable usable by the bound runtime contract.";
+        assertion = let
+          accepted = command: let
+            selected = (eval.extendModules {modules = [{services.harbor-db.postgresql.upgrade.validateCommand = lib.mkForce command;}];}).config;
+          in
+            lib.all (entry: entry.assertion || !(lib.hasPrefix "Staged PostgreSQL upgrades require" entry.message)) selected.assertions;
+        in
+          accepted ["/fixture/validator" "literal argument"]
+          && lib.all (command: !accepted command) [[] [""] ["validator"] ["relative/validator"] ["./validator"]];
+      }
+      {
         name = "lifecycle-state-is-dedicated-and-normalized";
         message = "Identity state requires a dedicated normalized absolute directory before tmpfiles ownership is generated, independent of managed preparation.";
         assertion = let

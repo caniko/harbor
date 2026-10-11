@@ -29,11 +29,11 @@ sha256 = "3238534938a8e7ceee3020e4495e5ec510b12c2d335422e14c4a6fa5eaab6e10"
 
 [[extensions]]
 path = "python/harbor_db/transition_manifest.py"
-sha256 = "fc60f423364ed66bb667b4c5dd46cf940cb6329521517c55e1b8352c71159782"
+sha256 = "81a637889ccd4383957055ce3f0aea257545be02d7f1b917707b37f36e31b550"
 
 [[extensions]]
 path = "python/harbor_db/cutover.py"
-sha256 = "fb9d1d4da7cb784676e833d68f555fd9e5329738cd1e63d1e37c5f6c89493dbc"
+sha256 = "bddbf7c0881a99325da4c684ef91a71945ff6f14b86635559f65b2c67b74fbdc"
 
 [[extensions]]
 path = "python/harbor_db/provision.py"

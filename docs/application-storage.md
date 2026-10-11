@@ -97,6 +97,11 @@ root, preserving exclusive lock, attempt and success-marker namespaces. Disabled
 projects do not reserve roots. Ambiguous dot/parent components and repeated or
 trailing separators are rejected before comparing roots. Roots must be pairwise
 non-ancestral so another project's directory ownership cannot block traversal.
+Transition admission also keeps the selected backup root disjoint from the
+shared source/target authority state in both containment directions. Otherwise
+the nested backup coordinator could contend with the transition's own authority
+lock while writers remain inhibited. Native and Python reject before inhibition
+or lock creation, including when the backup policy is supplied externally.
 
 Backup inventories require UTF-8 relative artifact paths; non-UTF-8 file or
 directory names are rejected before acceptance publication. Regular artifact

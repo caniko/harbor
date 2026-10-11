@@ -108,6 +108,95 @@ for contents in (False,True):
 }
 
 #[test]
+fn custody_authorities_and_corpora_have_disjoint_global_namespaces_in_both_engines() {
+    let f = Fixture::new();
+    let mut base = f.manifest();
+    let mut peer = f.config.clone();
+    peer["authority"]["resource"] = json!("peer");
+    peer["authority"]["state_dir"] = json!(f.temp.path().join("peer-authority"));
+    peer["custody_file"] = json!(f.temp.path().join("peer-authority/custody.json"));
+    peer["authority"]["directories"] = json!([f.temp.path().join("peer-history")]);
+    base["resources"]["peer"] = peer;
+    let check = |manifest: &serde_json::Value, accepted: bool| {
+        let native = cutover::validate_manifest(manifest, "fixture");
+        if accepted {
+            native.unwrap();
+        } else {
+            assert!(
+                native
+                    .unwrap_err()
+                    .to_string()
+                    .contains("custody namespaces")
+            );
+        }
+        let script = r#"import json,sys
+from harbor_db import cutover
+try: cutover.validate_manifest(json.loads(sys.argv[1]),'fixture')
+except ValueError as error:
+    assert sys.argv[2]=='false' and 'custody namespaces' in str(error), str(error)
+else: assert sys.argv[2]=='true', 'shared custody namespace accepted'
+"#;
+        let mut command = process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            manifest.to_string(),
+            accepted.to_string(),
+        ]);
+        command.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        process::execute(&command).unwrap();
+        assert!(!f.state.join("lock").exists());
+        assert!(!f.state.join("identity.json").exists());
+    };
+    check(&base, true);
+    for resource in ["archive", "peer"] {
+        let other = if resource == "archive" {
+            "peer"
+        } else {
+            "archive"
+        };
+        for kind in ["state_dir", "directories"] {
+            let path = if kind == "state_dir" {
+                std::path::PathBuf::from(
+                    base["resources"][other]["authority"][kind]
+                        .as_str()
+                        .unwrap(),
+                )
+            } else {
+                std::path::PathBuf::from(
+                    base["resources"][other]["authority"][kind][0]
+                        .as_str()
+                        .unwrap(),
+                )
+            };
+            for state in [
+                path.clone(),
+                path.join("state"),
+                path.parent().unwrap().to_path_buf(),
+            ] {
+                let mut changed = base.clone();
+                changed["resources"][resource]["authority"]["state_dir"] = json!(state);
+                changed["resources"][resource]["custody_file"] = json!(state.join("custody.json"));
+                check(&changed, false);
+            }
+        }
+    }
+    let mut sibling = base;
+    sibling["resources"]["peer"]["authority"]["state_dir"] =
+        json!(f.temp.path().join("authority-sibling"));
+    sibling["resources"]["peer"]["custody_file"] =
+        json!(f.temp.path().join("authority-sibling/custody.json"));
+    check(&sibling, true);
+}
+
+#[test]
 fn database_corpus_query_cannot_replace_the_policy_root_in_both_engines() {
     let item = json!({"path":"history","directory":false});
     assert_eq!(

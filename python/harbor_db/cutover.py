@@ -25,6 +25,7 @@ def validate_manifest(value, host):
         timeout = value.get(key, default)
         if type(timeout) is not int or not 1 <= timeout <= maximum:
             raise ValueError(f"invalid bounded cutover inspection budget: {key}")
+    namespaces = []
     for name, entry in value["resources"].items():
         if (not re.fullmatch(r"[A-Za-z0-9_-]+", name) or not isinstance(entry, dict)
                 or entry.get("kind") not in ("postgres", "filesystem")
@@ -51,6 +52,7 @@ def validate_manifest(value, host):
                 raise ValueError("custody receipt must be directly in its private authority directory")
             for directory in directories:
                 validate_path(directory)
+            namespaces.extend(map(Path, [authority["state_dir"], *directories]))
             if entry.get("login_shell") is not None:
                 validate_path(entry["login_shell"])
             units = entry.get("runtime_units")
@@ -61,6 +63,9 @@ def validate_manifest(value, host):
             dependency = entry.get("database_resource")
             if dependency is not None and value["resources"].get(dependency, {}).get("kind") != "postgres":
                 raise ValueError("filesystem custody requires an enrolled PostgreSQL recovery dependency")
+    for index, root in enumerate(namespaces):
+        if any(root.is_relative_to(other) or other.is_relative_to(root) for other in namespaces[index + 1:]):
+            raise ValueError("filesystem custody namespaces must be globally disjoint")
     return value
 
 

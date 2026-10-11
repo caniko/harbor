@@ -116,6 +116,19 @@ in
     resultMessage = "harbor-db PostgreSQL backup creates slots before streaming and verifies base backups";
     assertions = [
       {
+        name = "source-local-recovery-requires-base-backup-production";
+        message = "Source-local recovery requires both fresh verified base backups and continuous WAL; independent WAL-only targets remain supported.";
+        assertion = let
+          selected = (localEval.extendModules {modules = [{services.harbor-db.pgBackup.targetSettings.baseBackup.enable = false;}];}).config;
+          walOnlyTarget = (eval.extendModules {modules = [{services.harbor-db.pgBackup.targetSettings.baseBackup.enable = false;}];}).config;
+        in
+          lib.any (a: !a.assertion && lib.hasInfix "sourceLocalRecovery requires baseBackup" a.message) selected.assertions
+          && lib.all (a: a.assertion || !lib.hasPrefix "services.harbor-db.pgBackup" a.message) localEval.config.assertions
+          && lib.all (a: a.assertion || !lib.hasPrefix "services.harbor-db.pgBackup" a.message) walOnlyTarget.assertions
+          && localEval.config.systemd.services ? pg-basebackup
+          && !(walOnlyTarget.systemd.services ? pg-basebackup);
+      }
+      {
         name = "invalid-wal-segment-size-rejects-before-backup-services";
         assertion = lib.all (size: !walSizeAccepted size) [0 3 524288 1048577 3145728 1073741825 2147483648];
         message = "WAL segment sizes must reject before generating a prune service that blocks base backups.";

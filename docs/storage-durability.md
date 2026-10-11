@@ -57,7 +57,8 @@ transaction. A generated configuration default alone is insufficient.
 ## Offline major upgrades
 
 Set `upgrade.oldPackage`, `oldDataDir`, `initdbArgs`, optional `extraConfig`, and
-`validateCommand`. The validation argv receives the staging directory as its
+`validateCommand`, whose first argument must be an absolute executable path;
+empty or relative validators fail Nix evaluation. The validation argv receives the staging directory as its
 last argument. It must verify the application's actual recovered records, stop
 any server it started and return nonzero on any mismatch.
 Validation is read-only: it must never accept application saves or call a

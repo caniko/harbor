@@ -25,8 +25,12 @@ policy still defines its backup age and restore requirements.
 
 ## Historical filesystem state
 
-Declare each authoritative corpus as a filesystem resource. Its authority state
-must be outside the corpus. Set every `dataDirectories` entry at or beneath a
+Declare each authoritative corpus as a filesystem resource. Every authority state
+directory and corpus root must be globally pairwise disjoint, including across
+resources. Equality and containment in either direction reject during Nix and
+native/Python manifest admission before authority locks or state writes. This
+keeps one resource's identity and transition journals outside another resource's
+certified corpus and exclusive lease. Set every `dataDirectories` entry at or beneath a
 custody root to `create = false`; missing historical storage is an error. Explicit initialization
 of genuinely new state remains a separate policy choice.
 

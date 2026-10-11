@@ -46,6 +46,7 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
             )));
         }
     }
+    let mut namespaces = Vec::new();
     for (name, entry) in resources {
         if !custody::name(name)
             || !entry.is_object()
@@ -79,6 +80,7 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
                 )));
             }
             validate_path(string(authority, "state_dir")?)?;
+            namespaces.push(Path::new(string(authority, "state_dir")?).to_path_buf());
             validate_path(string(entry, "custody_file")?)?;
             if Path::new(string(entry, "custody_file")?).parent()
                 != Some(Path::new(string(authority, "state_dir")?))
@@ -93,6 +95,7 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
                         .to_str()
                         .ok_or_else(|| invalid("invalid corpus directory"))?,
                 )?;
+                namespaces.push(directory);
             }
             if !entry["login_shell"].is_null() {
                 validate_path(string(entry, "login_shell")?)?;
@@ -114,6 +117,16 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
                     "filesystem custody requires an enrolled PostgreSQL recovery dependency",
                 ));
             }
+        }
+    }
+    for (index, root) in namespaces.iter().enumerate() {
+        if namespaces[index + 1..]
+            .iter()
+            .any(|other| root.starts_with(other) || other.starts_with(root))
+        {
+            return Err(invalid(
+                "filesystem custody namespaces must be globally disjoint",
+            ));
         }
     }
     Ok(value.clone())

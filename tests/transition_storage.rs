@@ -140,6 +140,44 @@ fn repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_
 }
 
 #[test]
+fn transition_backups_cannot_overlap_the_shared_authority_in_both_engines() {
+    let mut f = Fixture::new();
+    let authority = f.temp.path().join("authority/child");
+    fs::create_dir(&authority).unwrap();
+    f.source["state_dir"] = json!(authority);
+    f.target["state_dir"] = json!(authority);
+    durable::write_json(&f.temp.path().join("source.json"), &f.source).unwrap();
+    durable::write_json(&f.temp.path().join("target.json"), &f.target).unwrap();
+    for backup in [
+        authority.clone(),
+        authority.join("backup"),
+        f.temp.path().join("authority"),
+    ] {
+        durable::write_json(
+            &f.temp.path().join("backup.json"),
+            &json!({"root":backup,"maximum_age_seconds":3600}),
+        )
+        .unwrap();
+        let error = transition_manifest::validate(&f.config).unwrap_err();
+        assert!(
+            error.to_string().contains("backup and authority roots"),
+            "{error}"
+        );
+        assert!(python_transition_validation(&f.config).contains("backup and authority roots"));
+        assert!(!authority.join("lock").exists());
+        assert!(!authority.join("transition.json").exists());
+        assert!(!f.temp.path().join("barrier/inhibited.json").exists());
+    }
+    durable::write_json(
+        &f.temp.path().join("backup.json"),
+        &json!({"root":f.temp.path().join("authority-sibling"),"maximum_age_seconds":3600}),
+    )
+    .unwrap();
+    transition_manifest::validate(&f.config).unwrap();
+    assert_eq!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+}
+
+#[test]
 fn barrier_and_guarded_storage_must_be_disjoint_in_both_directions_in_both_engines() {
     let mut f = Fixture::new();
     let barrier = f.temp.path().join("barrier");

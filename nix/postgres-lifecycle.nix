@@ -304,7 +304,7 @@ in {
           };
           validateCommand = mkOption {
             type = types.listOf types.str;
-            description = "Validation argv. Receives the offline staging directory as its final argument; must stop any server it starts before returning.";
+            description = "Validation argv with an absolute executable path. Receives the offline staging directory as its final argument; must stop any server it starts before returning.";
           };
         };
       });
@@ -326,8 +326,8 @@ in {
         message = "Harbor DB identity state requires a dedicated normalized absolute directory.";
       }
       {
-        assertion = cfg.upgrade == null || cfg.upgrade.validateCommand != [];
-        message = "Staged PostgreSQL upgrades require consumer validation.";
+        assertion = cfg.upgrade == null || (cfg.upgrade.validateCommand != [] && lib.hasPrefix "/" (lib.head cfg.upgrade.validateCommand));
+        message = "Staged PostgreSQL upgrades require consumer validation with an absolute executable path.";
       }
       {
         assertion = cfg.recovery == null || cfg.recovery.recordChecks != {};
