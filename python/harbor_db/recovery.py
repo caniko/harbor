@@ -149,26 +149,34 @@ def verify_backup(config, directory):
 
 
 def query(config, socket_dir, port, database, sql):
-    if not Path(socket_dir).is_absolute() or "," in socket_dir or not 1 <= port <= 65535:
-        raise ValueError("recovery queries require a local Unix socket and valid port")
+    argv = query_argv(config, socket_dir, port, database, sql)
     env = {key: value for key, value in os.environ.items() if not key.startswith("PG")}
     env["PGCONNECT_TIMEOUT"] = "5"
+    return postgres.run(argv, env=env, capture_output=True, text=True, timeout=60).stdout
+
+
+def query_argv(config, socket_dir, port, database, sql, *, statement_timeout_seconds=None):
+    """Shared single-statement boundary; callers retain worker/lease policy."""
+    if not Path(socket_dir).is_absolute() or "," in socket_dir or not 1 <= port <= 65535:
+        raise ValueError("recovery queries require a local Unix socket and valid port")
     database = database.replace("\\", "\\\\").replace("'", "\\'")
     options = ("-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex "
                "-c standard_conforming_strings=on -c default_transaction_read_only=on")
+    if statement_timeout_seconds is not None:
+        options += f" -c statement_timeout={statement_timeout_seconds}s"
     # \bind forces a single-statement extended-protocol Parse. PREPARE accepts
     # query/DML grammar, never transaction control or CALL/DO. Only its execution
     # enters the explicit read-only transaction, retaining normalized output.
-    return postgres.run([
+    return [
         Path(config["package"]) / "bin/psql", "--no-psqlrc", "--no-password", "--quiet",
         f"--host={socket_dir}", f"--port={port}", "--username=postgres",
-        f"--dbname=dbname='{database}' options='{options}'",
+        f"--dbname=dbname='{database}' connect_timeout=5 options='{options}'",
         "--set=ON_ERROR_STOP=1", "--tuples-only", "--no-align",
         "--command", "\\bind", "--command", f"PREPARE harbor_db_recovery_query AS {sql}",
         "--command", ("BEGIN READ ONLY; SET LOCAL TimeZone = 'UTC'; "
                       "SET LOCAL DateStyle = 'ISO,YMD'; SET LOCAL bytea_output = 'hex'; "
                       "EXECUTE harbor_db_recovery_query; COMMIT;"),
-    ], env=env, capture_output=True, text=True, timeout=60).stdout
+    ]
 
 
 def records(config, settings, socket_dir, port):

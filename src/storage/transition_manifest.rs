@@ -202,6 +202,15 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
             "independent receipt and backup publication storage must be disjoint",
         ));
     }
+    if source_roots
+        .iter()
+        .chain(&target_roots)
+        .any(|corpus| receipt.starts_with(corpus) || corpus.starts_with(receipt))
+    {
+        return Err(invalid(
+            "independent receipt and corpus roots must be disjoint",
+        ));
+    }
     validate_workers(config)?;
     custody_entry(config, &target)?;
     Ok((source, target))

@@ -362,7 +362,19 @@ pub fn target_custody(
     }
     for check in checks {
         let database = durable::read_config_json(Path::new(string(config, "postgres_manifest")?))?;
-        let command = json!({"user":"postgres","argv":[Path::new(string(&database,"package")?).join("bin/psql"),"-X","-w","-qAt","-v","ON_ERROR_STOP=1","-h",config["postgres_socket"],"-p",config["postgres_port"].to_string(),"-U","postgres","-d",check["database"],"-c",format!("BEGIN READ ONLY; SET LOCAL statement_timeout = '30s'; {}; COMMIT;",string(check,"sql")?)]});
+        let port = config["postgres_port"]
+            .as_u64()
+            .and_then(|port| u16::try_from(port).ok())
+            .ok_or_else(|| invalid("invalid PostgreSQL custody port"))?;
+        let argv = super::recovery::query_argv(
+            &database,
+            Path::new(string(config, "postgres_socket")?),
+            port,
+            string(check, "database")?,
+            string(check, "sql")?,
+            Some(30),
+        )?;
+        let command = json!({"user":"postgres","argv":argv});
         let result = manifest::worker(config, &command, &BTreeMap::new(), leases)?;
         for item in result
             .as_array()

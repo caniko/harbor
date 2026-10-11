@@ -215,6 +215,51 @@ fn independent_receipts_cannot_alias_backup_publication_storage_before_inhibitio
 }
 
 #[test]
+fn independent_receipts_cannot_alias_transition_corpora_before_inhibition_in_both_engines() {
+    let mut f = Fixture::new();
+    let source = f.temp.path().join("old");
+    let target = f.temp.path().join("new");
+    for root in [&source, &target] {
+        fs::write(root.join("records"), "retained records").unwrap();
+    }
+    for receipt in [
+        source.clone(),
+        source.join("receipt.json"),
+        target.clone(),
+        target.join("receipt.json"),
+    ] {
+        f.config["independent_receipt"] = json!(receipt);
+        assert!(
+            transition_manifest::validate(&f.config)
+                .unwrap_err()
+                .to_string()
+                .contains("receipt and corpus")
+        );
+        assert!(python_transition_validation(&f.config).contains("receipt and corpus"));
+        assert!(!f.temp.path().join("barrier/lock").exists());
+        assert!(!f.temp.path().join("barrier/inhibited.json").exists());
+        assert!(!f.temp.path().join("authority/transition.json").exists());
+        for root in [&source, &target] {
+            assert_eq!(
+                fs::read_to_string(root.join("records")).unwrap(),
+                "retained records"
+            );
+        }
+    }
+    // A source/corpus ancestor is rejected before backup-overlap admission too.
+    f.config["independent_receipt"] = json!(f.temp.path());
+    assert!(transition_manifest::validate(&f.config).is_err());
+    assert_ne!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+    for receipt in [
+        f.temp.path().join("old-sibling/receipt.json"),
+        f.temp.path().join("new-sibling/receipt.json"),
+    ] {
+        f.config["independent_receipt"] = json!(receipt);
+        transition_manifest::validate(&f.config).unwrap();
+        assert_eq!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+    }
+}
+#[test]
 fn repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines()
  {
     transition_capture_fixture(false, true);

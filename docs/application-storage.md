@@ -342,6 +342,12 @@ their bytes and inodes, and cannot install conditions for new units. Release and
 abort use the same ownership check before policy publication or marker removal.
 An owned installation can be retried after partial publication.
 
+Independent transition receipts must be outside every source and target corpus
+in both containment directions, as well as backup publication and transition
+control storage. Equality, descendants and enclosing roots reject during manifest
+admission before locking, capture or writer inhibition; separate evidence siblings
+remain supported.
+
 Before writer enablement, `abort` requires the exact retained source generation
 selected with clients still inhibited and intact source semantic evidence. It
 restores old authority/custody using compare-and-swap, preserving target bytes.

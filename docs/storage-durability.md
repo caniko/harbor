@@ -127,7 +127,8 @@ do not certify a drive's power-loss behavior.
 
 ## Recovery SQL checks
 
-Configured recovery record and compatibility checks execute as one prepared SQL
+Configured recovery record, compatibility and transition custody inventory checks
+share one command builder and execute as one prepared SQL
 statement inside an explicit read-only transaction. `psql`'s zero-parameter
 `\bind` uses PostgreSQL's extended protocol, which rejects multiple statements
 before executing any part of the input. The SQL `PREPARE` grammar also excludes
@@ -138,6 +139,9 @@ string pins timezone, date/bytea formatting, standard string quoting and a read-
 session default before parsing, so typed SQL literals have consistent semantics; inherited
 libpq routing/options stay scrubbed. Checks require `psql` 16 or newer; older
 clients fail admission rather than falling back to simple-query execution.
+Custody queries retain the existing `postgres` worker identity, scrubbed worker
+environment, inherited leases and configured worker deadline, with a 30-second
+statement timeout. Their JSON path-array admission still runs after SQL execution.
 
 ## Consumer storage authority
 
@@ -175,6 +179,12 @@ race that writer. The validator, adoption operation, and runtime must use the
 same bind mounts, permissions, and configuration environment.
 
 ## Backup publication
+
+When continuous WAL reception and base backup are both enabled, their configured
+replication slot names must differ. A slot can have only one active receiver;
+sharing it with the long-running WAL receiver prevents `pg_basebackup` from
+acquiring its WAL stream. Nix evaluation rejects this configuration for local and
+remote targets; single-operation targets may retain the unused slot setting.
 
 `harbor-db-durable write` fsyncs a temporary file, atomically replaces metadata and
 fsyncs its parent. `publish-file` and `publish-tree` flush immutable offline backup

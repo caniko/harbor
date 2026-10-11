@@ -155,6 +155,32 @@ in
           && lib.all (a: a.assertion || !lib.hasPrefix "services.harbor-db.pgBackup" a.message) targetOnly.assertions;
       }
       {
+        name = "wal-and-base-backup-require-distinct-slots";
+        message = "Continuous WAL reception and base backups cannot acquire the same replication slot; one-operation targets remain supported.";
+        assertion = let
+          accepted = selected: lib.all (a: a.assertion || !lib.hasInfix "distinct replication slots" a.message) selected.assertions;
+          shared = configuration: overrides:
+            (configuration.extendModules {
+              modules = [
+                {
+                  services.harbor-db.pgBackup.targetSettings =
+                    {
+                      receiveWal.slotName = "shared_slot";
+                      baseBackup.slotName = "shared_slot";
+                    }
+                    // overrides;
+                }
+              ];
+            }).config;
+        in
+          accepted localEval.config
+          && accepted eval.config
+          && !accepted (shared localEval {})
+          && !accepted (shared eval {})
+          && accepted (shared eval {baseBackup.enable = false;})
+          && accepted (shared eval {receiveWal.enable = false;});
+      }
+      {
         name = "source-local-recovery-requires-base-backup-production";
         message = "Source-local recovery requires both fresh verified base backups and continuous WAL; independent WAL-only targets remain supported.";
         assertion = let

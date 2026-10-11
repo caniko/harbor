@@ -401,6 +401,10 @@ in {
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires role=both and a loopback source for fence-compatible WAL reception.";
           }
           {
+            assertion = !targetRole || !cfg.targetSettings.receiveWal.enable || !cfg.targetSettings.baseBackup.enable || cfg.targetSettings.receiveWal.slotName != cfg.targetSettings.baseBackup.slotName;
+            message = "services.harbor-db.pgBackup WAL reception and base backups require distinct replication slots when both operations are enabled.";
+          }
+          {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || cfg.targetSettings.receiveWal.enable;
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires receiveWal.enable for continuous post-target WAL coverage.";
           }

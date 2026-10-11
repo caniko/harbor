@@ -207,9 +207,9 @@ def target_custody(config, record, target, leases):
         raise ValueError("database-bound custody requires the borrowed PostgreSQL fence")
     for check in checks:
         database = read_json(config["postgres_manifest"])
-        command = {"user": "postgres", "argv": [str(Path(database["package"]) / "bin/psql"), "-X", "-w", "-qAt",
-                   "-v", "ON_ERROR_STOP=1", "-h", config["postgres_socket"], "-p", str(config["postgres_port"]),
-                   "-U", "postgres", "-d", check["database"], "-c", "BEGIN READ ONLY; SET LOCAL statement_timeout = '30s'; " + check["sql"] + "; COMMIT;"]}
+        from . import recovery
+        command = {"user": "postgres", "argv": recovery.query_argv(database, config["postgres_socket"], config["postgres_port"],
+                   check["database"], check["sql"], statement_timeout_seconds=30)}
         paths = worker(config, command, {}, leases)
         if not isinstance(paths, list):
             raise ValueError("database corpus query did not produce a path array")

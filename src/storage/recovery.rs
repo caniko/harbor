@@ -367,20 +367,39 @@ pub fn query_leased(
     sql: &str,
     leases: &[RawFd],
 ) -> Result<String> {
+    let mut spec =
+        process::CommandSpec::new(query_argv(config, socket, port, database, sql, None)?);
+    let mut env = std::env::vars()
+        .filter(|(k, _)| !k.starts_with("PG"))
+        .collect::<BTreeMap<_, _>>();
+    env.insert("PGCONNECT_TIMEOUT".into(), "5".into());
+    spec.environment = Some(env);
+    spec.leases = leases.to_vec();
+    process::text(&process::execute(&spec)?)
+}
+/// One PostgreSQL-parsed statement inside a read-only boundary. Custody workers
+/// reuse the same argv while retaining their account, environment and lease policy.
+pub(super) fn query_argv(
+    config: &Value,
+    socket: &Path,
+    port: u16,
+    database: &str,
+    sql: &str,
+    statement_timeout_seconds: Option<u32>,
+) -> Result<Vec<String>> {
     if !socket.is_absolute() || socket.to_string_lossy().contains(',') || port == 0 {
         return Err(invalid(
             "recovery queries require a local Unix socket and valid port",
         ));
     }
-    let mut env = std::env::vars()
-        .filter(|(k, _)| !k.starts_with("PG"))
-        .collect::<BTreeMap<_, _>>();
-    env.insert("PGCONNECT_TIMEOUT".into(), "5".into());
     // The explicit connection string carries only the escaped database name and
     // fixed session settings; inherited libpq routing/options remain scrubbed.
     let database = database.replace('\\', "\\\\").replace('\'', "\\'");
-    let options = "-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex -c standard_conforming_strings=on -c default_transaction_read_only=on";
-    let mut spec = process::CommandSpec::new(vec![
+    let mut options = "-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex -c standard_conforming_strings=on -c default_transaction_read_only=on".to_owned();
+    if let Some(seconds) = statement_timeout_seconds {
+        options.push_str(&format!(" -c statement_timeout={seconds}s"));
+    }
+    Ok(vec![
         path(config, "package")?
             .join("bin/psql")
             .to_string_lossy()
@@ -391,7 +410,7 @@ pub fn query_leased(
         format!("--host={}", socket.display()),
         format!("--port={port}"),
         "--username=postgres".into(),
-        format!("--dbname=dbname='{database}' options='{options}'"),
+        format!("--dbname=dbname='{database}' connect_timeout=5 options='{options}'"),
         "--set=ON_ERROR_STOP=1".into(),
         "--tuples-only".into(),
         "--no-align".into(),
@@ -404,10 +423,7 @@ pub fn query_leased(
         format!("PREPARE harbor_db_recovery_query AS {sql}"),
         "--command".into(),
         "BEGIN READ ONLY; SET LOCAL TimeZone = 'UTC'; SET LOCAL DateStyle = 'ISO,YMD'; SET LOCAL bytea_output = 'hex'; EXECUTE harbor_db_recovery_query; COMMIT;".into(),
-    ]);
-    spec.environment = Some(env);
-    spec.leases = leases.to_vec();
-    process::text(&process::execute(&spec)?)
+    ])
 }
 fn records(
     config: &Value,

@@ -472,6 +472,13 @@ fn ready_upgrade_resumes_after_rename_and_identity_publication() {
 
 #[test]
 fn native_postmaster_retains_main_pid_lease_and_logical_restore_is_private() {
+    if let Some(root) = std::env::var_os("HARBOR_DB_CUSTODY_SQL_CHILD") {
+        std::panic::set_hook(Box::new(|info| {
+            println!("custody SQL qualification failure: {info}")
+        }));
+        custody_sql_boundary(&std::path::PathBuf::from(root));
+        return;
+    }
     let _workers = WORKERS.lock().unwrap();
     use harbor_db::storage::{
         postgres_drill,
@@ -760,6 +767,47 @@ fn native_postmaster_retains_main_pid_lease_and_logical_restore_is_private() {
             .all(|(_, _, rejected, retained)| *rejected && *retained),
         "{rejections:?}"
     );
+    let namespace = tempfile::tempdir().unwrap();
+    // Keep the real primary outside the user namespace. A private passwd corpus
+    // maps the client worker's postgres identity to the sole non-root uid; production
+    // worker identity checks and JSON custody admission still execute unchanged.
+    let launch = r#"import os,subprocess,sys
+from pathlib import Path
+sys.stderr=sys.stdout
+root=Path(sys.argv[1]);source=Path(sys.argv[2]);corpus=Path(sys.argv[3]);binary=sys.argv[4]
+for path in (Path('/nix'),Path('/proc'),Path('/dev'),source,corpus):
+    target=root/path.relative_to('/');target.mkdir(parents=True,exist_ok=True)
+    subprocess.run(['mount','--rbind',str(path),str(target)],check=True,stderr=subprocess.STDOUT)
+(root/'tmp').mkdir(mode=0o1777);(root/'etc').mkdir()
+(root/'etc/passwd').write_text('postgres:x:71:71:fixture:/tmp:/bin/sh\n')
+(root/'etc/group').write_text('postgres:x:71:\n')
+os.chroot(root);os.chdir(source);os.environ['TMPDIR']='/tmp';os.environ['HARBOR_DB_CUSTODY_SQL_CHILD']=str(corpus)
+os.execv(binary,[binary,'--exact','native_postmaster_retains_main_pid_lease_and_logical_restore_is_private','--nocapture'])
+"#;
+    let mut custody = CommandSpec::new(vec![
+        "unshare".into(),
+        "--user".into(),
+        "--map-user=71".into(),
+        "--map-group=71".into(),
+        "--keep-caps".into(),
+        "--mount".into(),
+        "--".into(),
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        launch.into(),
+        namespace.path().display().to_string(),
+        env!("CARGO_MANIFEST_DIR").into(),
+        root.display().to_string(),
+        std::env::current_exe().unwrap().display().to_string(),
+    ]);
+    custody.timeout = Duration::from_secs(90);
+    let output = process::run(&custody).unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
     let mut dump = endpoint;
     dump.extend([
         "--format=custom".into(),
@@ -928,6 +976,99 @@ fn native_postmaster_retains_main_pid_lease_and_logical_restore_is_private() {
     postgres::check(&target_config).unwrap();
     assert!(postgres::check(&source).is_err());
     postgres::upgrade(&target_config, false).unwrap();
+}
+
+fn custody_sql_boundary(root: &std::path::Path) {
+    use harbor_db::storage::{application_transition, process};
+    let corpus = root.join("custody-corpus");
+    fs::create_dir(&corpus).unwrap();
+    fs::write(corpus.join("records"), "custody corpus").unwrap();
+    let target = json!({"resource":"native","state_dir":root.join("custody-authority"),"directories":[corpus],"binding":{"backend":"files"},"required_mounts":[]});
+    let entry = json!({"kind":"filesystem","authority":target,"custody_file":root.join("custody.json"),"database_inventory_checks":[]});
+    let selected = root.join("custody-manifest.json");
+    let config = json!({"custody_manifest":selected,"postgres_manifest":root.join("config.json"),"postgres_socket":root.join("socket"),"postgres_port":55440,"timeout_seconds":30,"units":[],"retired_units":[]});
+    let record = json!({"source_authority":{"identity":"fixture"},"primary_snapshot_sha256":null,"source_acceptance_sha256":null,"independent_sha256":null,"semantic_sha256":null});
+    let database = durable::read_json(&root.join("config.json")).unwrap();
+    let sql = |statement: &str| {
+        let spec = process::CommandSpec::new(vec![
+            format!("{}/bin/psql", database["package"].as_str().unwrap()),
+            "-XqAt".into(),
+            "-h".into(),
+            root.join("socket").display().to_string(),
+            "-p".into(),
+            "55440".into(),
+            "-U".into(),
+            "postgres".into(),
+            "-d".into(),
+            "postgres".into(),
+            "-c".into(),
+            statement.into(),
+        ]);
+        String::from_utf8(process::execute(&spec).unwrap()).unwrap()
+    };
+    let mut outcomes = Vec::new();
+    for native in [true, false] {
+        for statement in [
+            "COMMIT; DELETE FROM records; SELECT '[]'::json",
+            "ROLLBACK; DELETE FROM records; SELECT '[]'::json",
+            "SELECT '[]'::json; COMMIT; DELETE FROM records; SELECT '[]'::json",
+            "WITH removed AS (DELETE FROM records RETURNING id) SELECT '[]'::json",
+            "SELECT '[]'::json; SELECT '[]'::json",
+        ] {
+            let mut check = entry.clone();
+            check["database_inventory_checks"] =
+                json!([{"root":corpus,"database":"postgres","sql":statement}]);
+            durable::write_json(&selected, &check).unwrap();
+            let rejected = if native {
+                application_transition::target_custody(&config, &record, &target, &[]).is_err()
+            } else {
+                let mut spec = process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),"import json,sys;from harbor_db import application_transition;print(json.dumps(application_transition.target_custody(*map(json.loads,sys.argv[1:]),())))".into(),config.to_string(),record.to_string(),target.to_string()]);
+                spec.environment = Some(std::collections::BTreeMap::from([
+                    (
+                        "PYTHONPATH".into(),
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+                    ("PATH".into(), std::env::var("PATH").unwrap()),
+                ]));
+                process::execute(&spec).is_err()
+            };
+            let retained = sql("SELECT id,revision FROM records ORDER BY id").trim() == "1|7";
+            outcomes.push((native, statement, rejected, retained));
+            if !retained {
+                sql("DELETE FROM records; INSERT INTO records VALUES(1,7)");
+            }
+        }
+        let mut check = entry.clone();
+        check["database_inventory_checks"] = json!([{"root":corpus,"database":"postgres","sql":"/* nested /* comment */ end */ SELECT $tag$[]$tag$::json; -- quoted boundary"}]);
+        durable::write_json(&selected, &check).unwrap();
+        if native {
+            assert_eq!(
+                application_transition::target_custody(&config, &record, &target, &[]).unwrap()["database_requirements"],
+                json!([])
+            );
+        } else {
+            let mut spec=process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),"import json,sys;sys.stderr=sys.stdout;from harbor_db import application_transition;r=application_transition.target_custody(*map(json.loads,sys.argv[1:]),());assert r['database_requirements']==[]".into(),config.to_string(),record.to_string(),target.to_string()]);
+            spec.environment = Some(std::collections::BTreeMap::from([
+                (
+                    "PYTHONPATH".into(),
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ),
+                ("PATH".into(), std::env::var("PATH").unwrap()),
+            ]));
+            let result = process::run(&spec).unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stdout)
+            );
+        }
+    }
+    assert!(
+        outcomes
+            .iter()
+            .all(|(_, _, rejected, retained)| *rejected && *retained),
+        "{outcomes:?}"
+    );
 }
 
 #[test]
