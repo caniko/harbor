@@ -10,6 +10,21 @@ publish_crates = true
 platform = "github"
 provider = "actions"
 all_features = false
+nix_builds = [
+  ".#checks.x86_64-linux.upstream-binary-installation",
+  ".#checks.x86_64-linux.upstream-binary-invalid-mappings",
+  ".#checks.x86_64-linux.upstream-binary-invalid-payloads",
+  ".#checks.x86_64-linux.upstream-binary-legacy-contract",
+  ".#checks.x86_64-linux.upstream-binary-target-selection",
+]
+
+[ci.nix_build]
+timeout_minutes = 30
+max_parallel = 2
+max_jobs = 1
+cores = 2
+capture_results = true
+artifact_retention_days = 14
 
 [ci.pages]
 repo = "caniko/harbor-rs"

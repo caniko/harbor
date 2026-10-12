@@ -64,6 +64,9 @@ in {
   mkReleaseBinaryPackage = args:
     (import ./binary-release.nix {inherit (args) pkgs;}).mkReleaseBinaryPackage
     (builtins.removeAttrs args ["pkgs"]);
+  mkUpstreamBinaryPackage = args:
+    (import ./upstream-binary.nix {inherit (args) pkgs;})
+    (builtins.removeAttrs args ["pkgs"]);
   mkPortableBinaryRelease = args:
     (import ./portable-release.nix {
       inherit (args) pkgs;

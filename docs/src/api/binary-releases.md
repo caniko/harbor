@@ -1,5 +1,53 @@
 # Binary release archives
 
+## Publisher-owned static archives
+
+`mkUpstreamBinaryPackage` installs static Linux executables from upstream
+`tar.gz` or `tar.xz` archives without requiring a Harbor manifest. Use it when
+the publisher owns the release layout. Keep `mkReleaseBinaryPackage` for
+Harbor's manifest-based releases; its validation contract is unchanged.
+
+```nix
+harbor-rs.lib.mkUpstreamBinaryPackage {
+  inherit pkgs;
+  pname = "example";
+  version = "1.2.3";
+  sources = {
+    x86_64-linux = pkgs.fetchurl {
+      url = "https://example.org/releases/1.2.3/example-x86_64-linux-musl.tar.gz";
+      hash = "sha256-...";
+    };
+    aarch64-linux = pkgs.fetchurl {
+      url = "https://example.org/releases/1.2.3/example-aarch64-linux-musl.tar.xz";
+      hash = "sha256-...";
+    };
+  };
+  # Installed name -> archive-root-relative source. Include enclosing directories.
+  binaries.example = "example-1.2.3/example";
+  meta.mainProgram = "example";
+}
+```
+
+The default target is `pkgs.stdenv.hostPlatform.system`. Set
+`targetSystem = "aarch64-linux"` explicitly to assemble an ARM package using
+native x86_64 build tools. The builder inspects ELF headers without executing
+the target binary. Only `x86_64-linux` and `aarch64-linux` are supported.
+
+Mappings must be nonempty. Installed names are single safe filename components;
+source paths must be relative with no empty, `.` or `..` components or line
+breaks. Sources must be regular executable files, with no symlinks in any path
+component. Wrong ELF machines, interpreters, and dynamic dependencies fail the
+build. Fixup is disabled so the installed executable's bytes match the archive.
+No wrappers, runtime libraries, manifests, or auxiliary assets are inferred.
+
+Callers own fetching, license metadata, feature compatibility, and release
+provenance. Pin each archive with a fixed-output hash or a locked non-flake
+input. Verify any publisher signatures against the expected repository,
+workflow identity and release tag before updating those pins, and retain the
+verification evidence. Signature verification is an update-time operation;
+the helper does not contact a provenance service during evaluation or build.
+Treat a prebuilt output as opt-in until its runtime behavior is qualified.
+
 The v1-compatible `mkBinaryRelease` packages one or more already-built binaries into a
 deterministic, static MUSL archive. The archive contains `bin/` and a
 `manifest.json` describing the package name, version, Nix system, Rust target,
