@@ -5,7 +5,7 @@
 ## Parameters
 
 - `pkgs` (required): nixpkgs with `rust-overlay` applied
-- `toolchainProfile`: optional harbor-rs-owned pin, either `"stable"` or `"nightly"`. Stable is currently pinned to Rust `1.98.1`; nightly uses the repository's checked-in `rust-toolchain.toml` (currently `nightly-2026-09-15`). Omitting it preserves the legacy channel/date behavior.
+- `toolchainProfile`: optional harbor-rs-owned pin, either `"stable"` or `"nightly"`. Stable is currently pinned to Rust `1.98.1`; nightly uses the repository's checked-in `rust-toolchain.toml` (currently `nightly-2026-10-11`). Omitting it preserves the legacy channel/date behavior.
 - `toolchainFile`: optional path to a standard `rust-toolchain.toml`; when set, its channel, components, and targets are authoritative
 - `channel`: `"nightly"` or `"stable"`; defaults to `"nightly"`
 - `date`: `"latest"` or a pinned date such as `"2025-12-01"`; only used without `toolchainFile`

@@ -29,7 +29,7 @@ in
   assert pkgs.lib.hasInfix "pre-commit-check.shellHook" templateFlake;
   assert builtins.elem "*.ts" templateTreefmt.programs.prettier.includes;
   assert builtins.elem "*.json" templateTreefmt.programs.prettier.includes;
-  assert builtins.elem ".crow/**" templateTreefmt.settings.global.excludes;
+  assert builtins.elem ".crow/**" templateTreefmt.settings.excludes;
   assert builtins.attrNames languageTreefmt.settings.formatter == ["prettier"];
   assert pkgs.lib.hasInfix "treefmt =" templateHooks;
   assert pkgs.lib.hasInfix "nix-flake-check" templateHooks;

@@ -5,5 +5,5 @@
     harbor.treefmtModules.javascript-javascript
   ];
   projectRootFile = "flake.nix";
-  settings.global.excludes = [".crow/**"];
+  settings.excludes = [".crow/**"];
 }
