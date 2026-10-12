@@ -49,6 +49,101 @@ fn synthetic() -> (
 }
 
 #[test]
+fn operator_upgrade_rejects_mutable_tools_and_adapters_before_state_changes_in_both_engines() {
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+    let root = tempfile::tempdir().unwrap();
+    let package = PathBuf::from(std::env::var("HARBOR_DB_TEST_POSTGRES").unwrap());
+    let old_package = PathBuf::from(std::env::var("HARBOR_DB_TEST_POSTGRES_17").unwrap());
+    let validator = package.join("bin/pg_isready");
+    let base = json!({"resource":"upgrade","major":"18","package":package,"state_dir":root.path().join("authority"),"data_dir":root.path().join("new"),"upgrade":{"data_dir":root.path().join("old"),"major":"17","package":old_package,"validate_command":[validator]}});
+    postgres::validate_operator_upgrade_policy(&base).unwrap();
+    let writable = root.path().join("validator");
+    executable(&writable, "exit 0");
+    let alias = root.path().join("alias");
+    symlink(&validator, &alias).unwrap();
+    let cases = [
+        ("mutable-validator", json!([writable]), None),
+        ("mutable-alias", json!([alias]), None),
+        (
+            "mutable-interpreter-argument",
+            json!([validator, writable]),
+            None,
+        ),
+        (
+            "declared-mutable-adapter",
+            json!([validator]),
+            Some(json!([writable])),
+        ),
+        (
+            "nonexecutable-validator",
+            json!([package.join("share/postgresql/postgres.bki")]),
+            None,
+        ),
+    ];
+    for (name, command, files) in cases {
+        let mut config = base.clone();
+        config["upgrade"]["validate_command"] = command;
+        if let Some(files) = files {
+            config["upgrade"]["executable_files"] = files;
+        }
+        let manifest = root.path().join("config.json");
+        fs::write(&manifest, config.to_string()).unwrap();
+        let native = Command::new(env!("CARGO_BIN_EXE_harbor-db-postgres"))
+            .arg("--config")
+            .arg(&manifest)
+            .arg("upgrade")
+            .output()
+            .unwrap();
+        assert!(!native.status.success(), "{name} accepted by native CLI");
+        assert!(
+            String::from_utf8_lossy(&native.stderr).contains("immutable store"),
+            "{name}: {}",
+            String::from_utf8_lossy(&native.stderr)
+        );
+        let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db.postgres import main
+root_uid=int(sys.argv[2])
+if root_uid:
+    original_lstat=Path.lstat
+    def mapped_lstat(path):
+        info=original_lstat(path)
+        if info.st_uid!=root_uid: return info
+        fields=list(info); fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped_lstat).start()
+sys.argv=['harbor-db-postgres','--config',sys.argv[1],'upgrade']
+raise SystemExit(main())
+"#;
+        let python = Command::new("python3")
+            .args(["-B", "-c", script])
+            .arg(&manifest)
+            .arg(option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0"))
+            .env(
+                "PYTHONPATH",
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("python"),
+            )
+            .output()
+            .unwrap();
+        assert!(!python.status.success(), "{name} accepted by Python CLI");
+        assert!(
+            String::from_utf8_lossy(&python.stderr).contains("immutable store"),
+            "{name}: {}",
+            String::from_utf8_lossy(&python.stderr)
+        );
+        assert!(
+            !root.path().join("authority").exists(),
+            "{name} mutated authority before rejection"
+        );
+        assert!(
+            !root.path().join("new").exists() && !root.path().join("new.harbor-staging").exists()
+        );
+    }
+}
+
+#[test]
 fn adoption_rejects_replacement_and_missing_lock_anchor() {
     let (root, config, _guard) = synthetic();
     assert!(postgres::check(&config).is_err());

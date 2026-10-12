@@ -5,8 +5,11 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::Read,
-    os::{fd::RawFd, unix::fs::MetadataExt},
+    io::{Read, Write},
+    os::{
+        fd::RawFd,
+        unix::fs::{MetadataExt, OpenOptionsExt},
+    },
     path::{Path, PathBuf},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -1089,6 +1092,53 @@ pub fn live_check(config: &Value, socket: &Path, port: u16, now: Option<i64>) ->
     result["snapshot_sha256"] = json!(digest(&source_snapshot_path(config, settings)?)?);
     Ok(result)
 }
+/// Root pins a trusted transported receipt before systemd snapshots it. The
+/// destination is a fresh private root-controlled file, never a worker pathname.
+pub fn stage_off_host_import(incoming: &Path, destination: &Path) -> Result<()> {
+    if unsafe { libc::geteuid() } != 0 {
+        return Err(invalid("off-host receipt staging requires root"));
+    }
+    let parent = destination
+        .parent()
+        .ok_or_else(|| invalid("missing off-host staging parent"))?;
+    if !destination.is_absolute() {
+        return Err(invalid("off-host staging destination must be absolute"));
+    }
+    for ancestor in parent.ancestors() {
+        let info = fs::symlink_metadata(ancestor)?;
+        if !info.is_dir() || info.uid() != 0 || info.mode() & 0o022 != 0 {
+            return Err(invalid("untrusted off-host staging ancestor"));
+        }
+    }
+    if fs::symlink_metadata(parent)?.mode() & 0o077 != 0 {
+        return Err(invalid("off-host staging parent must be private"));
+    }
+    let mut source = super::application_publication::credential_source(incoming)?;
+    let info = source.metadata()?;
+    if info.nlink() != 1 || info.len() > 16 << 20 {
+        return Err(invalid(
+            "off-host import receipt must be a bounded single-link regular file",
+        ));
+    }
+    let mut bytes = Vec::new();
+    Read::by_ref(&mut source)
+        .take((16 << 20) + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 16 << 20 {
+        return Err(invalid("off-host import receipt exceeds the byte limit"));
+    }
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o400)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(destination)?;
+    output.write_all(&bytes)?;
+    output.sync_all()?;
+    durable::sync_directory(parent)?;
+    Ok(())
+}
+
 pub fn import_off_host(config: &Value, incoming: &Path, now: Option<i64>) -> Result<Value> {
     import_off_host_leased(config, incoming, now, &[])
 }

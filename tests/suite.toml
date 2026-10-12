@@ -426,7 +426,14 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["nested_upgrade_paths_reject_before_lock_or_copy_in_both_engines", "ready_upgrade_binds_policy_and_executable_bytes_across_native_and_python_resume"]
+selectors = ["nested_upgrade_paths_reject_before_lock_or_copy_in_both_engines", "ready_upgrade_binds_policy_and_executable_bytes_across_native_and_python_resume", "operator_upgrade_rejects_mutable_tools_and_adapters_before_state_changes_in_both_engines"]
+
+[[coverage]]
+case = "native.postgres_storage.operator_upgrade_rejects_mutable_tools_and_adapters_before_state_changes_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.upgrade"
+dimension = "rejection"
+evidence = "Actual native and Python operator CLIs reject mutable validators, mutable aliases to immutable validators, interpreter file arguments, explicit adapter files and nonexecutable store files before creating authority, staging or target state. An actual immutable PostgreSQL package/validator contract is accepted. Nix evaluation and realization require immutable validator and declared adapter paths."
 
 [[inventories]]
 origin = "rust"
@@ -538,7 +545,14 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines", "credential_sources_require_bounded_names_and_runtime_paths_in_both_engines", "worker_credentials_reject_untrusted_sources_before_creating_private_copies_in_both_engines", "relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines"]
+selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines", "credential_sources_require_bounded_names_and_runtime_paths_in_both_engines", "worker_credentials_reject_untrusted_sources_before_creating_private_copies_in_both_engines", "relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines", "off_host_import_sources_require_root_control_and_private_staging_in_both_engines"]
+
+[[coverage]]
+case = "native.application-publication.storage::application_publication::tests::off_host_import_sources_require_root_control_and_private_staging_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.prepare-recovery"
+dimension = "rejection"
+evidence = "Both real stagers run in a private root namespace and reject writable sources/ancestors, untrusted redirects, oversized inputs and existing/private-destination violations before publishing. Accepted private 0400 copies preserve bytes across source replacement. The physical source-local VM exercises both operator CLIs on the actual independent receipt and rejects postgres-owned or writable-ancestor imports. The generated hook tests 30 action/credential/failure/interruption combinations and rejects staging failure before transient systemd dispatch."
 
 [[coverage]]
 case = "native.application-publication.storage::application_publication::tests::relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines"

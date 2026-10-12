@@ -67,8 +67,14 @@ change the owner or mode of the root-owned inhibition namespace.
 ## Offline major upgrades
 
 Set `upgrade.oldPackage`, `oldDataDir`, `initdbArgs`, optional `extraConfig`, and
-`validateCommand`, whose first argument must be an absolute executable path;
-empty or relative validators fail Nix evaluation. The validation argv receives the staging directory as its
+`validateCommand`, whose first argument must name an immutable store executable;
+empty, relative or runtime-mutable validators fail Nix evaluation. Declare
+additional interpreter/adapter files through `upgrade.executableFiles`; they must
+also be immutable store files. Both operator CLIs validate the executable, alias
+hops, PostgreSQL tools, copy command and adapter files before authority mutation.
+This prevents a worker from swapping in a successful validator and restoring the
+original bytes around journal contract checks.
+The validation argv receives the staging directory as its
 last argument. It must verify the application's actual recovered records, stop
 any server it started and return nonzero on any mismatch.
 Validation is read-only: it must never accept application saves or call a
@@ -158,6 +164,16 @@ backup and WAL under its existing retention policy. Scheduled application prunin
 does not retire these recovery pins.
 
 ## Recovery SQL checks
+
+Managed preparation may import a transported independent receipt through
+`recoveryPreparation.offHostReceiptImportFile`. Its runtime source, every ancestor
+and every alias must be root-controlled with no group/other write permission. The
+root hook uses `stage-off-host-receipt` to read a pinned, single-link regular inode
+under a 16 MiB limit into a fresh private root-owned `0400` file. Only that private
+copy is passed to systemd's `LoadCredential`; a rejected source never starts the
+preparation worker. The private staging directory is cleaned after success,
+failure or interruption after the worker has stopped. Missing evidence retains
+the existing independent-restore readiness boundary.
 
 Configured recovery record, compatibility and transition custody inventory checks
 share one command builder and execute as one prepared SQL

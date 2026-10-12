@@ -511,3 +511,6 @@ operations then use pinned x86_64 kernel-native util-linux tools. The lifecycle
 executables remain AArch64, and real bind-mount rejection assertions still run.
 The namespace probe must pass with the selected substrate before testing; an
 unavailable substrate fails qualification.
+The private root-source fixture recursively binds sandbox mounts, retaining
+nested locked mounts rather than attempting an invalid plain bind. It asserts
+the actual store and Python mountpoints before running the lifecycle readers.

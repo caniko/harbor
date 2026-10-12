@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from . import postgres, writer_fence, recovery_repository
-from .durable import lock, read_json, write_json
+from .durable import lock, read_json, write_json, sync_directory
 
 
 def absolute(path):
@@ -475,6 +475,37 @@ def validate_receipt(config, settings, source, binding, receipt, label):
         not settings.get("source_hostname") or receipt.get("executor_host") != settings["source_hostname"]
     ):
         raise ValueError("local recovery must execute on the declared source host")
+
+
+def stage_off_host_import(incoming, destination):
+    """Root pins a trusted receipt into a fresh private systemd import source."""
+    from .application_publication import credential_source
+    import stat
+    destination = Path(destination)
+    if os.geteuid() != 0:
+        raise ValueError("off-host receipt staging requires root")
+    if not destination.is_absolute():
+        raise ValueError("off-host staging destination must be absolute")
+    parent = destination.parent
+    for ancestor in (parent, *parent.parents):
+        info = ancestor.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError("untrusted off-host staging ancestor")
+    if parent.stat().st_mode & 0o077:
+        raise ValueError("off-host staging parent must be private")
+    with credential_source(incoming) as source:
+        info = os.fstat(source.fileno())
+        if info.st_nlink != 1 or info.st_size > 16 << 20:
+            raise ValueError("off-host import receipt must be a bounded single-link regular file")
+        data = source.read((16 << 20) + 1)
+    if len(data) > 16 << 20:
+        raise ValueError("off-host import receipt exceeds the byte limit")
+    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o400)
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(data)
+        output.flush()
+        os.fsync(output.fileno())
+    sync_directory(parent)
 
 
 def import_off_host(config, path, *, now=None):

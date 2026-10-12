@@ -41,7 +41,7 @@
           upgrade = {
             oldPackage = pkgs.postgresql_17;
             oldDataDir = "/srv/postgres/17";
-            validateCommand = ["/bin/validate-upgrade"];
+            validateCommand = ["${pkgs.writeShellScript "validate-upgrade" "exit 0"}"];
           };
         };
         systemd.services.fixture-client = {
@@ -111,6 +111,20 @@ in
         ${pkgs.systemd}/bin/systemd-run ${pkgs.systemd}/bin/systemctl
     '';
     assertions = [
+      {
+        name = "upgrade-requires-immutable-validator";
+        message = "Worker-writable validator entrypoints cannot authorize staged upgrade publication.";
+        assertion = let
+          accepted = command:
+            lib.all (a: a.assertion || !lib.hasPrefix "Staged PostgreSQL upgrades require consumer validation" a.message)
+            (eval.extendModules {modules = [{services.harbor-db.postgresql.upgrade.validateCommand = lib.mkForce command;}];}).config.assertions;
+        in
+          accepted ["${pkgs.writeShellScript "immutable-upgrade-validator" "exit 0"}"]
+          && !accepted ["/run/worker-validator"]
+          && !accepted ["/srv/postgres/validator"]
+          && !accepted ["/nix/store/invalid-validator"]
+          && !accepted [];
+      }
       {
         name = "recovery-evidence-excludes-postgres-primary-and-policy-trees";
         message = "Snapshot/local/off-host outputs cannot replace PostgreSQL cluster, lifecycle authority, or startup-inhibition files under legacy or source-local policy.";
@@ -183,7 +197,7 @@ in
           in
             lib.all (entry: entry.assertion || !(lib.hasPrefix "Staged PostgreSQL upgrades require" entry.message)) selected.assertions;
         in
-          accepted ["/fixture/validator" "literal argument"]
+          accepted ["${pkgs.writeShellScript "validator" "exit 0"}" "literal argument"]
           && lib.all (command: !accepted command) [[] [""] ["validator"] ["relative/validator"] ["./validator"]];
       }
       {

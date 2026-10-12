@@ -17,7 +17,7 @@ use std::{
 
 /// Bind every alias component through descriptors before reading a privileged
 /// source. Neither a worker rename nor a symlink swap can redirect this copy.
-fn credential_source(path: &Path) -> Result<File> {
+pub(super) fn credential_source(path: &Path) -> Result<File> {
     if !path.is_absolute() {
         return Err(invalid("credential source must be absolute"));
     }
@@ -338,8 +338,7 @@ mod tests {
     use super::*;
     use std::io::{Seek, SeekFrom, Write};
 
-    #[test]
-    fn relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines() {
+    fn root_source_fixture(test: &str) -> bool {
         if std::env::var_os("HARBOR_CREDENTIAL_ALIAS_CHILD").is_none() {
             let root = tempfile::tempdir().unwrap();
             fs::create_dir_all(root.path().join("nix/store")).unwrap();
@@ -354,10 +353,11 @@ mod tests {
             .unwrap();
             let result = std::process::Command::new("unshare")
                 .args(["--user", "--map-root-user", "--mount", "--", "sh", "-ec"])
-                .arg("mount --bind /nix/store \"$1/nix/store\"; mount --rbind /proc \"$1/proc\"; mount --rbind /dev \"$1/dev\"; mount --bind \"$2\" \"$1/python\"; exec chroot \"$1\" /fixture --exact storage::application_publication::tests::relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines --nocapture")
+                .arg("mount --rbind /nix/store \"$1/nix/store\"; mount --rbind /proc \"$1/proc\"; mount --rbind /dev \"$1/dev\"; mount --bind \"$2\" \"$1/python\"; mountpoint -q \"$1/nix/store\"; mountpoint -q \"$1/python\"; exec chroot \"$1\" /fixture --exact \"$3\" --nocapture")
                 .arg("credential-alias-fixture")
                 .arg(root.path())
                 .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("python"))
+                .arg(test)
                 .env("HARBOR_CREDENTIAL_ALIAS_CHILD", "1")
                 .output()
                 .unwrap();
@@ -367,9 +367,19 @@ mod tests {
                 String::from_utf8_lossy(&result.stdout),
                 String::from_utf8_lossy(&result.stderr)
             );
-            return;
+            return false;
         }
         assert_eq!(unsafe { libc::geteuid() }, 0);
+        true
+    }
+
+    #[test]
+    fn relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines() {
+        if !root_source_fixture(
+            "storage::application_publication::tests::relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines",
+        ) {
+            return;
+        }
         let root = tempfile::tempdir_in("/run").unwrap();
         let secret = root.path().join("secret.d");
         fs::create_dir(&secret).unwrap();
@@ -424,6 +434,90 @@ with credential_source(alias) as stream: assert stream.read()==b'replacement cre
             .read_to_end(&mut bytes)
             .unwrap();
         assert_eq!(bytes, b"replacement credential");
+    }
+
+    #[test]
+    fn off_host_import_sources_require_root_control_and_private_staging_in_both_engines() {
+        use super::super::recovery::stage_off_host_import;
+        if !root_source_fixture(
+            "storage::application_publication::tests::off_host_import_sources_require_root_control_and_private_staging_in_both_engines",
+        ) {
+            return;
+        }
+        let root = tempfile::tempdir_in("/run").unwrap();
+        let source = root.path().join("source");
+        fs::write(&source, b"root-transported receipt").unwrap();
+        fs::create_dir(root.path().join("private")).unwrap();
+        fs::set_permissions(
+            root.path().join("private"),
+            fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        let output = root.path().join("private/staged");
+        std::os::unix::fs::symlink("source", root.path().join("alias")).unwrap();
+        stage_off_host_import(&root.path().join("alias"), &output).unwrap();
+        assert_eq!(fs::read(&output).unwrap(), b"root-transported receipt");
+        assert_eq!(fs::metadata(&output).unwrap().mode() & 0o777, 0o400);
+        fs::write(&source, b"changed after staging").unwrap();
+        assert_eq!(fs::read(&output).unwrap(), b"root-transported receipt");
+        assert!(stage_off_host_import(&source, &output).is_err());
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o666)).unwrap();
+        assert!(stage_off_host_import(&source, &root.path().join("private/rejected")).is_err());
+        assert!(!root.path().join("private/rejected").exists());
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o600)).unwrap();
+        fs::hard_link(&source, root.path().join("shared")).unwrap();
+        assert!(stage_off_host_import(&source, &root.path().join("private/rejected")).is_err());
+        fs::remove_file(root.path().join("shared")).unwrap();
+        fs::create_dir(root.path().join("unsafe")).unwrap();
+        fs::set_permissions(
+            root.path().join("unsafe"),
+            fs::Permissions::from_mode(0o777),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("../source", root.path().join("unsafe/alias")).unwrap();
+        assert!(
+            stage_off_host_import(
+                &root.path().join("unsafe/alias"),
+                &root.path().join("private/rejected")
+            )
+            .is_err()
+        );
+        assert!(stage_off_host_import(&source, &root.path().join("unsafe/rejected")).is_err());
+        let large = root.path().join("large");
+        fs::File::create(&large)
+            .unwrap()
+            .set_len((16 << 20) + 1)
+            .unwrap();
+        assert!(stage_off_host_import(&large, &root.path().join("private/rejected")).is_err());
+        assert!(!root.path().join("private/rejected").exists());
+        let result = std::process::Command::new("python3").args(["-B", "-c", r#"import os,sys
+from pathlib import Path
+from harbor_db.recovery import stage_off_host_import
+root=Path(sys.argv[1]); output=root/'private/python-staged'
+stage_off_host_import(root/'alias',output)
+assert output.read_bytes()==b'changed after staging' and output.stat().st_mode & 0o777==0o400
+for source,target in [(root/'alias',output),(root/'unsafe/alias',root/'private/rejected'),(root/'source',root/'unsafe/rejected'),(root/'large',root/'private/rejected')]:
+    try: stage_off_host_import(source,target)
+    except (ValueError,OSError): pass
+    else: raise AssertionError('unsafe staging accepted')
+(root/'source').chmod(0o666)
+try: stage_off_host_import(root/'source',root/'private/rejected')
+except (ValueError,OSError): pass
+else: raise AssertionError('writable source accepted')
+(root/'source').chmod(0o600)
+os.link(root/'source',root/'shared')
+try: stage_off_host_import(root/'source',root/'private/rejected')
+except (ValueError,OSError): pass
+else: raise AssertionError('shared source accepted')
+assert (root/'shared').read_bytes()==b'changed after staging'
+assert not (root/'private/rejected').exists() and not (root/'unsafe/rejected').exists()
+assert output.read_bytes()==b'changed after staging'
+"#]).arg(root.path()).env("PYTHONPATH", "/python").output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
     }
 
     #[test]

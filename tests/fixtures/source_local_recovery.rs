@@ -597,6 +597,32 @@ fn run(args: Args) -> Result<()> {
         &host,
         "independent-receipt-returned-byte-identically",
     )?;
+    g.shell("primary", "chown root:root /run/independent-receipt.json; chmod 0600 /run/independent-receipt.json; install -d -m 0700 /run/trusted-receipt-import; install -d -m 0777 /run/untrusted-receipt-import; cp /run/independent-receipt.json /run/trusted-receipt-import/worker.json; chown postgres:postgres /run/trusted-receipt-import/worker.json; ln -s /run/independent-receipt.json /run/untrusted-receipt-import/redirect; sha256sum /run/independent-receipt.json > /run/receipt-import-source.sha256", true, "actual-independent-import-source-and-attacks-prepared")?;
+    for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
+        let stage = format!(
+            "{}/bin/harbor-db-postgres --config {CONFIG} stage-off-host-receipt",
+            q(package)
+        );
+        for (attack, source) in [
+            ("worker-owner", "/run/trusted-receipt-import/worker.json"),
+            (
+                "writable-ancestor-alias",
+                "/run/untrusted-receipt-import/redirect",
+            ),
+        ] {
+            g.shell(
+                "primary",
+                format!(
+                    "{stage} --source {source} --destination /run/trusted-receipt-import/rejected"
+                ),
+                false,
+                &format!("{engine}-{attack}-independent-import-source-rejected"),
+            )?;
+            g.shell("primary", "test ! -e /run/trusted-receipt-import/rejected; sha256sum -c /run/receipt-import-source.sha256", true, &format!("{engine}-{attack}-rejection-preserves-root-source-and-no-staging"))?;
+        }
+        g.shell("primary", format!("{stage} --source /run/independent-receipt.json --destination /run/trusted-receipt-import/{engine}; cmp /run/independent-receipt.json /run/trusted-receipt-import/{engine}; test \"$(stat -c '%u:%g:%a' /run/trusted-receipt-import/{engine})\" = 0:0:400"), true, &format!("{engine}-trusted-independent-receipt-pinned-into-private-root-storage"))?;
+        g.shell("primary", format!("runuser -u postgres -- {stage} --source /run/independent-receipt.json --destination /run/trusted-receipt-import/worker"), false, &format!("{engine}-unprivileged-import-staging-rejected"))?;
+    }
     g.shell("primary", format!("install -m 0600 -o postgres -g postgres /run/independent-receipt.json {ROOT}/evidence/receipt.json; install -m 0600 -o postgres -g postgres /run/independent-receipt.json {ROOT}/evidence/off-host.json; cmp {ROOT}/evidence/receipt.json {ROOT}/evidence/off-host.json"), true, "same-independent-receipt-negative-fixture-installed")?;
     g.align("primary", "certifier", "source-clock-aligned")?;
     let admission = format!("{pg} inspect-recovery --socket-dir /run/postgresql --port 5432");

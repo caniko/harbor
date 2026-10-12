@@ -96,6 +96,13 @@ enum Operation {
         #[arg(long)]
         port: u16,
     },
+    /// Root-coordinated trusted copy for systemd's off-host receipt credential.
+    StageOffHostReceipt {
+        #[arg(long)]
+        source: PathBuf,
+        #[arg(long)]
+        destination: PathBuf,
+    },
     SnapshotRecords {
         #[arg(long)]
         socket_dir: PathBuf,
@@ -135,6 +142,13 @@ enum Operation {
 fn operate(args: Args) -> Result<Option<Value>> {
     let config = durable::read_config_json(&args.config)?;
     let result = match args.command {
+        Operation::StageOffHostReceipt {
+            source,
+            destination,
+        } => {
+            storage::recovery::stage_off_host_import(&source, &destination)?;
+            return Ok(None);
+        }
         Operation::Adopt { system_identifier } => {
             postgres::adopt(&config, &system_identifier)?;
             return Ok(None);
@@ -158,6 +172,7 @@ fn operate(args: Args) -> Result<Option<Value>> {
             return Ok(None);
         }
         Operation::Upgrade { retry_incomplete } => {
+            postgres::validate_operator_upgrade_policy(&config)?;
             postgres::upgrade(&config, retry_incomplete)?;
             return Ok(None);
         }

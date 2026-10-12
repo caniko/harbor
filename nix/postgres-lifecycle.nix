@@ -7,10 +7,11 @@
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
   storagePaths = import ./storage-paths.nix {inherit lib;};
+  immutableFiles = import ./immutable-files.nix {inherit lib;};
   normalizedPath = storagePaths.normalizedAbsolute;
   cfg = config.services.harbor-db.postgresql;
   pg = config.services.postgresql;
-  manifest = pkgs.writeText "harbor-db-postgresql.json" (builtins.toJSON ({
+  rawManifest = pkgs.writeText "harbor-db-postgresql.json" (builtins.toJSON ({
       inherit (cfg) resource;
       data_dir = pg.dataDir;
       major = lib.versions.major pg.finalPackage.version;
@@ -64,9 +65,15 @@
         initdb_args = cfg.upgrade.initdbArgs;
         extra_config = cfg.upgrade.extraConfig;
         validate_command = cfg.upgrade.validateCommand;
+        immutable_tools = true;
+        executable_files = cfg.upgrade.executableFiles;
         copy_command = ["${pkgs.coreutils}/bin/cp" "-aL" "--reflink=auto"];
       };
     }));
+  manifest =
+    if cfg.upgrade == null
+    then rawManifest
+    else immutableFiles.checkedManifest "Harbor DB PostgreSQL upgrade" (cfg.upgrade.executableFiles ++ lib.optional (cfg.upgrade.validateCommand != []) (lib.head cfg.upgrade.validateCommand)) rawManifest;
   command = "${lib.getExe cfg.package} --config ${manifest}";
   liveArgs = lib.optionalString (cfg.switchAdoption != null) (lib.escapeShellArgs [
     "--system-identifier"
@@ -246,7 +253,7 @@ in {
           offHostReceiptImportFile = mkOption {
             type = types.nullOr (types.strMatching "/.*");
             default = null;
-            description = "Transported independent receipt. When present, systemd passes a private credential copy for validation and atomic evidence import.";
+            description = "Root-controlled transported independent receipt. Root pins and copies only sources with trusted ownership and non-writable ancestry into private storage before systemd credential loading, validation and atomic evidence import.";
           };
         };
       });
@@ -305,7 +312,12 @@ in {
           };
           validateCommand = mkOption {
             type = types.listOf types.str;
-            description = "Validation argv with an absolute executable path. Receives the offline staging directory as its final argument; must stop any server it starts before returning.";
+            description = "Validation argv with an immutable store executable. Receives the offline staging directory as its final argument; must stop any server it starts before returning.";
+          };
+          executableFiles = mkOption {
+            type = types.listOf types.str;
+            default = [];
+            description = "Additional immutable upgrade adapter/interpreter files bound into the journal contract.";
           };
         };
       });
@@ -344,8 +356,8 @@ in {
         message = "PostgreSQL startup inhibition requires a normalized dedicated path disjoint from identity state and PostgreSQL data storage.";
       }
       {
-        assertion = cfg.upgrade == null || (cfg.upgrade.validateCommand != [] && lib.hasPrefix "/" (lib.head cfg.upgrade.validateCommand));
-        message = "Staged PostgreSQL upgrades require consumer validation with an absolute executable path.";
+        assertion = cfg.upgrade == null || (cfg.upgrade.validateCommand != [] && lib.all immutableFiles.storePath (cfg.upgrade.executableFiles ++ [(lib.head cfg.upgrade.validateCommand)]));
+        message = "Staged PostgreSQL upgrades require consumer validation with immutable store executables and adapter files.";
       }
       {
         assertion = cfg.recovery == null || cfg.recovery.recordChecks != {};
@@ -429,17 +441,26 @@ in {
             ${pkgs.coreutils}/bin/install -d -m 0700 -o postgres -g postgres ${lib.escapeShellArgs preparation.provisionDirectories} || exit $?
           ''}
               credential_args=()
-              ${lib.optionalString (preparation.offHostReceiptImportFile != null) ''
-            if [ -e ${lib.escapeShellArg preparation.offHostReceiptImportFile} ]; then
-              credential_args+=(${lib.escapeShellArg "--property=LoadCredential=recovery-off-host:${preparation.offHostReceiptImportFile}"})
-            fi
-          ''}
+              credential_dir=""
+              worker_started=false
               unit="harbor-db-recovery-prepare-$$"
-              # Do not release the caller's activation lease with a surviving
-              # transient backup/restore process after interruption.
-              trap '${pkgs.systemd}/bin/systemctl stop "$unit.service"' EXIT
+              cleanup_preparation() {
+                if "$worker_started"; then ${pkgs.systemd}/bin/systemctl stop "$unit.service" || return $?; fi
+                if [ -n "$credential_dir" ]; then ${pkgs.coreutils}/bin/rm -rf -- "$credential_dir"; fi
+              }
+              trap cleanup_preparation EXIT
               trap 'exit 130' INT
               trap 'exit 143' TERM
+              ${lib.optionalString (preparation.offHostReceiptImportFile != null) ''
+            if [ -e ${lib.escapeShellArg preparation.offHostReceiptImportFile} ]; then
+              credential_dir=$(${pkgs.coreutils}/bin/mktemp -d /run/harbor-db-recovery-import.XXXXXXXX) || exit $?
+              ${command} stage-off-host-receipt --source ${lib.escapeShellArg preparation.offHostReceiptImportFile} --destination "$credential_dir/receipt.json" || exit $?
+              credential_args+=("--property=LoadCredential=recovery-off-host:$credential_dir/receipt.json")
+            fi
+          ''}
+              # Do not release the caller's activation lease with a surviving
+              # transient backup/restore process after interruption.
+              worker_started=true
               ${pkgs.systemd}/bin/systemd-run --quiet --wait --pipe --collect \
                 --unit="$unit" --property=Type=oneshot \
                 --property=User=postgres --property=Group=postgres \
@@ -453,6 +474,7 @@ in {
                 -- ${command} prepare-recovery --preparation-config ${preparationManifest} \
                 ${lib.escapeShellArgs ["--socket-dir" preparation.socketDir "--port" (toString preparation.port)]} || exit $?
               trap - EXIT INT TERM
+              if [ -n "$credential_dir" ]; then ${pkgs.coreutils}/bin/rm -rf -- "$credential_dir" || exit $?; fi
               ;;
           esac
         '';

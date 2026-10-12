@@ -275,15 +275,33 @@ def upgrade_contract(config):
         if key == "validate_command" and not argv:
             raise LifecycleError("upgrade requires a consumer validation command")
         if argv:
+            if settings.get("immutable_tools") is True:
+                from .durable import immutable_store_reference
+                if immutable_store_reference(argv[0]).stat().st_mode & 0o111 == 0:
+                    raise LifecycleError("upgrade command requires an executable immutable store file")
             tools.add(Path(argv[0]))
             tools.update(Path(arg) for arg in argv[1:] if Path(arg).is_file())
+    files = settings.get("executable_files", [])
+    if not isinstance(files, list) or any(not isinstance(path, str) for path in files):
+        raise LifecycleError("upgrade adapter files must be an array of paths")
+    tools.update(Path(path) for path in files)
     executables = {}
     for path in sorted(tools):
         if not path.is_absolute() or not path.is_file():
             raise LifecycleError("upgrade executable or adapter file is absent")
-        with path.open("rb") as stream:
+        if settings.get("immutable_tools") is True:
+            from .durable import immutable_store_reference
+            path_for_read = immutable_store_reference(str(path))
+        else:
+            path_for_read = path
+        with path_for_read.open("rb") as stream:
             executables[str(path)] = hashlib.file_digest(stream, "sha256").hexdigest()
     return {"config": config, "executables": executables}
+
+
+def validate_operator_upgrade_policy(config):
+    """Immutable tools for actual operator dispatch; preserve library fixtures."""
+    upgrade_contract({**config, "upgrade": {**config["upgrade"], "immutable_tools": True}})
 
 
 def upgrade(config, *, retry_incomplete=False):
@@ -477,6 +495,9 @@ def main():
     preparation.add_argument("--preparation-config", type=Path, required=True)
     preparation.add_argument("--socket-dir", required=True)
     preparation.add_argument("--port", type=int, required=True)
+    staging = commands.add_parser("stage-off-host-receipt", help="root-coordinated trusted copy for systemd receipt import")
+    staging.add_argument("--source", type=Path, required=True)
+    staging.add_argument("--destination", type=Path, required=True)
     for command in ("snapshot-records", "certify-recovery"):
         recovery_parser = commands.add_parser(command, help="execute record checks and publish bound recovery evidence")
         recovery_parser.add_argument("--socket-dir", required=True)
@@ -490,7 +511,10 @@ def main():
     args = parser.parse_args()
     try:
         config = json.loads(args.config.read_text())
-        if args.command == "adopt":
+        if args.command == "stage-off-host-receipt":
+            from . import recovery
+            recovery.stage_off_host_import(args.source, args.destination)
+        elif args.command == "adopt":
             adopt(config, args.system_identifier)
         elif args.command in ("inspect-live", "adopt-live"):
             operation = inspect_live if args.command == "inspect-live" else adopt_live
@@ -542,6 +566,7 @@ def main():
             # Receipts expose digests, never private query results or records.
             print(json.dumps(result, sort_keys=True))
         else:
+            validate_operator_upgrade_policy(config)
             upgrade(config, retry_incomplete=args.retry_incomplete)
     except (LifecycleError, OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
         print(f"harbor-db-postgres: {error}", file=sys.stderr)
