@@ -87,6 +87,27 @@ This produces:
 - `nix develop .#macos` for osxcross when a macOS SDK is configured
 - `nix develop .#cross` for both Windows and macOS helpers
 
+### Command-scoped native runtime
+
+Pass a Harbor-meta `lib.devShell.mkRuntime` derivation as `runtime` to
+`mkDevShell` or `mkDevShells`. Cargo run, test and bench executables then use a
+launcher configured only for the host's native Rust target. Loader/driver
+variables stay inside those commands. With no runtime or `nativeRunner`, runner
+configuration remains unchanged.
+
+For an existing native runner, pass its executable and arguments as the
+`nativeRunner` list; the resulting command is `runtime nativeRunner executable
+arguments...`. Arguments with spaces are preserved. Supplying the same native
+runner variable through `extraEnv` is rejected rather than silently discarding
+one configuration. Explicit runtime selection overrides Cargo's native runner
+from config files or the inherited shell; migrate that runner into
+`nativeRunner`. Cross-target runner variables remain untouched.
+
+Keep required RPATH/build settings: target runners do not cover build scripts,
+proc macros or every alternate test runner. `checks.<system>.native-runner`
+executes a dependency-free crate through Cargo run/test/bench with a custom
+runner and verifies parent-shell isolation.
+
 ### Dioxus bundles
 
 Product flakes should keep their source filtering, Cargo lockfile, and
