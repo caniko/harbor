@@ -19,7 +19,7 @@ def sync_directory(path):
         os.close(fd)
 
 
-def atomic_write(path, data):
+def atomic_write(path, data, *, mode=0o600):
     """Publish bytes, synchronizing the file and containing directory."""
     path = Path(path)
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -27,6 +27,7 @@ def atomic_write(path, data):
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
             stream.flush()
+            os.fchmod(stream.fileno(), mode)
             os.fsync(stream.fileno())
         os.replace(temporary, path)
         sync_directory(path.parent)
@@ -35,8 +36,8 @@ def atomic_write(path, data):
             os.unlink(temporary)
 
 
-def write_json(path, value):
-    atomic_write(path, (json.dumps(value, sort_keys=True) + "\n").encode())
+def write_json(path, value, *, mode=0o600):
+    atomic_write(path, (json.dumps(value, sort_keys=True) + "\n").encode(), mode=mode)
 
 
 def read_json(path):

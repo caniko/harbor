@@ -49,6 +49,10 @@ def validate_manifest(value, host):
                     "PostgreSQL admission requires the postgres service identity"
                 )
         else:
+            if "git_executable" in entry:
+                immutable_git_executable(entry["git_executable"])
+            if entry.get("transition_manifest") is not None:
+                validate_path(entry["transition_manifest"])
             authority = entry.get("authority", {})
             directories = authority.get("directories")
             if (
@@ -61,12 +65,7 @@ def validate_manifest(value, host):
                 or entry["max_age_seconds"] <= 0
             ):
                 raise ValueError(f"invalid existing filesystem authority: {name}")
-            validate_path(authority.get("state_dir"))
-            validate_path(entry.get("custody_file"))
-            if Path(entry["custody_file"]).parent != Path(authority["state_dir"]):
-                raise ValueError(
-                    "custody receipt must be directly in its private authority directory"
-                )
+            custody_receipt_path(entry)
             for directory in directories:
                 validate_path(directory)
             if entry.get("login_shell") is not None:
@@ -88,7 +87,62 @@ def validate_manifest(value, host):
                 raise ValueError(
                     "filesystem custody requires an enrolled PostgreSQL recovery dependency"
                 )
+    namespaces = namespace_roots(value)
+    for index, (root, _) in enumerate(namespaces):
+        if any(
+            root.is_relative_to(other) or other.is_relative_to(root)
+            for other, _ in namespaces[index + 1 :]
+        ):
+            raise ValueError("filesystem custody namespaces must be globally disjoint")
     return value
+
+
+def namespace_roots(manifest):
+    roots = []
+    for entry in manifest["resources"].values():
+        if entry["kind"] == "postgres":
+            database = read_json(entry["config"])
+            for key, primary in (("data_dir", True), ("state_dir", False)):
+                validate_path(database.get(key))
+                roots.append((Path(database[key]), primary))
+            startup = database.get("startup_inhibition")
+            if startup is not None:
+                if not isinstance(startup, dict):
+                    raise ValueError("invalid PostgreSQL startup inhibition policy")
+                validate_path(startup.get("state_dir"))
+                roots.append((Path(startup["state_dir"]), False))
+        else:
+            roots.extend(
+                (Path(path), False)
+                for path in [
+                    entry["authority"]["state_dir"],
+                    *entry["authority"]["directories"],
+                ]
+            )
+    return roots
+
+
+def validate_storage_namespaces(manifest, *, deadline=None):
+    """Inspect all private roots in the coordinator before user-scoped workers."""
+    protected = set()
+    if deadline is None:
+        deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
+    for root, primary in namespace_roots(manifest):
+        try:
+            root.lstat()
+        except FileNotFoundError:
+            continue
+        if root.resolve() != root:
+            raise ValueError("custody namespaces contain redirected storage")
+        identities = set()
+        recovery.storage_identities(
+            root, identities, primary=primary, deadline=deadline
+        )
+        if not protected.isdisjoint(identities):
+            raise ValueError(
+                "custody namespaces alias shared storage across resource leases"
+            )
+        protected.update(identities)
 
 
 def validate_path(path):
@@ -100,6 +154,23 @@ def validate_path(path):
         raise ValueError(
             "cutover storage and policy paths must be canonical absolute paths"
         )
+
+
+def custody_receipt_path(config):
+    state = config["authority"].get("state_dir")
+    receipt = config.get("custody_file")
+    validate_path(state)
+    validate_path(receipt)
+    receipt = Path(receipt)
+    if receipt.parent != Path(state) or receipt.name in (
+        "identity.json",
+        "transition.json",
+        "lock",
+    ):
+        raise ValueError(
+            "custody receipt must be a dedicated direct authority child outside authority control paths"
+        )
+    return receipt
 
 
 def digest(path):
@@ -148,6 +219,10 @@ def inventory(config, *, contents):
                     "size": info.st_size if stat.S_ISREG(info.st_mode) else 0,
                 }
                 if stat.S_ISREG(info.st_mode):
+                    if info.st_nlink != 1:
+                        raise ValueError(
+                            "custody corpus files must not have hard links or shared-inode aliases"
+                        )
                     if contents:
                         files[key]["sha256"] = digest(path)
                         after = path.lstat()
@@ -187,6 +262,12 @@ def writer_active(unit):
         timeout=5,
     )
     return result.stdout.strip() not in ("inactive", "failed")
+
+
+def database_entry(root, item):
+    if not isinstance(item, dict) or "root" in item:
+        raise ValueError("database corpus query must be an object without a root")
+    return {"root": root, **item}
 
 
 def require_database_paths(inventories, requirements, *, roots=(), git_executable=None):
@@ -247,9 +328,61 @@ def require_database_paths(inventories, requirements, *, roots=(), git_executabl
             )
 
 
+def immutable_git_executable(executable):
+    validate_path(executable)
+    store = Path("/nix/store")
+
+    def reference(path, depth=0):
+        if not path.is_relative_to(store) or depth > 64:
+            raise ValueError("Git integrity requires an immutable store executable")
+        for selected in (path, *path.parents):
+            if selected == store:
+                break
+            info = selected.lstat()
+            if info.st_uid != 0:
+                raise ValueError(
+                    "Git integrity requires root-owned immutable store paths"
+                )
+            if stat.S_ISLNK(info.st_mode):
+                target = selected.readlink()
+                reference(
+                    target
+                    if target.is_absolute()
+                    else selected.parent.resolve(strict=True) / target,
+                    depth + 1,
+                )
+            elif info.st_mode & 0o222:
+                raise ValueError(
+                    "Git integrity requires read-only immutable store paths"
+                )
+
+    path = Path(executable)
+    reference(path)
+    resolved = path.resolve(strict=True)
+    if not re.fullmatch(
+        r"/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9+._?=-]+(?:/[^/]+)*",
+        str(resolved),
+    ):
+        raise ValueError("Git integrity requires an immutable store executable")
+    for parent in resolved.parents:
+        if parent == store:
+            break
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222:
+            raise ValueError("Git integrity requires immutable store ancestors")
+    info = resolved.lstat()
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != 0
+        or info.st_mode & 0o222
+        or not info.st_mode & 0o111
+    ):
+        raise ValueError("Git integrity requires an executable immutable store file")
+    return str(resolved)
+
+
 def validate_git_repository(path, requirement, executable):
-    if not isinstance(executable, str) or not Path(executable).is_absolute():
-        raise ValueError("Git integrity requires a declared absolute executable")
+    executable = immutable_git_executable(executable)
     if type(requirement.get("git_has_commits", False)) is not bool:
         raise ValueError("invalid database Git commit requirement")
     if any((path / "objects/pack").glob("*.promisor")):
@@ -323,20 +456,31 @@ def certify_filesystem(
     database_requirements=(),
 ):
     """Writers must already be stopped; this command never stops or restores them."""
+    receipt = custody_receipt_path(config)
     now = int(time.time()) if now is None else now
     authority = config["authority"]
     resource.contract(authority)
     roots = list(map(Path, authority["directories"]))
     restores = list(map(Path, restored_roots))
     state = resource.state_directory(authority)
-    if len(restores) != len(roots) or any(
-        not root.is_absolute()
-        or root.resolve() != root
+    if (
+        len(restores) != len(roots)
         or any(
-            root == source or root.is_relative_to(source) or source.is_relative_to(root)
-            for source in roots + [state]
+            root.is_relative_to(other) or other.is_relative_to(root)
+            for index, root in enumerate(restores)
+            for other in restores[:index]
         )
-        for root in restores
+        or any(
+            not root.is_absolute()
+            or root.resolve() != root
+            or any(
+                root == source
+                or root.is_relative_to(source)
+                or source.is_relative_to(root)
+                for source in roots + [state]
+            )
+            for root in restores
+        )
     ):
         raise ValueError(
             "restore roots must be independent absolute corpus directories"
@@ -374,11 +518,18 @@ def certify_filesystem(
         )
         if source != restored:
             raise ValueError("source and restored historical corpus differ")
-        for original, restored_root, files in zip(roots, restores, source, strict=True):
+        source_inodes = set()
+        for root, files in zip(roots, source, strict=True):
+            for path in [root, *(root / name for name in files)]:
+                info = path.lstat()
+                source_inodes.add((info.st_dev, info.st_ino))
+        for restored_root, files in zip(restores, restored, strict=True):
+            restored_stats = [
+                path.lstat()
+                for path in [restored_root, *(restored_root / name for name in files)]
+            ]
             if any(
-                not item["directory"]
-                and (original / name).samefile(restored_root / name)
-                for name, item in files.items()
+                (info.st_dev, info.st_ino) in source_inodes for info in restored_stats
             ):
                 raise ValueError(
                     "restore corpus aliases a source file; require an independent restore"
@@ -395,7 +546,7 @@ def certify_filesystem(
             )
         publish()
         write_json(
-            recovery.absolute(config["custody_file"]),
+            recovery.absolute(receipt),
             {
                 "version": 1,
                 "resource": authority["resource"],
@@ -412,11 +563,29 @@ def certify_filesystem(
         )
 
 
-def check_resource(config, *, phase, now=None):
+def check_resource(config, *, phase, now=None, candidate=None):
     if phase not in ("preflight", "activate", "startup", "certify"):
         raise ValueError("unsupported cutover phase")
     now = int(time.time()) if now is None else now
     if config["kind"] == "filesystem":
+        transition = config.get("transition_manifest")
+        if transition is not None and phase in ("preflight", "activate"):
+            from . import application_transition
+
+            selected = read_json(transition)
+            journal = application_transition.journal_path(selected)
+            if journal.exists() and read_json(journal)["phase"] in (
+                "prepared",
+                "committing",
+                "committed",
+            ):
+                if selected["custody_manifest"] is None:
+                    raise ValueError(
+                        "cutover transition admission requires target corpus custody publication"
+                    )
+                return application_transition.admission(
+                    selected, phase, config["authority"], candidate
+                )
         # Startup validates adopted roots/identity under the writer lease. A
         # corpus walk would race ordinary file turnover and block SSH commands.
         # Deployment still rejects missing/empty or changed contents up front.
@@ -483,8 +652,13 @@ def check_resource(config, *, phase, now=None):
                         f"candidate schema/recovery compatibility check failed: {check['database']}"
                     )
         with recovery.admission(
-            database, now=now, verify_contents=phase in ("activate", "certify")
+            database,
+            now=now,
+            verify_contents=phase in ("activate", "certify"),
+            socket_dir=config.get("socket_dir", "/run/postgresql"),
+            port=config.get("port", 5432),
         ):
+            snapshot_path = recovery.source_snapshot_path(database, settings)
             if (
                 phase == "certify"
                 and recovery.records(
@@ -493,7 +667,7 @@ def check_resource(config, *, phase, now=None):
                     config.get("socket_dir", "/run/postgresql"),
                     config.get("port", 5432),
                 )
-                != read_json(settings["snapshot_file"])["records"]
+                != read_json(snapshot_path)["records"]
             ):
                 raise ValueError(
                     "live database records differ from the recovery snapshot"
@@ -516,25 +690,31 @@ def check_resource(config, *, phase, now=None):
                             "database corpus query must return a JSON array of paths"
                         )
                     requirements[name].extend(
-                        {"root": check["root"], **item} for item in paths
+                        database_entry(check["root"], item) for item in paths
                     )
             return {
-                "database_snapshot_sha256": digest(settings["snapshot_file"]),
+                "database_snapshot_sha256": digest(snapshot_path),
                 "corpus_requirements": requirements,
             }
 
 
 def execute_worker(
-    path, name, config, phase, timeout, extra=(), *, command_name="check"
+    path, name, config, phase, timeout, extra=(), *, command_name="check", as_root=False
 ):
     account = pwd.getpwnam(config["user"])
     kwargs = {}
     if os.geteuid() == 0:
-        kwargs = {
-            "user": account.pw_uid,
-            "group": account.pw_gid,
-            "extra_groups": os.getgrouplist(account.pw_name, account.pw_gid),
-        }
+        kwargs = (
+            {"user": 0, "group": 0, "extra_groups": []}
+            if as_root
+            else {
+                "user": account.pw_uid,
+                "group": account.pw_gid,
+                "extra_groups": os.getgrouplist(account.pw_name, account.pw_gid),
+            }
+        )
+    elif as_root:
+        raise ValueError("prepared transition inspection requires root")
     elif os.geteuid() != account.pw_uid:
         raise ValueError(
             f"inspection requires the resource's service user: {account.pw_name}"
@@ -580,6 +760,9 @@ def main():
     checking = commands.add_parser(
         "check", help="read-only mandatory rebuild admission"
     )
+    checking.add_argument(
+        "--candidate", help="exact generation provided by NixOS pre-switch checks"
+    )
     certifying = commands.add_parser(
         "certify", help="explicit custody proof from an independent restore"
     )
@@ -623,6 +806,7 @@ def main():
                 inspect=lambda: check_resource(config, phase="startup"),
             )
         elif args.command == "certify":
+            validate_storage_namespaces(manifest)
             config = manifest["resources"][args.resource]
             dependency = config.get("database_resource")
             database = None
@@ -674,7 +858,11 @@ def main():
         elif args.worker:
             print(
                 json.dumps(
-                    check_resource(manifest["resources"][args.worker], phase=args.phase)
+                    check_resource(
+                        manifest["resources"][args.worker],
+                        phase=args.phase,
+                        candidate=args.candidate,
+                    )
                 )
             )
         else:
@@ -686,13 +874,40 @@ def main():
                 else "activation_timeout_seconds",
                 30 if args.phase == "preflight" else 900,
             )
+            validate_storage_namespaces(manifest, deadline=deadline)
             for name, config in manifest["resources"].items():
                 try:
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         raise ValueError("cutover inspection budget exhausted")
+                    as_root = False
+                    if config.get("transition_manifest") is not None and args.phase in (
+                        "preflight",
+                        "activate",
+                    ):
+                        from . import application_transition
+
+                        journal = application_transition.journal_path(
+                            read_json(config["transition_manifest"])
+                        )
+                        as_root = journal.exists() and read_json(journal)["phase"] in (
+                            "prepared",
+                            "committing",
+                            "committed",
+                        )
+                    extra = (
+                        ()
+                        if args.candidate is None
+                        else ("--candidate", args.candidate)
+                    )
                     results[name] = execute_worker(
-                        args.contract, name, config, args.phase, remaining
+                        args.contract,
+                        name,
+                        config,
+                        args.phase,
+                        remaining,
+                        extra,
+                        as_root=as_root,
                     )
                 except (ValueError, OSError, subprocess.TimeoutExpired) as error:
                     failures.append({"resource": name, "reason": str(error)})

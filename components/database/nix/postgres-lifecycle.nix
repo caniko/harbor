@@ -2,9 +2,12 @@
   config,
   lib,
   pkgs,
+  harborDbStoragePackage,
   ...
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
+  storagePaths = import ./storage-paths.nix {inherit lib;};
+  normalizedPath = storagePaths.normalizedAbsolute;
   cfg = config.services.harbor-db.postgresql;
   pg = config.services.postgresql;
   manifest = pkgs.writeText "harbor-db-postgresql.json" (builtins.toJSON ({
@@ -14,24 +17,44 @@
       package = toString pg.finalPackage;
       state_dir = cfg.stateDir;
       required_mounts = cfg.requiredMounts;
+      writer_fence = {
+        control_role = "postgres";
+        replication_roles = cfg.writerFence.replicationRoles;
+        allowed_preload_libraries = cfg.writerFence.allowedPreloadLibraries;
+      };
+      startup_inhibition = {
+        state_dir = cfg.writerFence.startupStateDir;
+        unit = "postgresql.service";
+        setup_units = cfg.writerFence.setupUnits;
+        drop_in_root = "/etc/systemd/system.control";
+        systemctl = "${pkgs.systemd}/bin/systemctl";
+        busctl = "${pkgs.systemd}/bin/busctl";
+        runuser = "${pkgs.util-linux}/bin/runuser";
+        adapter = lib.getExe cfg.package;
+      };
     }
     // lib.optionalAttrs (cfg.recovery != null) {
-      recovery = {
-        system_identifier = cfg.recovery.systemIdentifier;
-        backup_root = cfg.recovery.backupRoot;
-        snapshot_file = cfg.recovery.snapshotFile;
-        receipt_file = cfg.recovery.receiptFile;
-        off_host_receipt_file = cfg.recovery.offHostReceiptFile;
-        source_hostname = cfg.recovery.sourceHostname;
-        max_age_seconds = cfg.recovery.maxAgeSeconds;
-        verify_timeout_seconds = cfg.recovery.verifyTimeoutSeconds;
-        record_checks =
-          lib.mapAttrsToList (name: check: {
-            inherit name;
-            inherit (check) database sql;
-          })
-          cfg.recovery.recordChecks;
-      };
+      recovery =
+        {
+          system_identifier = cfg.recovery.systemIdentifier;
+          require_writer_fence = cfg.recovery.requireWriterFence;
+          backup_root = cfg.recovery.backupRoot;
+          snapshot_file = cfg.recovery.snapshotFile;
+          receipt_file = cfg.recovery.receiptFile;
+          off_host_receipt_file = cfg.recovery.offHostReceiptFile;
+          source_hostname = cfg.recovery.sourceHostname;
+          max_age_seconds = cfg.recovery.maxAgeSeconds;
+          verify_timeout_seconds = cfg.recovery.verifyTimeoutSeconds;
+          record_checks =
+            lib.mapAttrsToList (name: check: {
+              inherit name;
+              inherit (check) database sql;
+            })
+            cfg.recovery.recordChecks;
+        }
+        // lib.optionalAttrs (cfg.recovery.repositoryProtocol != "legacy") {
+          repository_protocol = cfg.recovery.repositoryProtocol;
+        };
     }
     // lib.optionalAttrs (cfg.upgrade != null) {
       upgrade = {
@@ -62,11 +85,12 @@
     export_command = preparation.exportCommand;
   });
 in {
+  imports = [./postgres-writer-clients.nix ./storage-package-argument.nix];
   options.services.harbor-db.postgresql = {
     enable = mkEnableOption "adopted PostgreSQL identity guards and staged upgrades";
     package = mkOption {
       type = types.package;
-      default = import ./postgres-package.nix {inherit pkgs;};
+      default = harborDbStoragePackage;
       description = "Harbor DB PostgreSQL lifecycle adapter.";
     };
     resource = mkOption {
@@ -96,7 +120,17 @@ in {
       type = types.nullOr (types.submodule {
         options = {
           systemIdentifier = mkOption {type = types.strMatching "[1-9][0-9]*";};
+          requireWriterFence = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Require confirmed writer exclusion and the same fence token in the source snapshot before live adoption and cutover. Disable only when retiring accepted bootstrap enrollment; active fencing remains enforced at startup.";
+          };
           backupRoot = mkOption {type = types.strMatching "/.*";};
+          repositoryProtocol = mkOption {
+            type = types.enum ["legacy" "source-local-v1"];
+            default = "legacy";
+            description = "Recovery repository selection. source-local-v1 consumes an immutable fenced capture under recovery/ and preserves the backup service's legacy LAST_SUCCESS timestamp.";
+          };
           snapshotFile = mkOption {type = types.strMatching "/.*";};
           receiptFile = mkOption {type = types.strMatching "/.*";};
           offHostReceiptFile = mkOption {
@@ -130,6 +164,29 @@ in {
           };
         };
       });
+    };
+    writerFence = {
+      setupUnits = mkOption {
+        type = types.listOf (types.strMatching "[a-zA-Z0-9_-]+\\.service");
+        default = ["postgresql-setup.service"];
+        description = "Setup services inhibited with primary startup during stopped fence transitions, including across legacy generations. The persistent root-owned gate is read back for every unit before stopping the primary.";
+      };
+      startupStateDir = mkOption {
+        type = types.strMatching "/.*";
+        default = "/var/lib/harbor-db/postgresql-startup";
+        description = "Separate root-owned persistent systemd startup-inhibition state. Explicit inhibit-startup provisions it; PostgreSQL never writes it.";
+      };
+      replicationRoles = mkOption {
+        type = types.listOf (types.strMatching "[a-z_][a-z0-9_]*");
+        default = [];
+        apply = lib.unique;
+        description = "Physical-only localhost SCRAM replication roles admitted during an explicit writer fence. They cannot open SQL connections. Source-local recovery automatically includes its replicator receiver role.";
+      };
+      allowedPreloadLibraries = mkOption {
+        type = types.listOf (types.strMatching "[A-Za-z0-9_.-]+");
+        default = [];
+        description = "Audited non-application-writer preload libraries allowed by live fence inspection; unknown libraries block readiness.";
+      };
     };
     recoveryPreparation = mkOption {
       default = null;
@@ -248,7 +305,7 @@ in {
           };
           validateCommand = mkOption {
             type = types.listOf types.str;
-            description = "Validation argv. Receives the offline staging directory as its final argument; must stop any server it starts before returning.";
+            description = "Validation argv with an absolute executable path. Receives the offline staging directory as its final argument; must stop any server it starts before returning.";
           };
         };
       });
@@ -262,24 +319,83 @@ in {
         message = "services.harbor-db.postgresql requires services.postgresql.enable.";
       }
       {
+        assertion = lib.length cfg.writerFence.setupUnits == lib.length (lib.unique cfg.writerFence.setupUnits) && !(lib.elem "postgresql.service" cfg.writerFence.setupUnits);
+        message = "Writer-fence setup units must be unique and distinct from the primary postgresql.service unit.";
+      }
+      {
         assertion = cfg.stateDir != pg.dataDir && !(lib.hasPrefix "${pg.dataDir}/" cfg.stateDir);
         message = "Harbor DB identity state must be outside the PostgreSQL data directory.";
       }
       {
-        assertion = cfg.upgrade == null || cfg.upgrade.validateCommand != [];
-        message = "Staged PostgreSQL upgrades require consumer validation.";
+        assertion = cfg.stateDir != "/" && normalizedPath cfg.stateDir && builtins.match "/[A-Za-z0-9_./-]+" cfg.stateDir != null;
+        message = "Harbor DB identity state requires a dedicated normalized absolute directory.";
+      }
+      {
+        assertion = let
+          state = cfg.writerFence.startupStateDir;
+        in
+          state
+          != "/"
+          && normalizedPath state
+          && builtins.match "[^[:space:]]*" state != null
+          && !(lib.hasInfix "\\" state || lib.hasInfix "%" state)
+          && lib.all normalizedPath [pg.dataDir cfg.stateDir]
+          && lib.all (protected: storagePaths.disjoint [state protected]) [pg.dataDir cfg.stateDir];
+        message = "PostgreSQL startup inhibition requires a normalized dedicated path disjoint from identity state and PostgreSQL data storage.";
+      }
+      {
+        assertion = cfg.upgrade == null || (cfg.upgrade.validateCommand != [] && lib.hasPrefix "/" (lib.head cfg.upgrade.validateCommand));
+        message = "Staged PostgreSQL upgrades require consumer validation with an absolute executable path.";
       }
       {
         assertion = cfg.recovery == null || cfg.recovery.recordChecks != {};
         message = "PostgreSQL recovery admission requires consumer record-level checks.";
       }
       {
+        assertion =
+          cfg.recovery
+          == null
+          || lib.length (lib.unique ([cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile))
+          == (
+            if cfg.recovery.offHostReceiptFile == null
+            then 2
+            else 3
+          );
+        message = "PostgreSQL recovery snapshots, local receipts and off-host receipts must use distinct paths.";
+      }
+      {
+        assertion =
+          cfg.recovery
+          == null
+          || (let
+            evidence = [cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
+            protected = [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir];
+          in
+            lib.all normalizedPath protected && lib.all (path: lib.all (root: storagePaths.disjoint [path root]) protected) evidence);
+        message = "PostgreSQL recovery evidence must remain outside PostgreSQL storage, lifecycle authority and startup-inhibition trees.";
+      }
+      {
         assertion = cfg.recovery == null || cfg.switchAdoption == null || cfg.recovery.systemIdentifier == cfg.switchAdoption.systemIdentifier;
         message = "Recovery and switch adoption must name the same authoritative cluster.";
       }
       {
+        assertion =
+          cfg.recovery
+          == null
+          || (let
+            evidence = [cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
+            controls = map (name: "${cfg.recovery.backupRoot}/${name}") ["recovery" "base" "wal" "locks" "BACKUP_LOCK" "LAST_SUCCESS"] ++ map (name: "${builtins.dirOf cfg.recovery.snapshotFile}/${name}") ["recovery.lock" "preparation.lock" "preparation.json"];
+          in
+            cfg.recovery.backupRoot != "/" && lib.all normalizedPath (evidence ++ [cfg.recovery.backupRoot]) && lib.all (path: lib.all (control: storagePaths.disjoint [path control]) controls) evidence);
+        message = "PostgreSQL recovery evidence must use normalized paths outside producer repository control namespaces and evidence lock files.";
+      }
+      {
         assertion = preparation == null || (cfg.recovery != null && lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) ([preparation.readinessCommand preparation.backupCommand preparation.restoreCommand] ++ lib.optional (preparation.exportCommand != []) preparation.exportCommand));
         message = "Managed recovery preparation requires a recovery policy and absolute executable argv.";
+      }
+      {
+        assertion = preparation == null || cfg.recovery == null || cfg.recovery.repositoryProtocol != "source-local-v1" || cfg.recovery.requireWriterFence;
+        message = "Managed source-local recovery preparation requires writer fencing; read-only certification and retired enrollment may remain unfenced.";
       }
       {
         assertion =
@@ -287,9 +403,13 @@ in {
           == null
           || lib.all (path:
             lib.all (protected:
-              path != "/" && path != protected && !(lib.hasPrefix "${path}/" protected) && !(lib.hasPrefix "${protected}/" path)) [pg.dataDir cfg.stateDir])
+              path != "/" && path != protected && !(lib.hasPrefix "${path}/" protected) && !(lib.hasPrefix "${protected}/" path)) [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir])
           preparation.readWritePaths;
-        message = "Managed recovery preparation must not grant writable access to the primary or authority tree.";
+        message = "Managed recovery preparation must not grant writable access to the primary, authority or startup inhibition tree.";
+      }
+      {
+        assertion = preparation == null || lib.all normalizedPath (preparation.readWritePaths ++ preparation.provisionDirectories ++ [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir]);
+        message = "Managed recovery preparation requires normalized absolute writable, provisioned and protected paths before containment checks.";
       }
       {
         assertion = preparation == null || lib.all (path: lib.any (writable: path == writable || lib.hasPrefix "${writable}/" path) preparation.readWritePaths) preparation.provisionDirectories;

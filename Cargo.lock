@@ -696,7 +696,7 @@ dependencies = [
  "fleetix",
  "fs2",
  "libc",
- "roxmltree",
+ "roxmltree 0.21.1",
  "rusqlite",
  "schemars",
  "serde",
@@ -713,8 +713,12 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
+ "libc",
+ "roxmltree 0.20.0",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
@@ -1699,6 +1703,12 @@ dependencies = [
  "untrusted",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
 name = "roxmltree"

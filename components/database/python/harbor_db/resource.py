@@ -143,6 +143,19 @@ def check(config):
         pass
 
 
+def require_stable(config):
+    path = Path(config["state_dir"]) / "transition.json"
+    if path.exists() and read_json(path)["phase"] not in (
+        "planned",
+        "write-enabled",
+        "complete",
+        "aborted",
+    ):
+        raise AuthorityError(
+            "application backend transition is unfinished; ordinary startup is inhibited"
+        )
+
+
 @contextlib.contextmanager
 def inspection(config):
     """Retain existing authority while an additional consumer guard inspects it."""
@@ -150,6 +163,7 @@ def inspection(config):
     if not (state / "identity.json").exists():
         raise AuthorityError("storage is not adopted; explicit adoption is required")
     with lock(state / "lock", shared=True):
+        require_stable(config)
         yield verify(config, contract(config))
 
 
@@ -158,6 +172,7 @@ def serve(config, argv, *, inspect=None):
     if not argv or not Path(argv[0]).is_absolute():
         raise AuthorityError("consumer executable must be an absolute path")
     with lock(state_directory(config) / "lock", shared=True) as lease:
+        require_stable(config)
         verify(config, contract(config))
         if inspect is not None:
             inspect()

@@ -1,0 +1,145 @@
+version = 1
+baseline_head = "4b2850507a2e9bdfe198caf9178ea7b99ffb03a5"
+gates = [
+  ".#checks.x86_64-linux.postgres-lifecycle-test",
+  ".#checks.x86_64-linux.postgres-lifecycle-oracle-test",
+  ".#checks.x86_64-linux.native-source-local-recovery",
+  ".#checks.x86_64-linux.native-application-provision",
+  ".#checks.x86_64-linux.cargo-test",
+  ".#checks.x86_64-linux.native-application-backup",
+  ".#checks.x86_64-linux.native-postgres-writer-fence",
+]
+qualified_cases = [
+  "nix.x86_64-linux.postgres-lifecycle-test",
+  "nix.x86_64-linux.postgres-lifecycle-oracle-test",
+  "vm.x86_64-linux.native-source-local-recovery",
+  "vm.x86_64-linux.native-application-provision",
+  "vm.x86_64-linux.native-postgres-writer-fence",
+]
+
+[[extensions]]
+path = "python/harbor_db/backup.py"
+sha256 = "4ee1b3b4ab3dae479b2d5cc01fccb23db3b0916dc40970ae6ff993a1f4b3d51b"
+
+[[extensions]]
+path = "python/harbor_db/recovery.py"
+sha256 = "5080d898722b14126599646def709dbf652f4f7ac3886423d24ab3612c53770c"
+
+[[extensions]]
+path = "python/harbor_db/application_transition.py"
+sha256 = "5e3ca10ba64dfc6b54ed4938c570311fd056ddd44106e983df088960b615250b"
+
+[[extensions]]
+path = "python/harbor_db/transition_manifest.py"
+sha256 = "4f27dc7a98d70c5dd89c978ca7d4cccaf4c98f75da3d3d603e7c15cd238f189c"
+
+[[extensions]]
+path = "python/harbor_db/cutover.py"
+sha256 = "e7f11cabdf9f64fe243ffa26b31c7d2f73a3cf47082f58574368620633224225"
+
+[[extensions]]
+path = "python/harbor_db/provision.py"
+sha256 = "37e895c7d040f4d34dc6aeae80e7e5c8d0cc730963b4b4e4161f54226903c440"
+
+[[extensions]]
+path = "tests/test_application_provision.py"
+sha256 = "11dec37fce626a857eecf9caa50995f272e0425b4ef847d69fad77b196221fc7"
+
+[[extensions]]
+path = "tests/test_application_transition.py"
+sha256 = "c913a0728f36d3fd16462edf125eb5da639c05a7350be4e69e27d42982ba567e"
+
+[[extensions]]
+path = "tests/test_fence_recovery.py"
+sha256 = "1c1e50cdfbe469085ef157aa99ed4f7b59781d653718134013bba7cae804fdea"
+
+[[extensions]]
+path = "python/harbor_db/application_backup.py"
+sha256 = "2cf427a24498a6468ed2e15b9421e9ab49429de255b854053826eaa2cbf60b93"
+
+[[extensions]]
+path = "python/harbor_db/durable.py"
+sha256 = "8ca8db7d77af7f8221e2cfb445f5b39c5cbbceedf856fa1966f72c9fac8393af"
+
+[[extensions]]
+path = "python/harbor_db/postgres_drill.py"
+sha256 = "c772d0b3951db451e52ccb3109f632b807ae7004a05b9b976d8e4f7e479fa4ce"
+
+[[extensions]]
+path = "python/harbor_db/process.py"
+sha256 = "92617dc1f64fc6d9d3e5a8595fcceb2f663887e67fc4a1261b04586c1d975b0b"
+
+[[extensions]]
+path = "tests/test_application_backup.py"
+sha256 = "68fde3e19f7bac768a7f3198ccc1e6f1f1c154a4a9dfad7f56b92360271cb981"
+
+[[extensions]]
+path = "python/harbor_db/postgres.py"
+sha256 = "eade751cfd5c49588cd0c678c362fcf9117f48f52f7144755a8731ebc60c336a"
+
+[[extensions]]
+path = "tests/test_postgres_lifecycle.py"
+sha256 = "30653cd2d3212f4d6bde4606adfc8d7965fcd38a7abf6fff864d3e3c53122df8"
+
+# Monorepo reconciliation preserves enrollment helpers and both retained suites.
+# New mixed-schema rejection is admitted only with the original frozen oracle,
+# full Python/native Cargo checks and native PostgreSQL writer-fence evidence.
+[[extensions]]
+path = "python/harbor_db/writer_fence.py"
+sha256 = "d5e44fab765c7af915f625e1c037d2b907aa5260b53eaf114a1fb40637549bde"
+
+[[extensions]]
+path = "tests/test_writer_fence.py"
+sha256 = "a5b4257cca6fdead27bb3122ca668fb3aef23417f4d09546a57dc897141ac382"
+
+# Formatter-only monorepo normalization, compared by AST with the frozen source.
+# Exact original bytes remain in tests/oracles/pr14 for regression execution.
+[[extensions]]
+path = "python/harbor_db/login_shell.py"
+sha256 = "053bc03e655e1b7411ec37054adba54c446fa01234297eab9070b6fa6e66af5a"
+
+[[extensions]]
+path = "python/harbor_db/resource.py"
+sha256 = "c9299b49b80f352a1c1432e97ef427633a692d2adcb7f3e4bea9dc6681ebe72c"
+
+[[extensions]]
+path = "tests/test_backup_lifecycle.py"
+sha256 = "ed0e1037e162f873daf3a5532d8fa8d6ff739c5288599b47361c024756e48e6f"
+
+[[extensions]]
+path = "tests/test_cutover.py"
+sha256 = "0833bcc996acad81222df8b25c5f5dabf8a57ea80f058f1d4c9395e389f7fe5f"
+
+[[extensions]]
+path = "tests/test_cutover_process.py"
+sha256 = "7b2861175eadada2a51f4409e559530f73fbb4530214daaf9160b81243538e9d"
+
+[[extensions]]
+path = "tests/test_durable_lifecycle.py"
+sha256 = "c35296544ff95df18bcdeda7dcee6e197724ecba066b3379590ec37a7055eeed"
+
+[[extensions]]
+path = "tests/test_recovery_readiness.py"
+sha256 = "ee032b83b3f10e58a6cc0c1ca3cd2041c31e4b1a2bbdca874223693faebe7631"
+
+[[extensions]]
+path = "tests/test_resource_lifecycle.py"
+sha256 = "3f029e00d0de6dfb053e3bdae636886b95b59fd2d2378413b2146dc2a02c4cfa"
+
+# These four baseline files changed only through the root formatter. Their
+# Python ASTs are identical to the hash-bound frozen originals.
+[[extensions]]
+path = "python/harbor_db/startup_inhibition.py"
+sha256 = "4de2a8b2385a29968479bb50b1283fa7924c11ab7f8c9778a931226ade57410c"
+
+[[extensions]]
+path = "tests/test_postgres_drill.py"
+sha256 = "8776218abff597092706ed1d3ce4aa7093513e26d365c0cb56b5bd165f5af8dd"
+
+[[extensions]]
+path = "tests/test_receipt_process.py"
+sha256 = "3fd91b094f669c9a037e0fba1b05f9fa17df943da91993a7a3be718a77410941"
+
+[[extensions]]
+path = "tests/test_startup_inhibition.py"
+sha256 = "fe988e455211bd2b68411fc2c3833279561e41772f78112c08b75d29a5337920"

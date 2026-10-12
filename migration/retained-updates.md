@@ -3,8 +3,8 @@
 This record supplements `retained-work.md`, whose 112-commit coverage is bound
 to the initial `imported-ref` namespace. These later tips are preserved under
 `refs/tags/retained-ref/20261012/`. The dispositions below describe the active
-source at `14ef53b1aec5a398e802514cdd1197d54e1c54d0`; producer qualification and
-consumer acceptance remain separate gates.
+source reconciled after `14ef53b1aec5a398e802514cdd1197d54e1c54d0`; producer
+qualification and consumer acceptance remain separate gates.
 
 ## Rust sandbox
 
@@ -44,16 +44,24 @@ tips share thirteen commits and preserve 76 distinct additional commits:
 | `harbor-db/heads/feat/native-lifecycle-v28-20261010`    | `04bb467215967f2b88bf28fb975c37dab8949a39` | 15                      |
 | `harbor-db/heads/feat/postgresql-writer-fence-20261008` | `784f80a62adedcaf04c796cc6e4866955e09d5bc` | 74                      |
 
-Integration is pending. The active database component lacks the newer
+The active database component now incorporates both retained tips: the
 `src/storage/`, `src/testing/`, and `src/planner/` engines, application
 provisioning/backup/transition adapters, source-local recovery, and supervised
-qualification suite. Its older accepted writer-fence implementation does not
-establish acceptance of these later contracts.
+qualification suite. `database-source-reconciliation.json` binds the integrated
+file inventory, both-tip dispositions, and selector execution contracts.
 
 The writer-fence tip includes the native-default rollout and subsequent fixes
 for custody namespaces, backup publication, restored-object admission, writer
 authority, transition startup/shutdown, producer slots, and bounded recovery.
-These changes must be reconciled together with the native tip, preserving the
-Python comparison oracles, historical baseline, package identities, and
-regression/VM gates. The tips are archived; neither predecessor can be retired
-on the strength of the initial import's qualification.
+The integration retains 48 writer-fence Rust runtime files byte-for-byte,
+11 original writer-fence Python methods with identical ASTs, and all 31 frozen
+PR14 files without formatting changes. The 548-selector suite preserves all
+415 selectors from the native tip and all 538 from the writer-fence tip.
+Enrollment metadata remains separate from restart-persistent runtime fencing;
+mixed enrollment/runtime schemas require explicit conversion before publication.
+
+The uncommitted source snapshot passed all 35 database checks and nine production
+package selections, including the recovery and transition VMs. Canonical-source
+and hosted qualification remain pending. The archived tips and these snapshot
+results preserve implementation and evidence; predecessor retirement still
+requires canonical acceptance and verified consumer migration.

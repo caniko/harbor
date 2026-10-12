@@ -3,8 +3,9 @@
 Harbor DB supplies filesystem publication, persistent resource authority, and a
 PostgreSQL adapter. Applications supply their schema and record-level validators;
 deployments supply persistent mounts, destinations and supported generations.
-The adapter uses Python's Linux standard library (flock, fsync and subprocess)
-and is separately packaged from the Rust lifecycle-plan runner.
+The Rust adapters own locking, durable publication, process execution and
+recovery. Storage modules select the native lifecycle package by default.
+Frozen Python sources remain test-only migration evidence.
 
 ## PostgreSQL startup
 
@@ -53,10 +54,21 @@ The launcher supplies `fsync=on`, `full_page_writes=on` and
 `synchronous_commit`; consumers must set it locally in every acknowledged write
 transaction. A generated configuration default alone is insufficient.
 
+## Startup inhibition
+
+`writerFence.startupStateDir` must be a normalized, dedicated absolute path,
+separate in both containment directions from the cluster data and identity state.
+Nix evaluation rejects overlapping defaults after a parent-directory override,
+as well as traversal, duplicate separators and unsafe startup-path spellings.
+Recovery preparation writable and provisioned directories must also be disjoint
+from startup inhibition storage in both containment directions. Preparation cannot
+change the owner or mode of the root-owned inhibition namespace.
+
 ## Offline major upgrades
 
 Set `upgrade.oldPackage`, `oldDataDir`, `initdbArgs`, optional `extraConfig`, and
-`validateCommand`. The validation argv receives the staging directory as its
+`validateCommand`, whose first argument must be an absolute executable path;
+empty or relative validators fail Nix evaluation. The validation argv receives the staging directory as its
 last argument. It must verify the application's actual recovered records, stop
 any server it started and return nonzero on any mismatch.
 Validation is read-only: it must never accept application saves or call a
@@ -73,6 +85,18 @@ Commands inherit the kernel lock so killing the parent cannot unlock a still
 running modifying child. The registered source is never given to `pg_upgrade`.
 Both temporary servers receive explicit data-directory overrides, so copied
 configuration cannot redirect them back onto the registered source.
+
+Source, target, staging and disposable source-copy paths must be pairwise
+disjoint in both containment directions before the authority lock or copy runs.
+This includes nested destinations that would make a recursive copy include itself.
+Version-2 upgrade journals bind the full selected configuration and the bytes of
+the PostgreSQL tools, copy/validation executables and file arguments used by
+interpreter adapters. Retries reject any policy or executable change before
+reusing staged output, including a `ready` publication. The same contract is
+rechecked after validation. Unbound version-1 journals require explicit operator
+inspection and fresh validation under the selected policy. Rewriting their
+version or reconstructing a contract from a newer configuration does not establish
+matching validation evidence.
 
 A `building` journal blocks startup, even when `PG_VERSION` exists. Inspect the
 failure, confirm all upgrade servers are stopped, then retry with:
@@ -103,6 +127,53 @@ This contract cannot retrofit immutable generations created before the guard.
 Certify rollback targets after installing guards and application compatibility
 checks. Hardware must honor PostgreSQL/filesystem flush requests; software tests
 do not certify a drive's power-loss behavior.
+
+## Restore storage isolation
+
+Restore certification inventories the primary, selected backup and disposable
+restore separately. Any primary/backup inode intersection rejects certification,
+including hard links and nested bind mounts of empty directories; their union must
+also remain disjoint from the restored tree. An absent primary is permitted only
+on an independent executor. Immutable primary configuration links remain supported.
+
+## Retiring source-local captures
+
+Source-local captures pin their base backup and required WAL until explicitly
+retired. After publishing and selecting a successor capture, an operator may run:
+
+```sh
+harbor-db-postgres --config /etc/harbor-db/postgresql.json retire-capture --capture-id OBSOLETE_ID
+```
+
+Both engines require `source-local-v1` and the existing exclusive repository
+mutation lease; live capture, inspection, preparation or certification blocks
+retirement. The selected generation cannot be retired. Completed and abandoned
+unselected captures may be retired without a live primary, including expired pins.
+The operation binds the repository identity and every present carrier digest in
+an immutable `.retired` journal before removing capture metadata, WAL inventory,
+snapshot and finally its pin. Interrupted removal resumes from this journal;
+changed retry carriers reject before further deletion. Retired identifiers cannot
+be selected or republished. Subsequent ordinary pruning can reclaim the unpinned
+backup and WAL under its existing retention policy. Scheduled application pruning
+does not retire these recovery pins.
+
+## Recovery SQL checks
+
+Configured recovery record, compatibility and transition custody inventory checks
+share one command builder and execute as one prepared SQL
+statement inside an explicit read-only transaction. `psql`'s zero-parameter
+`\bind` uses PostgreSQL's extended protocol, which rejects multiple statements
+before executing any part of the input. The SQL `PREPARE` grammar also excludes
+transaction control, `CALL`, `DO` and client meta-commands. Modifying queries are
+rejected by the read-only transaction. Quoted semicolons, comments and escaped
+strings are parsed by PostgreSQL itself. A fixed, explicitly escaped connection
+string pins timezone, date/bytea formatting, standard string quoting and a read-only
+session default before parsing, so typed SQL literals have consistent semantics; inherited
+libpq routing/options stay scrubbed. Checks require `psql` 16 or newer; older
+clients fail admission rather than falling back to simple-query execution.
+Custody queries retain the existing `postgres` worker identity, scrubbed worker
+environment, inherited leases and configured worker deadline, with a 30-second
+statement timeout. Their JSON path-array admission still runs after SQL execution.
 
 ## Consumer storage authority
 
@@ -141,6 +212,12 @@ same bind mounts, permissions, and configuration environment.
 
 ## Backup publication
 
+When continuous WAL reception and base backup are both enabled, their configured
+replication slot names must differ. A slot can have only one active receiver;
+sharing it with the long-running WAL receiver prevents `pg_basebackup` from
+acquiring its WAL stream. Nix evaluation rejects this configuration for local and
+remote targets; single-operation targets may retain the unused slot setting.
+
 `harbor-db-durable write` fsyncs a temporary file, atomically replaces metadata and
 fsyncs its parent. `publish-file` and `publish-tree` flush immutable offline backup
 content before rename and then flush affected parent directories. Writers own
@@ -153,6 +230,9 @@ pass `pg_verifybackup` and are never replaced by another run on the same day.
 Retention shares the backup writer lock, preserves the two latest complete base
 backups and WAL from every retained manifest's earliest start. Unknown manifests,
 timelines and segment-size mismatches retain WAL conservatively.
+`targetSettings.walSegmentBytes` accepts only powers of two from 1 MiB through
+1 GiB, matching the runtime pruning contract. Invalid sizes reject during Nix
+evaluation before the prune service can block dependent base backups.
 All completed backup directories, including expiration candidates, are classified
 before deletion. Redirected/non-directory entries, malformed start/end LSNs,
 unknown timeline values and missing manifests preserve both backups and WAL.
