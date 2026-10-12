@@ -30,6 +30,12 @@
       inherit pkgs;
       sources.${system} = "${fixture}/fixture.tar.xz";
     });
+  modePackage = harborLib.mkUpstreamBinaryPackage (args
+    // {
+      inherit pkgs;
+      requireExecutable = false;
+      binaries.fixture = "release/non-executable";
+    });
   rejects = extra: !(builtins.tryEval (harborLib.mkUpstreamBinaryPackage (args // {inherit pkgs;} // extra)).drvPath).success;
   failureCases = {
     missing = "release/missing";
@@ -106,6 +112,9 @@ in {
       tar -xzf ${fixture}/fixture.tar.gz
       cmp release/fixture ${package}/bin/fixture
       cmp release/fixture ${xzPackage}/bin/fixture
+      cmp release/non-executable ${modePackage}/bin/fixture
+      test -x ${modePackage}/bin/fixture
+      ${modePackage}/bin/fixture
       test -x ${package}/bin/fixture
       ${package}/bin/fixture
       test "$(find ${package} -type f | wc -l)" -eq 1
@@ -113,6 +122,7 @@ in {
     '';
   upstream-binary-invalid-mappings = assert rejects {sources = {};};
   assert rejects {targetSystem = "x86_64-darwin";};
+  assert rejects {requireExecutable = "false";};
   assert rejects {binaries = {};};
   assert rejects {binaries."../escape" = "release/fixture";};
   assert rejects {binaries.fixture = "/release/fixture";};

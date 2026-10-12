@@ -6,6 +6,7 @@
   sources,
   binaries,
   targetSystem ? pkgs.stdenv.hostPlatform.system,
+  requireExecutable ? true,
   meta ? {},
 }: let
   inherit (pkgs) lib;
@@ -33,6 +34,8 @@
 in
   assert lib.assertMsg (builtins.isAttrs binaries && names != [])
   "harbor-rs: upstream binaries must be a non-empty destination-to-source mapping";
+  assert lib.assertMsg (builtins.isBool requireExecutable)
+  "harbor-rs: requireExecutable must be a boolean";
     builtins.deepSeq validated (builtins.seq machine (builtins.seq src (pkgs.stdenvNoCC.mkDerivation {
       inherit pname version src;
       # Paths in binaries are relative to the archive root, including any
@@ -51,7 +54,7 @@ in
             relative = binaries.${name};
           in ''
             source=${escapeShellArg "./${relative}"}
-            test -f "$source" && test -x "$source" || {
+            test -f "$source" ${lib.optionalString requireExecutable ''&& test -x "$source"''} || {
               echo "upstream binary is missing, not regular, or not executable: $source" >&2
               exit 1
             }

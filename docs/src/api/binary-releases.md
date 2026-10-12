@@ -40,6 +40,12 @@ component. Wrong ELF machines, interpreters, and dynamic dependencies fail the
 build. Fixup is disabled so the installed executable's bytes match the archive.
 No wrappers, runtime libraries, manifests, or auxiliary assets are inferred.
 
+Some publishers archive ELF binaries without the executable bit (Stalwart's
+server release uses mode `0644`). Set `requireExecutable = false` explicitly
+for those archives. Regular-file, symlink, architecture and static-link checks
+still apply; installation sets mode `0755` and preserves file contents. The
+default continues to reject sources without executable permissions.
+
 Callers own fetching, license metadata, feature compatibility, and release
 provenance. Pin each archive with a fixed-output hash or a locked non-flake
 input. Verify any publisher signatures against the expected repository,
