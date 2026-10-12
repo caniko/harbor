@@ -1,9 +1,9 @@
 {pkgs}: let
-  version = "1.18.0";
-  rev = "37acac7fd25d424b23c8a84f27d6c16c848d810d";
+  version = "1.19.0";
+  rev = "ced81a5a220dd01240e67df2453dffeb8fb51daa";
   src = pkgs.fetchzip {
     url = "https://github.com/newo-ether/blender-mcp/archive/${rev}.tar.gz";
-    hash = "sha256-foEPi2TxLM1ySzssIEzceP7y0PAFHJCBJznYwTmKMQw=";
+    hash = "sha256-z3heV/kj4b3IwDOHn+J1ZlCVKmFtY/agQLicNDoUnYI=";
   };
 
   blenderMcp = pkgs.python3Packages.buildPythonApplication {
@@ -60,7 +60,7 @@
     ];
 
     meta = with pkgs.lib; {
-      description = "Blender integration through the Model Context Protocol (pinned v1.18.0)";
+      description = "Blender integration through the Model Context Protocol (pinned v1.19.0)";
       homepage = "https://github.com/newo-ether/blender-mcp";
       license = licenses.mit;
       mainProgram = "blender-mcp";
@@ -120,7 +120,7 @@
       runHook postInstall
     '';
     meta = with pkgs.lib; {
-      description = "Blender MCP extension payload matching blender-mcp v1.18.0";
+      description = "Blender MCP extension payload matching blender-mcp v1.19.0";
       homepage = "https://github.com/newo-ether/blender-mcp";
       license = licenses.mit;
       maintainers = [];
@@ -144,7 +144,7 @@
       runHook postInstall
     '';
     meta = with pkgs.lib; {
-      description = "Blender MCP agent skill (pinned v1.18.0)";
+      description = "Blender MCP agent skill (pinned v1.19.0)";
       homepage = "https://github.com/newo-ether/blender-mcp";
       license = licenses.mit;
       maintainers = [];

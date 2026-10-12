@@ -1,7 +1,79 @@
+diff --git a/src/blender_mcp/transport/connection.py b/src/blender_mcp/transport/connection.py
+index 5de72ce..e8db0b8 100644
+--- a/src/blender_mcp/transport/connection.py
++++ b/src/blender_mcp/transport/connection.py
+@@ -10,7 +10,11 @@ from dataclasses import dataclass, field
+ from typing import Any, Dict
+ 
+ from ..protocol.errors import BlenderMCPError, classify_exception
+-from .constants import BRIDGE_RECEIVE_BUFFER_BYTES, BRIDGE_RESPONSE_TIMEOUT_SECONDS
++from .constants import (
++    BRIDGE_RECEIVE_BUFFER_BYTES,
++    BRIDGE_RESPONSE_TIMEOUT_SECONDS,
++    DISCOVERY_CONNECT_TIMEOUT_SECONDS,
++)
+ 
+ logger = logging.getLogger("BlenderMCPServer")
+ 
+@@ -64,6 +68,7 @@ class BlenderConnection:
+                 return True
+ 
+             candidate = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
++            candidate.settimeout(DISCOVERY_CONNECT_TIMEOUT_SECONDS)
+             try:
+                 candidate.connect((self.host, self.port))
+                 self.sock = candidate
+@@ -111,8 +116,15 @@ class BlenderConnection:
+                         continue
+                 except socket.timeout:
+                     # If we hit a timeout during receiving, break the loop and try to use what we have
++                    # Canix: a receive timeout is a timeout, not a transport
++                    # break. Report blender_timeout so callers can distinguish
++                    # it from cancellation or a lost connection.
+                     logger.warning("Socket timeout during chunked receive")
+-                    break
++                    raise BlenderMCPError(
++                        "blender_timeout",
++                        "Timeout waiting for Blender response; simplify the request and ensure Blender is running with a GUI",
++                        retryable=True,
++                    )
+                 except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
+                     logger.error(f"Socket connection error during receive: {str(e)}")
+                     raise  # Re-raise to be handled by the caller
+@@ -135,7 +147,13 @@ class BlenderConnection:
+                 # If we can't parse it, it's incomplete
+                 raise ConnectionError("Incomplete JSON response received")
+         else:
+-            raise ConnectionError("No data received")
++            # Canix: reached only after a timeout with no bytes; keep the
++            # timeout classification instead of reporting a transport error.
++            raise BlenderMCPError(
++                "blender_timeout",
++                "Timeout waiting for Blender response; simplify the request and ensure Blender is running with a GUI",
++                retryable=True,
++            )
+ 
+     def send_command(
+         self,
+@@ -197,7 +215,12 @@ class BlenderConnection:
+                     )
+ 
+                 return response.get("result", {})
+-            except BlenderMCPError:
++            except BlenderMCPError as error:
++                # Canix: discard a timed-out socket so a late Blender
++                # response cannot be mistaken for a later request. Never
++                # replay the mutation; the caller must reconcile state.
++                if error.code == "blender_timeout":
++                    self._drop_socket()
+                 raise
+             except socket.timeout:
+                 logger.error("Socket timeout while waiting for response from Blender")
+diff --git a/src/blender_mcp/transport/constants.py b/src/blender_mcp/transport/constants.py
+index a0f4940..2bb1c16 100644
 --- a/src/blender_mcp/transport/constants.py
 +++ b/src/blender_mcp/transport/constants.py
-@@ -3,4 +3,11 @@
- DEFAULT_BRIDGE_HOST = "127.0.0.1"
+@@ -4,3 +4,10 @@ DEFAULT_BRIDGE_HOST = "127.0.0.1"
  DEFAULT_BRIDGE_PORT = 9876
  BRIDGE_RESPONSE_TIMEOUT_SECONDS = 180.0
  BRIDGE_RECEIVE_BUFFER_BYTES = 8192
@@ -12,78 +84,23 @@
 +DISCOVERY_CONNECT_TIMEOUT_SECONDS = 5.0
 +DISCOVERY_HANDSHAKE_TIMEOUT_SECONDS = 10.0
 +DISCOVERY_DEADLINE_SECONDS = 30.0
---- a/src/blender_mcp/transport/connection.py
-+++ b/src/blender_mcp/transport/connection.py
-@@ -9,7 +9,11 @@
- from dataclasses import dataclass, field
- from typing import Any, Dict
-
- from ..protocol.errors import BlenderMCPError, classify_exception
--from .constants import BRIDGE_RECEIVE_BUFFER_BYTES, BRIDGE_RESPONSE_TIMEOUT_SECONDS
-+from .constants import (
-+    BRIDGE_RECEIVE_BUFFER_BYTES,
-+    BRIDGE_RESPONSE_TIMEOUT_SECONDS,
-+    DISCOVERY_CONNECT_TIMEOUT_SECONDS,
-+)
-
- logger = logging.getLogger("BlenderMCPServer")
-@@ -64,5 +64,6 @@
-                 return True
-
-             candidate = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-+            candidate.settimeout(DISCOVERY_CONNECT_TIMEOUT_SECONDS)
-             try:
-                 candidate.connect((self.host, self.port))
-@@ -118,3 +118,10 @@
-                     # If we hit a timeout during receiving, break the loop and try to use what we have
--                    logger.warning("Socket timeout during chunked receive")
--                    break
-+                    # Canix: a receive timeout is a timeout, not a transport
-+                    # break. Report blender_timeout so callers can distinguish
-+                    # it from cancellation or a lost connection.
-+                    logger.warning("Socket timeout during chunked receive")
-+                    raise BlenderMCPError(
-+                        "blender_timeout",
-+                        "Timeout waiting for Blender response; simplify the request and ensure Blender is running with a GUI",
-+                        retryable=True,
-+                    )
-@@ -140,2 +140,8 @@
-         else:
--            raise ConnectionError("No data received")
-+            # Canix: reached only after a timeout with no bytes; keep the
-+            # timeout classification instead of reporting a transport error.
-+            raise BlenderMCPError(
-+                "blender_timeout",
-+                "Timeout waiting for Blender response; simplify the request and ensure Blender is running with a GUI",
-+                retryable=True,
-+            )
-@@ -199,4 +199,9 @@
-                 return response.get("result", {})
--            except BlenderMCPError:
--                raise
-+            except BlenderMCPError as error:
-+                # Canix: discard a timed-out socket so a late Blender
-+                # response cannot be mistaken for a later request. Never
-+                # replay the mutation; the caller must reconcile state.
-+                if error.code == "blender_timeout":
-+                    self._drop_socket()
-+                raise
-             except socket.timeout:
+diff --git a/src/blender_mcp/transport/instances.py b/src/blender_mcp/transport/instances.py
+index ffaa2c7..791f300 100644
 --- a/src/blender_mcp/transport/instances.py
 +++ b/src/blender_mcp/transport/instances.py
-@@ -12,6 +12,10 @@
- from pathlib import Path
+@@ -13,6 +13,10 @@ from pathlib import Path
  from typing import Any, Callable
-
+ 
  from ..protocol.errors import BlenderMCPError
 +from .constants import (
 +    DISCOVERY_DEADLINE_SECONDS,
 +    DISCOVERY_HANDSHAKE_TIMEOUT_SECONDS,
 +)
-
+ 
  REGISTRY_SCHEMA = "blender-mcp-instance/1"
-@@ -228,6 +228,9 @@
-     def list_instances(self, *, validate_live: bool = True) -> list[dict[str, Any]]:
+ INSTANCE_PROTOCOL = "blender-mcp-bridge/2"
+@@ -315,15 +319,37 @@ class InstanceConnectionManager:
+         prune_registry_records(directory=self.directory)
          discovered = discover_registry_records(directory=self.directory)
          results: list[dict[str, Any]] = []
 +        # Canix: overall discovery deadline so many stalled records cannot
@@ -91,8 +108,6 @@
 +        deadline = time.monotonic() + DISCOVERY_DEADLINE_SECONDS
          for item in discovered:
              public = item.public_dict(client_id=self.client_id)
-             if validate_live and item.status not in {"busy", "protocol_mismatch"}:
-@@ -233,4 +233,11 @@
              if validate_live and item.status not in {"busy", "protocol_mismatch"}:
 +                if time.monotonic() > deadline:
 +                    public["status"] = "unreachable"
@@ -104,7 +119,6 @@
                  connection = None
                  try:
                      connection = self.connection_factory(item.record["host"], item.record["port"])
-@@ -237,5 +237,17 @@
                      if not connection.connect():
                          raise ConnectionError("connection refused")
 -                    handshake = connection.send_command("blender_mcp_handshake")
@@ -121,5 +135,6 @@
 +                        "blender_mcp_handshake",
 +                        timeout=probe_timeout,
 +                    )
-                    for key in ("instance_id", "file_session_id", "protocol_version"):
-                        if handshake.get(key) != item.record.get(key):
+                     for key in ("instance_id", "file_session_id", "protocol_version"):
+                         if handshake.get(key) != item.record.get(key):
+                             raise BlenderMCPError(
