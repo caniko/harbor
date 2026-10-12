@@ -228,11 +228,12 @@ in
           machine.succeed(command + " --config /run/forced-backup-policy.json inspect /var/lib/demo-backup/" + point)
           machine.succeed("test ! -d /var/lib/demo-backup/" + point + ".restore-workspace; test ! -d /var/lib/demo-backup/" + point + ".sealed; test $(find /var/lib/demo-backup -maxdepth 1 -name '" + point + ".abandoned-*' | wc -l) = 1")
           points.append(point)
-      # The certifier must call namespace admission before executing restoration.
+      # Namespace-root is needed to perform the actual mount/hostname attack.
+      # The certifier must reject that namespace before account/restore admission.
       machine.succeed("install -d -m 0700 -o reader -g reader /var/lib/backup-certifier; install -m 0600 -o reader -g reader /dev/null /var/lib/backup-certifier/lock; printf 'caller-chosen-machine-id\\n' > /run/backup-machine-id")
       for engine, command in (("native", "harbor-db-application-backup"), ("python", "${pythonPeer}/bin/harbor-db-application-backup")):
           certify = command + " --config /run/forced-backup-policy.json certify /var/lib/demo-backup/" + points[2] + " --state /var/lib/backup-certifier"
-          rejected = machine.fail("runuser -u reader -- unshare --user --map-current-user --mount --uts -- sh -ec " + shlex.quote("mount --bind /run/backup-machine-id /etc/machine-id; hostname namespace-remote; " + certify) + " 2>&1")
+          rejected = machine.fail("runuser -u reader -- unshare --user --map-root-user --mount --uts -- sh -ec " + shlex.quote("mount --bind /run/backup-machine-id /etc/machine-id; hostname namespace-remote; test \"$(cat /etc/machine-id)\" = caller-chosen-machine-id; test \"$(hostname)\" = namespace-remote; " + certify) + " 2>&1")
           assert "caller-controlled namespaces" in rejected, (engine, rejected)
       # A caller-controlled loader cannot forge native machine custody. Prove
       # that the same interposer really substitutes Python's hostname/read.

@@ -15,7 +15,6 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const OVERALL: u64 = 3600;
 const COMMAND: u64 = 900;
 const BASE: &str = "/var/lib/demo-primary-backup";
-const RECEIPT: &str = "/var/lib/demo-authority/independent.json";
 
 #[derive(Parser)]
 struct Args {
@@ -341,6 +340,7 @@ fn run(args: Args) -> Result<()> {
         "exact-selected-contracts",
     )?;
     let template = field(&selected, "postgres_manifest")?;
+    let receipt = field(&selected, "independent_receipt")?.to_owned();
     store(template)?;
     let mut database = g.json(
         "primary",
@@ -556,13 +556,40 @@ fn run(args: Args) -> Result<()> {
             && proof["status"] == "verified",
         "application-proof-binds-captured-source",
     )?;
+    let receipt_parent = PathBuf::from(&receipt)
+        .parent()
+        .ok_or("independent receipt has no parent")?
+        .to_string_lossy()
+        .into_owned();
+    g.shell(
+        "primary",
+        format!("install -d -m 0700 {}", quoted(&receipt_parent)),
+        true,
+        "independent-receipt-protected-directory",
+    )?;
     g.transfer(
         "certifier",
         &format!("/var/lib/demo-certifier/{digest}.json"),
         "primary",
-        RECEIPT,
+        &receipt,
         &host,
         "application-receipt-byte-equality",
+    )?;
+    g.shell(
+        "primary",
+        format!("chown root:root {0}; chmod 0400 {0}", quoted(&receipt)),
+        true,
+        "independent-receipt-protected-file",
+    )?;
+    g.shell(
+        "primary",
+        format!(
+            "runuser -u demo -- {} -c {}",
+            quoted(&c.shell),
+            quoted(&format!("printf forged > {}", quoted(&receipt)))
+        ),
+        false,
+        "application-cannot-replace-independent-receipt",
     )?;
     g.align("primary", "certifier", "application-primary-clock-aligned")?;
     g.shell(

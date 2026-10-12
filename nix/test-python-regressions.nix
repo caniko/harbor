@@ -30,5 +30,6 @@ pkgs.runCommand "harbor-db-${checkName}" {
   mkdir "$out"
   PYTHONPATH=${pythonSource} python3 -B ${../tests/run_python_regressions.py} \
     --tests ${testSource} --output "$out" \
-    --case-id nix.${pkgs.system}.${checkName}
+    --case-id nix.${pkgs.system}.${checkName} \
+    --store-root-fixture ${pkgs.writeText "harbor-db-python-store-root-fixture" "root ownership view\n"}
 ''
