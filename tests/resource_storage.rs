@@ -227,6 +227,62 @@ fn transition_barriers_and_redirects_are_rejected() {
     c["directories"] = json!([t.path()]);
     assert!(resource::contract(&c).is_err());
 }
+
+#[test]
+fn consumer_limits_reject_large_output_and_deadlines_and_release_authority_in_both_engines() {
+    use harbor_db::storage::process;
+    let python = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|directory| directory.join("python3"))
+        .find(|path| path.is_file())
+        .unwrap();
+    for (code, expected) in [
+        (
+            "import sys; sys.stdout.write(' ' * (1024*1024+1)); print('{\"binding\":{},\"directories\":[],\"required_files\":[]}')",
+            "size limit",
+        ),
+        (
+            "import sys; sys.stderr.write('x' * (1024*1024+1)); print('{\"binding\":{},\"directories\":[],\"required_files\":[]}')",
+            "size limit",
+        ),
+        (
+            "import time; time.sleep(2); print('{\"binding\":{},\"directories\":[],\"required_files\":[]}')",
+            "execution limit",
+        ),
+    ] {
+        let (t, mut c) = fixture();
+        resource::adopt(&c, "archive").unwrap();
+        c["consumer_command"] = json!([python, "-B", "-c", code]);
+        c["consumer_timeout_seconds"] = json!(1);
+        let before = fs::read(t.path().join("authority/identity.json")).unwrap();
+        let error = resource::inspection(&c)
+            .err()
+            .expect("unbounded validator accepted")
+            .to_string();
+        assert!(error.contains(expected), "{error}");
+        let script = "import json,sys; from harbor_db import resource; c=json.loads(sys.argv[1]);\ntry:\n with resource.inspection(c): pass\nexcept ValueError as error:\n assert sys.argv[2] in str(error), str(error)\nelse: raise AssertionError('unbounded validator accepted')";
+        let mut spec = process::CommandSpec::new(vec![
+            python.to_string_lossy().into_owned(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            c.to_string(),
+            expected.into(),
+        ]);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        process::execute(&spec).unwrap();
+        durable::lock(&t.path().join("authority/lock"), false, false).unwrap();
+        assert_eq!(
+            fs::read(t.path().join("authority/identity.json")).unwrap(),
+            before
+        );
+    }
+}
 #[test]
 fn consumer_exec_retains_authority_fd_until_exit() {
     use std::{

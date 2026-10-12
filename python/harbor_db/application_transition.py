@@ -201,6 +201,8 @@ def target_custody(config, record, target, leases):
     if entry is None:
         return None
     from . import cutover
+    entry = cutover.expanded_config(entry, resource.contract(target) if target.get("consumer_command") else target)
+    authority = entry["authority"]
     requirement = []
     checks = entry.get("database_inventory_checks", [])
     if checks and config["postgres_manifest"] is None:
@@ -215,9 +217,9 @@ def target_custody(config, record, target, leases):
             raise ValueError("database corpus query did not produce a path array")
         requirement.extend(cutover.database_entry(check["root"], item) for item in paths)
     contents = cutover.inventory(entry, contents=True)
-    cutover.require_database_paths(contents, requirement, roots=target["directories"], git_executable=entry.get("git_executable"))
+    cutover.require_database_paths(contents, requirement, roots=authority["directories"], git_executable=entry.get("git_executable"))
     return {"version": 1, "resource": target["resource"], "identity": record["source_authority"]["identity"],
-            "binding": target["binding"], "directories": target["directories"],
+            "binding": authority["binding"], "directories": authority["directories"],
             "root_identities": cutover.root_identities(entry), "inventory": contents,
             "metadata": cutover.inventory(entry, contents=False), "completed_at": int(time.time()),
             "database_snapshot_sha256": record["primary_snapshot_sha256"], "database_requirements": requirement,

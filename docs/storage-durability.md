@@ -231,6 +231,11 @@ caller's own unprivileged account. Nix cutover authorities default `user` to the
 resource's service user. Hand-written transition authority manifests with a
 validator must add that account explicitly before root-run planning.
 
+Validator execution uses the bounded storage worker: a 30-second default deadline
+(`consumer_timeout_seconds`, from 1 to 300 seconds), a separate 1 MiB limit on
+stdout and stderr, and process-group cleanup on completion or rejection. Timeout
+and oversized output release the inspection lease without publishing authority.
+
 Validators receive a clean environment containing only `USER`, `LOGNAME`,
 `LANG=C.UTF-8`, `HOME=/`, and a `PATH` limited to the immutable executable's
 directory. Their working directory is `/`; pass configuration and data paths
@@ -244,6 +249,13 @@ must still be present with an equal or higher value. Consumers define what those
 monotonic witnesses mean, such as dataset revisions or permanent saved-review
 identities. These floors protect adoption-time evidence, not freshness against
 every subsequent save or arbitrary cross-file restores.
+
+Custody certification and runtime namespace admission include the validator's
+additional directories and binding. Restore roots must cover the complete sorted
+directory union for consumer-backed authorities; every root participates in byte
+verification, inode isolation, metadata checks and custody publication. Consumer
+contract changes during certification reject publication. Existing receipts for
+static authorities retain their declared directory ordering.
 
 `serve -- /absolute/path/to/consumer ...` repeats validation and execs the consumer
 with a shared authority lease inherited for its lifetime. Offline adoption cannot

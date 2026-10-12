@@ -67,7 +67,7 @@ def validate_manifest(value, host):
     return value
 
 
-def namespace_roots(manifest):
+def namespace_roots(manifest, *, expand_consumers=False):
     roots = []
     for entry in manifest["resources"].values():
         if entry["kind"] == "postgres":
@@ -82,7 +82,9 @@ def namespace_roots(manifest):
                 validate_path(startup.get("state_dir"))
                 roots.append((Path(startup["state_dir"]), False))
         else:
-            roots.extend((Path(path), False) for path in [entry["authority"]["state_dir"], *entry["authority"]["directories"]])
+            authority = entry["authority"]
+            expected = resource.contract(authority) if expand_consumers and authority.get("consumer_command") else authority
+            roots.extend((Path(path), False) for path in [authority["state_dir"], *expected["directories"]])
     return roots
 
 
@@ -90,11 +92,11 @@ def validate_storage_namespaces(manifest, *, deadline=None):
     """Inspect all private roots in the coordinator before user-scoped workers."""
     if deadline is None:
         deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
-    inspect_namespace_roots(namespace_roots(manifest), deadline)
+    inspect_namespace_roots(namespace_roots(manifest, expand_consumers=True), deadline)
 
 
 def validate_restore_roots(manifest, restores):
-    protected = namespace_roots(manifest)
+    protected = namespace_roots(manifest, expand_consumers=True)
     for restore in restores:
         validate_path(str(restore))
         restore = Path(restore)
@@ -104,7 +106,7 @@ def validate_restore_roots(manifest, restores):
 
 def validate_restore_namespaces(manifest, restores):
     validate_restore_roots(manifest, restores)
-    inspect_namespace_roots(namespace_roots(manifest) + [(Path(root), False) for root in restores],
+    inspect_namespace_roots(namespace_roots(manifest, expand_consumers=True) + [(Path(root), False) for root in restores],
                             time.monotonic() + manifest.get("activation_timeout_seconds", 900))
 
 
@@ -152,6 +154,13 @@ def root_identities(config):
     return [{"device": Path(path).stat().st_dev, "inode": Path(path).stat().st_ino,
              "mode": stat.S_IMODE(Path(path).stat().st_mode)}
             for path in config["authority"]["directories"]]
+
+
+def expanded_config(config, contract):
+    if not config["authority"].get("consumer_command"):
+        return config
+    return {**config, "authority": {**config["authority"], "directories": contract["directories"],
+                                    "binding": contract["binding"]}}
 
 
 def inventory(config, *, contents):
@@ -279,8 +288,9 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
     receipt = custody_receipt_path(config)
     now = int(time.time()) if now is None else now
     authority = config["authority"]
-    resource.contract(authority)
-    roots = list(map(Path, authority["directories"]))
+    expected = resource.contract(authority)
+    config = expanded_config(config, expected)
+    roots = list(map(Path, config["authority"]["directories"]))
     restores = list(map(Path, restored_roots))
     state = resource.state_directory(authority)
     if len(restores) != len(roots) or any(
@@ -294,13 +304,13 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
         raise ValueError("restore roots must be independent absolute corpus directories")
     if config.get("database_resource") and not database_snapshot:
         raise ValueError("filesystem certification needs matching database recovery evidence")
-    with resource.adoption(authority, identifier) as publish:
+    with resource.adoption(authority, identifier, expected=expected) as publish:
         if any(writer_active(unit) for unit in config["runtime_units"]):
             raise ValueError("source writer is active; establish the declared consistency window")
         identities = root_identities(config)
         source = inventory(config, contents=True)
         require_database_paths(source, database_requirements, roots=roots, git_executable=config.get("git_executable"))
-        restored = inventory({"authority": {**authority, "directories": restored_roots}}, contents=True)
+        restored = inventory({"authority": {**config["authority"], "directories": restored_roots}}, contents=True)
         if any(stat.S_IMODE(source.stat().st_mode) != stat.S_IMODE(restore.stat().st_mode)
                for source, restore in zip(roots, restores, strict=True)):
             raise ValueError("source and restored corpus root modes differ")
@@ -321,10 +331,12 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
             raise ValueError("source changed during custody certification")
         if any(writer_active(unit) for unit in config["runtime_units"]) or root_identities(config) != identities:
             raise ValueError("source writer or storage identity changed during custody certification")
+        if resource.contract(authority) != expected:
+            raise ValueError("consumer authority changed during custody certification")
         publish()
         write_json(recovery.absolute(receipt), {
             "version": 1, "resource": authority["resource"], "identity": identifier,
-            "binding": authority["binding"], "directories": authority["directories"],
+            "binding": config["authority"]["binding"], "directories": config["authority"]["directories"],
             "completed_at": now, "database_snapshot_sha256": database_snapshot,
             "database_requirements": database_requirements,
             "inventory": source, "metadata": metadata, "root_identities": identities,
@@ -348,9 +360,13 @@ def check_resource(config, *, phase, now=None, candidate=None):
         # Startup validates adopted roots/identity under the writer lease. A
         # corpus walk would race ordinary file turnover and block SSH commands.
         # Deployment still rejects missing/empty or changed contents up front.
-        metadata = inventory(config, contents=False) if phase != "startup" else None
         authority = config["authority"]
+        metadata = inventory(config, contents=False) if phase != "startup" and not authority.get("consumer_command") else None
         with resource.inspection(authority) as adopted:
+            config = expanded_config(config, adopted)
+            authority = config["authority"]
+            if metadata is None and phase != "startup":
+                metadata = inventory(config, contents=False)
             receipt = read_json(recovery.absolute(config["custody_file"]))
             if (receipt.get("version") != 1 or receipt.get("resource") != authority["resource"]
                     or receipt.get("identity") != adopted["identity"]

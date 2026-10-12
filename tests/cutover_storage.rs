@@ -167,6 +167,150 @@ fn coordinator_rejects_restore_roots_in_every_enrolled_namespace_in_both_engines
 }
 
 #[test]
+fn consumer_expanded_custody_requires_every_restore_and_checks_global_namespaces_in_both_engines() {
+    use harbor_db::storage::{durable, resource};
+    for python in [false, true] {
+        let mut f = Fixture::new();
+        let extra = f.temp.path().join("source-extra");
+        let restored_extra = f.temp.path().join("restore-extra");
+        for root in [&extra, &restored_extra] {
+            fs::create_dir(root).unwrap();
+            fs::write(root.join("application-state"), b"retained consumer data").unwrap();
+        }
+        let consumer = f.temp.path().join("consumer.json");
+        durable::write_json(
+            &consumer,
+            &json!({"binding":{"schema":"consumer-v1"},"directories":[extra],"required_files":[]}),
+        )
+        .unwrap();
+        let cat = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("cat"))
+            .find(|path| path.is_file())
+            .unwrap();
+        f.config["authority"]["consumer_command"] = json!([cat, consumer]);
+        let restores = vec![f.restore.clone(), restored_extra.clone()];
+        let mut manifest = f.manifest();
+        let mut other = f.config.clone();
+        let other_state = f.temp.path().join("other-authority");
+        fs::create_dir(&other_state).unwrap();
+        other["authority"] =
+            json!({"resource":"other","state_dir":other_state,"binding":{},"directories":[extra]});
+        other["custody_file"] = json!(other_state.join("custody.json"));
+        manifest["resources"]["other"] = other;
+        if python {
+            let script = r#"import json, sys, pathlib
+from harbor_db import application_transition, cutover, resource
+c = json.loads(sys.argv[1])
+restores = json.loads(sys.argv[2])
+manifest = json.loads(sys.argv[3])
+try:
+    cutover.certify_filesystem(c, restores[:1], 'verified-corpus', now=100)
+except ValueError as error:
+    assert 'restore roots' in str(error), str(error)
+else:
+    raise AssertionError('consumer corpus omitted')
+try:
+    cutover.validate_storage_namespaces(manifest)
+except ValueError:
+    pass
+else:
+    raise AssertionError('shared consumer namespace accepted')
+cutover.certify_filesystem(c, restores, 'verified-corpus', now=100)
+expected = resource.contract(c['authority'])
+receipt = json.loads(pathlib.Path(c['custody_file']).read_text())
+assert receipt['directories'] == expected['directories']
+assert receipt['binding'] == expected['binding']
+assert len(receipt['inventory']) == len(receipt['root_identities']) == 2
+custody_manifest = pathlib.Path(c['authority']['state_dir']).parent / 'custody-manifest.json'
+custody_manifest.write_text(json.dumps(c))
+transition = {'custody_manifest': str(custody_manifest), 'units': [], 'retired_units': []}
+record = {'source_authority': {'identity': 'verified-corpus'}, 'primary_snapshot_sha256': None,
+          'source_acceptance_sha256': 'source', 'independent_sha256': 'restore', 'semantic_sha256': 'semantic'}
+prepared = application_transition.target_custody(transition, record, c['authority'], ())
+assert prepared['directories'] == receipt['directories']
+assert prepared['binding'] == receipt['binding']
+assert prepared['inventory'] == receipt['inventory']
+cutover.check_resource(c, phase='activate', now=101)
+pathlib.Path(expected['directories'][1], 'application-state').write_text('stale')
+try:
+    cutover.check_resource(c, phase='preflight', now=101)
+except ValueError:
+    pass
+else:
+    raise AssertionError('consumer mutation accepted')
+"#;
+            let mut spec = process::CommandSpec::new(vec![
+                "python3".into(),
+                "-B".into(),
+                "-c".into(),
+                script.into(),
+                f.config.to_string(),
+                json!(restores).to_string(),
+                manifest.to_string(),
+            ]);
+            spec.environment = Some(std::collections::BTreeMap::from([
+                (
+                    "PYTHONPATH".into(),
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                ),
+                ("PATH".into(), std::env::var("PATH").unwrap()),
+            ]));
+            let mut command = std::process::Command::new(&spec.argv[0]);
+            command
+                .args(&spec.argv[1..])
+                .envs(spec.environment.as_ref().unwrap());
+            let result = output(&mut command);
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        } else {
+            assert!(
+                f.certify()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("restore roots")
+            );
+            assert!(cutover::validate_storage_namespaces(&manifest).is_err());
+            custody::certify_filesystem(
+                &f.config,
+                &restores,
+                "verified-corpus",
+                Some(100),
+                None,
+                &json!([]),
+            )
+            .unwrap();
+            let expected = resource::contract(&f.config["authority"]).unwrap();
+            let receipt = durable::read_json(&f.state.join("custody.json")).unwrap();
+            assert_eq!(receipt["directories"], expected["directories"]);
+            assert_eq!(receipt["binding"], expected["binding"]);
+            assert_eq!(receipt["inventory"].as_array().unwrap().len(), 2);
+            assert_eq!(receipt["root_identities"].as_array().unwrap().len(), 2);
+            let custody_manifest = f.temp.path().join("custody-manifest.json");
+            durable::write_json(&custody_manifest, &f.config).unwrap();
+            let transition =
+                json!({"custody_manifest":custody_manifest,"units":[],"retired_units":[]});
+            let record = json!({"source_authority":{"identity":"verified-corpus"},"primary_snapshot_sha256":null,"source_acceptance_sha256":"source","independent_sha256":"restore","semantic_sha256":"semantic"});
+            let prepared = harbor_db::storage::application_transition::target_custody(
+                &transition,
+                &record,
+                &f.config["authority"],
+                &[],
+            )
+            .unwrap();
+            assert_eq!(prepared["directories"], receipt["directories"]);
+            assert_eq!(prepared["binding"], receipt["binding"]);
+            assert_eq!(prepared["inventory"], receipt["inventory"]);
+            f.check("activate", 101).unwrap();
+            fs::write(extra.join("application-state"), b"stale").unwrap();
+            assert!(f.check("preflight", 101).is_err());
+        }
+    }
+}
+
+#[test]
 fn hardlinked_custody_corpus_rejects_metadata_and_content_admission_in_both_engines() {
     let f = Fixture::new();
     let external = f.temp.path().join("external-history");

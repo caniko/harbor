@@ -22,10 +22,11 @@ def terminate(process):
     process.wait(timeout=5)
 
 
-def execute(argv, *, timeout, environment, leases=(), cwd=None, maximum_output=1024 * 1024, **identity):
+def execute(argv, *, timeout, environment, leases=(), cwd=None, maximum_output=1024 * 1024, failure_context=None, **identity):
     process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                env=environment, cwd=cwd, pass_fds=tuple(leases), start_new_session=True, **identity)
     output = bytearray()
+    diagnostics = bytearray()
     deadline = time.monotonic() + timeout
     try:
         with selectors.DefaultSelector() as selector:
@@ -43,6 +44,10 @@ def execute(argv, *, timeout, environment, leases=(), cwd=None, maximum_output=1
                         output.extend(chunk)
                         if len(output) > maximum_output:
                             raise ValueError("storage worker receipt exceeded its size limit")
+                    elif failure_context is not None:
+                        diagnostics.extend(chunk)
+                        if len(diagnostics) > maximum_output:
+                            raise ValueError("storage worker receipt exceeded its size limit")
             # Preserve the leader's PID until group cleanup, including after EOF.
             # A silent descendant may still own explicitly inherited leases.
             while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
@@ -55,6 +60,8 @@ def execute(argv, *, timeout, environment, leases=(), cwd=None, maximum_output=1
                 pass
             result = process.wait(timeout=5)
         if result:
+            if failure_context is not None:
+                raise ValueError(f"{failure_context}: {diagnostics.decode('utf-8').strip()}")
             raise ValueError("storage worker failed; diagnostics suppressed")
         return bytes(output)
     except BaseException:

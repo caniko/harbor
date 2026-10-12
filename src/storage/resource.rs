@@ -3,8 +3,9 @@ use super::{Result, durable, invalid, process, string};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
-    os::unix::{fs::MetadataExt, process::CommandExt},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
+    time::Duration,
 };
 pub fn valid_name(s: &str) -> bool {
     !s.is_empty()
@@ -75,6 +76,7 @@ pub(super) fn consumer_policy(
     if argv.is_empty() {
         return Ok(None);
     }
+    consumer_timeout(c)?;
     let executable = durable::immutable_store_reference(Path::new(&argv[0]))?;
     if std::fs::metadata(&executable)?.mode() & 0o111 == 0 {
         return Err(invalid(
@@ -105,6 +107,16 @@ pub(super) fn consumer_policy(
     Ok(Some((argv, user, identity)))
 }
 
+fn consumer_timeout(c: &Value) -> Result<Duration> {
+    let seconds = c
+        .get("consumer_timeout_seconds")
+        .unwrap_or(&json!(30))
+        .as_u64()
+        .filter(|seconds| (1..=300).contains(seconds))
+        .ok_or_else(|| invalid("invalid consumer execution budget"))?;
+    Ok(Duration::from_secs(seconds))
+}
+
 pub fn contract(c: &Value) -> Result<Value> {
     let state = state_directory(c)?;
     let name = string(c, "resource")?;
@@ -113,34 +125,29 @@ pub fn contract(c: &Value) -> Result<Value> {
     }
     let mut consumer = json!({});
     if let Some((argv, user, identity)) = consumer_policy(c)? {
-        let mut command = std::process::Command::new(&argv[0]);
-        command
-            .args(&argv[1..])
-            .env_clear()
-            .envs([
-                ("PATH", Path::new(&argv[0]).parent().unwrap().as_os_str()),
-                ("HOME", std::ffi::OsStr::new("/")),
-                ("LANG", std::ffi::OsStr::new("C.UTF-8")),
-                ("USER", std::ffi::OsStr::new(&user)),
-                ("LOGNAME", std::ffi::OsStr::new(&user)),
-            ])
-            .current_dir("/");
+        let mut spec = process::CommandSpec::new(argv.clone());
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PATH".into(),
+                Path::new(&argv[0])
+                    .parent()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ("HOME".into(), "/".into()),
+            ("LANG".into(), "C.UTF-8".into()),
+            ("USER".into(), user.clone()),
+            ("LOGNAME".into(), user),
+        ]));
+        spec.cwd = Some(PathBuf::from("/"));
+        spec.timeout = consumer_timeout(c)?;
+        spec.maximum_output = 1024 * 1024;
+        spec.capture_stderr = true;
         if unsafe { libc::geteuid() } == 0 {
-            // SAFETY: identity is resolved before fork; the child hook
-            // only calls setgroups/setgid/setuid with preallocated data.
-            unsafe {
-                command.pre_exec(move || {
-                    if libc::setgroups(identity.groups.len(), identity.groups.as_ptr()) != 0
-                        || libc::setgid(identity.gid) != 0
-                        || libc::setuid(identity.uid) != 0
-                    {
-                        return Err(std::io::Error::last_os_error());
-                    }
-                    Ok(())
-                });
-            }
+            spec.identity = Some(identity);
         }
-        let output = process::output(&mut command)?;
+        let output = process::run(&spec)?;
         if !output.status.success() {
             return Err(invalid(format!(
                 "consumer storage validation failed: {}",

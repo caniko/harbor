@@ -77,6 +77,19 @@ pub fn receipt_path(config: &Value) -> Result<PathBuf> {
     }
     Ok(receipt.to_owned())
 }
+/// Snapshot the complete validated authority for every corpus operation.
+/// Retain static ordering for contracts without a consumer (legacy receipts).
+pub(super) fn expanded_config(config: &Value, contract: &Value) -> Value {
+    let mut expanded = config.clone();
+    if config["authority"]["consumer_command"]
+        .as_array()
+        .is_some_and(|argv| !argv.is_empty())
+    {
+        expanded["authority"]["directories"] = contract["directories"].clone();
+        expanded["authority"]["binding"] = contract["binding"].clone();
+    }
+    expanded
+}
 pub fn root_identities(config: &Value) -> Result<Value> {
     Ok(Value::Array(
         paths(&config["authority"], "directories")?
@@ -385,8 +398,10 @@ pub fn certify_filesystem(
 ) -> Result<()> {
     let receipt = receipt_path(config)?;
     let authority = &config["authority"];
-    resource::contract(authority)?;
-    let roots = paths(authority, "directories")?;
+    let expected = resource::contract(authority)?;
+    let expanded = expanded_config(config, &expected);
+    let config = &expanded;
+    let roots = paths(&config["authority"], "directories")?;
     let state = Path::new(string(authority, "state_dir")?);
     if identifier.is_empty() || identifier.chars().count() > 128 {
         return Err(invalid(
@@ -500,7 +515,11 @@ pub fn certify_filesystem(
         ));
     }
     // Publish under the already held exclusive inode lease; never reacquire it.
-    let expected = resource::contract(authority)?;
+    if resource::contract(authority)? != expected {
+        return Err(invalid(
+            "consumer authority changed during custody certification",
+        ));
+    }
     let identity_path = state.join("identity.json");
     let marker = json!({"resource":authority["resource"],"identity":identifier});
     if identity_path.exists() {
@@ -526,12 +545,12 @@ pub fn certify_filesystem(
                 &marker,
             )?;
         }
-        let mut record = expected;
+        let mut record = expected.clone();
         record["identity"] = json!(identifier);
         durable::write_json(&identity_path, &record)?;
     }
     durable::write_json(
         &receipt,
-        &json!({"version":1,"resource":authority["resource"],"identity":identifier,"binding":authority["binding"],"directories":authority["directories"],"completed_at":at.unwrap_or_else(now),"database_snapshot_sha256":database_snapshot,"database_requirements":requirements,"inventory":source,"metadata":metadata,"root_identities":identities}),
+        &json!({"version":1,"resource":authority["resource"],"identity":identifier,"binding":config["authority"]["binding"],"directories":config["authority"]["directories"],"completed_at":at.unwrap_or_else(now),"database_snapshot_sha256":database_snapshot,"database_requirements":requirements,"inventory":source,"metadata":metadata,"root_identities":identities}),
     )
 }

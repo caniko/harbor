@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import process
 from .durable import immutable_store_reference, lock, read_json, write_json
 from .postgres import require_mounts
 
@@ -32,6 +33,7 @@ def consumer_policy(config):
         raise AuthorityError("invalid consumer command")
     if not argv:
         return None
+    consumer_timeout(config)
     immutable_store_reference(argv[0], executable=True)
     uid = os.geteuid()
     user = config.get("user")
@@ -43,6 +45,13 @@ def consumer_policy(config):
     if account.pw_uid == 0 or (uid != 0 and (uid != account.pw_uid or os.getuid() != account.pw_uid)):
         raise AuthorityError("consumer validator requires the unprivileged resource user")
     return argv, user, account
+
+
+def consumer_timeout(config):
+    seconds = config.get("consumer_timeout_seconds", 30)
+    if type(seconds) is not int or not 1 <= seconds <= 300:
+        raise AuthorityError("invalid consumer execution budget")
+    return seconds
 
 
 def contract(config):
@@ -57,14 +66,15 @@ def contract(config):
         identity = (dict(user=account.pw_uid, group=account.pw_gid,
                          extra_groups=os.getgrouplist(user, account.pw_gid))
                     if os.geteuid() == 0 else {})
-        result = subprocess.run(argv, capture_output=True, text=True, check=False,
-                                stdin=subprocess.DEVNULL, cwd="/", env={
+        try:
+            output = process.execute(argv, timeout=consumer_timeout(config), maximum_output=1024 * 1024,
+                                     failure_context="consumer storage validation failed", cwd="/", environment={
                                     "PATH": str(Path(argv[0]).parent), "HOME": "/",
                                     "LANG": "C.UTF-8", "USER": user, "LOGNAME": user,
                                 }, **identity)
-        if result.returncode:
-            raise AuthorityError(f"consumer storage validation failed: {result.stderr.strip()}")
-        consumer = json.loads(result.stdout)
+        except ValueError as error:
+            raise AuthorityError(str(error)) from error
+        consumer = json.loads(output.decode("utf-8"))
         if (not isinstance(consumer, dict)
                 or set(consumer) - {"binding", "directories", "required_files", "minimum_counters"}
                 or not {"binding", "directories", "required_files"} <= set(consumer)):
@@ -168,7 +178,7 @@ def adopt(config, identifier):
 
 
 @contextlib.contextmanager
-def adoption(config, identifier):
+def adoption(config, identifier, *, expected=None):
     """Keep writers excluded through independent proof and authority publication."""
     if not identifier or len(identifier) > 128:
         raise AuthorityError("a verified nonempty storage identifier is required")
@@ -176,13 +186,16 @@ def adoption(config, identifier):
     # A registered resource must retain its original lock inode, even if a
     # writer still holds that inode after its pathname has disappeared.
     with lock(state / "lock", create=not (state / "identity.json").exists()):
-        yield lambda: publish_adoption(config, identifier)
+        yield lambda: publish_adoption(config, identifier, expected=expected)
 
 
-def publish_adoption(config, identifier):
+def publish_adoption(config, identifier, *, expected=None):
     """Called only by the publisher yielded under the existing adoption lease."""
     state = state_directory(config)
-    expected = contract(config)
+    observed = contract(config)
+    if expected is not None and observed != expected:
+        raise AuthorityError("consumer authority changed during custody certification")
+    expected = observed if expected is None else expected
     if (state / "identity.json").exists():
         if verify(config, expected)["identity"] != identifier:
             raise AuthorityError("cannot replace adopted storage identity")

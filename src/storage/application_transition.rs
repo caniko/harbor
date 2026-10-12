@@ -361,6 +361,16 @@ pub fn target_custody(
     let Some(entry) = manifest::custody_entry(config, target)? else {
         return Ok(Value::Null);
     };
+    let expected = if target["consumer_command"]
+        .as_array()
+        .is_some_and(|argv| !argv.is_empty())
+    {
+        resource::contract(target)?
+    } else {
+        target.clone()
+    };
+    let entry = custody::expanded_config(&entry, &expected);
+    let authority = &entry["authority"];
     let mut requirements = vec![];
     let empty = vec![];
     let checks = match entry.get("database_inventory_checks") {
@@ -402,11 +412,11 @@ pub fn target_custody(
     custody::require_database_paths(
         &contents,
         &requirements,
-        &paths(target, "directories")?,
+        &paths(authority, "directories")?,
         entry["git_executable"].as_str(),
     )?;
     Ok(
-        json!({"version":1,"resource":target["resource"],"identity":record["source_authority"]["identity"],"binding":target["binding"],"directories":target["directories"],"root_identities":custody::root_identities(&entry)?,"inventory":contents,"metadata":custody::inventory(&entry,false)?,"completed_at":custody::now(),"database_snapshot_sha256":record["primary_snapshot_sha256"],"database_requirements":requirements,"transition_source_acceptance_sha256":record["source_acceptance_sha256"],"independent_restore_sha256":record["independent_sha256"],"semantic_sha256":record["semantic_sha256"]}),
+        json!({"version":1,"resource":target["resource"],"identity":record["source_authority"]["identity"],"binding":authority["binding"],"directories":authority["directories"],"root_identities":custody::root_identities(&entry)?,"inventory":contents,"metadata":custody::inventory(&entry,false)?,"completed_at":custody::now(),"database_snapshot_sha256":record["primary_snapshot_sha256"],"database_requirements":requirements,"transition_source_acceptance_sha256":record["source_acceptance_sha256"],"independent_restore_sha256":record["independent_sha256"],"semantic_sha256":record["semantic_sha256"]}),
     )
 }
 fn custody_equal(observed: &Value, expected: &Value) -> bool {

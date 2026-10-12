@@ -1,5 +1,27 @@
 # Versioned static inventory. No discovery command, Nix evaluation, or pass verdict.
 version = 1
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.resource_storage."
+selector_prefix = ""
+source = "tests/resource_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "resource_storage"]
+argv_suffix = ["--", "--exact"]
+maturity = "crystallized"
+deadline_seconds = 30
+selectors = ["consumer_limits_reject_large_output_and_deadlines_and_release_authority_in_both_engines"]
+
+[[inventories]]
+origin = "rust"
+id_prefix = "native.cutover_storage."
+selector_prefix = ""
+source = "tests/cutover_storage.rs"
+argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "cutover_storage"]
+argv_suffix = ["--", "--exact"]
+maturity = "crystallized"
+selectors = ["consumer_expanded_custody_requires_every_restore_and_checks_global_namespaces_in_both_engines"]
+
 [[inventories]]
 origin = "rust"
 id_prefix = "native.application_storage."

@@ -189,6 +189,11 @@ in {
                   default = resourceUser;
                   description = "Unprivileged resource account for immutable consumer validators, including root-run transition inspection.";
                 };
+                consumer_timeout_seconds = mkOption {
+                  type = types.ints.between 1 300;
+                  default = 30;
+                  description = "Consumer validator deadline; stdout and stderr are each capped at 1 MiB.";
+                };
                 state_dir = mkOption {type = types.strMatching "/.*";};
                 directories = mkOption {type = types.listOf (types.strMatching "/.*");};
                 binding = mkOption {type = types.attrsOf types.str;};

@@ -112,7 +112,7 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
             }
         }
     }
-    let namespaces = namespace_roots(value)?;
+    let namespaces = namespace_roots(value, false)?;
     for (index, (root, _)) in namespaces.iter().enumerate() {
         if namespaces[index + 1..]
             .iter()
@@ -126,7 +126,7 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
     Ok(value.clone())
 }
 
-fn namespace_roots(manifest: &Value) -> Result<Vec<(PathBuf, bool)>> {
+fn namespace_roots(manifest: &Value, expand_consumers: bool) -> Result<Vec<(PathBuf, bool)>> {
     let mut roots = Vec::new();
     for entry in manifest["resources"]
         .as_object()
@@ -149,12 +149,22 @@ fn namespace_roots(manifest: &Value) -> Result<Vec<(PathBuf, bool)>> {
                 roots.push((PathBuf::from(path), false));
             }
         } else {
+            let authority = &entry["authority"];
+            let expected = if expand_consumers
+                && authority["consumer_command"]
+                    .as_array()
+                    .is_some_and(|argv| !argv.is_empty())
+            {
+                resource::contract(authority)?
+            } else {
+                authority.clone()
+            };
             roots.push((
                 PathBuf::from(string(&entry["authority"], "state_dir")?),
                 false,
             ));
             roots.extend(
-                custody::paths(&entry["authority"], "directories")?
+                custody::paths(&expected, "directories")?
                     .into_iter()
                     .map(|path| (path, false)),
             );
@@ -178,12 +188,12 @@ pub fn validate_storage_namespaces(manifest: &Value) -> Result<()> {
     )
 }
 fn validate_storage_namespaces_until(manifest: &Value, deadline: Instant) -> Result<()> {
-    inspect_namespace_roots(namespace_roots(manifest)?, deadline)
+    inspect_namespace_roots(namespace_roots(manifest, true)?, deadline)
 }
 
 /// Check the complete declared contract even in a user-scoped certifying worker.
 pub fn validate_restore_roots(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
-    let protected = namespace_roots(manifest)?;
+    let protected = namespace_roots(manifest, true)?;
     for restore in restores {
         validate_path(&restore.to_string_lossy())?;
         if protected
@@ -201,7 +211,7 @@ pub fn validate_restore_roots(manifest: &Value, restores: &[PathBuf]) -> Result<
 /// Both coordinator and certifying child reject complete global inode aliases.
 pub fn validate_restore_namespaces(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
     validate_restore_roots(manifest, restores)?;
-    let mut roots = namespace_roots(manifest)?;
+    let mut roots = namespace_roots(manifest, true)?;
     roots.extend(restores.iter().cloned().map(|root| (root, false)));
     inspect_namespace_roots(
         roots,
@@ -306,13 +316,25 @@ pub fn check_resource(
                 candidate,
             );
         }
-        let metadata = if phase != "startup" {
+        let authority = &config["authority"];
+        let metadata = if phase != "startup"
+            && authority["consumer_command"]
+                .as_array()
+                .is_none_or(|argv| argv.is_empty())
+        {
             Some(inventory(config, false)?)
         } else {
             None
         };
-        let authority = &config["authority"];
         let (_lease, adopted) = resource::inspection(authority)?;
+        let expanded = custody::expanded_config(config, &adopted);
+        let config = &expanded;
+        let authority = &config["authority"];
+        let metadata = if metadata.is_none() && phase != "startup" {
+            Some(inventory(config, false)?)
+        } else {
+            metadata
+        };
         let receipt = durable::read_json(&recovery::absolute(Path::new(string(
             config,
             "custody_file",
