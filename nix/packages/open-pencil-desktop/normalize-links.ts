@@ -1,7 +1,8 @@
-/** Repair Bun 1.4.2's two racy links in this frozen OpenPencil graph.
+/** Repair Bun 1.4.2's racy links in this frozen OpenPencil graph.
  * Package contents and dependency edges remain untouched. The lock's unaliased
  * react-is entry owns the shared name; npm aliases keep their own local links.
- * The ESLint peer already resolves correctly, but Bun sometimes omits its bin.
+ * The ESLint and browserslist peers resolve correctly, but Bun sometimes omits
+ * their executable links.
  */
 import {
   existsSync,
@@ -41,20 +42,31 @@ link(
   relative(join(store, "node_modules"), target),
 );
 
-// The peer-context suffix is Bun-owned; require exactly one matching scope.
-const scopes = readdirSync(store).filter((name) =>
-  name.startsWith("@eslint-community+eslint-utils@"),
-);
-if (scopes.length !== 1) {
-  throw new Error(`unexpected ESLint utility peer contexts: ${scopes}`);
+function peerBin(prefix: string, dependency: string, command: string) {
+  // The peer-context suffix is Bun-owned; require exactly one matching scope.
+  const scopes = readdirSync(store).filter((name) => name.startsWith(prefix));
+  if (scopes.length !== 1) {
+    throw new Error(`unexpected ${prefix} peer contexts: ${scopes}`);
+  }
+  const scope = join(store, scopes[0], "node_modules");
+  const manifest = JSON.parse(
+    readFileSync(join(scope, dependency, "package.json"), "utf8"),
+  );
+  if (
+    manifest.name !== dependency ||
+    lock.packages[dependency][0] !== `${dependency}@${manifest.version}`
+  ) {
+    throw new Error(
+      `resolved ${dependency} peer does not match the frozen lock`,
+    );
+  }
+  const executable = manifest.bin[command];
+  if (!lstatSync(join(scope, dependency, executable)).isFile()) {
+    throw new Error(`missing resolved ${dependency} executable`);
+  }
+  mkdirSync(join(scope, ".bin"), { recursive: true });
+  link(join(scope, ".bin", command), `../${dependency}/${executable}`);
 }
-const scope = join(store, scopes[0], "node_modules");
-const eslint = JSON.parse(
-  readFileSync(join(scope, "eslint/package.json"), "utf8"),
-);
-const executable = eslint.bin.eslint;
-if (!lstatSync(join(scope, "eslint", executable)).isFile()) {
-  throw new Error("missing resolved ESLint executable");
-}
-mkdirSync(join(scope, ".bin"), { recursive: true });
-link(join(scope, ".bin/eslint"), `../eslint/${executable}`);
+
+peerBin("@eslint-community+eslint-utils@", "eslint", "eslint");
+peerBin("update-browserslist-db@", "browserslist", "browserslist");
