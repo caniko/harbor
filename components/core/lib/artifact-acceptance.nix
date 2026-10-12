@@ -21,27 +21,27 @@
         builtins.mapAttrs (_: value: toString value) (artifacts // {inherit artifact;})
       ));
       required = pkgs.writeText "required-tests.json" (builtins.toJSON requiredTests);
+      verifier = import ../package.nix {inherit pkgs;};
     in
       pkgs.runCommand name {
-        nativeBuildInputs = [pkgs.python3] ++ nativeBuildInputs;
+        nativeBuildInputs = [verifier] ++ nativeBuildInputs;
         passthru = {inherit artifact requiredTests;};
       } ''
         export HARBOR_ARTIFACT=${lib.escapeShellArg (toString artifact)}
         export HARBOR_ARTIFACT_MANIFEST="$TMPDIR/artifact-identity.json"
         export HARBOR_ACCEPTANCE_REPORT="$TMPDIR/acceptance-report.json"
-        python3 ${./artifact-acceptance.py} snapshot --roots ${roots} --manifest "$HARBOR_ARTIFACT_MANIFEST"
+        harbor dev artifact snapshot --roots ${roots} --manifest "$HARBOR_ARTIFACT_MANIFEST"
         ${command}
-        python3 ${./artifact-acceptance.py} accept --manifest "$HARBOR_ARTIFACT_MANIFEST" \
+        harbor dev artifact accept --manifest "$HARBOR_ARTIFACT_MANIFEST" \
           --report "$HARBOR_ACCEPTANCE_REPORT" --required ${required}
         mkdir -p "$out"
         cp -rL --no-preserve=mode ${artifact}/. "$out/"
         mkdir -p "$out/.harbor"
         cp "$HARBOR_ARTIFACT_MANIFEST" "$out/.harbor/acceptance.json"
-        python3 ${./artifact-acceptance.py} verify-local --manifest "$out/.harbor/acceptance.json" --root "$out"
+        harbor prod artifact verify-local --manifest "$out/.harbor/acceptance.json" --root "$out"
       '';
 
   mkArtifactVerifier = {pkgs}:
-    pkgs.writeShellScriptBin "harbor-verify-artifact" ''
-      exec ${pkgs.python3}/bin/python3 ${./artifact-acceptance.py} "$@"
-    '';
+    let package = import ../package.nix {inherit pkgs;}; in
+      package // {meta = package.meta // {mainProgram = "harbor-verify-artifact";};};
 }
