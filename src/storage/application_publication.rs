@@ -345,6 +345,7 @@ mod tests {
             fs::create_dir(root.path().join("proc")).unwrap();
             fs::create_dir(root.path().join("dev")).unwrap();
             fs::create_dir(root.path().join("run")).unwrap();
+            fs::create_dir(root.path().join("run/binfmt")).unwrap();
             fs::create_dir(root.path().join("python")).unwrap();
             fs::copy(
                 std::env::current_exe().unwrap(),
@@ -353,7 +354,9 @@ mod tests {
             .unwrap();
             let result = std::process::Command::new("unshare")
                 .args(["--user", "--map-root-user", "--mount", "--", "sh", "-ec"])
-                .arg("mount --rbind /nix/store \"$1/nix/store\"; mount --rbind /proc \"$1/proc\"; mount --rbind /dev \"$1/dev\"; mount --bind \"$2\" \"$1/python\"; mountpoint -q \"$1/nix/store\"; mountpoint -q \"$1/python\"; exec chroot \"$1\" /fixture --exact \"$3\" --nocapture")
+                // NixOS's binfmt P registration resolves its /run interpreter
+                // again after chroot; expose that declared substrate too.
+                .arg("mount --rbind /nix/store \"$1/nix/store\"; mount --rbind /proc \"$1/proc\"; mount --rbind /dev \"$1/dev\"; mount --bind \"$2\" \"$1/python\"; mountpoint -q \"$1/nix/store\"; mountpoint -q \"$1/python\"; if [ -d /run/binfmt ]; then mount --rbind /run/binfmt \"$1/run/binfmt\"; mountpoint -q \"$1/run/binfmt\"; fi; exec chroot \"$1\" /fixture --exact \"$3\" --nocapture")
                 .arg("credential-alias-fixture")
                 .arg(root.path())
                 .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("python"))

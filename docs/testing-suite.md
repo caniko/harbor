@@ -514,3 +514,7 @@ unavailable substrate fails qualification.
 The private root-source fixture recursively binds sandbox mounts, retaining
 nested locked mounts rather than attempting an invalid plain bind. It asserts
 the actual store and Python mountpoints before running the lifecycle readers.
+Where NixOS declares binfmt interpreters below `/run/binfmt`, the fixture also
+binds and checks that directory inside its private root. A binfmt registration
+without the `F` flag resolves the interpreter pathname again after `chroot`;
+the AArch64 test ELF must therefore see the same declared QEMU substrate there.
