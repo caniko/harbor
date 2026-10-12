@@ -5,7 +5,7 @@ use std::{
     collections::BTreeSet,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
 pub fn valid_name(s: &str) -> bool {
     !s.is_empty()
@@ -118,6 +118,21 @@ fn consumer_timeout(c: &Value) -> Result<Duration> {
 }
 
 pub fn contract(c: &Value) -> Result<Value> {
+    contract_until(c, None)
+}
+
+pub fn contract_until(c: &Value, deadline: Option<Instant>) -> Result<Value> {
+    let remaining = || {
+        deadline
+            .map(|deadline| {
+                deadline
+                    .checked_duration_since(Instant::now())
+                    .filter(|remaining| !remaining.is_zero())
+                    .ok_or_else(|| invalid("cutover inspection budget exhausted"))
+            })
+            .transpose()
+    };
+    remaining()?;
     let state = state_directory(c)?;
     let name = string(c, "resource")?;
     if !valid_name(name) {
@@ -146,6 +161,9 @@ pub fn contract(c: &Value) -> Result<Value> {
         spec.capture_stderr = true;
         if unsafe { libc::geteuid() } == 0 {
             spec.identity = Some(identity);
+        }
+        if let Some(remaining) = remaining()? {
+            spec.timeout = spec.timeout.min(remaining);
         }
         let output = process::run(&spec)?;
         if !output.status.success() {
@@ -273,6 +291,13 @@ pub fn require_stable(c: &Value) -> Result<()> {
     Ok(())
 }
 pub fn inspection(c: &Value) -> Result<(durable::Lease, Value)> {
+    inspection_with_contract(c, None)
+}
+
+pub fn inspection_with_contract(
+    c: &Value,
+    pinned: Option<&Value>,
+) -> Result<(durable::Lease, Value)> {
     let s = state_directory(c)?;
     if !s.join("identity.json").exists() {
         return Err(invalid(
@@ -281,8 +306,19 @@ pub fn inspection(c: &Value) -> Result<(durable::Lease, Value)> {
     }
     let l = durable::lock(&s.join("lock"), true, false)?;
     require_stable(c)?;
-    let r = verify(c, &contract(c)?)?;
+    let expected = contract(c)?;
+    require_contract(&expected, pinned)?;
+    let r = verify(c, &expected)?;
     Ok((l, r))
+}
+
+pub fn require_contract(observed: &Value, pinned: Option<&Value>) -> Result<()> {
+    if pinned.is_some_and(|pinned| pinned != observed) {
+        return Err(invalid(
+            "consumer authority differs from the namespace inspection contract",
+        ));
+    }
+    Ok(())
 }
 pub fn check(c: &Value) -> Result<()> {
     let _guard = inspection(c)?;

@@ -365,7 +365,12 @@ pub fn target_custody(
         .as_array()
         .is_some_and(|argv| !argv.is_empty())
     {
-        resource::contract(target)?
+        let mut prepared = record["target_authority"].clone();
+        prepared
+            .as_object_mut()
+            .ok_or_else(|| invalid("consumer custody requires a prepared target authority"))?
+            .remove("identity");
+        prepared
     } else {
         target.clone()
     };

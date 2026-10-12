@@ -3,6 +3,9 @@ use harbor_db::storage::resource;
 use serde_json::Value;
 use serde_json::json;
 use std::{fs, path::Path};
+
+#[path = "fixtures/python_store.rs"]
+mod python_store;
 fn fixture() -> (tempfile::TempDir, Value) {
     let t = tempfile::tempdir().unwrap();
     for d in ["authority", "data", "state"] {
@@ -187,7 +190,7 @@ fn consumer_validators_reject_mutable_executables_before_dispatch_in_both_engine
             "python3".into(),
             "-B".into(),
             "-c".into(),
-            script.into(),
+            python_store::script(script),
             c.to_string(),
         ]);
         spec.environment = Some(std::collections::BTreeMap::from([
@@ -264,7 +267,7 @@ fn consumer_limits_reject_large_output_and_deadlines_and_release_authority_in_bo
             python.to_string_lossy().into_owned(),
             "-B".into(),
             "-c".into(),
-            script.into(),
+            python_store::script(script),
             c.to_string(),
             expected.into(),
         ]);

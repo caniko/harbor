@@ -201,7 +201,13 @@ def target_custody(config, record, target, leases):
     if entry is None:
         return None
     from . import cutover
-    entry = cutover.expanded_config(entry, resource.contract(target) if target.get("consumer_command") else target)
+    expected = target
+    if target.get("consumer_command"):
+        prepared = record.get("target_authority")
+        if not isinstance(prepared, dict):
+            raise ValueError("consumer custody requires a prepared target authority")
+        expected = {key: value for key, value in prepared.items() if key != "identity"}
+    entry = cutover.expanded_config(entry, expected)
     authority = entry["authority"]
     requirement = []
     checks = entry.get("database_inventory_checks", [])

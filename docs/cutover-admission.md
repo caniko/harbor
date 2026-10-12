@@ -61,7 +61,12 @@ dispatching user-scoped inspection or certification workers, the coordinator als
 compares complete inode inventories across these namespaces, including directory
 roots and mounted descendants. Hard links, root bind mounts and nested empty
 directory aliases cannot give shared storage separate resource leases. Traversal
-uses the coordinator's bounded inspection budget. Worker/serve processes retain
+uses the coordinator's bounded inspection budget, including every consumer
+validator expansion. Each validator receives only the remaining total budget.
+The coordinator passes the exact expanded authority contracts to inspection and
+certification workers. A worker rejects any changed consumer contract before
+checking or publishing corpus evidence, so its directories are the same ones
+that passed global namespace inspection. Worker/serve processes retain
 their own authority lease and startup guard without requiring read access to
 other applications' private corpora.
 

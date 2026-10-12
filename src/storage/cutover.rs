@@ -1,7 +1,7 @@
 //! Mandatory read-only deployment admission and explicit independent custody certification.
 pub use super::custody::{
-    certify_filesystem, inventory, require_database_paths, root_identities,
-    validate_git_repository, validate_path, writer_active,
+    certify_filesystem, certify_filesystem_with_contract, inventory, require_database_paths,
+    root_identities, validate_git_repository, validate_path, writer_active,
 };
 use super::{
     Result, application_transition, codec, custody, durable, invalid, pg_core, postgres, process,
@@ -112,7 +112,7 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
             }
         }
     }
-    let namespaces = namespace_roots(value, false)?;
+    let namespaces = namespace_roots(value, None)?;
     for (index, (root, _)) in namespaces.iter().enumerate() {
         if namespaces[index + 1..]
             .iter()
@@ -126,12 +126,31 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
     Ok(value.clone())
 }
 
-fn namespace_roots(manifest: &Value, expand_consumers: bool) -> Result<Vec<(PathBuf, bool)>> {
-    let mut roots = Vec::new();
-    for entry in manifest["resources"]
+pub fn namespace_contracts_until(manifest: &Value, deadline: Instant) -> Result<Value> {
+    let mut contracts = serde_json::Map::new();
+    for (name, entry) in manifest["resources"]
         .as_object()
         .ok_or_else(|| invalid("invalid cutover resources"))?
-        .values()
+    {
+        if entry["kind"] == "filesystem"
+            && entry["authority"]["consumer_command"]
+                .as_array()
+                .is_some_and(|argv| !argv.is_empty())
+        {
+            contracts.insert(
+                name.clone(),
+                resource::contract_until(&entry["authority"], Some(deadline))?,
+            );
+        }
+    }
+    Ok(Value::Object(contracts))
+}
+
+fn namespace_roots(manifest: &Value, contracts: Option<&Value>) -> Result<Vec<(PathBuf, bool)>> {
+    let mut roots = Vec::new();
+    for (name, entry) in manifest["resources"]
+        .as_object()
+        .ok_or_else(|| invalid("invalid cutover resources"))?
     {
         if entry["kind"] == "postgres" {
             let database = durable::read_config_json(Path::new(string(entry, "config")?))?;
@@ -150,21 +169,24 @@ fn namespace_roots(manifest: &Value, expand_consumers: bool) -> Result<Vec<(Path
             }
         } else {
             let authority = &entry["authority"];
-            let expected = if expand_consumers
+            let expected = if let Some(contracts) = contracts
                 && authority["consumer_command"]
                     .as_array()
                     .is_some_and(|argv| !argv.is_empty())
             {
-                resource::contract(authority)?
+                contracts
+                    .get(name)
+                    .filter(|contract| contract.is_object())
+                    .ok_or_else(|| invalid("namespace inspection is missing a consumer contract"))?
             } else {
-                authority.clone()
+                authority
             };
             roots.push((
                 PathBuf::from(string(&entry["authority"], "state_dir")?),
                 false,
             ));
             roots.extend(
-                custody::paths(&expected, "directories")?
+                custody::paths(expected, "directories")?
                     .into_iter()
                     .map(|path| (path, false)),
             );
@@ -186,14 +208,32 @@ pub fn validate_storage_namespaces(manifest: &Value) -> Result<()> {
                     .unwrap_or(900),
             ),
     )
+    .map(|_| ())
 }
-fn validate_storage_namespaces_until(manifest: &Value, deadline: Instant) -> Result<()> {
-    inspect_namespace_roots(namespace_roots(manifest, true)?, deadline)
+pub fn validate_storage_namespaces_until(manifest: &Value, deadline: Instant) -> Result<Value> {
+    let contracts = namespace_contracts_until(manifest, deadline)?;
+    inspect_namespace_roots(namespace_roots(manifest, Some(&contracts))?, deadline)?;
+    Ok(contracts)
 }
 
 /// Check the complete declared contract even in a user-scoped certifying worker.
 pub fn validate_restore_roots(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
-    let protected = namespace_roots(manifest, true)?;
+    let deadline = Instant::now()
+        + Duration::from_secs(
+            manifest["activation_timeout_seconds"]
+                .as_u64()
+                .unwrap_or(900),
+        );
+    let contracts = namespace_contracts_until(manifest, deadline)?;
+    validate_restore_roots_with_contracts(manifest, restores, &contracts)
+}
+
+fn validate_restore_roots_with_contracts(
+    manifest: &Value,
+    restores: &[PathBuf],
+    contracts: &Value,
+) -> Result<()> {
+    let protected = namespace_roots(manifest, Some(contracts))?;
     for restore in restores {
         validate_path(&restore.to_string_lossy())?;
         if protected
@@ -210,11 +250,10 @@ pub fn validate_restore_roots(manifest: &Value, restores: &[PathBuf]) -> Result<
 
 /// Both coordinator and certifying child reject complete global inode aliases.
 pub fn validate_restore_namespaces(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
-    validate_restore_roots(manifest, restores)?;
-    let mut roots = namespace_roots(manifest, true)?;
-    roots.extend(restores.iter().cloned().map(|root| (root, false)));
-    inspect_namespace_roots(
-        roots,
+    validate_restore_namespaces_with_contracts(
+        manifest,
+        restores,
+        None,
         Instant::now()
             + Duration::from_secs(
                 manifest["activation_timeout_seconds"]
@@ -222,11 +261,33 @@ pub fn validate_restore_namespaces(manifest: &Value, restores: &[PathBuf]) -> Re
                     .unwrap_or(900),
             ),
     )
+    .map(|_| ())
+}
+
+pub fn validate_restore_namespaces_with_contracts(
+    manifest: &Value,
+    restores: &[PathBuf],
+    contracts: Option<&Value>,
+    deadline: Instant,
+) -> Result<Value> {
+    let contracts = match contracts {
+        Some(contracts) if contracts.is_object() => contracts.clone(),
+        Some(_) => return Err(invalid("invalid namespace consumer contracts")),
+        None => namespace_contracts_until(manifest, deadline)?,
+    };
+    validate_restore_roots_with_contracts(manifest, restores, &contracts)?;
+    let mut roots = namespace_roots(manifest, Some(&contracts))?;
+    roots.extend(restores.iter().cloned().map(|root| (root, false)));
+    inspect_namespace_roots(roots, deadline)?;
+    Ok(contracts)
 }
 
 fn inspect_namespace_roots(roots: Vec<(PathBuf, bool)>, deadline: Instant) -> Result<()> {
     let mut protected = BTreeSet::new();
     for (root, primary) in roots {
+        if Instant::now() >= deadline {
+            return Err(invalid("cutover inspection budget exhausted"));
+        }
         match fs::symlink_metadata(&root) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -298,12 +359,33 @@ pub fn check_resource(
     at: Option<i64>,
     candidate: Option<&str>,
 ) -> Result<Value> {
+    check_resource_with_contract(config, phase, at, candidate, None)
+}
+
+pub fn check_resource_with_contract(
+    config: &Value,
+    phase: &str,
+    at: Option<i64>,
+    candidate: Option<&str>,
+    pinned: Option<&Value>,
+) -> Result<Value> {
     if !matches!(phase, "preflight" | "activate" | "startup" | "certify") {
         return Err(invalid("unsupported cutover phase"));
     }
     let now = at.unwrap_or_else(custody::now);
     if config["kind"] == "filesystem" {
         if let Some(selected) = prepared_transition(config, phase)? {
+            if pinned.is_some() {
+                let mut prepared = durable::read_json(&application_transition::journal_path(
+                    &selected,
+                )?)?["target_authority"]
+                    .clone();
+                prepared
+                    .as_object_mut()
+                    .ok_or_else(|| invalid("missing prepared target authority"))?
+                    .remove("identity");
+                resource::require_contract(&prepared, pinned)?;
+            }
             if selected["custody_manifest"].is_null() {
                 return Err(invalid(
                     "cutover transition admission requires target corpus custody publication",
@@ -326,7 +408,7 @@ pub fn check_resource(
         } else {
             None
         };
-        let (_lease, adopted) = resource::inspection(authority)?;
+        let (_lease, adopted) = resource::inspection_with_contract(authority, pinned)?;
         let expanded = custody::expanded_config(config, &adopted);
         let config = &expanded;
         let authority = &config["authority"];
@@ -554,7 +636,7 @@ pub fn check_manifest(
     .as_u64()
     .unwrap_or(if phase == "preflight" { 30 } else { 900 });
     let deadline = Instant::now() + Duration::from_secs(seconds);
-    validate_storage_namespaces_until(manifest, deadline)?;
+    let contracts = validate_storage_namespaces_until(manifest, deadline)?;
     let mut results = serde_json::Map::new();
     let mut failures = vec![];
     let resources = manifest["resources"]
@@ -567,9 +649,15 @@ pub fn check_manifest(
                 .filter(|d| !d.is_zero())
                 .ok_or_else(|| invalid("cutover inspection budget exhausted"))?;
             let as_root = prepared_transition(config, phase)?.is_some();
-            let extra = candidate
+            let mut extra = candidate
                 .map(|c| vec!["--candidate".into(), c.into()])
                 .unwrap_or_default();
+            if let Some(contract) = contracts.get(name) {
+                extra.extend([
+                    "--authority-contract".into(),
+                    serde_json::to_string(contract)?,
+                ]);
+            }
             execute_worker(
                 path,
                 name,

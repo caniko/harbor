@@ -8,6 +8,7 @@ import pwd
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import process
@@ -54,7 +55,10 @@ def consumer_timeout(config):
     return seconds
 
 
-def contract(config):
+def contract(config, *, deadline=None):
+    remaining = None if deadline is None else deadline - time.monotonic()
+    if remaining is not None and remaining <= 0:
+        raise AuthorityError("cutover inspection budget exhausted")
     require_mounts(config)
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", config["resource"]):
         raise AuthorityError("invalid resource name")
@@ -67,7 +71,13 @@ def contract(config):
                          extra_groups=os.getgrouplist(user, account.pw_gid))
                     if os.geteuid() == 0 else {})
         try:
-            output = process.execute(argv, timeout=consumer_timeout(config), maximum_output=1024 * 1024,
+            timeout = consumer_timeout(config)
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AuthorityError("cutover inspection budget exhausted")
+                timeout = min(timeout, remaining)
+            output = process.execute(argv, timeout=timeout, maximum_output=1024 * 1024,
                                      failure_context="consumer storage validation failed", cwd="/", environment={
                                     "PATH": str(Path(argv[0]).parent), "HOME": "/",
                                     "LANG": "C.UTF-8", "USER": user, "LOGNAME": user,
@@ -149,14 +159,21 @@ def require_stable(config):
 
 
 @contextlib.contextmanager
-def inspection(config):
+def inspection(config, *, pinned=None):
     """Retain existing authority while an additional consumer guard inspects it."""
     state = state_directory(config)
     if not (state / "identity.json").exists():
         raise AuthorityError("storage is not adopted; explicit adoption is required")
     with lock(state / "lock", shared=True):
         require_stable(config)
-        yield verify(config, contract(config))
+        expected = contract(config)
+        require_contract(expected, pinned)
+        yield verify(config, expected)
+
+
+def require_contract(observed, pinned):
+    if pinned is not None and observed != pinned:
+        raise AuthorityError("consumer authority differs from the namespace inspection contract")
 
 
 def serve(config, argv, *, inspect=None):

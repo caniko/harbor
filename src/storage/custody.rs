@@ -396,9 +396,30 @@ pub fn certify_filesystem(
     database_snapshot: Option<&str>,
     requirements: &Value,
 ) -> Result<()> {
+    certify_filesystem_with_contract(
+        config,
+        restored_roots,
+        identifier,
+        at,
+        database_snapshot,
+        requirements,
+        None,
+    )
+}
+
+pub fn certify_filesystem_with_contract(
+    config: &Value,
+    restored_roots: &[PathBuf],
+    identifier: &str,
+    at: Option<i64>,
+    database_snapshot: Option<&str>,
+    requirements: &Value,
+    pinned: Option<&Value>,
+) -> Result<()> {
     let receipt = receipt_path(config)?;
     let authority = &config["authority"];
     let expected = resource::contract(authority)?;
+    resource::require_contract(&expected, pinned)?;
     let expanded = expanded_config(config, &expected);
     let config = &expanded;
     let roots = paths(&config["authority"], "directories")?;

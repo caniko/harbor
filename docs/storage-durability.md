@@ -257,6 +257,13 @@ verification, inode isolation, metadata checks and custody publication. Consumer
 contract changes during certification reject publication. Existing receipts for
 static authorities retain their declared directory ordering.
 
+Transition target custody uses the expanded `target_authority` already retained
+in the preparation journal, excluding only its adoption identity field. It does
+not invoke the validator again to select a different corpus. Preparation,
+commit and writer release therefore retain custody for the same authority that
+will be published; live authority verification still checks the consumer output
+against that adopted contract.
+
 `serve -- /absolute/path/to/consumer ...` repeats validation and execs the consumer
 with a shared authority lease inherited for its lifetime. Offline adoption cannot
 race that writer. The validator, adoption operation, and runtime must use the

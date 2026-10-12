@@ -29,7 +29,7 @@ sha256 = "7f0e8e12b8af4c7d9f3dc31da97d1cd2182cd5ad1b11d5e81d2763aaa8dcbb81"
 
 [[extensions]]
 path = "python/harbor_db/application_transition.py"
-sha256 = "db0eca131aaaef257ef4dc0ce29d3e3bf6306699be822235017a1436eaf70490"
+sha256 = "8acf47afa57c6596b36d460d7a6d63acf68967e757ea6ee7570529d0e85ad5d5"
 
 [[extensions]]
 path = "python/harbor_db/transition_manifest.py"
@@ -40,11 +40,11 @@ sha256 = "2c68b97c95476fec50ec7a8d5a2e74663e511299e5c2993b3d5245040354793a"
 # the frozen resource oracle and all original Python methods remain exact.
 [[extensions]]
 path = "python/harbor_db/resource.py"
-sha256 = "5c4838d67e256cdcd32fd2def2e14084dba34d3984e48f4c2bd740c72e937a43"
+sha256 = "8fdb9eb2d629703c162e847e9e8bf17b7172c8d6fa326b6b3b2e888d1c0631ef"
 
 [[extensions]]
 path = "python/harbor_db/cutover.py"
-sha256 = "c1994831f747d70d7349c4cac1ddd2619cc95fe08c865fc09dfb7518b71d0b33"
+sha256 = "660951cfb1435bab2dd9b08d1914e816120977b9a587bd4438cc2862ec604d86"
 
 [[extensions]]
 path = "python/harbor_db/provision.py"

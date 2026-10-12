@@ -67,9 +67,15 @@ def validate_manifest(value, host):
     return value
 
 
-def namespace_roots(manifest, *, expand_consumers=False):
+def namespace_contracts_until(manifest, deadline):
+    return {name: resource.contract(entry["authority"], deadline=deadline)
+            for name, entry in manifest["resources"].items()
+            if entry["kind"] == "filesystem" and entry["authority"].get("consumer_command")}
+
+
+def namespace_roots(manifest, *, contracts=None):
     roots = []
-    for entry in manifest["resources"].values():
+    for name, entry in manifest["resources"].items():
         if entry["kind"] == "postgres":
             database = read_json(entry["config"])
             for key, primary in (("data_dir", True), ("state_dir", False)):
@@ -83,7 +89,11 @@ def namespace_roots(manifest, *, expand_consumers=False):
                 roots.append((Path(startup["state_dir"]), False))
         else:
             authority = entry["authority"]
-            expected = resource.contract(authority) if expand_consumers and authority.get("consumer_command") else authority
+            expected = authority
+            if contracts is not None and authority.get("consumer_command"):
+                expected = contracts.get(name)
+                if not isinstance(expected, dict):
+                    raise ValueError("namespace inspection is missing a consumer contract")
             roots.extend((Path(path), False) for path in [authority["state_dir"], *expected["directories"]])
     return roots
 
@@ -92,11 +102,17 @@ def validate_storage_namespaces(manifest, *, deadline=None):
     """Inspect all private roots in the coordinator before user-scoped workers."""
     if deadline is None:
         deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
-    inspect_namespace_roots(namespace_roots(manifest, expand_consumers=True), deadline)
+    contracts = namespace_contracts_until(manifest, deadline)
+    inspect_namespace_roots(namespace_roots(manifest, contracts=contracts), deadline)
+    return contracts
 
 
-def validate_restore_roots(manifest, restores):
-    protected = namespace_roots(manifest, expand_consumers=True)
+def validate_restore_roots(manifest, restores, *, contracts=None, deadline=None):
+    if deadline is None:
+        deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
+    if contracts is None:
+        contracts = namespace_contracts_until(manifest, deadline)
+    protected = namespace_roots(manifest, contracts=contracts)
     for restore in restores:
         validate_path(str(restore))
         restore = Path(restore)
@@ -104,15 +120,23 @@ def validate_restore_roots(manifest, restores):
             raise ValueError("restore roots must be independent of every enrolled storage namespace")
 
 
-def validate_restore_namespaces(manifest, restores):
-    validate_restore_roots(manifest, restores)
-    inspect_namespace_roots(namespace_roots(manifest, expand_consumers=True) + [(Path(root), False) for root in restores],
-                            time.monotonic() + manifest.get("activation_timeout_seconds", 900))
+def validate_restore_namespaces(manifest, restores, *, contracts=None, deadline=None):
+    if deadline is None:
+        deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
+    if contracts is None:
+        contracts = namespace_contracts_until(manifest, deadline)
+    if not isinstance(contracts, dict):
+        raise ValueError("invalid namespace consumer contracts")
+    validate_restore_roots(manifest, restores, contracts=contracts, deadline=deadline)
+    inspect_namespace_roots(namespace_roots(manifest, contracts=contracts) + [(Path(root), False) for root in restores], deadline)
+    return contracts
 
 
 def inspect_namespace_roots(roots, deadline):
     protected = set()
     for root, primary in roots:
+        if time.monotonic() >= deadline:
+            raise ValueError("cutover inspection budget exhausted")
         try:
             root.lstat()
         except FileNotFoundError:
@@ -283,12 +307,13 @@ def validate_git_repository(path, requirement, executable):
             raise ValueError(f"Git history integrity failed: {path}: {result.stderr[-4096:].strip()}")
 
 
-def certify_filesystem(config, restored_roots, identifier, *, now=None, database_snapshot=None, database_requirements=()):
+def certify_filesystem(config, restored_roots, identifier, *, now=None, database_snapshot=None, database_requirements=(), pinned=None):
     """Writers must already be stopped; this command never stops or restores them."""
     receipt = custody_receipt_path(config)
     now = int(time.time()) if now is None else now
     authority = config["authority"]
     expected = resource.contract(authority)
+    resource.require_contract(expected, pinned)
     config = expanded_config(config, expected)
     roots = list(map(Path, config["authority"]["directories"]))
     restores = list(map(Path, restored_roots))
@@ -343,7 +368,7 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
         })
 
 
-def check_resource(config, *, phase, now=None, candidate=None):
+def check_resource(config, *, phase, now=None, candidate=None, pinned=None):
     if phase not in ("preflight", "activate", "startup", "certify"):
         raise ValueError("unsupported cutover phase")
     now = int(time.time()) if now is None else now
@@ -354,6 +379,11 @@ def check_resource(config, *, phase, now=None, candidate=None):
             selected = read_json(transition)
             journal = application_transition.journal_path(selected)
             if journal.exists() and read_json(journal)["phase"] in ("prepared", "committing", "committed"):
+                if pinned is not None:
+                    prepared = read_json(journal).get("target_authority")
+                    if not isinstance(prepared, dict):
+                        raise ValueError("missing prepared target authority")
+                    resource.require_contract({key: value for key, value in prepared.items() if key != "identity"}, pinned)
                 if selected["custody_manifest"] is None:
                     raise ValueError("cutover transition admission requires target corpus custody publication")
                 return application_transition.admission(selected, phase, config["authority"], candidate)
@@ -362,7 +392,7 @@ def check_resource(config, *, phase, now=None, candidate=None):
         # Deployment still rejects missing/empty or changed contents up front.
         authority = config["authority"]
         metadata = inventory(config, contents=False) if phase != "startup" and not authority.get("consumer_command") else None
-        with resource.inspection(authority) as adopted:
+        with resource.inspection(authority, pinned=pinned) as adopted:
             config = expanded_config(config, adopted)
             authority = config["authority"]
             if metadata is None and phase != "startup":
@@ -461,12 +491,14 @@ def main():
         command.add_argument("--host", required=True)
     checking.add_argument("--phase", choices=("preflight", "activate", "startup", "certify"), default="preflight")
     checking.add_argument("--worker", help=argparse.SUPPRESS)
+    checking.add_argument("--authority-contract", type=json.loads, help=argparse.SUPPRESS)
     certification_worker.add_argument("--phase", choices=("certify",), required=True)
     certification_worker.add_argument("--worker", required=True)
     certification_worker.add_argument("--certify-roots", nargs="+", required=True)
     certification_worker.add_argument("--certify-identity", required=True)
     certification_worker.add_argument("--database-snapshot")
     certification_worker.add_argument("--database-requirements", type=json.loads, default=[])
+    certification_worker.add_argument("--namespace-contracts", type=json.loads, help=argparse.SUPPRESS)
     certifying.add_argument("--resource", required=True)
     certifying.add_argument("--restore-root", action="append", required=True)
     certifying.add_argument("--identity", required=True)
@@ -480,23 +512,29 @@ def main():
             argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
             resource.serve(config["authority"], argv, inspect=lambda: check_resource(config, phase="startup"))
         elif args.command == "certify":
-            validate_restore_namespaces(manifest, args.restore_root)
+            deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
+            contracts = validate_restore_namespaces(manifest, args.restore_root, deadline=deadline)
+            def remaining():
+                seconds = deadline - time.monotonic()
+                if seconds <= 0:
+                    raise ValueError("cutover inspection budget exhausted")
+                return seconds
             config = manifest["resources"][args.resource]
             dependency = config.get("database_resource")
             database = None
             requirements = []
             if dependency:
                 result = execute_worker(args.contract, dependency, manifest["resources"][dependency],
-                                        "certify", manifest.get("activation_timeout_seconds", 900))
+                                        "certify", remaining())
                 database = result["database_snapshot_sha256"]
                 requirements = result.get("corpus_requirements", {}).get(args.resource, [])
-            extra = ["--certify-identity", args.identity, "--certify-roots", *args.restore_root]
+            extra = ["--namespace-contracts", json.dumps(contracts), "--certify-identity", args.identity, "--certify-roots", *args.restore_root]
             if database:
                 extra = ["--database-snapshot", database, "--database-requirements", json.dumps(requirements), *extra]
             execute_worker(args.contract, args.resource, config, "certify",
-                           manifest.get("activation_timeout_seconds", 900), extra, command_name="certify-worker", as_root=os.geteuid() == 0)
+                           remaining(), extra, command_name="certify-worker", as_root=os.geteuid() == 0)
         elif args.command == "certify-worker":
-            validate_restore_namespaces(manifest, args.certify_roots)
+            contracts = validate_restore_namespaces(manifest, args.certify_roots, contracts=args.namespace_contracts)
             account = pwd.getpwnam(manifest["resources"][args.worker]["user"])
             if os.geteuid() != account.pw_uid:
                 if os.geteuid() != 0:
@@ -506,16 +544,16 @@ def main():
                 os.setuid(account.pw_uid)
             certify_filesystem(manifest["resources"][args.worker], args.certify_roots,
                                 args.certify_identity, database_snapshot=args.database_snapshot,
-                                database_requirements=args.database_requirements)
+                                 database_requirements=args.database_requirements, pinned=contracts.get(args.worker))
             print("{}")
         elif args.worker:
-            print(json.dumps(check_resource(manifest["resources"][args.worker], phase=args.phase, candidate=args.candidate)))
+            print(json.dumps(check_resource(manifest["resources"][args.worker], phase=args.phase, candidate=args.candidate, pinned=args.authority_contract)))
         else:
             failures = []
             results = {}
             deadline = time.monotonic() + manifest.get(
                 "timeout_seconds" if args.phase == "preflight" else "activation_timeout_seconds", 30 if args.phase == "preflight" else 900)
-            validate_storage_namespaces(manifest, deadline=deadline)
+            contracts = validate_storage_namespaces(manifest, deadline=deadline)
             for name, config in manifest["resources"].items():
                 try:
                     remaining = deadline - time.monotonic()
@@ -526,7 +564,9 @@ def main():
                         from . import application_transition
                         journal = application_transition.journal_path(read_json(config["transition_manifest"]))
                         as_root = journal.exists() and read_json(journal)["phase"] in ("prepared", "committing", "committed")
-                    extra = () if args.candidate is None else ("--candidate", args.candidate)
+                    extra = [] if args.candidate is None else ["--candidate", args.candidate]
+                    if name in contracts:
+                        extra.extend(["--authority-contract", json.dumps(contracts[name])])
                     results[name] = execute_worker(args.contract, name, config, args.phase, remaining, extra, as_root=as_root)
                 except (ValueError, OSError, subprocess.TimeoutExpired) as error:
                     failures.append({"resource": name, "reason": str(error)})
