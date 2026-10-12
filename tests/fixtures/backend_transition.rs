@@ -15,7 +15,7 @@ const LIFECYCLE_SECONDS: u64 = 3600;
 const COMMAND_SECONDS: u64 = 900;
 const WAIT_SECONDS: u64 = 900;
 const JOURNAL: &str = "/var/lib/demo-authority/transition.json";
-const RECEIPT: &str = "/var/lib/demo-authority/independent.json";
+const RECEIPT: &str = "/var/lib/demo-evidence/independent.json";
 
 #[derive(Parser)]
 struct Args {
@@ -428,7 +428,7 @@ fn run(args: Args) -> Result<()> {
     gate.shell(
         "primary",
         format!(
-            "printf '%s' {} | base64 -d > {RECEIPT}",
+            "install -d -m 0700 /var/lib/demo-evidence; umask 077; printf '%s' {} | base64 -d > {RECEIPT}",
             quoted(encoded.trim())
         ),
         true,
@@ -440,6 +440,64 @@ fn run(args: Args) -> Result<()> {
         "independent-receipt-transfer-byte-equality",
     )?;
     gate.align("primary", "certifier", "primary-clock-aligned")?;
+    gate.shell(
+        "primary",
+        format!(
+            "runuser -u demo -- sh -c {}",
+            quoted(&format!("printf forged > {RECEIPT}"))
+        ),
+        false,
+        "application-cannot-replace-independent-receipt",
+    )?;
+    let journal_before = gate.bytes(JOURNAL)?;
+    for (label, mutate, restore) in [
+        (
+            "worker-owned-file",
+            format!("chown demo:demo {RECEIPT}"),
+            format!("chown root:root {RECEIPT}"),
+        ),
+        (
+            "worker-owned-parent",
+            "chown demo:demo /var/lib/demo-evidence".into(),
+            "chown root:root /var/lib/demo-evidence".into(),
+        ),
+        (
+            "worker-writable-file",
+            format!("chmod 0620 {RECEIPT}"),
+            format!("chmod 0600 {RECEIPT}"),
+        ),
+        (
+            "worker-writable-parent",
+            "chmod 0770 /var/lib/demo-evidence".into(),
+            "chmod 0700 /var/lib/demo-evidence".into(),
+        ),
+        (
+            "hard-linked-file",
+            format!("ln {RECEIPT} /root/receipt-link"),
+            "rm /root/receipt-link".into(),
+        ),
+    ] {
+        gate.shell("primary", mutate, true, &format!("{label}-injected"))?;
+        for (engine, command) in [("native", &native), ("python", &python)] {
+            gate.shell(
+                "primary",
+                format!("{command} prepare"),
+                false,
+                &format!("{engine}-{label}-rejected"),
+            )?;
+        }
+        gate.shell("primary", restore, true, &format!("{label}-restored"))?;
+        let journal_after = gate.bytes(JOURNAL)?;
+        gate.check(
+            journal_before == journal_after,
+            &format!("{label}-journal-preserved"),
+        )?;
+        let receipt_after = gate.bytes(RECEIPT)?;
+        gate.check(
+            transferred == receipt_after,
+            &format!("{label}-receipt-bytes-preserved"),
+        )?;
+    }
     let prepared = gate.phase(
         &format!("{native} prepare"),
         "prepared",

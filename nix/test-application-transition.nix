@@ -205,7 +205,7 @@ in
             targetManifest = toString targetManifest;
             backupManifest = toString config.environment.etc."harbor-db/demo-backup.json".source;
             targetCustodyManifest = toString custodyManifest;
-            independentReceipt = "/var/lib/demo-authority/independent.json";
+            independentReceipt = "/var/lib/demo-evidence/independent.json";
             runtimeUnits = ["demo.service"];
             postgresManifest =
               if withPostgres
@@ -344,7 +344,8 @@ in
           backup_contract = certifier.succeed("readlink -f /etc/harbor-db/demo-backup.json").strip()
           proof = json.loads(certifier.succeed(f"runuser -u demo -- harbor-db-application-backup --config {backup_contract} certify /var/lib/demo-backups/{point} --state /var/lib/demo-certifier"))
           encoded = certifier.succeed(f"base64 -w0 /var/lib/demo-certifier/{proof['source_acceptance_sha256']}.json").strip()
-          primary.succeed(f"printf '%s' '{encoded}' | base64 -d > /var/lib/demo-authority/independent.json")
+          primary.succeed(f"install -d -m 0700 /var/lib/demo-evidence; umask 077; printf '%s' '{encoded}' | base64 -d > /var/lib/demo-evidence/independent.json")
+          primary.fail("runuser -u demo -- sh -c 'printf forged > /var/lib/demo-evidence/independent.json'")
           align(primary, certifier)
           assert json.loads(primary.succeed(transition + " prepare"))["phase"] == "prepared"
           candidate = primary.succeed("readlink -f /run/current-system/specialisation/target").strip()

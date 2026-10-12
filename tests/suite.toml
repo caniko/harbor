@@ -28,7 +28,7 @@ source = "tests/candidate.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "candidate"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["candidate_retention_streams_large_tracked_and_untracked_files"]
+selectors = ["candidate_retention_streams_large_tracked_and_untracked_files", "candidate_inventory_ignores_ambient_repository_worktree_index_and_config_selection"]
 
 [[inventories]]
 origin = "rust"
@@ -307,7 +307,21 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["independent_receipts_cannot_alias_transition_control_storage_in_both_engines"]
+selectors = ["independent_receipts_cannot_alias_transition_control_storage_in_both_engines", "independent_receipts_require_protected_regular_inodes_and_ancestors_in_both_engines"]
+
+[[coverage]]
+case = "native.candidate.candidate_inventory_ignores_ambient_repository_worktree_index_and_config_selection"
+capability = "suite-cli"
+operation = "harbor-db-test.retain"
+dimension = "rejection"
+evidence = "The actual retention CLI clears inherited GIT_* selectors before ls-files. Foreign repository/worktree/index/common-directory selectors and injected core.worktree configuration cannot omit ignored tracked sources, substitute files, or redirect the selected checkout; selected edited/untracked bytes remain retained and verifiable."
+
+[[coverage]]
+case = "native.transition_storage.independent_receipts_require_protected_regular_inodes_and_ancestors_in_both_engines"
+capability = "application-transition"
+operation = "harbor-db-transition.prepare"
+dimension = "rejection"
+evidence = "Native/Python validation reserves the entire authority namespace and requires protected coordinator-owned single-link regular evidence and trusted ancestors. Both runtimes hash and decode the same admitted bounded inode. Real-root transition CLI fixtures reject worker-owned files/parents, writable evidence/ancestors and hard-linked receipts without journal or receipt mutation; authenticated fixture transfer imports into fresh root-controlled evidence storage, where the application cannot replace it."
 
 [[inventories]]
 origin = "rust"

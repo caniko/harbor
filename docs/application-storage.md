@@ -74,6 +74,9 @@ custom managed schema clears its bootstrap `public` schema grants.
 
 Checks cover schema ownership, role membership, exact table/sequence privileges,
 column grants, grant options and defaults for future owner-created objects.
+Provisioning's unspecified port follows `services.postgresql.settings.port`;
+explicit endpoint overrides remain available. The generated role and permission
+services use that same endpoint, including nondefault local primary ports.
 Database, schema, relation and default ACLs reject undeclared grantees. Column
 ACLs permit only the owner; explicit runtime privileges belong at table scope.
 An unrelated grantee requires explicit operator reconciliation before admission.
@@ -348,6 +351,14 @@ projects do not reserve units or namespaces.
 Writer release and abort validate every selected inhibition marker before updating
 `start-policy.json` or removing any marker. Rejection preserves the retained startup
 policy and all barriers; interrupted successful releases remain retryable.
+Independent restore evidence must be outside the complete application authority,
+corpus, backup and control namespaces. Import the authenticated independent
+receipt into a fresh root-owned inode in a root-controlled evidence directory;
+do not transfer ownership of an application-created inode. Both runtimes reject
+redirected, worker-owned, shared or group/other-writable files and ancestors
+before writer inhibition, and repeat admission when consuming evidence. Decode
+and hash the same opened regular inode, bounded to 16 MiB. Missing evidence still
+permits the journaled `awaiting-independent-restore` phase.
 The barrier must also be disjoint from source and target storage roots and the
 authority directory in both containment directions; it cannot be their ancestor.
 The selected backup root must also be disjoint from both source and target corpora

@@ -79,7 +79,7 @@ def validate(config):
     from . import cutover, recovery
     cutover.validate_path(config["independent_receipt"])
     receipt = recovery.absolute(config["independent_receipt"])
-    controls = [barrier, Path(config["drop_in_root"])] + [authority / name for name in ("identity.json", "transition.json", "lock", "custody.json")]
+    controls = [barrier, Path(config["drop_in_root"]), authority]
     entry = custody_entry(config, target)
     if entry is not None:
         controls.append(Path(entry["custody_file"]))
@@ -135,6 +135,9 @@ def validate(config):
             raise ValueError("transition workers require a declared user and absolute argv")
         pwd.getpwnam(command["user"])
     custody_entry(config, target)
+    startup_inhibition.owned_ancestors(receipt)
+    if receipt.exists():
+        independent_receipt(config)
     return source, target
 
 
@@ -158,6 +161,24 @@ def tools(config):
     if any(not Path(path).is_absolute() or not Path(path).is_file() for path in files):
         raise ValueError("transition executable is absent")
     return {path: application_backup.digest(path) for path in sorted(set(files))}
+
+
+def independent_receipt(config):
+    """Decode and hash one admitted inode in the root CLI's protected storage."""
+    import hashlib
+    import stat
+    from .recovery import absolute
+    path = absolute(config["independent_receipt"])
+    startup_inhibition.owned_ancestors(path)
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(descriptor, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022 or info.st_nlink != 1:
+            raise ValueError("independent receipt requires protected coordinator-owned storage")
+        data = stream.read(16 * 1024 * 1024 + 1)
+        if len(data) > 16 * 1024 * 1024:
+            raise ValueError("independent receipt exceeds the evidence byte limit")
+    return json.loads(data), hashlib.sha256(data).hexdigest()
 
 
 def intent(config):

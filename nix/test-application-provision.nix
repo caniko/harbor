@@ -29,6 +29,7 @@ in
         services.postgresql = {
           enable = true;
           package = pkgs.postgresql_18;
+          settings.port = 5544;
           authentication = lib.mkAfter "local all all trust\nhost all all all trust";
         };
         users.users.demo = {
@@ -55,7 +56,7 @@ in
         systemd.services.demo-schema = {
           serviceConfig = {
             Type = "oneshot";
-            ExecStart = "${pkgs.postgresql_18}/bin/psql -X -w -v ON_ERROR_STOP=1 -d demo -U demo_owner -f ${schema}";
+            ExecStart = "${pkgs.postgresql_18}/bin/psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d demo -U demo_owner -f ${schema}";
           };
         };
         services.harbor-db.projects.incomplete.postgres.provision = {
@@ -70,7 +71,7 @@ in
         };
         systemd.services.incomplete-schema.serviceConfig = {
           Type = "oneshot";
-          ExecStart = "${pkgs.postgresql_18}/bin/psql -X -w -v ON_ERROR_STOP=1 -d incomplete -U incomplete_owner -c 'CREATE TABLE documents(id int)'";
+          ExecStart = "${pkgs.postgresql_18}/bin/psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d incomplete -U incomplete_owner -c 'CREATE TABLE documents(id int)'";
         };
         systemd.services.incomplete.serviceConfig = {
           Type = "oneshot";
@@ -83,7 +84,7 @@ in
             Type = "oneshot";
             User = "demo";
             RemainAfterExit = true;
-            ExecStart = "${pkgs.postgresql_18}/bin/psql -X -w -v ON_ERROR_STOP=1 -d demo -U demo_runtime -c 'INSERT INTO documents VALUES (1); INSERT INTO history VALUES (1)'";
+            ExecStart = "${pkgs.postgresql_18}/bin/psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d demo -U demo_runtime -c 'INSERT INTO documents VALUES (1); INSERT INTO history VALUES (1)'";
           };
         };
         environment.systemPackages = [pkgs.postgresql_18];
@@ -114,24 +115,24 @@ in
           # reboot() reconnects only when QEMU was started with reboot support.
           machine.start(allow_reboot=True)
           machine.wait_for_unit("demo.service")
-          machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U demo_runtime -c 'UPDATE history SET id=2'")
-          machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U demo_owner -c 'SELECT 1'")
-          machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U postgres -c 'SELECT current_user'")
-          machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -h 127.0.0.1 -d demo -U postgres -c 'SELECT current_user'")
-          machine.succeed("runuser -u postgres -- psql -X -w -v ON_ERROR_STOP=1 -d postgres -c 'CREATE ROLE undeclared LOGIN'")
-          machine.fail("runuser -u demo -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U undeclared -c 'SELECT current_user'")
-          machine.succeed("runuser -u postgres -- psql -X -w -v ON_ERROR_STOP=1 -d demo -U postgres -c 'SELECT current_user'")
+          machine.fail("runuser -u demo -- psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d demo -U demo_runtime -c 'UPDATE history SET id=2'")
+          machine.fail("runuser -u demo -- psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d demo -U demo_owner -c 'SELECT 1'")
+          machine.fail("runuser -u demo -- psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d demo -U postgres -c 'SELECT current_user'")
+          machine.fail("runuser -u demo -- psql -p 5544 -X -w -v ON_ERROR_STOP=1 -h 127.0.0.1 -d demo -U postgres -c 'SELECT current_user'")
+          machine.succeed("runuser -u postgres -- psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d postgres -c 'CREATE ROLE undeclared LOGIN'")
+          machine.fail("runuser -u demo -- psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d demo -U undeclared -c 'SELECT current_user'")
+          machine.succeed("runuser -u postgres -- psql -p 5544 -X -w -v ON_ERROR_STOP=1 -d demo -U postgres -c 'SELECT current_user'")
           machine.succeed("runuser -u postgres -- harbor-db-provision --config /etc/harbor-db/demo-provision.json check")
           machine.fail("systemctl start incomplete.service")
           machine.fail("systemctl is-active incomplete.service")
           assert machine.succeed("systemctl show incomplete-schema.service -p Result --value").strip() == "success"
           assert machine.succeed("systemctl show harbor-db-incomplete-permissions.service -p Result --value").strip() == "exit-code"
           machine.fail("runuser -u postgres -- harbor-db-provision --config /etc/harbor-db/incomplete-provision.json check")
-          machine.succeed("runuser -u postgres -- psql -d demo -c 'GRANT UPDATE ON history TO demo_runtime'")
+          machine.succeed("runuser -u postgres -- psql -p 5544 -d demo -c 'GRANT UPDATE ON history TO demo_runtime'")
           machine.fail("runuser -u postgres -- harbor-db-provision --config /etc/harbor-db/demo-provision.json check")
           machine.succeed("systemctl restart harbor-db-demo-permissions.service")
-          machine.fail("runuser -u demo -- ${pkgs.postgresql_18}/bin/psql -X -w -h /run/postgresql -d demo -U demo_runtime -c 'SELECT hidden_write()'")
-          machine.fail("runuser -u demo -- ${pkgs.postgresql_18}/bin/psql -X -w -h /run/postgresql -d demo -U demo_runtime -c 'CALL hidden_procedure()'")
+          machine.fail("runuser -u demo -- ${pkgs.postgresql_18}/bin/psql -p 5544 -X -w -h /run/postgresql -d demo -U demo_runtime -c 'SELECT hidden_write()'")
+          machine.fail("runuser -u demo -- ${pkgs.postgresql_18}/bin/psql -p 5544 -X -w -h /run/postgresql -d demo -U demo_runtime -c 'CALL hidden_procedure()'")
           machine.succeed("runuser -u postgres -- harbor-db-provision --config /etc/harbor-db/demo-provision.json check")
           machine.reboot()
           machine.wait_for_unit("demo.service")

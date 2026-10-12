@@ -44,7 +44,7 @@
         sourceManifest = toString (pkgs.writeText "source-authority.json" "{}");
         targetManifest = toString (pkgs.writeText "target-authority.json" "{}");
         backupManifest = toString config.environment.etc."harbor-db/fixture-backup.json".source;
-        independentReceipt = "/var/lib/fixture-authority/independent.json";
+        independentReceipt = "/var/lib/fixture-evidence/independent.json";
         runtimeUnits = ["fixture.service"];
         commands = pkgs.lib.genAttrs ["import" "verify-target" "verify-source" "health"] (_: {
           user = "fixture";
@@ -325,11 +325,28 @@ in
         message = "Nix admission reserves every enabled barrier plus the systemd control namespace for transition state before writer inhibition.";
         assertion = let
           accepted = independentReceipt: let
-            selected = evaluate [module {services.harbor-db.projects.fixture.transition.independentReceipt = pkgs.lib.mkForce independentReceipt;}];
+            selected = evaluate [
+              module
+              {
+                services.harbor-db.projects.fixture.transition.independentReceipt = pkgs.lib.mkForce independentReceipt;
+                services.harbor-db.cutover.resources.fixture = {
+                  user = "fixture";
+                  runtime_units = [];
+                  custody_file = "/var/lib/fixture-authority/custody.json";
+                  authority = {
+                    state_dir = "/var/lib/fixture-authority";
+                    directories = ["/srv/fixture-history"];
+                    binding.backend = "files";
+                  };
+                };
+              }
+            ];
           in
             pkgs.lib.all (a: a.assertion || !(pkgs.lib.hasInfix "transition independent receipts" a.message)) selected.config.assertions;
         in
           accepted "/var/lib/fixture-evidence/independent.json"
+          && !accepted "/var/lib/fixture-authority/independent.json"
+          && !accepted "/var/lib/fixture-authority/receipts/independent.json"
           && !accepted "/var/lib/harbor-db-transitions/fixture/inhibited.json"
           && !accepted "/etc/systemd/system.control/fixture.service.d/receipt.json"
           && !accepted "/var/lib/fixture-backup/lock"

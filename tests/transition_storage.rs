@@ -74,7 +74,7 @@ if root_uid:
         return os.stat_result(fields)
     patch.object(Path,'lstat',mapped_lstat).start()
 try: transition_manifest.validate(json.loads(sys.argv[1]))
-except ValueError as error: print(str(error))
+except (ValueError,RuntimeError,OSError) as error: print(str(error))
 else: print('ACCEPTED')
 "#;
     let mut spec = process::CommandSpec::new(vec![
@@ -134,6 +134,37 @@ fn external_backup_manifest_cannot_share_a_transition_barrier_in_both_engines() 
 }
 
 #[test]
+fn independent_receipts_require_protected_regular_inodes_and_ancestors_in_both_engines() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    let path = f.temp.path().join("independent.json");
+    durable::write_json(&path, &json!({"status":"verified"})).unwrap();
+    let accepted = transition_manifest::independent_receipt(&f.config).unwrap();
+    assert_eq!(
+        accepted.1,
+        harbor_db::storage::codec::file_digest(&path).unwrap()
+    );
+    for (selected, mode) in [(path.as_path(), 0o620), (f.temp.path(), 0o770)] {
+        let previous = fs::metadata(selected).unwrap().permissions();
+        fs::set_permissions(selected, fs::Permissions::from_mode(mode)).unwrap();
+        assert!(transition_manifest::independent_receipt(&f.config).is_err());
+        assert!(python_transition_validation(&f.config).contains("storage"));
+        fs::set_permissions(selected, previous).unwrap();
+    }
+    let alias = f.temp.path().join("receipt-alias");
+    fs::hard_link(&path, &alias).unwrap();
+    assert!(transition_manifest::independent_receipt(&f.config).is_err());
+    assert!(python_transition_validation(&f.config).contains("protected coordinator-owned"));
+    fs::remove_file(&alias).unwrap();
+    fs::rename(&path, &alias).unwrap();
+    symlink(&alias, &path).unwrap();
+    assert!(transition_manifest::independent_receipt(&f.config).is_err());
+    assert!(python_transition_validation(&f.config).contains("redirected"));
+    assert!(!f.temp.path().join("authority/transition.json").exists());
+    assert!(!f.temp.path().join("barrier/lock").exists());
+}
+
+#[test]
 fn independent_receipts_cannot_alias_transition_control_storage_in_both_engines() {
     let mut f = Fixture::new();
     for suffix in [
@@ -141,6 +172,8 @@ fn independent_receipts_cannot_alias_transition_control_storage_in_both_engines(
         "authority/transition.json",
         "authority/lock",
         "authority/custody.json",
+        "authority/independent.json",
+        "authority/receipts/independent.json",
         "barrier/inhibited.json",
         "barrier/retired/inhibited.json",
         "barrier/lock",
@@ -178,8 +211,8 @@ fn independent_receipts_cannot_alias_transition_control_storage_in_both_engines(
     );
     assert!(python_transition_validation(&f.config).contains("receipt and transition control"));
     f.config["independent_receipt"] = json!(f.temp.path().join("authority/independent.json"));
-    transition_manifest::validate(&f.config).unwrap();
-    assert_eq!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+    assert!(transition_manifest::validate(&f.config).is_err());
+    assert!(python_transition_validation(&f.config).contains("receipt and transition control"));
 }
 
 #[test]

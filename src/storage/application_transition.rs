@@ -278,7 +278,7 @@ pub fn semantic(receipt: &Value, expected: &str) -> Result<()> {
 }
 pub fn evidence(config: &Value, record: &Value, leases: &[RawFd]) -> Result<(Value, String)> {
     let source = source_bytes(config, record, leases)?;
-    let receipt = durable::read_json(Path::new(string(config, "independent_receipt")?))?;
+    let (receipt, hash) = manifest::independent_receipt(config)?;
     if receipt["version"] != 1
         || receipt["status"] != "verified"
         || receipt["resource"] != config["resource"]
@@ -311,7 +311,6 @@ pub fn evidence(config: &Value, record: &Value, leases: &[RawFd]) -> Result<(Val
             "independent restoration is stale or from the future",
         ));
     }
-    let hash = codec::file_digest(Path::new(string(config, "independent_receipt")?))?;
     if !record["independent_sha256"].is_null() && record["independent_sha256"] != hash {
         return Err(invalid(
             "independent restore evidence changed during resume",

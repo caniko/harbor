@@ -58,6 +58,20 @@ in
     resultMessage = "Dedicated roles, peer mappings, provisioning order and conflict assertions are retained";
     assertions = [
       {
+        name = "provisioning-default-tracks-effective-primary-port";
+        message = "Unspecified provisioning endpoints must follow the local primary's effective default/nondefault port; an explicit endpoint remains selected.";
+        assertion = let
+          selected = (evaluate {services.postgresql.settings.port = 5544;}).config;
+          explicit = (evaluate {services.harbor-db.projects.demo.postgres.provision.port = 5545;}).config;
+          manifest = builtins.fromJSON (builtins.unsafeDiscardStringContext selected.environment.etc."harbor-db/demo-provision.json".source.text);
+        in
+          eval.config.services.harbor-db.projects.demo.postgres.provision.port
+          == 5432
+          && selected.services.harbor-db.projects.demo.postgres.provision.port == 5544
+          && manifest.endpoint.port == 5544
+          && explicit.services.harbor-db.projects.demo.postgres.provision.port == 5545;
+      }
+      {
         name = "database-peer-admission-terminates-before-permissive-global-rules";
         message = "Runtime/owner/control peer mappings must end in scoped local and network denial, including hosts with permissive global fallback.";
         assertion = let

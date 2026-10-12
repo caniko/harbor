@@ -151,7 +151,7 @@ impl Gate {
             "-h".into(),
             "/run/postgresql".into(),
             "-p".into(),
-            "5432".into(),
+            "5544".into(),
             "-v".into(),
             "ON_ERROR_STOP=1".into(),
             "-d".into(),

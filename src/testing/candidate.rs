@@ -34,7 +34,16 @@ pub fn retain(source: &Path, destination: &Path) -> Result<Candidate> {
             "candidate retention must be outside its checkout",
         ));
     }
-    let output = Command::new("git")
+    let mut git = Command::new("git");
+    // Git's repository, index and injected configuration selectors override
+    // current_dir. Retention must always inventory the explicitly chosen source.
+    for (name, _) in std::env::vars_os() {
+        use std::os::unix::ffi::OsStrExt;
+        if name.as_bytes().starts_with(b"GIT_") {
+            git.env_remove(name);
+        }
+    }
+    let output = git
         .args([
             "ls-files",
             "--cached",

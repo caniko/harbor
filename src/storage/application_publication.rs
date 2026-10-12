@@ -339,7 +339,7 @@ mod tests {
     {
         use serde_json::json;
         assert!(std::env::var_os("CREDENTIALS_DIRECTORY").is_none());
-        let user = std::env::var("USER").unwrap();
+        let user = super::super::login_shell::current_user().unwrap();
         let account = process::account(&user).unwrap();
         assert_ne!(account.uid, 0);
         let root = tempfile::tempdir().unwrap();

@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     os::{
         fd::RawFd,
         unix::fs::{DirBuilderExt, MetadataExt},
@@ -250,7 +251,38 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
     }
     validate_workers(config)?;
     custody_entry(config, &target)?;
+    owned_ancestors(receipt)?;
+    if receipt.exists() {
+        independent_receipt(config)?;
+    }
     Ok((source, target))
+}
+
+/// Root CLI evidence is imported into root-controlled storage, outside the
+/// application namespaces. Hash and decode the same admitted regular inode.
+pub fn independent_receipt(config: &Value) -> Result<(Value, String)> {
+    let path = Path::new(string(config, "independent_receipt")?);
+    super::recovery::absolute(path)?;
+    owned_ancestors(path)?;
+    let file = durable::open_regular(path, false)?;
+    let metadata = file.metadata()?;
+    if metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o022 != 0
+        || metadata.nlink() != 1
+    {
+        return Err(invalid(
+            "independent receipt requires protected coordinator-owned storage",
+        ));
+    }
+    const LIMIT: u64 = 16 * 1024 * 1024;
+    let mut bytes = Vec::new();
+    file.take(LIMIT + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(invalid(
+            "independent receipt exceeds the evidence byte limit",
+        ));
+    }
+    Ok((codec::decode(&bytes)?, codec::digest(&bytes)))
 }
 
 pub fn custody_entry(config: &Value, target: &Value) -> Result<Option<Value>> {
@@ -369,12 +401,7 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
     let receipt = Path::new(string(config, "independent_receipt")?);
     custody::validate_path(string(config, "independent_receipt")?)?;
     super::recovery::absolute(receipt)?;
-    let mut controls = vec![barrier.to_owned(), drop_in.to_owned()];
-    controls.extend(
-        ["identity.json", "transition.json", "lock", "custody.json"]
-            .iter()
-            .map(|name| authority.join(name)),
-    );
+    let mut controls = vec![barrier.to_owned(), drop_in.to_owned(), authority.to_owned()];
     if let Some(entry) = custody_entry(config, target)? {
         controls.push(PathBuf::from(string(&entry, "custody_file")?));
     }

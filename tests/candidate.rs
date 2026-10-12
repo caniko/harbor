@@ -3,6 +3,91 @@ use harbor_db::testing::candidate;
 use std::{fs, process::Command};
 
 #[test]
+fn candidate_inventory_ignores_ambient_repository_worktree_index_and_config_selection() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("selected");
+    let foreign = temp.path().join("foreign");
+    for path in [&source, &foreign] {
+        fs::create_dir(path).unwrap();
+        assert!(
+            Command::new("git")
+                .args(["init", "--quiet"])
+                .current_dir(path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        fs::write(path.join(".gitignore"), "tracked.rs\n").unwrap();
+    }
+    fs::write(source.join("tracked.rs"), "selected tracked source").unwrap();
+    fs::write(source.join("new.rs"), "selected untracked source").unwrap();
+    assert!(
+        Command::new("git")
+            .args(["add", "-f", "tracked.rs"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write(foreign.join("foreign.rs"), "foreign source").unwrap();
+    assert!(
+        Command::new("git")
+            .args(["add", "foreign.rs"])
+            .current_dir(&foreign)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let overrides = [
+        ("GIT_DIR", foreign.join(".git").display().to_string()),
+        ("GIT_WORK_TREE", foreign.display().to_string()),
+        (
+            "GIT_INDEX_FILE",
+            foreign.join(".git/index").display().to_string(),
+        ),
+        ("GIT_COMMON_DIR", foreign.join(".git").display().to_string()),
+        ("GIT_CONFIG_COUNT", "1".into()),
+        ("GIT_CONFIG_KEY_0", "core.worktree".into()),
+        ("GIT_CONFIG_VALUE_0", foreign.display().to_string()),
+    ];
+    for (index, selection) in [
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![3],
+        vec![4, 5, 6],
+        (0..7).collect(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let destination = temp.path().join(format!("retained-{index}"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_harbor-db-test"));
+        command.arg("retain").arg(&source).arg(&destination);
+        for selected in selection {
+            command.env(overrides[selected].0, &overrides[selected].1);
+        }
+        let result = command.output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let retained: candidate::Candidate = serde_json::from_slice(&result.stdout).unwrap();
+        candidate::verify(&retained).unwrap();
+        assert_eq!(
+            fs::read_to_string(retained.source.join("tracked.rs")).unwrap(),
+            "selected tracked source"
+        );
+        assert_eq!(
+            fs::read_to_string(retained.source.join("new.rs")).unwrap(),
+            "selected untracked source"
+        );
+        assert!(!retained.source.join("foreign.rs").exists());
+    }
+}
+
+#[test]
 fn candidate_retention_streams_large_tracked_and_untracked_files() {
     use std::{
         io::{Seek, SeekFrom, Write},

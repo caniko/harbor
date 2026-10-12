@@ -14,7 +14,7 @@ from pathlib import Path
 from . import application_backup, resource
 from .durable import immutable_store_reference, lock, read_json, sync_directory, write_json
 from .transition_manifest import (candidate_path, custody_entry, fence, generation, inspect_barriers, install_barriers,
-                                  intent, release_barriers, require_root, stop_units, validate, validate_operator_policy, worker, write_owned)
+                                  independent_receipt, intent, release_barriers, require_root, stop_units, validate, validate_operator_policy, worker, write_owned)
 
 
 def journal_path(config):
@@ -158,7 +158,7 @@ def semantic(receipt, expected):
 
 def evidence(config, record):
     source = source_bytes(config, record)
-    receipt = read_json(config["independent_receipt"])
+    receipt, current = independent_receipt(config)
     if (receipt["version"] != 1 or receipt["status"] != "verified" or receipt["resource"] != config["resource"]
             or receipt["source_acceptance_sha256"] != record["source_acceptance_sha256"]
             or receipt["semantic_sha256"] != source["semantic_sha256"]
@@ -170,7 +170,6 @@ def evidence(config, record):
     age = int(time.time()) - receipt["certified_at"]
     if not 0 <= age <= read_json(config["backup_manifest"])["maximum_age_seconds"]:
         raise ValueError("independent restoration is stale or from the future")
-    current = application_backup.digest(config["independent_receipt"])
     if record.get("independent_sha256") is not None and record["independent_sha256"] != current:
         raise ValueError("independent restore evidence changed during resume")
     return source, current

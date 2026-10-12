@@ -27,6 +27,7 @@
   orderingUnits = lib.unique (lib.concatLists orderingEdges);
   ordering = lib.toposort (before: after: lib.elem [before after] orderingEdges) orderingUnits;
   package = harborDbStoragePackage;
+  primaryPort = config.services.postgresql.settings.port;
   manifest = name: policy:
     pkgs.writeText "harbor-db-${name}-provision.json" (builtins.toJSON {
       version = 1;
@@ -87,7 +88,7 @@ in {
         };
         port = mkOption {
           type = types.port;
-          default = 5432;
+          default = primaryPort;
         };
         schemaUnits = mkOption {
           type = types.listOf unit;

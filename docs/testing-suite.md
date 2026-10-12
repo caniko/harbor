@@ -161,8 +161,13 @@ Observer restarts retain that property; the copied unwrapped binary therefore
 keeps the packaged wrapper or development shell's Nix tool lookup.
 
 Library `runner::create` without an executor retains its existing Python behavior;
-native/prerequisite argv cases then require explicit artifact producers. Other
-unregistered argv commands also need real semantic/JUnit evidence. A zero exit status with zero
+native/prerequisite argv cases then require explicit artifact producers.
+Retained source inventory always selects the requested checkout. The inventory
+Git subprocess clears inherited `GIT_*` repository, worktree, index and injected
+configuration selectors; foreign repositories or indexes cannot silently alter
+the retained edited, tracked or untracked source set.
+
+Other unregistered argv commands also need real semantic/JUnit evidence. A zero exit status with zero
 selected tests, missing required evidence, malformed evidence, a skipped required
 case, or a lost worker is not equivalent to accepted execution. Retained artifact
 hashes bind bytes that actually existed; optional expected hashes are not
