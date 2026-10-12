@@ -713,6 +713,35 @@ fn consumer_large_snapshots_use_bounded_worker_stdin_and_direct_certification_ke
         assert!(!result.status.success(), "{result:?}");
         assert!(start.elapsed() < Duration::from_secs(3));
         assert!(!f.state.join("identity.json").exists() && !f.state.join("custody.json").exists());
+        if python {
+            // Expansion and both explicit validations finish promptly; only
+            // the additional validator inside Python publication stalls.
+            fs::remove_file(&counter).unwrap();
+            let publication_code = code.replace("4 if n else 0", "4 if n >= 3 else 0");
+            manifest["resources"]["archive"]["authority"]["consumer_command"][3] =
+                json!(publication_code);
+            durable::write_json(&contract, &manifest).unwrap();
+            let start = Instant::now();
+            let result = output(
+                argv("certify-worker")
+                    .args([
+                        "--phase",
+                        "certify",
+                        "--worker",
+                        "archive",
+                        "--certify-identity",
+                        "retained",
+                        "--certify-roots",
+                    ])
+                    .arg(&f.restore),
+            );
+            assert!(!result.status.success(), "{result:?}");
+            assert!(start.elapsed() < Duration::from_secs(3));
+            assert_eq!(fs::read_to_string(&counter).unwrap(), "4");
+            assert!(
+                !f.state.join("identity.json").exists() && !f.state.join("custody.json").exists()
+            );
+        }
         // With a stable large contract and sufficient budget, the real parent
         // and child certify and check successfully; no JSON is passed in argv.
         let cat = std::env::split_paths(&std::env::var_os("PATH").unwrap())
@@ -745,6 +774,158 @@ fn consumer_large_snapshots_use_bounded_worker_stdin_and_direct_certification_ke
             "{}",
             String::from_utf8_lossy(&result.stderr)
         );
+    }
+}
+
+#[test]
+fn consumer_prepared_namespace_scan_retains_source_roots_with_target_identity_in_both_engines() {
+    use harbor_db::storage::{durable, resource, transition_manifest};
+    for python in [false, true] {
+        let f = Fixture::new();
+        let source = f.config["authority"].clone();
+        let mut target = source.clone();
+        target["directories"] = json!([f.restore]);
+        target["binding"] = json!({"backend":"target"});
+        resource::adopt(&source, "retained").unwrap();
+        let source_authority = durable::read_json(&f.state.join("identity.json")).unwrap();
+        let mut target_authority = resource::contract(&target).unwrap();
+        target_authority["identity"] = json!("retained");
+        durable::write_json(
+            &resource::anchor(&target, &f.restore).unwrap(),
+            &json!({"resource":"archive","identity":"retained"}),
+        )
+        .unwrap();
+        durable::write_json(&f.state.join("identity.json"), &target_authority).unwrap();
+        let base = f.temp.path();
+        for (name, value) in [
+            ("source.json", &source),
+            ("target.json", &target),
+            ("backup.json", &json!({"root":base.join("backup")})),
+        ] {
+            durable::write_json(&base.join(name), value).unwrap();
+        }
+        let executable = std::env::current_exe().unwrap();
+        let mut commands = json!({});
+        for stage in ["import", "verify-target", "verify-source", "health"] {
+            commands[stage] = json!({"user":f.config["user"],"argv":[executable]});
+        }
+        let selected = json!({"version":1,"resource":"archive","source_manifest":base.join("source.json"),"target_manifest":base.join("target.json"),
+            "barrier_dir":base.join("barrier"),"drop_in_root":base.join("systemd"),"systemctl":executable,"busctl":executable,
+            "units":["archive.service"],"retired_units":[],"timeout_seconds":10,"commands":commands,"executable_files":[],
+            "postgres_manifest":null,"postgres_socket":"/run/postgresql","postgres_port":5432,"custody_manifest":null,
+            "backup_manifest":base.join("backup.json"),"independent_receipt":base.join("independent.json"),
+            "storage_package":std::path::Path::new(env!("CARGO_BIN_EXE_harbor-db-application-backup")).parent().unwrap(),"runuser":executable});
+        let intent = transition_manifest::intent(&selected).unwrap();
+        durable::write_json(&base.join("transition.json"), &selected).unwrap();
+        durable::write_json(&f.state.join("transition.json"), &json!({"version":1,"intent":intent,"phase":"prepared","source_authority":source_authority,"target_authority":target_authority})).unwrap();
+        let mut manifest = f.manifest();
+        manifest["resources"]["archive"]["authority"] = target;
+        manifest["resources"]["archive"]["transition_manifest"] =
+            json!(base.join("transition.json"));
+        let alias = base.join("alias");
+        fs::create_dir(&alias).unwrap();
+        fs::hard_link(f.source.join("history"), alias.join("history")).unwrap();
+        if python {
+            let script = r#"import json,sys,time
+from harbor_db import cutover
+manifest,alias=map(json.loads,sys.argv[1:])
+contracts=cutover.validate_storage_namespaces(manifest)
+assert any(str(root).endswith('/source') for root,_ in cutover.namespace_roots(manifest,contracts=contracts))
+try: cutover.validate_restore_namespaces(manifest,[alias],contracts=contracts)
+except ValueError as error: assert 'alias shared storage' in str(error),str(error)
+else: raise AssertionError('prepared source namespace disappeared with target identity')
+"#;
+            let result = output(
+                std::process::Command::new("python3")
+                    .args([
+                        "-B",
+                        "-c",
+                        &python_store::script(script),
+                        &manifest.to_string(),
+                        &json!(alias).to_string(),
+                    ])
+                    .env(
+                        "PYTHONPATH",
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+            );
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        } else {
+            cutover::validate_storage_namespaces(&manifest).unwrap();
+            assert!(
+                cutover::validate_restore_namespaces(&manifest, &[alias])
+                    .unwrap_err()
+                    .to_string()
+                    .contains("alias shared storage")
+            );
+        }
+    }
+}
+
+#[test]
+fn consumer_aggregate_snapshot_rejects_during_collection_before_later_validators_in_both_engines() {
+    for python in [false, true] {
+        let f = Fixture::new();
+        let interpreter = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("python3"))
+            .find(|path| path.is_file())
+            .unwrap();
+        let counter = f.temp.path().join("calls");
+        let code = "import json,pathlib,sys;p=pathlib.Path(sys.argv[1]);n=int(p.read_text()) if p.exists() else 0;p.write_text(str(n+1));print(json.dumps({'binding':{'large':'x'*980000},'directories':[],'required_files':[]}))";
+        let mut manifest = f.manifest();
+        manifest["resources"] = json!({});
+        for n in 0..80 {
+            let mut entry = f.config.clone();
+            entry["authority"]["consumer_command"] =
+                json!([interpreter, "-B", "-c", code, counter]);
+            manifest["resources"][format!("r{n:02}")] = entry;
+        }
+        if python {
+            let script = r#"import json,sys,time
+from harbor_db import cutover
+try: cutover.namespace_contracts_until(json.loads(sys.argv[1]),time.monotonic()+60)
+except ValueError as error: assert 'aggregate size limit' in str(error),str(error)
+else: raise AssertionError('oversized aggregate snapshot admitted')
+"#;
+            let result = output(
+                std::process::Command::new(&interpreter)
+                    .args([
+                        "-B",
+                        "-c",
+                        &python_store::script(script),
+                        &manifest.to_string(),
+                    ])
+                    .env(
+                        "PYTHONPATH",
+                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                    ),
+            );
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        } else {
+            assert!(
+                cutover::namespace_contracts_until(
+                    &manifest,
+                    std::time::Instant::now() + std::time::Duration::from_secs(60)
+                )
+                .unwrap_err()
+                .to_string()
+                .contains("aggregate size limit")
+            );
+        }
+        let calls: usize = fs::read_to_string(counter).unwrap().parse().unwrap();
+        assert!(
+            (65..75).contains(&calls),
+            "all consumers executed despite aggregate limit: {calls}"
+        );
+        assert!(!f.state.join("identity.json").exists() && !f.state.join("custody.json").exists());
     }
 }
 

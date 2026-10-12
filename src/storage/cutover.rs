@@ -10,7 +10,7 @@ use super::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -129,15 +129,23 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
 
 pub fn namespace_contracts_until(manifest: &Value, deadline: Instant) -> Result<Value> {
     let mut contracts = serde_json::Map::new();
+    let mut encoded_bytes = 2; // Opening and closing object delimiters.
     for (name, entry) in manifest["resources"]
         .as_object()
         .ok_or_else(|| invalid("invalid cutover resources"))?
     {
         if entry["kind"] == "filesystem" {
-            contracts.insert(
-                name.clone(),
-                resource::contract_until(&entry["authority"], Some(deadline))?,
-            );
+            let contract = resource::contract_until(&entry["authority"], Some(deadline))?;
+            encoded_bytes += serde_json::to_vec(name)?.len()
+                + serde_json::to_vec(&contract)?.len()
+                + 1 // Key/value separator.
+                + usize::from(!contracts.is_empty());
+            if encoded_bytes > MAXIMUM_SNAPSHOT_BYTES {
+                return Err(invalid(
+                    "namespace consumer snapshot exceeds aggregate size limit",
+                ));
+            }
+            contracts.insert(name.clone(), contract);
         }
     }
     let contracts = Value::Object(contracts);
@@ -145,7 +153,11 @@ pub fn namespace_contracts_until(manifest: &Value, deadline: Instant) -> Result<
     Ok(contracts)
 }
 
-fn validate_namespace_contracts(manifest: &Value, contracts: &Value) -> Result<()> {
+fn validate_namespace_contracts(
+    manifest: &Value,
+    contracts: &Value,
+) -> Result<BTreeMap<String, BTreeSet<PathBuf>>> {
+    let mut roots = BTreeMap::new();
     for (name, entry) in manifest["resources"]
         .as_object()
         .ok_or_else(|| invalid("invalid cutover resources"))?
@@ -157,6 +169,8 @@ fn validate_namespace_contracts(manifest: &Value, contracts: &Value) -> Result<(
         let expected = contracts
             .get(name)
             .ok_or_else(|| invalid("namespace inspection is missing an authority contract"))?;
+        let directories = roots.entry(name.clone()).or_insert_with(BTreeSet::new);
+        directories.extend(custody::paths(expected, "directories")?);
         let state = Path::new(string(authority, "state_dir")?);
         if !state.join("identity.json").exists() {
             continue;
@@ -179,16 +193,23 @@ fn validate_namespace_contracts(manifest: &Value, contracts: &Value) -> Result<(
             } else {
                 return Err(invalid("namespace transition authority changed"));
             }
+            // Retain both recorded namespaces under the validation lease. A
+            // later mutable identity read must never select the scan's roots.
+            directories.extend(custody::paths(&record["source_authority"], "directories")?);
+            directories.extend(custody::paths(&record["target_authority"], "directories")?);
         } else {
             resource::require_stable(authority)?;
             resource::verify(authority, expected)?;
         }
     }
-    Ok(())
+    Ok(roots)
 }
 
 fn namespace_roots(manifest: &Value, contracts: Option<&Value>) -> Result<Vec<(PathBuf, bool)>> {
     let mut roots = Vec::new();
+    let validated = contracts
+        .map(|contracts| validate_namespace_contracts(manifest, contracts))
+        .transpose()?;
     for (name, entry) in manifest["resources"]
         .as_object()
         .ok_or_else(|| invalid("invalid cutover resources"))?
@@ -210,30 +231,16 @@ fn namespace_roots(manifest: &Value, contracts: Option<&Value>) -> Result<Vec<(P
             }
         } else {
             let authority = &entry["authority"];
-            let expected = if let Some(contracts) = contracts {
-                contracts
-                    .get(name)
-                    .filter(|contract| contract.is_object())
-                    .ok_or_else(|| invalid("namespace inspection is missing a consumer contract"))?
-            } else {
-                authority
-            };
             roots.push((
                 PathBuf::from(string(&entry["authority"], "state_dir")?),
                 false,
             ));
-            let mut directories: BTreeSet<_> = custody::paths(expected, "directories")?
-                .into_iter()
-                .collect();
-            if contracts.is_some() {
-                let identity = Path::new(string(authority, "state_dir")?).join("identity.json");
-                if identity.exists() {
-                    directories.extend(custody::paths(
-                        &durable::read_json(&identity)?,
-                        "directories",
-                    )?);
-                }
-            }
+            let directories = match &validated {
+                Some(validated) => validated[name].clone(),
+                None => custody::paths(authority, "directories")?
+                    .into_iter()
+                    .collect(),
+            };
             roots.extend(directories.into_iter().map(|path| (path, false)));
         }
     }
@@ -279,6 +286,13 @@ fn validate_restore_roots_with_contracts(
     contracts: &Value,
 ) -> Result<()> {
     let protected = namespace_roots(manifest, Some(contracts))?;
+    validate_restore_roots_against(restores, &protected)
+}
+
+fn validate_restore_roots_against(
+    restores: &[PathBuf],
+    protected: &[(PathBuf, bool)],
+) -> Result<()> {
     for restore in restores {
         validate_path(&restore.to_string_lossy())?;
         if protected
@@ -320,9 +334,8 @@ pub fn validate_restore_namespaces_with_contracts(
         Some(_) => return Err(invalid("invalid namespace consumer contracts")),
         None => namespace_contracts_until(manifest, deadline)?,
     };
-    validate_namespace_contracts(manifest, &contracts)?;
-    validate_restore_roots_with_contracts(manifest, restores, &contracts)?;
     let mut roots = namespace_roots(manifest, Some(&contracts))?;
+    validate_restore_roots_against(restores, &roots)?;
     roots.extend(restores.iter().cloned().map(|root| (root, false)));
     inspect_namespace_roots(roots, deadline)?;
     Ok(contracts)

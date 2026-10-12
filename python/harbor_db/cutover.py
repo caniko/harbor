@@ -68,14 +68,24 @@ def validate_manifest(value, host):
 
 
 def namespace_contracts_until(manifest, deadline):
-    contracts = {name: resource.contract(entry["authority"], deadline=deadline)
-            for name, entry in manifest["resources"].items()
-            if entry["kind"] == "filesystem"}
+    contracts = {}
+    encoded_bytes = 2
+    for name, entry in manifest["resources"].items():
+        if entry["kind"] != "filesystem":
+            continue
+        contract = resource.contract(entry["authority"], deadline=deadline)
+        encoded_bytes += (len(json.dumps(name).encode())
+                          + len(json.dumps(contract).encode())
+                          + 2 + 2 * bool(contracts))
+        if encoded_bytes > MAXIMUM_SNAPSHOT_BYTES:
+            raise ValueError("namespace consumer snapshot exceeds aggregate size limit")
+        contracts[name] = contract
     validate_namespace_contracts(manifest, contracts)
     return contracts
 
 
 def validate_namespace_contracts(manifest, contracts):
+    roots = {}
     for name, entry in manifest["resources"].items():
         if entry["kind"] != "filesystem":
             continue
@@ -83,6 +93,7 @@ def validate_namespace_contracts(manifest, contracts):
         expected = contracts.get(name)
         if not isinstance(expected, dict):
             raise ValueError("namespace inspection is missing a consumer contract")
+        directories = roots[name] = set(expected['directories'])
         state = Path(authority["state_dir"])
         if not (state / 'identity.json').exists():
             continue
@@ -103,13 +114,18 @@ def validate_namespace_contracts(manifest, contracts):
                     resource.verify(source, record['source_authority'])
                 else:
                     raise ValueError('namespace transition authority changed')
+                # Capture the complete transition union while the lease is held.
+                directories.update(record['source_authority']['directories'])
+                directories.update(record['target_authority']['directories'])
             else:
                 resource.require_stable(authority)
                 resource.verify(authority, expected)
+    return roots
 
 
 def namespace_roots(manifest, *, contracts=None):
     roots = []
+    validated = validate_namespace_contracts(manifest, contracts) if contracts is not None else None
     for name, entry in manifest["resources"].items():
         if entry["kind"] == "postgres":
             database = read_json(entry["config"])
@@ -124,15 +140,7 @@ def namespace_roots(manifest, *, contracts=None):
                 roots.append((Path(startup["state_dir"]), False))
         else:
             authority = entry["authority"]
-            expected = authority
-            if contracts is not None:
-                expected = contracts.get(name)
-                if not isinstance(expected, dict):
-                    raise ValueError("namespace inspection is missing a consumer contract")
-            directories = set(expected['directories'])
-            identity = Path(authority['state_dir']) / 'identity.json'
-            if contracts is not None and identity.exists():
-                directories.update(read_json(identity)['directories'])
+            directories = validated[name] if validated is not None else set(authority['directories'])
             roots.extend((Path(path), False) for path in [authority["state_dir"], *sorted(directories)])
     return roots
 
@@ -152,6 +160,10 @@ def validate_restore_roots(manifest, restores, *, contracts=None, deadline=None)
     if contracts is None:
         contracts = namespace_contracts_until(manifest, deadline)
     protected = namespace_roots(manifest, contracts=contracts)
+    validate_restore_roots_against(restores, protected)
+
+
+def validate_restore_roots_against(restores, protected):
     for restore in restores:
         validate_path(str(restore))
         restore = Path(restore)
@@ -166,9 +178,9 @@ def validate_restore_namespaces(manifest, restores, *, contracts=None, deadline=
         contracts = namespace_contracts_until(manifest, deadline)
     if not isinstance(contracts, dict):
         raise ValueError("invalid namespace consumer contracts")
-    validate_namespace_contracts(manifest, contracts)
-    validate_restore_roots(manifest, restores, contracts=contracts, deadline=deadline)
-    inspect_namespace_roots(namespace_roots(manifest, contracts=contracts) + [(Path(root), False) for root in restores], deadline)
+    roots = namespace_roots(manifest, contracts=contracts)
+    validate_restore_roots_against(restores, roots)
+    inspect_namespace_roots(roots + [(Path(root), False) for root in restores], deadline)
     return contracts
 
 
@@ -369,7 +381,7 @@ def certify_filesystem(config, restored_roots, identifier, *, now=None, database
         raise ValueError("restore roots must be independent absolute corpus directories")
     if config.get("database_resource") and not database_snapshot:
         raise ValueError("filesystem certification needs matching database recovery evidence")
-    with resource.adoption(authority, identifier, expected=expected) as publish:
+    with resource.adoption(authority, identifier, expected=expected, deadline=deadline) as publish:
         if any(writer_active(unit) for unit in config["runtime_units"]):
             raise ValueError("source writer is active; establish the declared consistency window")
         identities = root_identities(config)

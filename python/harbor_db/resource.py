@@ -205,7 +205,7 @@ def adopt(config, identifier):
 
 
 @contextlib.contextmanager
-def adoption(config, identifier, *, expected=None):
+def adoption(config, identifier, *, expected=None, deadline=None):
     """Keep writers excluded through independent proof and authority publication."""
     if not identifier or len(identifier) > 128:
         raise AuthorityError("a verified nonempty storage identifier is required")
@@ -213,13 +213,13 @@ def adoption(config, identifier, *, expected=None):
     # A registered resource must retain its original lock inode, even if a
     # writer still holds that inode after its pathname has disappeared.
     with lock(state / "lock", create=not (state / "identity.json").exists()):
-        yield lambda: publish_adoption(config, identifier, expected=expected)
+        yield lambda: publish_adoption(config, identifier, expected=expected, deadline=deadline)
 
 
-def publish_adoption(config, identifier, *, expected=None):
+def publish_adoption(config, identifier, *, expected=None, deadline=None):
     """Called only by the publisher yielded under the existing adoption lease."""
     state = state_directory(config)
-    observed = contract(config)
+    observed = contract(config, deadline=deadline)
     if expected is not None and observed != expected:
         raise AuthorityError("consumer authority changed during custody certification")
     expected = observed if expected is None else expected
