@@ -19,6 +19,11 @@ Bun 1.4.2 linker races on the shared `react-is` alias and an ESLint peer binary;
 `normalize-links.ts` binds the alias to the unaliased frozen-lock entry and
 recreates the binary from its already-resolved peer manifest. Package payloads,
 workspace links, and version-specific dependency links retain their contents.
+The archive stores regular-file bytes independently of Bun's filesystem-dependent
+hardlink sharing and uses numeric owners. Symbolic workspace and dependency links
+remain intact. Backend qualification compares the logical graph and archive bytes
+across hardlink and copyfile installs; both independent cold installs must still
+agree inside the fixed-output derivation.
 The offline build extracts the archive, patches
 shebangs, builds packages and native assets, and runs real CanvasKit export
 regressions. Missing remote fonts in those tests are simulated at the font-fetch

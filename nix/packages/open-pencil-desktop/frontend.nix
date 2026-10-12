@@ -33,8 +33,12 @@
           if [ "$attempt" = 1 ]; then
             bun ${./audit-dependencies.ts}
           fi
+          # Bun's backend can share regular-file inodes differently across
+          # filesystems. Store their bytes independently; workspace/dependency
+          # symlinks remain links. Avoid host passwd/group names in headers.
           find . -type d -name node_modules -prune -print0 | sort -z |
-            tar --null -T - --sort=name --mtime=@1 --owner=0 --group=0 -cf "$TMPDIR/modules-$attempt.tar"
+            tar --null -T - --sort=name --mtime=@1 --owner=0 --group=0 \
+              --numeric-owner --hard-dereference -cf "$TMPDIR/modules-$attempt.tar"
           if [ "$attempt" = 1 ]; then
             printf 'DEPENDENCY_ARCHIVE '
             sha256sum "$TMPDIR/modules-$attempt.tar"
@@ -50,7 +54,7 @@
     '';
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-yqFohcUKXZUc7MzneSW2OVTULAmvm/FQr0ZPQELCXQs=";
+    outputHash = "sha256-Dc91Uci/Wr5ZJS/rudvljjcFec7LZTmpH/czRaxw9kk=";
   };
 in
   stdenvNoCC.mkDerivation {
