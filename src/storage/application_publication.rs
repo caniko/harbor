@@ -1,5 +1,5 @@
 //! Privileged publication copies worker-owned bytes onto protected fresh inodes.
-use super::{Result, durable, invalid, process};
+use super::{Result, invalid, process};
 use std::{
     collections::VecDeque,
     ffi::CString,
@@ -33,7 +33,9 @@ fn credential_source(path: &Path) -> Result<File> {
         .skip(1)
         .map(|part| part.as_os_str().to_owned())
         .collect();
-    let root_uid = durable::root_owner_uid()?;
+    // Credentials are runtime files. Immutable Nix input UID remapping applies
+    // to store fixtures only; credential sources must belong to real root.
+    let root_uid = 0;
     let mut links = 0;
     while let Some(name) = pending.pop_front() {
         let parent = current.metadata()?;
@@ -84,6 +86,8 @@ fn credential_source(path: &Path) -> Result<File> {
             if target.is_absolute() {
                 current = root()?;
             }
+            // Relative targets keep the admitted parent descriptor. The
+            // selected O_PATH symlink is used only for readlinkat, not openat.
             let mut parts: VecDeque<_> = target
                 .components()
                 .filter(|part| !matches!(part, std::path::Component::RootDir))
@@ -333,6 +337,94 @@ pub(super) fn reader_permissions(path: &Path, gid: u32) -> Result<()> {
 mod tests {
     use super::*;
     use std::io::{Seek, SeekFrom, Write};
+
+    #[test]
+    fn relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines() {
+        if std::env::var_os("HARBOR_CREDENTIAL_ALIAS_CHILD").is_none() {
+            let root = tempfile::tempdir().unwrap();
+            fs::create_dir_all(root.path().join("nix/store")).unwrap();
+            fs::create_dir(root.path().join("proc")).unwrap();
+            fs::create_dir(root.path().join("dev")).unwrap();
+            fs::create_dir(root.path().join("run")).unwrap();
+            fs::create_dir(root.path().join("python")).unwrap();
+            fs::copy(
+                std::env::current_exe().unwrap(),
+                root.path().join("fixture"),
+            )
+            .unwrap();
+            let result = std::process::Command::new("unshare")
+                .args(["--user", "--map-root-user", "--mount", "--", "sh", "-ec"])
+                .arg("mount --bind /nix/store \"$1/nix/store\"; mount --rbind /proc \"$1/proc\"; mount --rbind /dev \"$1/dev\"; mount --bind \"$2\" \"$1/python\"; exec chroot \"$1\" /fixture --exact storage::application_publication::tests::relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines --nocapture")
+                .arg("credential-alias-fixture")
+                .arg(root.path())
+                .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("python"))
+                .env("HARBOR_CREDENTIAL_ALIAS_CHILD", "1")
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}{}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+            return;
+        }
+        assert_eq!(unsafe { libc::geteuid() }, 0);
+        let root = tempfile::tempdir_in("/run").unwrap();
+        let secret = root.path().join("secret.d");
+        fs::create_dir(&secret).unwrap();
+        fs::write(secret.join("token"), b"original credential").unwrap();
+        for (target, alias) in [
+            ("secret.d", "directory-alias"),
+            ("directory-alias/token", "token-source"),
+            ("token-source", "token-alias"),
+            ("../token-alias", "secret.d/parent-alias"),
+        ] {
+            std::os::unix::fs::symlink(target, root.path().join(alias)).unwrap();
+        }
+        let alias = secret.join("parent-alias");
+        let mut opened = credential_source(&alias).unwrap();
+        let original = fs::metadata(secret.join("token")).unwrap();
+        assert_eq!(
+            (
+                opened.metadata().unwrap().dev(),
+                opened.metadata().unwrap().ino()
+            ),
+            (original.dev(), original.ino())
+        );
+        let script = r#"import os,sys
+from pathlib import Path
+from harbor_db.application_publication import credential_source
+root=Path(sys.argv[1]); alias=root/'secret.d/parent-alias'
+with credential_source(alias) as stream:
+    assert stream.read()==b'original credential'
+    stream.seek(0)
+    (root/'secret.d/token').rename(root/'secret.d/retained')
+    (root/'secret.d/token').write_bytes(b'replacement credential')
+    assert stream.read()==b'original credential'
+with credential_source(alias) as stream: assert stream.read()==b'replacement credential'
+"#;
+        let result = std::process::Command::new("python3")
+            .args(["-B", "-c", script])
+            .arg(root.path())
+            .env("PYTHONPATH", "/python")
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let mut bytes = Vec::new();
+        opened.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"original credential");
+        bytes.clear();
+        credential_source(&alias)
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"replacement credential");
+    }
 
     #[test]
     fn worker_credentials_reject_untrusted_sources_before_creating_private_copies_in_both_engines()

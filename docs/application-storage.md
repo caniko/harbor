@@ -213,6 +213,10 @@ must not be group- or other-writable. Untrusted aliases, writable ancestor paths
 special files and oversized sources reject before attempt-state mutation. The
 opened source inode is retained through the private copy. Credential contents are
 never serialized into the policy or acceptance evidence.
+Relative aliases resolve from their pinned parent directory, including directory
+aliases and `..` targets; absolute aliases restart at the filesystem root. Runtime
+credential ownership always requires UID 0, independently of the testing-only
+ownership view used for immutable Nix input fixtures.
 
 Arguments equal to `{backup}` and `{workspace}` are substituted as single argv
 elements, without a shell. Capture creates a new directory and writes all artifacts,

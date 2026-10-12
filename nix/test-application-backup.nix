@@ -147,8 +147,8 @@ in
       machine.wait_until_succeeds("test -S /run/backup-fd/socket")
       machine.succeed("install -d -m 0700 /run/python-backup-credentials; install -m 0400 /etc/backup-fixture-token /run/python-backup-credentials/token")
       points = []
-      machine.succeed("install -d -m 0700 /run/credential-trust; ln -s /etc/backup-fixture-token /run/credential-trust/token-source; ln -s token-source /run/credential-trust/token-alias")
-      machine.succeed("python3 -c 'import json; p=json.load(open(\"/etc/harbor-db/demo-backup.json\")); p[\"credentials\"]={\"token\":\"/run/credential-trust/token-alias\"}; json.dump(p,open(\"/run/forced-backup-policy.json\",\"w\"))'")
+      machine.succeed("install -d -m 0700 /run/credential-trust/secret.d; install -m 0400 /etc/backup-fixture-token /run/credential-trust/secret.d/token; ln -s secret.d /run/credential-trust/directory-alias; ln -s directory-alias/token /run/credential-trust/token-source; ln -s token-source /run/credential-trust/token-alias; ln -s ../token-alias /run/credential-trust/secret.d/parent-alias")
+      machine.succeed("python3 -c 'import json; p=json.load(open(\"/etc/harbor-db/demo-backup.json\")); p[\"credentials\"]={\"token\":\"/run/credential-trust/secret.d/parent-alias\"}; json.dump(p,open(\"/run/forced-backup-policy.json\",\"w\"))'")
       for capture in ["systemctl start harbor-db-demo-backup.service", "CREDENTIALS_DIRECTORY=/run/python-backup-credentials ${pythonPeer}/bin/harbor-db-application-backup --config $(readlink -f /etc/harbor-db/demo-backup.json) capture --attempt python-peer", "harbor-db-application-backup --config /run/forced-backup-policy.json capture --attempt native-forced", "${pythonPeer}/bin/harbor-db-application-backup --config /run/forced-backup-policy.json capture --attempt python-forced"]:
           machine.succeed(capture)
           point = machine.succeed("python3 -c 'import json; print(json.load(open(\"/var/lib/demo-backup/LAST_SUCCESS\"))[\"attempt\"])'").strip()

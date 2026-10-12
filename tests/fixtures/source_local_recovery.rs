@@ -545,6 +545,40 @@ fn run(args: Args) -> Result<()> {
     )?;
     g.shell("certifier", format!("test \"$({remote_sql} -c {})\" = t; sha256sum -c /run/restored-auto.sha256", q(&format!("SELECT pg_last_wal_replay_lsn() >= '{target}'::pg_lsn AND current_setting('default_transaction_read_only')='on'"))), true, "actual-replay-target-read-only-and-auto-config-preserved")?;
     g.align("certifier", "primary", "certifier-clock-aligned")?;
+    let writable_restore = restore
+        .replace("/srv/recovered", "/srv/writable-recovered")
+        .replace("/srv/recovery-socket", "/srv/writable-recovery-socket")
+        .replace("port = 55432", "port = 55433")
+        .replace(
+            "default_transaction_read_only = on",
+            "default_transaction_read_only = off",
+        );
+    g.shell("certifier", format!("install -d -m 0700 -o postgres -g postgres /srv/writable-recovered /srv/writable-recovery-socket; cp -a {ROOT}/base/{} /srv/writable-recovered/18; cp -p /srv/recovered/private-*.conf /srv/writable-recovered/; printf '%s' {} > /srv/writable-recovered/18/postgresql.conf; touch /srv/writable-recovered/18/recovery.signal; chown postgres:postgres /srv/writable-recovered/18/postgresql.conf /srv/writable-recovered/18/recovery.signal; runuser -u postgres -- {}/bin/pg_ctl -D /srv/writable-recovered/18 -l /srv/writable-recovered/server.log -t 60 -w start", q(&backup), q(&writable_restore), q(&c.postgres_package)), true, "disposable-writable-negative-replay-started")?;
+    g.wait("certifier", &format!("test \"$(runuser -u postgres -- {}/bin/psql -Xw -h /srv/writable-recovery-socket -p 55433 -Atq -d postgres -c {})\" = t", q(&c.postgres_package), q(&format!("SELECT NOT pg_is_in_recovery() AND pg_last_wal_replay_lsn() >= '{target}'::pg_lsn AND current_setting('default_transaction_read_only')='off'"))), "disposable-writable-negative-replay-complete")?;
+    for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
+        let rejected = g.shell("certifier", format!("runuser -u postgres -- {}/bin/harbor-db-postgres --config {CONFIG} certify-recovery --data-dir /srv/writable-recovered/18 --socket-dir /srv/writable-recovery-socket --port 55433 2>&1", q(package)), false, &format!("{engine}-writable-disposable-recovery-rejected"))?;
+        g.check(
+            rejected.contains("not the declared disposable read-only recovery"),
+            &format!("{engine}-unmodified-endpoint-default-observed"),
+        )?;
+        g.shell(
+            "certifier",
+            format!(
+                "test ! -e {ROOT}/evidence/receipt.json; test ! -e {ROOT}/evidence/off-host.json"
+            ),
+            true,
+            &format!("{engine}-writable-rejection-publishes-no-receipt"),
+        )?;
+    }
+    g.shell(
+        "certifier",
+        format!(
+            "runuser -u postgres -- {}/bin/pg_ctl -D /srv/writable-recovered/18 -w stop",
+            q(&c.postgres_package)
+        ),
+        true,
+        "disposable-writable-negative-endpoint-stopped",
+    )?;
     let receipt: Value = serde_json::from_str(&g.shell("certifier", format!("{pg} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432"), true, "native-independent-certification")?)?;
     g.check(
         receipt["executor_host"] == remote_host

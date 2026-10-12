@@ -63,6 +63,8 @@ def credential_source(path):
                         replacement = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
                         os.close(current)
                         current = replacement
+                    # A relative target keeps current at the admitted parent;
+                    # selected is only the pinned symlink for readlink.
                     pending.extendleft(reversed(target.parts[1:] if target.is_absolute() else target.parts))
                 else:
                     os.close(current)

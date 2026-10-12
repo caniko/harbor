@@ -31,6 +31,10 @@ senders: the continuous receiver holds one slot/sender while a streaming base
 backup uses the second slot and two concurrent connections. Evaluation checks
 both `sourceSettings` and the effective PostgreSQL settings, so an override
 cannot silently reduce this capacity.
+The effective `services.postgresql.settings.wal_level` must be `replica` or
+`logical`. `minimal` cannot produce streaming physical recovery and PostgreSQL
+will not start with nonzero WAL senders; source-local evaluation rejects it even
+when selected by an explicit PostgreSQL override.
 Every enabled WAL-receiver and base-backup slot name must contain 1–63 lowercase
 ASCII letters, digits or underscores. Names are validated before producer
 services are admitted, including for independent targets. The length bound

@@ -167,6 +167,35 @@ in
     '';
     assertions = [
       {
+        name = "source-local-recovery-requires-effective-replication-wal-level";
+        message = "Source-local streaming recovery requires effective replica or logical WAL; unsafe declared defaults and effective overrides reject before primary activation.";
+        assertion = let
+          accepted = enabled: declared: effective: let
+            selected =
+              (localEval.extendModules {
+                modules = [
+                  {
+                    services.harbor-db.pgBackup = {
+                      sourceSettings.walLevel = lib.mkForce declared;
+                      targetSettings.sourceLocalRecovery.enable = lib.mkForce enabled;
+                    };
+                    services.postgresql.settings = effective;
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "sourceLocalRecovery requires effective wal_level" a.message) selected.assertions;
+        in
+          accepted true "replica" {}
+          && accepted true "logical" {}
+          && !accepted true "minimal" {}
+          && !accepted true "replica" {wal_level = lib.mkForce "minimal";}
+          && !accepted true "logical" {wal_level = lib.mkForce "minimal";}
+          && accepted true "minimal" {wal_level = lib.mkForce "replica";}
+          && accepted true "minimal" {wal_level = lib.mkForce "logical";}
+          && accepted false "minimal" {};
+      }
+      {
         name = "source-local-port-matches-effective-primary";
         message = "Source-local producer ports must match the effective local primary; independent remote targets retain distinct ports.";
         assertion = let

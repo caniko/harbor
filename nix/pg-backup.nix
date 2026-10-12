@@ -452,6 +452,10 @@ in {
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires at least two replication slots and three WAL senders, including effective PostgreSQL settings.";
           }
           {
+            assertion = !cfg.targetSettings.sourceLocalRecovery.enable || lib.elem config.services.postgresql.settings.wal_level ["replica" "logical"];
+            message = "services.harbor-db.pgBackup sourceLocalRecovery requires effective wal_level=replica or logical for streaming replication and physical recovery.";
+          }
+          {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || !(config.services.harbor-db.postgresql.enable or false) || lib.elem "replicator" config.services.harbor-db.postgresql.writerFence.replicationRoles;
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires replicator in the writer-fence replication roles.";
           }

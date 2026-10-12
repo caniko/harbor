@@ -736,6 +736,11 @@ fn native_postmaster_retains_main_pid_lease_and_logical_restore_is_private() {
                     .map_err(|e| e.to_string())
             }
         };
+        assert_eq!(
+            query("SELECT current_setting('default_transaction_read_only'),current_setting('transaction_read_only')").unwrap(),
+            "off|on\n",
+            "native={native}: recovery inspection must observe the endpoint default while keeping its validation transaction read-only"
+        );
         for statement in attacks {
             let rejected = query(statement).is_err();
             let mut inspect = endpoint.clone();

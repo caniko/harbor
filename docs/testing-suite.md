@@ -501,3 +501,13 @@ Startup-barrier ancestry checks use that same filesystem ownership view; process
 privilege checks still require effective UID 0. The transition compatibility
 helper maps only this fixture UID back to root in Python's `lstat` observations,
 leaving the retained Python validation logic and all journal bytes intact.
+Runtime credential sources always require real UID 0. A private user/mount/chroot
+fixture tests both credential readers against root-controlled relative aliases
+and retained inodes after pathname replacement.
+
+Cargo checks first require a working private user/mount namespace. On AArch64
+under QEMU user emulation, `unshare` returns `EINVAL`; only namespace and mount
+operations then use pinned x86_64 kernel-native util-linux tools. The lifecycle
+executables remain AArch64, and real bind-mount rejection assertions still run.
+The namespace probe must pass with the selected substrate before testing; an
+unavailable substrate fails qualification.

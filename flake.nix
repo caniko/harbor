@@ -223,6 +223,20 @@
           '';
           preCheck = ''
             export HARBOR_DB_TEST_TMPDIR="$TMPDIR"
+            namespaceTools=${pkgs.util-linux}/bin
+            if ! "$namespaceTools/unshare" --user --map-root-user --mount -- true 2>namespace-probe.log; then
+              ${pkgs.lib.optionalString (pkgs.system == "aarch64-linux") ''
+              # QEMU user emulation returns EINVAL for unshare. Keep the
+              # AArch64 lifecycle binaries under test, and perform host
+              # namespace/mount syscalls with pinned kernel-native tools.
+              if grep -q 'unshare failed: Invalid argument' namespace-probe.log; then
+                namespaceTools=${nixpkgs.legacyPackages.x86_64-linux.util-linux}/bin
+              fi
+            ''}
+              "$namespaceTools/unshare" --user --map-root-user --mount -- true
+            fi
+            export PATH="$namespaceTools:$PATH"
+            echo "Harbor namespace substrate: $namespaceTools (lifecycle executables remain ${pkgs.system})"
           '';
         };
       inherit (commonArgs) src;

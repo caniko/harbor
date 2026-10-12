@@ -424,7 +424,9 @@ pub(super) fn query_argv(
     // The explicit connection string carries only the escaped database name and
     // fixed session settings; inherited libpq routing/options remain scrubbed.
     let database = database.replace('\\', "\\\\").replace('\'', "\\'");
-    let mut options = "-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex -c standard_conforming_strings=on -c default_transaction_read_only=on".to_owned();
+    // Preserve the endpoint's transaction default for recovery admission.
+    // PREPARE only parses the selected statement; EXECUTE remains READ ONLY.
+    let mut options = "-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex -c standard_conforming_strings=on".to_owned();
     if let Some(seconds) = statement_timeout_seconds {
         options.push_str(&format!(" -c statement_timeout={seconds}s"));
     }

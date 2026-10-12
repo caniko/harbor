@@ -538,7 +538,28 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines", "credential_sources_require_bounded_names_and_runtime_paths_in_both_engines", "worker_credentials_reject_untrusted_sources_before_creating_private_copies_in_both_engines"]
+selectors = ["sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines", "sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines", "credential_sources_require_bounded_names_and_runtime_paths_in_both_engines", "worker_credentials_reject_untrusted_sources_before_creating_private_copies_in_both_engines", "relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines"]
+
+[[coverage]]
+case = "native.application-publication.storage::application_publication::tests::relative_credential_aliases_preserve_parent_and_pinned_inode_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "compatibility"
+evidence = "Both real readers traverse root-controlled relative directory, multi-hop and parent-relative aliases in a private user/mount/chroot namespace. Opened streams retain the original credential inode and bytes after the final pathname is replaced; fresh opens read the replacement. The root CLI VM also captures through that mixed alias chain in both engines. A review-described symlink-descriptor mutant fails the focused regression."
+
+[[coverage]]
+case = "native.postgres_storage.native_postmaster_retains_main_pid_lease_and_logical_restore_is_private"
+capability = "postgres"
+operation = "harbor-db-postgres.certify-recovery"
+dimension = "rejection"
+evidence = "Real PostgreSQL queries in both engines observe default_transaction_read_only=off on an unmodified writable endpoint while transaction_read_only=on protects their explicit validation transaction. Existing statement-injection and DML rejections preserve the record corpus. The independent source-local VM rejects actual writable disposable restores in both engines without receipt publication, then certifies the separately replayed read-only endpoint."
+
+[[coverage]]
+case = "nix.x86_64-linux.pg-backup-eval"
+capability = "nixos"
+operation = "nixos.pg-backup"
+dimension = "rejection"
+evidence = "Source-local recovery rejects declared minimal WAL and effective minimal overrides independently of sender/slot capacity; effective replica/logical overrides remain accepted, including over a minimal module default. The gate is scoped to enabled source-local recovery."
 
 [[inventories]]
 origin = "rust"

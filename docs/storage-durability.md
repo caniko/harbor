@@ -167,8 +167,12 @@ before executing any part of the input. The SQL `PREPARE` grammar also excludes
 transaction control, `CALL`, `DO` and client meta-commands. Modifying queries are
 rejected by the read-only transaction. Quoted semicolons, comments and escaped
 strings are parsed by PostgreSQL itself. A fixed, explicitly escaped connection
-string pins timezone, date/bytea formatting, standard string quoting and a read-only
-session default before parsing, so typed SQL literals have consistent semantics; inherited
+string pins timezone, date/bytea formatting and standard string quoting before
+parsing, so typed SQL literals have consistent semantics. It preserves the
+endpoint's `default_transaction_read_only` setting for certification admission;
+only the explicit validation transaction is forced read-only. A disposable
+endpoint whose unmodified session default is writable rejects certification
+before receipt publication. Inherited
 libpq routing/options stay scrubbed. Checks require `psql` 16 or newer; older
 clients fail admission rather than falling back to simple-query execution.
 Custody queries retain the existing `postgres` worker identity, scrubbed worker

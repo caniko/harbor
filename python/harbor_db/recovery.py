@@ -171,7 +171,9 @@ def query_argv(config, socket_dir, port, database, sql, *, statement_timeout_sec
         raise ValueError("recovery queries require a local Unix socket and valid port")
     database = database.replace("\\", "\\\\").replace("'", "\\'")
     options = ("-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex "
-               "-c standard_conforming_strings=on -c default_transaction_read_only=on")
+               "-c standard_conforming_strings=on")
+    # Keep the endpoint default observable; only the validation transaction is
+    # forced read-only. PREPARE does not execute the selected statement.
     if statement_timeout_seconds is not None:
         options += f" -c statement_timeout={statement_timeout_seconds}s"
     # \bind forces a single-statement extended-protocol Parse. PREPARE accepts
