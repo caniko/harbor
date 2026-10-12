@@ -74,7 +74,7 @@ pub fn fresh(timestamp: &Value, now: i64, max_age: i64) -> Result<()> {
     Ok(())
 }
 pub fn policy(config: &Value) -> Result<&Value> {
-    policy_for_executor(config, None)
+    policy_for_executor(config, false)
 }
 
 fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool) -> Result<()> {
@@ -173,7 +173,7 @@ fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool)
     Ok(())
 }
 
-fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> Result<&'a Value> {
+fn policy_for_executor(config: &Value, certifier: bool) -> Result<&Value> {
     let settings = config
         .get("recovery")
         .filter(|v| v.is_object())
@@ -189,17 +189,12 @@ fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> R
         ));
     }
     let snapshot = string(settings, "snapshot_file")?;
-    // Only an independently identified certifier may select its off-host output
-    // directly. Local capture, import and recovery admission require two paths.
-    let independent = certifier_host.is_some_and(|host| {
-        !host.is_empty()
-            && settings["source_hostname"]
-                .as_str()
-                .is_some_and(|source| !source.is_empty() && source != host)
-    });
+    // Certification may select its off-host output directly. It must prove
+    // machine independence against the pinned source before querying a restore
+    // or publishing anything. Capture/import/admission require distinct paths.
     if settings["off_host_receipt_file"]
         .as_str()
-        .is_some_and(|remote| settings["receipt_file"].as_str() == Some(remote) && !independent)
+        .is_some_and(|remote| settings["receipt_file"].as_str() == Some(remote) && !certifier)
     {
         return Err(invalid(
             "local and off-host recovery receipts must be distinct",
@@ -583,7 +578,9 @@ fn validate_capture_source(
             return Err(invalid("record snapshot is for a different backup"));
         }
         selected.validate_snapshot(source["writer_fence_token"].as_str(), &source["records"])?;
-        if source["completed_at"] != selected.metadata()["completed_at"] {
+        if source["completed_at"] != selected.metadata()["completed_at"]
+            || source["source_machine_sha256"] != selected.metadata()["source_machine_sha256"]
+        {
             return Err(invalid(
                 "source-local snapshot completion differs from its immutable capture",
             ));
@@ -709,11 +706,17 @@ pub fn snapshot_leased(
     let mut result = result(&binding)?;
     result["completed_at"] = json!(now);
     result["record_contract_sha256"] = json!(contract(settings)?);
+    result["source_machine_sha256"] = json!(super::application_backup::machine()?);
     result["records"] = records(config, settings, socket, port, &leases)?;
     if let Some(binding) = &fence.binding {
         result["writer_fence_token"] = binding["token"].clone();
     }
     if let Some(selected) = selected {
+        if selected.metadata()["source_machine_sha256"] != result["source_machine_sha256"] {
+            return Err(invalid(
+                "source-local snapshot machine differs from its immutable capture",
+            ));
+        }
         selected.validate_snapshot(result["writer_fence_token"].as_str(), &result["records"])?;
         return snapshot_evidence(config, settings, &binding, now);
     }
@@ -830,7 +833,8 @@ pub fn certify(
         Some(host) => host.to_owned(),
         None => hostname()?,
     };
-    let settings = policy_for_executor(config, Some(&executor))?;
+    let settings = policy_for_executor(config, true)?;
+    let executor_machine = super::application_backup::machine()?;
     let now = clock(now)?;
     let restored = absolute(data)?;
     if restored == absolute(&path(config, "data_dir")?)? {
@@ -848,6 +852,12 @@ pub fn certify(
     )?;
     let source = snapshot_evidence(config, settings, &binding, now)?;
     source_fence(settings, &source)?;
+    machine_acceptance(
+        &source,
+        &json!(executor_machine),
+        settings["source_hostname"].as_str() != Some(executor.as_str())
+            || settings["receipt_file"] == settings["off_host_receipt_file"],
+    )?;
     verify_backup(config, &directory, &leases)?;
     let observed = super::codec::decode_str(&query_leased(
         config,
@@ -886,10 +896,35 @@ pub fn certify(
     result["records"] = actual;
     result["snapshot_sha256"] = json!(digest(&source_snapshot_path(config, settings)?)?);
     result["executor_host"] = json!(executor);
+    result["executor_machine_sha256"] = json!(executor_machine);
+    result["source_machine_sha256"] = source["source_machine_sha256"].clone();
     result["restored_data_dir"] = json!(restored);
     result["replay_lsn"] = observed["replay_lsn"].clone();
     durable::write_json(&absolute(&path(settings, "receipt_file")?)?, &result)?;
     Ok(result)
+}
+fn machine_acceptance(source: &Value, executor: &Value, off_host: bool) -> Result<()> {
+    // Old legacy snapshots can still establish local recovery; they cannot
+    // establish a distinct failure domain without a fresh source capture.
+    if source.get("source_machine_sha256").is_none() && !off_host {
+        return Ok(());
+    }
+    let valid = |v: &Value| {
+        v.as_str().is_some_and(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
+    };
+    let source_machine = &source["source_machine_sha256"];
+    if !valid(source_machine) || !valid(executor) || (source_machine == executor) == off_host {
+        return Err(invalid(if off_host {
+            "off-host recovery must execute on an independent machine with a bound source machine identity"
+        } else {
+            "local recovery must execute on the captured source machine"
+        }));
+    }
+    Ok(())
 }
 pub fn validate_receipt(
     config: &Value,
@@ -935,6 +970,18 @@ pub fn validate_receipt(
     {
         return Err(invalid(
             "local recovery must execute on the declared source host",
+        ));
+    }
+    machine_acceptance(
+        source,
+        &receipt["executor_machine_sha256"],
+        label.starts_with("off-host"),
+    )?;
+    if source.get("source_machine_sha256").is_some()
+        && receipt["source_machine_sha256"] != source["source_machine_sha256"]
+    {
+        return Err(invalid(
+            "recovery receipt differs from the source machine identity",
         ));
     }
     Ok(())

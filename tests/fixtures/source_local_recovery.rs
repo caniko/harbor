@@ -453,6 +453,28 @@ fn run(args: Args) -> Result<()> {
         "actual-producer-metadata",
     )?)?;
     let target = field(&meta, "post_backup_lsn")?.to_owned();
+    let source_machine = g
+        .shell(
+            "primary",
+            "sha256sum /etc/machine-id | cut -d' ' -f1",
+            true,
+            "source-machine-identity-digest",
+        )?
+        .trim()
+        .to_owned();
+    let remote_machine = g
+        .shell(
+            "certifier",
+            "sha256sum /etc/machine-id | cut -d' ' -f1",
+            true,
+            "independent-machine-identity-digest",
+        )?
+        .trim()
+        .to_owned();
+    g.check(
+        meta["source_machine_sha256"] == source_machine && source_machine != remote_machine,
+        "capture-pins-source-machine-and-independent-host-is-distinct",
+    )?;
     let (hi, lo) = target.split_once('/').ok_or("invalid target LSN")?;
     let target_number = (u64::from_str_radix(hi, 16)? << 32) | u64::from_str_radix(lo, 16)?;
     let size = meta["wal_segment_bytes"]
@@ -584,6 +606,8 @@ fn run(args: Args) -> Result<()> {
     let receipt: Value = serde_json::from_str(&g.shell("certifier", format!("{pg} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432"), true, "native-independent-certification")?)?;
     g.check(
         receipt["executor_host"] == remote_host
+            && receipt["executor_machine_sha256"] == remote_machine
+            && receipt["source_machine_sha256"] == source_machine
             && receipt["records"] == finalized["records"]
             && receipt["metadata_sha256"] == finalized["metadata_sha256"]
             && receipt["wal_inventory_sha256"] == finalized["wal_inventory_sha256"]
@@ -651,9 +675,36 @@ fn run(args: Args) -> Result<()> {
         "source-host-replay-preserves-postbackup-changes-and-revisions",
     )?;
     g.shell("primary",format!("test \"$({remote_sql} -c {})\" = t; sha256sum -c /run/local-restored-auto.sha256",q(&format!("SELECT pg_last_wal_replay_lsn() >= '{target}'::pg_lsn AND current_setting('default_transaction_read_only')='on'"))),true,"source-host-replay-target-read-only-and-auto-config-preserved")?;
+    let mut namespace_config = config.clone();
+    namespace_config["recovery"]["receipt_file"] =
+        config["recovery"]["off_host_receipt_file"].clone();
+    g.publish(
+        "primary",
+        "/run/namespace-certifier.json",
+        &namespace_config,
+        "source-UTS-negative-certifier-policy",
+    )?;
+    for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
+        let command = format!(
+            "hostname hostname-only-remote; runuser -u postgres -- {}/bin/harbor-db-postgres --config /run/namespace-certifier.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432",
+            q(package)
+        );
+        let rejected = g.shell(
+            "primary",
+            format!("unshare --uts -- sh -ec {} 2>&1", q(&command)),
+            false,
+            &format!("{engine}-UTS-rename-cannot-certify-independent-recovery"),
+        )?;
+        g.check(
+            rejected.contains("independent machine"),
+            &format!("{engine}-UTS-rejection-binds-stable-machine-not-hostname"),
+        )?;
+    }
     let local_receipt:Value = serde_json::from_str(&g.shell("primary",format!("{pg} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432"),true,"native-source-host-disposable-restoration-certification")?)?;
     g.check(
         local_receipt["executor_host"] == source_host
+            && local_receipt["executor_machine_sha256"] == source_machine
+            && local_receipt["source_machine_sha256"] == source_machine
             && local_receipt["records"] == receipt["records"]
             && local_receipt["metadata_sha256"] == receipt["metadata_sha256"]
             && local_receipt["wal_inventory_sha256"] == receipt["wal_inventory_sha256"]

@@ -8,7 +8,7 @@ source = "tests/application_storage.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "application_storage"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["protected_backup_admits_only_immutable_command_and_adapter_files_in_both_engines"]
+selectors = ["protected_backup_admits_only_immutable_command_and_adapter_files_in_both_engines", "oversized_capture_control_rejects_before_restore_and_preserves_success_in_both_engines"]
 
 [[inventories]]
 origin = "rust"
@@ -573,7 +573,7 @@ case = "nix.x86_64-linux.pg-backup-eval"
 capability = "nixos"
 operation = "nixos.pg-backup"
 dimension = "rejection"
-evidence = "Source-local recovery rejects declared minimal WAL and effective minimal overrides independently of sender/slot capacity; effective replica/logical overrides remain accepted, including over a minimal module default. The gate is scoped to enabled source-local recovery."
+evidence = "Source and both roles reject declared/effective minimal WAL and mismatched effective listener/source ports with source-local recovery disabled or enabled. Effective replica/logical overrides and matching default/non-default ports admit. Target-only remote settings retain independent ports and WAL policy."
 
 [[inventories]]
 origin = "rust"
@@ -587,7 +587,21 @@ maturity = "crystallized"
 platforms = ["x86_64-linux", "aarch64-linux"]
 deadline_seconds = 120
 resources = { cpu = 1, memory_mib = 512, disk_mib = 128, exclusive = [] }
-selectors = ["primary_configuration_links_are_protected_without_admitting_restore_redirects_in_both_engines", "local_and_off_host_receipt_paths_cannot_alias_in_admission"]
+selectors = ["primary_configuration_links_are_protected_without_admitting_restore_redirects_in_both_engines", "local_and_off_host_receipt_paths_cannot_alias_in_admission", "recovery_machine_bindings_reject_hostname_only_remote_evidence_in_both_engines", "uts_hostname_change_cannot_certify_an_independent_machine_in_both_engines"]
+
+[[coverage]]
+case = "native.application_storage.oversized_capture_control_rejects_before_restore_and_preserves_success_in_both_engines"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "rejection"
+evidence = "Both engines reject a valid receipt padded past 4096 bytes and a terabyte sparse control file before restore/publication, retain LAST_SUCCESS, and accept an exact-limit valid receipt. The protected VM certifies the frozen root-owned artifact tree while an independent backup-account process changes and restores the capture inode through its retained fd."
+
+[[coverage]]
+case = "native.recovery_storage.uts_hostname_change_cannot_certify_an_independent_machine_in_both_engines"
+capability = "postgres"
+operation = "harbor-db-postgres.certify-recovery"
+dimension = "rejection"
+evidence = "Actual UTS hostname replacement on the source machine fails certification in both engines before receipt publication. Source-local producer metadata/snapshot pins the stable source machine digest; certifier and admission bind a valid executor digest and require distinct machines for off-host receipts. Independent execution remains a two-machine VM gate."
 
 [[coverage]]
 case = "native.recovery_storage.primary_configuration_links_are_protected_without_admitting_restore_redirects_in_both_engines"

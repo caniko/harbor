@@ -26,8 +26,10 @@ pub fn enter() -> bool {
         "proc",
         "dev",
         "bin",
+        "etc",
         "run/binfmt",
         "run/supervisor-tmp",
+        "tmp",
     ] {
         fs::create_dir_all(root.path().join(path)).unwrap();
     }
@@ -36,6 +38,15 @@ pub fn enter() -> bool {
         fs::Permissions::from_mode(0o700),
     )
     .unwrap();
+    // Retained executor environments intentionally omit TMPDIR. Native Cargo
+    // and rustc must still have a private default temporary directory.
+    fs::set_permissions(root.path().join("tmp"), fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(
+        root.path().join("etc/passwd"),
+        "root:x:0:0:fixture:/run/supervisor-tmp:/bin/sh\n",
+    )
+    .unwrap();
+    fs::write(root.path().join("etc/group"), "root:x:0:\n").unwrap();
     fs::create_dir_all(&source_mount).unwrap();
     // Empty retained environments deliberately use exec's default /bin lookup.
     let shell = std::env::split_paths(&std::env::var_os("PATH").unwrap())

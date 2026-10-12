@@ -55,6 +55,7 @@ impl Fixture {
             "epoch_id":"0123456789abcdef0123456789abcdef", "backup_stop_lsn":"0/100", "post_backup_lsn":"0/200",
             "version":1, "capture_id":"capture-1", "manifest_sha256":codec::file_digest(&manifest).unwrap(),
             "record_contract_sha256":recovery::contract(&config["recovery"]).unwrap(),
+            "source_machine_sha256":codec::file_digest(&fs::canonicalize(option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("/etc/machine-id")).unwrap()).unwrap(),
             "writer_fence_token":"0123456789abcdef0123456789abcdef", "record_hashes":{"rows":codec::digest(b"actual records\n")},
             "completed_at":now, "wal_segment_bytes":16777216, "timeline":1});
         durable::write_json(&root.path().join("backup/base/base-1.meta.json"), &meta).unwrap();
@@ -363,6 +364,10 @@ fn capture_drift_and_invalid_metadata_are_rejected_without_writes() {
             json!(codec::digest(b"different contract")),
         ),
         ("record_hashes", json!({})),
+        ("source_machine_sha256", json!(null)),
+        ("source_machine_sha256", json!("")),
+        ("source_machine_sha256", json!("A".repeat(64))),
+        ("source_machine_sha256", json!(17)),
         (
             "record_hashes",
             json!({"wrong":codec::digest(b"actual records\n")}),
@@ -503,6 +508,7 @@ impl Fixture {
         source["version"] = json!(1);
         source["completed_at"] = json!(self.now);
         source["record_contract_sha256"] = self.meta["record_contract_sha256"].clone();
+        source["source_machine_sha256"] = self.meta["source_machine_sha256"].clone();
         source["writer_fence_token"] = self.meta["writer_fence_token"].clone();
         source["records"] = self.meta["record_hashes"].clone();
         durable::write_json(&self.snapshot_path(), &source).unwrap();
@@ -525,7 +531,7 @@ impl Fixture {
         json!({"readiness_command":[self.p("noop")],"backup_command":[self.p("noop")],"restore_command":[self.p("noop")]})
     }
     fn python_action(&self, action: &str) -> Value {
-        let script = "import json,sys; from pathlib import Path; from harbor_db import recovery\nc=json.loads(sys.argv[1]); a=sys.argv[2]; now=int(sys.argv[3]); root=Path(c['data_dir']).parent\ntry:\n if a=='certify': r=recovery.certify(c,root/'restored','/restore/socket',55432,now=now,hostname='primary-host')\n elif a=='snapshot': r=recovery.snapshot(c,'/run/postgresql',5432,now=now)\n elif a=='import': r=recovery.import_off_host(c,root/'incoming.json',now=now)\n elif a=='prepare': r=recovery.prepare(c,{k:[str(root/'noop')] for k in ('readiness_command','backup_command','restore_command')},'/run/postgresql',5432)\n elif a=='live': r=recovery.live_check(c,'/run/postgresql',5432,now=now)\n else: r=recovery.check(c,now=now)\n print(json.dumps(r))\nexcept Exception as e: print(json.dumps({'error':str(e)}))";
+        let script = "import json,sys; from pathlib import Path; from harbor_db import recovery\nif sys.argv[4]: recovery.application_backup.machine=lambda:recovery.application_backup.digest(sys.argv[4])\nc=json.loads(sys.argv[1]); a=sys.argv[2]; now=int(sys.argv[3]); root=Path(c['data_dir']).parent\ntry:\n if a=='certify': r=recovery.certify(c,root/'restored','/restore/socket',55432,now=now,hostname='primary-host')\n elif a=='snapshot': r=recovery.snapshot(c,'/run/postgresql',5432,now=now)\n elif a=='import': r=recovery.import_off_host(c,root/'incoming.json',now=now)\n elif a=='prepare': r=recovery.prepare(c,{k:[str(root/'noop')] for k in ('readiness_command','backup_command','restore_command')},'/run/postgresql',5432)\n elif a=='live': r=recovery.live_check(c,'/run/postgresql',5432,now=now)\n else: r=recovery.check(c,now=now)\n print(json.dumps(r))\nexcept Exception as e: print(json.dumps({'error':str(e)}))";
         let mut spec = process::CommandSpec::new(vec![
             "python3".into(),
             "-B".into(),
@@ -534,6 +540,9 @@ impl Fixture {
             self.config.to_string(),
             action.into(),
             self.now.to_string(),
+            option_env!("HARBOR_DB_TEST_MACHINE_ID")
+                .unwrap_or("")
+                .into(),
         ]);
         spec.environment = Some(std::collections::BTreeMap::from([
             (
@@ -548,7 +557,7 @@ impl Fixture {
 
 #[test]
 fn forged_source_records_or_token_never_certify_admit_import_or_prepare() {
-    for key in ["records", "writer_fence_token"] {
+    for key in ["records", "writer_fence_token", "source_machine_sha256"] {
         let mut f = Fixture::new();
         f.copied_source();
         assert!(f.python_action("certify").get("error").is_none());
@@ -556,8 +565,10 @@ fn forged_source_records_or_token_never_certify_admit_import_or_prepare() {
         source[key] = if key == "records" {
             fs::write(f.p("rows"), "forged records\n").unwrap();
             json!({"rows":codec::digest(b"forged records\n")})
-        } else {
+        } else if key == "writer_fence_token" {
             json!("fedcba9876543210fedcba9876543210")
+        } else {
+            json!("0".repeat(64))
         };
         durable::write_json(&f.snapshot_path(), &source).unwrap();
         let mut receipt = durable::read_json(&f.p("backup/evidence/receipt.json")).unwrap();
@@ -597,7 +608,13 @@ fn forged_source_records_or_token_never_certify_admit_import_or_prepare() {
             };
             let error = result.unwrap_err();
             assert!(
-                error.to_string().contains("source-local capture differs"),
+                error
+                    .to_string()
+                    .contains(if key == "source_machine_sha256" {
+                        "source-local snapshot"
+                    } else {
+                        "source-local capture differs"
+                    }),
                 "{action} / {key}: {error}"
             );
             let python = f.python_action(action);
@@ -605,7 +622,11 @@ fn forged_source_records_or_token_never_certify_admit_import_or_prepare() {
                 python["error"]
                     .as_str()
                     .unwrap()
-                    .contains("source-local capture differs"),
+                    .contains(if key == "source_machine_sha256" {
+                        "source-local snapshot"
+                    } else {
+                        "source-local capture differs"
+                    }),
                 "{action} / {key}: {python}"
             );
             assert_eq!(unchanged_files(f.root.path()), before);
@@ -672,6 +693,7 @@ fn primary_snapshot_retry_returns_frozen_generation_without_republishing() {
     source["version"] = json!(1);
     source["completed_at"] = f.meta["completed_at"].clone();
     source["record_contract_sha256"] = f.meta["record_contract_sha256"].clone();
+    source["source_machine_sha256"] = f.meta["source_machine_sha256"].clone();
     source["writer_fence_token"] = f.meta["writer_fence_token"].clone();
     source["records"] = f.meta["record_hashes"].clone();
     durable::write_json(&f.snapshot_path(), &source).unwrap();

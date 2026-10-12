@@ -366,6 +366,11 @@ pub fn select(config: &Value, settings: &Value, now: i64) -> Result<SelectedCapt
         || meta["capture_id"] != identifier
         || meta["manifest_sha256"] != manifest_digest
         || meta["record_contract_sha256"] != recovery::contract(settings)?
+        || !meta["source_machine_sha256"].as_str().is_some_and(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
         || !meta["writer_fence_token"]
             .as_str()
             .is_some_and(writer_fence::valid_token)

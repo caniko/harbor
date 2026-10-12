@@ -491,7 +491,10 @@ fixture, available only with the `testing` feature, and use the builder's
 The Python compatibility helper reads the same fixture. This qualifies receipt
 hashing and same-machine rejection; independent physical-host certification
 requires VM evidence. Production lifecycle packages omit `testing`, require
-`/etc/machine-id`, and accept no runtime machine-identity override.
+`/etc/machine-id`, and accept no runtime machine-identity override. PostgreSQL
+source snapshots/capture metadata and recovery receipts use the same identity
+contract. Both engines reject same-machine certification after an actual UTS
+hostname change; the physical two-node VM qualifies distinct-machine acceptance.
 Nix maps root-owned configuration input inodes to an unmapped UID in the Cargo
 sandbox. Its build hook binds the declared fixture's observed UID as compile-time
 `HARBOR_DB_TEST_ROOT_UID`, also available only with `testing`. Both the production
@@ -528,5 +531,8 @@ They bind and check the store, original source/executable paths and declared bin
 substrate, then use a private temporary directory inside that root. Each parent
 requires one passing child test. Ordinary trusted-root runs retain their existing
 unprivileged path; forced private-root runs exercise the fixture explicitly.
+The testing CLI's supervisor cases use the same fixture, including a private
+default `/tmp` and a namespace-root passwd entry for actual Cargo compilation
+under intentionally retained minimal executor environments.
 Supervisor owner, write-mode, redirect and pre-publication rejection checks remain
 mandatory in both execution paths.

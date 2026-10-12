@@ -192,6 +192,7 @@ def select(config, settings, now):
     if (type(meta.get("version")) is not int or meta["version"] != 1
             or meta.get("capture_id") != identifier or meta.get("manifest_sha256") != manifest_digest
             or meta.get("record_contract_sha256") != recovery.contract(settings)
+            or not isinstance(meta.get("source_machine_sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", meta["source_machine_sha256"])
             or not isinstance(meta.get("writer_fence_token"), str) or not re.fullmatch(r"[0-9a-f]{32}", meta["writer_fence_token"])
             or meta.get("epoch_id") != meta["writer_fence_token"]
             or type(segment) is not int or not 2**20 <= segment <= 2**30 or segment & (segment - 1)

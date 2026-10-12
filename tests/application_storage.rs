@@ -32,6 +32,16 @@ if operation=='capture':
     if (base/'symlink').exists(): (backup/'redirect').symlink_to('/etc/passwd')
     if (base/'self_accept').exists(): (backup/'acceptance.json').write_text('{}')
     if (base/'incomplete_semantic').exists(): (backup/'capture.json').write_text('{}')
+    if (base/'oversized_receipt').exists():
+        with (backup/'capture.json').open('r+b') as control:
+            control.seek(0,2)
+            control.write(b' ' * 4096)
+    if (base/'receipt_size').exists():
+        size=int((base/'receipt_size').read_text())
+        with (backup/'capture.json').open('r+b') as control:
+            length=control.seek(0,2)
+            if size <= 4096: control.write(b' ' * (size-length))
+            else: control.truncate(size)
     if (base/'non_utf8').exists():
         for suffix in (b'\xff', b'\xfe'):
             with open(os.fsencode(backup) + b'/artifact-' + suffix, 'wb') as artifact: artifact.write(suffix)
@@ -78,6 +88,51 @@ fn backup_fixture() -> (tempfile::TempDir, Value) {
 }
 fn last(t: &Path) -> Value {
     durable::read_json(&t.join("backups/LAST_SUCCESS")).unwrap()
+}
+
+#[test]
+fn oversized_capture_control_rejects_before_restore_and_preserves_success_in_both_engines() {
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        let capture = |attempt: &str| {
+            if python {
+                backup_peer(&c, "capture", attempt, false)
+            } else {
+                application_backup::capture(&c, attempt, false)
+            }
+        };
+        capture("before-control-attack").unwrap();
+        let before = fs::read(t.path().join("backups/LAST_SUCCESS")).unwrap();
+        fs::write(t.path().join("oversized_receipt"), "").unwrap();
+        // A valid, small JSON object followed by whitespace must be rejected by
+        // the read limit, rather than eventually failing schema validation.
+        let error = capture("oversized-control").unwrap_err().to_string();
+        assert!(error.contains("capture receipt exceeds"), "{error}");
+        assert!(!t.path().join("backups/oversized-control").exists());
+        assert!(
+            !t.path()
+                .join("backups/.oversized-control.restore/restored.json")
+                .exists()
+        );
+        assert_eq!(
+            before,
+            fs::read(t.path().join("backups/LAST_SUCCESS")).unwrap()
+        );
+        fs::remove_file(t.path().join("oversized_receipt")).unwrap();
+        for size in [4097_u64, 1 << 40] {
+            fs::write(t.path().join("receipt_size"), size.to_string()).unwrap();
+            let attempt = format!("sparse-control-{size}");
+            let error = capture(&attempt).unwrap_err().to_string();
+            assert!(error.contains("capture receipt exceeds"), "{error}");
+            assert!(!t.path().join(format!("backups/{attempt}")).exists());
+            assert_eq!(
+                before,
+                fs::read(t.path().join("backups/LAST_SUCCESS")).unwrap()
+            );
+        }
+        fs::write(t.path().join("receipt_size"), "4096").unwrap();
+        capture("exact-control-limit").unwrap();
+    }
 }
 
 #[test]

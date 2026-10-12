@@ -440,8 +440,8 @@ in {
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires receiveWal.enable for continuous post-target WAL coverage.";
           }
           {
-            assertion = !cfg.targetSettings.sourceLocalRecovery.enable || cfg.source.port == config.services.postgresql.settings.port;
-            message = "services.harbor-db.pgBackup source-local port must match the effective local PostgreSQL primary port.";
+            assertion = !sourceRole || cfg.source.port == config.services.postgresql.settings.port;
+            message = "services.harbor-db.pgBackup source port must match the effective local PostgreSQL primary port.";
           }
           {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || cfg.targetSettings.baseBackup.enable;
@@ -452,8 +452,8 @@ in {
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires at least two replication slots and three WAL senders, including effective PostgreSQL settings.";
           }
           {
-            assertion = !cfg.targetSettings.sourceLocalRecovery.enable || lib.elem config.services.postgresql.settings.wal_level ["replica" "logical"];
-            message = "services.harbor-db.pgBackup sourceLocalRecovery requires effective wal_level=replica or logical for streaming replication and physical recovery.";
+            assertion = !sourceRole || lib.elem config.services.postgresql.settings.wal_level ["replica" "logical"];
+            message = "services.harbor-db.pgBackup source roles require effective wal_level=replica or logical for streaming replication and physical recovery.";
           }
           {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || !(config.services.harbor-db.postgresql.enable or false) || lib.elem "replicator" config.services.harbor-db.postgresql.writerFence.replicationRoles;

@@ -165,6 +165,7 @@ class RecoveryReadinessTest(unittest.TestCase):
         self.certify()
         receipt = json.loads(Path(self.config["recovery"]["receipt_file"]).read_text())
         receipt["executor_host"] = "independent-host"
+        receipt["executor_machine_sha256"] = "0" * 64
         incoming = self.root / "incoming.json"
         write_json(incoming, receipt)
         destination = self.backup / "evidence/off-host.json"
@@ -291,10 +292,13 @@ class RecoveryReadinessTest(unittest.TestCase):
         write_json(off_host, local)
         with self.assertRaisesRegex(ValueError, "independent"):
             recovery.check(self.config, now=self.now)
-        # Exercise the same certifier with a real executor-host identity; do not
-        # make an unrelated copy of the local receipt establish remote recovery.
+        # Hostname changes on this machine cannot establish independence. The
+        # unit fixture supplies a distinct machine; the VM runs two real hosts.
         self.config["recovery"]["receipt_file"] = str(off_host)
-        with patch.object(recovery, "inspect_restored", return_value=self.observed):
+        with self.assertRaisesRegex(ValueError, "independent machine"):
+            recovery.certify(self.config, str(self.restored), "/restore/socket", 55432,
+                             now=self.now, hostname="recovery-host")
+        with patch.object(recovery.application_backup, "machine", return_value="0" * 64), patch.object(recovery, "inspect_restored", return_value=self.observed):
             recovery.certify(self.config, str(self.restored), "/restore/socket", 55432,
                              now=self.now, hostname="recovery-host")
         self.config["recovery"]["receipt_file"] = str(self.backup / "evidence/recovery.json")
@@ -444,7 +448,7 @@ class RecoveryReadinessTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 recovery.import_off_host(self.config, incoming, now=self.now)
             self.assertFalse(off_host.exists())
-        write_json(incoming, receipt | {"executor_host": "independent-fixture"})
+        write_json(incoming, receipt | {"executor_host": "independent-fixture", "executor_machine_sha256": "0" * 64})
         recovery.import_off_host(self.config, incoming, now=self.now)
         self.assertEqual(recovery.check(self.config, now=self.now)["off_host"], "independent-fixture")
 

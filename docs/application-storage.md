@@ -221,13 +221,24 @@ ownership view used for immutable Nix input fixtures.
 Arguments equal to `{backup}` and `{workspace}` are substituted as single argv
 elements, without a shell. Capture creates a new directory and writes all artifacts,
 plus `capture.json` with exactly `version = 1`, `consistency` (`quiesced` or
-`shared_exported_mvcc_snapshot`) and `semantic_sha256`. The application chooses
+`shared_exported_mvcc_snapshot`) and `semantic_sha256`. This control file is a
+regular, non-redirected file limited to 4096 bytes before decoding, including
+sparse files or growth after opening. The application chooses
 the canonical complete-record representation whose hash identifies this snapshot.
 Restore targets only the newly allocated private workspace. Verify emits exactly
 `version = 1`, `status = "verified"` and the same `semantic_sha256` after executing
 complete schema/record/revision/sequence comparison. A row count alone is insufficient.
 Cleanup must be idempotent, stop and drain every process it started, and is invoked
 even after restoration fails. Failed cleanup preserves its private workspace.
+
+Version-2 capture first copies the inventoried artifact tree onto fresh protected
+root-owned inodes, grants the backup reader group read-only access, and rechecks
+the inventory before restoration. Restore, verification and cleanup receive this
+frozen tree; the same tree is accepted and published. Worker-owned staging and
+handles retained from capture cannot substitute the bytes exercised by the
+certifier, even if a competing process restores the original staging bytes before
+the final inventory check. Interrupted attempts retain the protected tree for the
+existing intent-bound retry policy.
 
 `harbor-db-postgres-drill --package POSTGRES restore|cleanup BACKUP WORKSPACE`
 supplies a reusable logical PostgreSQL restore adapter for `database.dump`.

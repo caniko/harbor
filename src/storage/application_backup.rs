@@ -7,9 +7,10 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     os::{
         fd::RawFd,
-        unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt},
+        unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -284,7 +285,7 @@ fn hostname() -> Result<String> {
         .ok_or_else(|| invalid("hostname too long"))?;
     String::from_utf8(buf[..end].to_vec()).map_err(|_| invalid("hostname is not UTF-8"))
 }
-fn machine() -> Result<String> {
+pub(super) fn machine() -> Result<String> {
     // Sandboxed Cargo qualification supplies an immutable fixture at compile
     // time. Runtime environment cannot replace machine custody, and lifecycle
     // packages built without `testing` always require the installed identity.
@@ -293,6 +294,26 @@ fn machine() -> Result<String> {
     #[cfg(not(feature = "testing"))]
     let path = "/etc/machine-id";
     codec::file_digest(&fs::canonicalize(path)?)
+}
+fn capture_receipt(backup: &Path) -> Result<Value> {
+    const LIMIT: u64 = 4096;
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(backup.join("capture.json"))?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(invalid("capture receipt must be a regular file"));
+    }
+    if metadata.len() > LIMIT {
+        return Err(invalid("capture receipt exceeds the 4096-byte limit"));
+    }
+    let mut bytes = Vec::new();
+    (&mut file).take(LIMIT + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(invalid("capture receipt exceeds the 4096-byte limit"));
+    }
+    codec::decode(&bytes)
 }
 fn now() -> Result<i64> {
     Ok(SystemTime::now()
@@ -320,7 +341,7 @@ fn certification(
 ) -> Result<Value> {
     execute(c, "restore", b, w, l, worker)?;
     let receipt = super::codec::decode(&execute(c, "verify", b, w, l, worker)?)?;
-    let captured = durable::read_json(&b.join("capture.json"))?;
+    let captured = capture_receipt(b)?;
     let semantic = captured
         .get("semantic_sha256")
         .and_then(Value::as_str)
@@ -480,6 +501,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     } else {
         private_dir(&workspace)?;
     }
+    let mut certification_tree = &partial;
     let result = (|| {
         execute(
             c,
@@ -489,15 +511,26 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
             lease.fd(),
             worker.as_ref(),
         )?;
+        capture_receipt(&partial)?;
         let artifacts = inventory(&partial)?;
         if artifacts.get("acceptance.json").is_some() {
             return Err(invalid(
                 "application capture must not supply its own acceptance envelope",
             ));
         }
+        if protected {
+            publication::copy_tree(&partial, &sealed)?;
+            publication::reader_permissions(&sealed, fs::metadata(&root)?.gid())?;
+            if inventory(&sealed)? != artifacts {
+                return Err(invalid(
+                    "backup artifact changed before protected certification",
+                ));
+            }
+            certification_tree = &sealed;
+        }
         let receipt = certification(
             c,
-            &partial,
+            certification_tree,
             &workspace,
             lease.fd(),
             &artifacts,
@@ -508,7 +541,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     execute(
         c,
         "cleanup",
-        &partial,
+        certification_tree,
         &workspace,
         lease.fd(),
         worker.as_ref(),
@@ -516,24 +549,14 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     fs::remove_dir_all(&workspace)?;
     durable::sync_directory(&root)?;
     let (artifacts, mut receipt): (Value, Value) = result?;
-    if inventory(&partial)? != artifacts {
+    if inventory(certification_tree)? != artifacts {
         return Err(invalid("backup artifact hash changed during cleanup"));
     }
     if executables(c)? != tools {
         return Err(invalid("backup executable identity changed during capture"));
     }
     for (k,v) in json!({"resource":c["resource"],"attempt":attempt,"captured_at":captured_at,"manifest_sha256":identity(c)?,"executables":tools}).as_object().unwrap() { receipt[k]=v.clone(); }
-    let published = if protected {
-        publication::copy_tree(&partial, &sealed)?;
-        if inventory(&sealed)? != artifacts {
-            return Err(invalid(
-                "backup artifact hash changed during protected copy",
-            ));
-        }
-        &sealed
-    } else {
-        &partial
-    };
+    let published = certification_tree;
     durable::write_json(&published.join("acceptance.json"), &receipt)?;
     if protected {
         publication::reader_permissions(published, fs::metadata(&root)?.gid())?;

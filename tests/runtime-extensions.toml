@@ -21,7 +21,7 @@ sha256 = "47e441ba84dfef1a86f07d6e91f88ff09a1d22076f6c316830a20f2a6fcceac5"
 
 [[extensions]]
 path = "python/harbor_db/recovery.py"
-sha256 = "0e737eeb25fd536855154c9701fadd2be695457f4b8201a7b8b0ed3266f75435"
+sha256 = "7f0e8e12b8af4c7d9f3dc31da97d1cd2182cd5ad1b11d5e81d2763aaa8dcbb81"
 
 [[extensions]]
 path = "python/harbor_db/application_transition.py"
@@ -53,7 +53,7 @@ sha256 = "272ba7f286bcc31b4af7282076a1c79c6f7a2334cd74506d1339d12c139281a8"
 
 [[extensions]]
 path = "python/harbor_db/application_backup.py"
-sha256 = "9abd9924d576c1846da92a23c102da331655cfdbcc1e48efca53c3e2c465a5ed"
+sha256 = "0fedc0efdd99840b3226b0eb21adcc53683c3d79245217c20ba2355b41edf48c"
 
 [[extensions]]
 path = "python/harbor_db/durable.py"
@@ -78,3 +78,10 @@ sha256 = "5ea04c373d0524ddd998c9b47473a49c240eff27c8f6021f69831233a4e69dce"
 [[extensions]]
 path = "tests/test_postgres_lifecycle.py"
 sha256 = "fc3e386880bd57129d00a7ca9d78ae0a5b05f600b12620e6cb6e3a7b33ceb6d4"
+
+# Stable machine identity extends the original recovery admission contract.
+# Retain the exact baseline test as an oracle and all 174 method identities;
+# the current fixtures add same-machine rejection and distinct-machine evidence.
+[[extensions]]
+path = "tests/test_recovery_readiness.py"
+sha256 = "2a619e61771794b34497070e76cb10a8db315947c68b54898ebb65dcf62e9071"

@@ -4,7 +4,7 @@
 }: let
   pythonPeer = import ./test-python-package.nix {inherit pkgs;};
   adapter = pkgs.writeText "backup-adapter.py" ''
-    import hashlib, json, os, pathlib, sys, socket, array
+    import hashlib, json, os, pathlib, sys, socket, array, time
     stage, backup, workspace = sys.argv[1:]
     assert os.geteuid() != 0, "capture adapters must never execute as root"
     assert os.environ["USER"] == os.environ["LOGNAME"] == "demo"
@@ -22,7 +22,26 @@
         digest = hashlib.sha256((backup / "records").read_bytes()).hexdigest()
         (backup / "capture.json").write_text(json.dumps({"version": 1, "consistency": "quiesced", "semantic_sha256": digest}))
     elif stage == "restore":
+        # The competing account keeps an fd from capture and changes its inode
+        # only while restore is reading. Certification must use protected inodes.
+        assert backup.name.endswith(".sealed"), "certifier used mutable staging"
+        assert backup.stat().st_uid == 0 and (backup.stat().st_mode & 0o022) == 0
+        for entry in backup.rglob("*"):
+            assert entry.stat().st_uid == 0 and (entry.stat().st_mode & 0o022) == 0
+        root = pathlib.Path("/run/backup-fd")
+        (root / "certify-attack").touch()
+        deadline = time.monotonic() + 15
+        while not (root / "certify-written").exists():
+            assert time.monotonic() < deadline, "concurrent mutation did not run"
+            time.sleep(0.05)
         (workspace / "records").write_bytes((backup / "records").read_bytes())
+        assert (workspace / "records").read_text() == "retained revision seven"
+        (root / "certify-undo").touch()
+        while not (root / "certify-restored").exists():
+            assert time.monotonic() < deadline, "staging inode was not restored"
+            time.sleep(0.05)
+        for name in ("certify-attack", "certify-written", "certify-undo", "certify-restored"):
+            (root / name).unlink()
     elif stage == "verify":
         assert (workspace / "records").read_bytes() == (backup / "records").read_bytes()
         print(json.dumps({"version": 1, "status": "verified", "semantic_sha256": hashlib.sha256((workspace / "records").read_bytes()).hexdigest()}))
@@ -38,6 +57,14 @@
       received = array.array("i"); received.frombytes(ancillary[0][2][:received.itemsize])
       fd = received[0]; info = os.fstat(fd)
       (root / "inode").write_text(json.dumps([info.st_dev, info.st_ino]))
+      while not (root / "certify-attack").exists(): time.sleep(0.05)
+      os.lseek(fd, 0, os.SEEK_SET); original = os.read(fd, info.st_size)
+      attack = b"uncertified hostile records"
+      os.lseek(fd, 0, os.SEEK_SET); os.write(fd, attack); os.ftruncate(fd, len(attack))
+      (root / "certify-written").touch()
+      while not (root / "certify-undo").exists(): time.sleep(0.05)
+      os.lseek(fd, 0, os.SEEK_SET); os.write(fd, original); os.ftruncate(fd, len(original))
+      (root / "certify-restored").touch()
       while not (root / "attack").exists(): time.sleep(0.05)
       os.lseek(fd, 0, os.SEEK_SET); os.write(fd, b"modified through pre-publication fd")
       os.close(fd); connection.close()

@@ -132,6 +132,16 @@ manifest digest, primary identity, major, timeline and stop LSN. Its fenced reco
 hashes and durable target LSN cover acknowledged changes after backup completion.
 Publication preserves version-1 recovery binding fields and JSON/hash conventions.
 New capture bytes produce new evidence hashes; existing receipts are not rewritten.
+The immutable capture metadata and source snapshot also bind `source_machine_sha256`,
+the digest of the installed machine identity. Certification records and validates
+`executor_machine_sha256` against that source binding, in addition to descriptive
+hostnames. Off-host acceptance requires a distinct valid machine digest; a UTS
+namespace or renamed hostname on the source cannot establish independence.
+Capture retries preserve the machine binding. Captures predating this binding
+require a new capture identifier and fresh certification; legacy local snapshots
+remain locally admissible but cannot establish off-host recovery without a fresh
+machine-bound source snapshot. Independent machines must have distinct installed
+machine identities, including restored/cloned operating-system images.
 
 The source-local producer validates the live retained fence before capture. It
 serializes with backup publication, pruning and recovery inspection through the

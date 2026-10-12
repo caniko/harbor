@@ -28,6 +28,24 @@ def identity(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def machine():
+    return digest("/etc/machine-id")
+
+
+def capture_receipt(backup):
+    fd = os.open(backup / "capture.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("capture receipt must be a regular file")
+        if info.st_size > 4096:
+            raise ValueError("capture receipt exceeds the 4096-byte limit")
+        data = stream.read(4097)
+        if len(data) > 4096:
+            raise ValueError("capture receipt exceeds the 4096-byte limit")
+        return json.loads(data)
+
+
 def validate(config, *, check_root=True):
     required = {"version", "resource", "root", "commands", "executable_files", "timeout_seconds", "maximum_age_seconds"}
     protected = config.get("version") == 2
@@ -124,7 +142,7 @@ def execute(config, stage, backup, workspace, lease, worker=None):
 def certification(config, backup, workspace, lease, artifacts, worker=None):
     execute(config, "restore", backup, workspace, lease, worker)
     receipt = json.loads(execute(config, "verify", backup, workspace, lease, worker))
-    captured = read_json(backup / "capture.json")
+    captured = capture_receipt(backup)
     if (set(captured) != {"version", "consistency", "semantic_sha256"} or captured["version"] != 1
             or captured["consistency"] not in {"quiesced", "shared_exported_mvcc_snapshot"}
             or not re.fullmatch(r"[0-9a-f]{64}", captured["semantic_sha256"])):
@@ -135,7 +153,7 @@ def certification(config, backup, workspace, lease, artifacts, worker=None):
     if inventory(backup) != artifacts:
         raise ValueError("backup artifact hash changed during restore verification")
     return {"version": 1, "status": "verified", "executor": socket.gethostname(),
-            "executor_machine_sha256": digest("/etc/machine-id"), "semantic_sha256": captured["semantic_sha256"],
+            "executor_machine_sha256": machine(), "semantic_sha256": captured["semantic_sha256"],
             "artifacts": artifacts, "consistency": captured["consistency"]}
 
 
@@ -194,28 +212,31 @@ def capture_attempt(config, attempt, root, staging, partial, sealed, destination
         publication.worker_directory(workspace, worker.account)
     else:
         workspace.mkdir(mode=0o700)
+    certification_tree = partial
     try:
         execute(config, "capture", partial, workspace, lease, worker)
+        capture_receipt(partial)
         artifacts = inventory(partial)
         if "acceptance.json" in artifacts:
             raise ValueError("application capture must not supply its own acceptance envelope")
-        receipt = certification(config, partial, workspace, lease, artifacts, worker)
+        if worker is not None:
+            publication.copy_tree(partial, sealed)
+            publication.reader_permissions(sealed, root.stat().st_gid)
+            if inventory(sealed) != artifacts:
+                raise ValueError("backup artifact changed before protected certification")
+            certification_tree = sealed
+        receipt = certification(config, certification_tree, workspace, lease, artifacts, worker)
     finally:
-        execute(config, "cleanup", partial, workspace, lease, worker)
+        execute(config, "cleanup", certification_tree, workspace, lease, worker)
         shutil.rmtree(workspace)
         sync_directory(root)
-    if inventory(partial) != artifacts:
+    if inventory(certification_tree) != artifacts:
         raise ValueError("backup artifact hash changed during cleanup")
     if executables(config) != tools:
         raise ValueError("backup executable identity changed during capture")
     receipt.update({"resource": config["resource"], "attempt": attempt,
                     "captured_at": captured_at, "manifest_sha256": identity(config), "executables": tools})
-    published = partial
-    if worker is not None:
-        publication.copy_tree(partial, sealed)
-        if inventory(sealed) != artifacts:
-            raise ValueError("backup artifact hash changed during protected copy")
-        published = sealed
+    published = certification_tree
     write_json(published / "acceptance.json", receipt)
     for entry in published.rglob("*"):
         metadata = entry.lstat()
