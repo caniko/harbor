@@ -166,12 +166,12 @@ mod tests {
     #[test]
     fn format_duration_short() {
         assert_eq!(format_duration(Duration::from_secs(45)), "0 min");
-        assert_eq!(format_duration(Duration::from_mins(2)), "2 min");
+        assert_eq!(format_duration(Duration::from_secs(2 * 60)), "2 min");
     }
 
     #[test]
     fn format_duration_days() {
-        assert_eq!(format_duration(Duration::from_hours(25)), "1d 1h");
-        assert_eq!(format_duration(Duration::from_hours(168)), "7d 0h");
+        assert_eq!(format_duration(Duration::from_secs(25 * 60 * 60)), "1d 1h");
+        assert_eq!(format_duration(Duration::from_secs(168 * 60 * 60)), "7d 0h");
     }
 }
