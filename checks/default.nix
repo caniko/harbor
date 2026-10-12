@@ -135,6 +135,10 @@ in
   assert builtins.length merged.packages == 2;
   assert pkgs.lib.hasInfix "echo a" merged.shellHook;
   assert pkgs.lib.hasInfix "echo b" merged.shellHook; {
+    scoped-runtime = import ./scoped-runtime.nix {
+      inherit pkgs;
+      devShell = lib.devShell;
+    };
     dev-shell-hello = lib.devShellTests.mkCheck {
       inherit pkgs;
       name = "harbor-meta-dev-shell-hello";

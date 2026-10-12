@@ -10,6 +10,9 @@ Nix-packaged `TZDIR` for shells, builders and runtime wrappers, defaulting to UT
 Formatting uses independent [treefmt modules](docs/treefmt.md), composed
 explicitly by each repository rather than inherited from a parent Harbor.
 
+[Command-scoped runtimes](docs/scoped-runtime.md) isolate loader and driver
+settings and define dependency-preserving composition of language shells.
+
 Dev shells are fragments `{ packages, env, shellHook }`. Language harbors merge
 those fragments and render them with `lib.devShell.mkShell` (`pkgs.mkShell` by
 default; Rust passes a `craneLib.devShell` builder). `lib.devShellTests` and
