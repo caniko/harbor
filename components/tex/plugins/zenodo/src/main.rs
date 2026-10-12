@@ -166,7 +166,7 @@ fn oauth_login(cfg: &ZenodoConfig, ctx: &PluginContext) -> Result<Value> {
     println!("  {auth_url}");
     let _ = webbrowser::open(auth_url.as_str());
 
-    let callback = wait_for_callback(listener)?;
+    let callback = wait_for_callback(&listener)?;
     if callback.path != REDIRECT_PATH {
         return Err(miette!(
             "Unexpected OAuth callback path '{}'; expected '{}'",
@@ -189,7 +189,7 @@ fn oauth_login(cfg: &ZenodoConfig, ctx: &PluginContext) -> Result<Value> {
         .ok_or_else(|| miette!("Zenodo OAuth callback missing authorization code"))?;
 
     let token = exchange_code(cfg.token_url, client_id, client_secret, code)?;
-    let store = token_store_from_response(cfg, client_id.to_owned(), token)?;
+    let store = token_store_from_response(cfg, client_id.to_owned(), &token)?;
     save_oauth_store(&store)?;
 
     Ok(json!({
@@ -457,9 +457,9 @@ fn exchange_code(
 fn token_store_from_response(
     cfg: &ZenodoConfig,
     client_id: String,
-    token: Value,
+    token: &Value,
 ) -> Result<ZenodoOAuthStore> {
-    let access_token = token_string(&token, "access_token")?;
+    let access_token = token_string(token, "access_token")?;
     let refresh_token = token
         .get("refresh_token")
         .and_then(Value::as_str)
@@ -578,9 +578,7 @@ fn deposition_store_from_value(cfg: &ZenodoConfig, value: &Value) -> Result<Depo
         publish_url,
         doi,
         doi_url,
-        uploaded_files: load_deposition_store()
-            .map(|s| s.uploaded_files)
-            .unwrap_or_default(),
+        uploaded_files: load_deposition_store().map_or_else(|_| Vec::new(), |s| s.uploaded_files),
     })
 }
 
@@ -599,7 +597,7 @@ struct Callback {
     query: BTreeMap<String, String>,
 }
 
-fn wait_for_callback(listener: TcpListener) -> Result<Callback> {
+fn wait_for_callback(listener: &TcpListener) -> Result<Callback> {
     let (mut stream, _) = listener.accept().into_diagnostic()?;
     let mut buffer = [0_u8; 4096];
     let bytes_read = stream.read(&mut buffer).into_diagnostic()?;
