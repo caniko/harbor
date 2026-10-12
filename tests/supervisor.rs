@@ -9,6 +9,8 @@ use std::{
 };
 #[path = "fixtures/supervisor_worker.rs"]
 mod fixture;
+#[path = "fixtures/private_supervisor_root.rs"]
+mod private_root;
 
 fn spec(root: &Path, script: &str, deadline: u64) -> RunSpec {
     let snapshot = root.join("snapshot");
@@ -47,6 +49,9 @@ fn spec(root: &Path, script: &str, deadline: u64) -> RunSpec {
 
 #[test]
 fn untrusted_supervisor_bases_and_ancestors_reject_before_publication() {
+    if !private_root::enter() {
+        return;
+    }
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let tmp = tempfile::tempdir().unwrap();
     let parent = tmp.path().join("parent");
@@ -95,6 +100,9 @@ fn untrusted_supervisor_bases_and_ancestors_reject_before_publication() {
 
 #[test]
 fn eof_is_not_exit_and_follower_has_no_authority() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(
         Some(tmp.path()),
@@ -118,6 +126,9 @@ fn eof_is_not_exit_and_follower_has_no_authority() {
 
 #[test]
 fn timeout_and_cancel_preserve_execution_reason() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(Some(tmp.path()), "timeout", spec(tmp.path(), "sleep 20", 1))
         .unwrap();
@@ -139,6 +150,9 @@ fn timeout_and_cancel_preserve_execution_reason() {
 
 #[test]
 fn persistent_anchor_busy_and_collision() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let run =
         supervisor::create_run(Some(tmp.path()), "busy", spec(tmp.path(), "true", 5)).unwrap();
@@ -152,6 +166,9 @@ fn persistent_anchor_busy_and_collision() {
 
 #[test]
 fn skipped_cases_record_terminal_results_without_acquiring_busy_resources() {
+    if !private_root::enter() {
+        return;
+    }
     use harbor_db::storage::durable;
     use supervisor::ExitReason;
     for (mode, reason) in [
@@ -211,6 +228,9 @@ fn skipped_cases_record_terminal_results_without_acquiring_busy_resources() {
 
 #[test]
 fn observer_reattaches_and_missing_worker_is_incomplete() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let run =
         supervisor::create_run(Some(tmp.path()), "reattach", spec(tmp.path(), "true", 5)).unwrap();
@@ -232,6 +252,9 @@ fn observer_reattaches_and_missing_worker_is_incomplete() {
 
 #[test]
 fn worker_failure_before_registration_publishes_terminal_evidence_and_forbids_retry() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let selection = spec(tmp.path(), "true", 5);
     let source = selection.inputs[0].path.clone();
@@ -253,6 +276,9 @@ fn worker_failure_before_registration_publishes_terminal_evidence_and_forbids_re
 
 #[test]
 fn detached_worker_loss_before_registration_uses_the_acknowledged_unit_state() {
+    if !private_root::enter() {
+        return;
+    }
     use std::os::unix::fs::PermissionsExt;
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(
@@ -346,6 +372,9 @@ fn detached_worker_loss_before_registration_uses_the_acknowledged_unit_state() {
 
 #[test]
 fn argv_cases_exclude_ambient_variables_and_keep_the_retained_environment() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let mut selection = spec(
         tmp.path(),
@@ -380,6 +409,9 @@ fn argv_cases_exclude_ambient_variables_and_keep_the_retained_environment() {
 
 #[test]
 fn killed_worker_cannot_relaunch_and_child_retains_authority() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let mut spec = spec(tmp.path(), "sleep 2", 5);
     spec.cases[0].resources.push("fixture-resource".into());
@@ -457,6 +489,9 @@ fn killed_worker_cannot_relaunch_and_child_retains_authority() {
 
 #[test]
 fn foreground_error_stops_observer_without_disk_stop_marker() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(Some(tmp.path()), "foreground", spec(tmp.path(), "true", 5))
         .unwrap();
@@ -469,6 +504,9 @@ fn foreground_error_stops_observer_without_disk_stop_marker() {
 
 #[test]
 fn failed_verdict_dominates_indeterminate_and_incomplete() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let mut run_spec = spec(tmp.path(), "exit 7", 5);
     let mut unsupported = run_spec.cases[0].clone();
@@ -490,6 +528,9 @@ fn failed_verdict_dominates_indeterminate_and_incomplete() {
 
 #[test]
 fn persisted_activity_distinguishes_quiet_logs_heartbeat_and_progress() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(Some(tmp.path()), "activity", spec(tmp.path(), "sleep 2", 5))
         .unwrap();
@@ -545,6 +586,9 @@ fn persisted_activity_distinguishes_quiet_logs_heartbeat_and_progress() {
 
 #[test]
 fn heartbeat_advances_without_stdout_or_semantic_progress() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(
         Some(tmp.path()),
@@ -579,6 +623,9 @@ fn heartbeat_advances_without_stdout_or_semantic_progress() {
 
 #[test]
 fn fresh_logs_and_heartbeat_cannot_hide_five_minutes_without_meaningful_progress() {
+    if !private_root::enter() {
+        return;
+    }
     use std::os::unix::fs::MetadataExt;
 
     let tmp = tempfile::tempdir().unwrap();
@@ -734,6 +781,9 @@ fn fresh_logs_and_heartbeat_cannot_hide_five_minutes_without_meaningful_progress
 
 #[test]
 fn restarted_roles_retry_evidence_collisions_without_replacing_stale_inodes() {
+    if !private_root::enter() {
+        return;
+    }
     use std::os::unix::fs::MetadataExt;
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(
@@ -785,6 +835,9 @@ os.execv(cli, [cli, role, run] + (['--once'] if role == 'observe' else []))
 
 #[test]
 fn detached_nix_case_retains_launcher_path_without_service_manager_environment() {
+    if !private_root::enter() {
+        return;
+    }
     use std::os::unix::fs::PermissionsExt;
     use std::process::Stdio;
     let tmp = tempfile::tempdir().unwrap();
@@ -903,6 +956,9 @@ if role == 'worker':
 
 #[test]
 fn second_service_launch_failure_is_terminal_and_stops_only_own_observer() {
+    if !private_root::enter() {
+        return;
+    }
     use std::os::unix::fs::PermissionsExt;
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(
@@ -991,6 +1047,9 @@ fn second_service_launch_failure_is_terminal_and_stops_only_own_observer() {
 
 #[test]
 fn changed_or_missing_detached_launcher_binding_cannot_qualify_retained_results() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let run = supervisor::create_run(
         Some(tmp.path()),

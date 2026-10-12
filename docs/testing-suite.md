@@ -518,3 +518,13 @@ Where NixOS declares binfmt interpreters below `/run/binfmt`, the fixture also
 binds and checks that directory inside its private root. A binfmt registration
 without the `F` flag resolves the interpreter pathname again after `chroot`;
 the AArch64 test ELF must therefore see the same declared QEMU substrate there.
+
+Nix user namespaces can expose the outer filesystem root with overflow UID 65534
+while the builder runs as UID 1000. Supervisor fixtures that need trusted output
+ancestry re-execute their exact test in a private root owned by namespace root.
+They bind and check the store, original source/executable paths and declared binfmt
+substrate, then use a private temporary directory inside that root. Each parent
+requires one passing child test. Ordinary trusted-root runs retain their existing
+unprivileged path; forced private-root runs exercise the fixture explicitly.
+Supervisor owner, write-mode, redirect and pre-publication rejection checks remain
+mandatory in both execution paths.
