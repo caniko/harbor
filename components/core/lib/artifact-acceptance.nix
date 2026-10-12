@@ -41,7 +41,8 @@
         harbor prod artifact verify-local --manifest "$out/.harbor/acceptance.json" --root "$out"
       '';
 
-  mkArtifactVerifier = {pkgs}:
-    let package = import ../package.nix {inherit pkgs;}; in
-      package // {meta = package.meta // {mainProgram = "harbor-verify-artifact";};};
+  mkArtifactVerifier = {pkgs}: let
+    package = import ../package.nix {inherit pkgs;};
+  in
+    package // {meta = package.meta // {mainProgram = "harbor-verify-artifact";};};
 }

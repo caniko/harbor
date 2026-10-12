@@ -1,7 +1,10 @@
 //! Atomic source-bound step journals. Executors own process control; applications
 //! own reconciliation of partial effects. A journal never retries or cleans up.
 
-use std::{fs::{File, OpenOptions}, path::{Path, PathBuf}};
+use std::{
+    fs::{File, OpenOptions},
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -24,7 +27,11 @@ impl BoundFile {
     }
 
     pub fn verify(&self) -> Result<()> {
-        ensure!(Self::capture(&self.path)? == *self, "bound input changed: {}", self.path.display());
+        ensure!(
+            Self::capture(&self.path)? == *self,
+            "bound input changed: {}",
+            self.path.display()
+        );
         Ok(())
     }
 }
@@ -80,7 +87,8 @@ pub struct StepReceipt {
 fn log(path: &Path) -> Result<File> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
-    #[cfg(unix)] {
+    #[cfg(unix)]
+    {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
@@ -97,7 +105,10 @@ pub fn record_step(
     execute: impl FnOnce(&File, &File) -> Observation,
 ) -> Result<StepReceipt> {
     ensure!(!identity.label.is_empty(), "step label is required");
-    ensure!(!identity.inputs.is_empty(), "step requires source/input bindings");
+    ensure!(
+        !identity.inputs.is_empty(),
+        "step requires source/input bindings"
+    );
     let receipt_path = directory.join("receipt.json");
     let mut receipt = StepReceipt {
         schema_version: 1,
@@ -122,10 +133,30 @@ pub fn record_step(
     receipt.requires_reconciliation = receipt.identity.effect_policy == EffectPolicy::MayMutate;
     write_json_atomic(&receipt_path, &receipt, true)?;
     let observation = execute(&stdout, &stderr);
-    ensure!(matches!(observation.status, Status::NotExecuted | Status::Passed | Status::Failed | Status::TimedOut | Status::Cancelled | Status::UnknownEffect), "invalid terminal execution observation");
-    ensure!(observation.status != Status::Passed || observation.exit_code == Some(0), "passing execution must have a successful normal exit");
-    ensure!(observation.status != Status::Failed || observation.exit_code != Some(0), "failed execution cannot have a successful normal exit");
-    ensure!(observation.status != Status::NotExecuted || observation.exit_code.is_none(), "unexecuted step cannot have an exit code");
+    ensure!(
+        matches!(
+            observation.status,
+            Status::NotExecuted
+                | Status::Passed
+                | Status::Failed
+                | Status::TimedOut
+                | Status::Cancelled
+                | Status::UnknownEffect
+        ),
+        "invalid terminal execution observation"
+    );
+    ensure!(
+        observation.status != Status::Passed || observation.exit_code == Some(0),
+        "passing execution must have a successful normal exit"
+    );
+    ensure!(
+        observation.status != Status::Failed || observation.exit_code != Some(0),
+        "failed execution cannot have a successful normal exit"
+    );
+    ensure!(
+        observation.status != Status::NotExecuted || observation.exit_code.is_none(),
+        "unexecuted step cannot have an exit code"
+    );
     receipt.status = observation.status;
     receipt.requires_reconciliation &= receipt.status != Status::NotExecuted;
     receipt.observation = Some(observation);
@@ -136,7 +167,11 @@ pub fn record_step(
     receipt.stdout = Some(BoundFile::capture(&stdout_path)?);
     receipt.stderr = Some(BoundFile::capture(&stderr_path)?);
     if receipt.identity.executable.verify().is_err()
-        || receipt.identity.inputs.iter().any(|input| input.verify().is_err())
+        || receipt
+            .identity
+            .inputs
+            .iter()
+            .any(|input| input.verify().is_err())
     {
         receipt.status = Status::SourceDrift;
     }
