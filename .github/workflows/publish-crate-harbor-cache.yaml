@@ -83,6 +83,12 @@ jobs:
     - name: format
       run: nix develop --print-build-logs .#ci --command sh -ec 'treefmt --ci'
       timeout-minutes: 30
+    - name: test
+      run: nix develop --print-build-logs .#ci --command sh -ec 'cargo test --locked -p harbor-evidence --all-targets --jobs 2'
+      timeout-minutes: 30
+    - name: clippy
+      run: nix develop --print-build-logs .#ci --command sh -ec 'cargo clippy --locked -p harbor-evidence --all-targets --jobs 2 -- -D warnings'
+      timeout-minutes: 30
     - name: module-platforms
       run: nix develop --print-build-logs .#ci --command sh -ec 'for system in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do nix eval --raw .#checks.$system.harbor-modules.drvPath; done'
       timeout-minutes: 30

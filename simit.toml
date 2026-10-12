@@ -15,9 +15,12 @@ schema_version = 1
 [[monorepo.components]]
 id = "core"
 paths = ["components/core"]
+cargo_packages = ["harbor-evidence"]
 checks = [
   { id = "history", run = "python3 scripts/check_history.py" },
   { id = "format", run = "treefmt --ci" },
+  { id = "test", run = "cargo test --locked -p harbor-evidence --all-targets --jobs 2", timeout_minutes = 30 },
+  { id = "clippy", run = "cargo clippy --locked -p harbor-evidence --all-targets --jobs 2 -- -D warnings", timeout_minutes = 30 },
   { id = "module-platforms", run = "for system in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do nix eval --raw .#checks.$system.harbor-modules.drvPath; done", timeout_minutes = 30 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core", timeout_minutes = 90 },
 ]
@@ -36,7 +39,7 @@ depends_on = ["core", "android", "macos-sdk"]
 systems = ["x86_64-linux", "aarch64-darwin"]
 checks = [
   # CAD's Linux worker uses renameat2, prctl, /proc, systemd and DRM devices.
-  # Linux qualifies all eight members; Darwin qualifies the seven portable ones.
+  # Linux qualifies all nine members; Darwin qualifies the eight portable ones.
   { id = "test", run = "set --; if [ \"$(uname -s)\" = Darwin ]; then set -- --exclude harbor-cad; fi; simit test --git-fixtures -- cargo test --locked --workspace \"$@\" --jobs 2 -- --test-threads=2", timeout_minutes = 30 },
   { id = "clippy", run = "set --; if [ \"$(uname -s)\" = Darwin ]; then set -- --exclude harbor-cad; fi; cargo clippy --locked --workspace \"$@\" --all-targets --jobs 2 -- -D warnings", timeout_minutes = 30 },
   # Namespace acceptance applies to Linux; the Darwin lane still qualifies the
