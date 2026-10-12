@@ -1,7 +1,7 @@
-/** Repair Bun 1.4.2's two racy links in this frozen OpenPencil graph.
+/** Repair Bun 1.4.2's racy links in this frozen OpenPencil graph.
  * Package contents and dependency edges remain untouched. The lock's unaliased
  * react-is entry owns the shared name; npm aliases keep their own local links.
- * The ESLint peer already resolves correctly, but Bun sometimes omits its bin.
+ * ESLint and Browserslist peers resolve correctly, but Bun can omit their bins.
  */
 import {
   existsSync,
@@ -58,3 +58,35 @@ if (!lstatSync(join(scope, "eslint", executable)).isFile()) {
 }
 mkdirSync(join(scope, ".bin"), { recursive: true });
 link(join(scope, ".bin/eslint"), `../eslint/${executable}`);
+
+// The circular Browserslist/update-db peer graph has the same bin-link race.
+const updateScopes = readdirSync(store).filter((name) =>
+  name.startsWith("update-browserslist-db@"),
+);
+if (updateScopes.length !== 1) {
+  throw new Error(
+    `unexpected Browserslist update peer contexts: ${updateScopes}`,
+  );
+}
+const updateScope = join(store, updateScopes[0], "node_modules");
+const browserslist = JSON.parse(
+  readFileSync(join(updateScope, "browserslist/package.json"), "utf8"),
+);
+if (
+  browserslist.name !== "browserslist" ||
+  `browserslist@${browserslist.version}` !== lock.packages.browserslist[0]
+) {
+  throw new Error("resolved Browserslist peer does not match the frozen lock");
+}
+const browserslistBin = browserslist.bin.browserslist;
+if (
+  browserslistBin !== lock.packages.browserslist[2].bin.browserslist ||
+  !lstatSync(join(updateScope, "browserslist", browserslistBin)).isFile()
+) {
+  throw new Error("missing frozen Browserslist executable");
+}
+mkdirSync(join(updateScope, ".bin"), { recursive: true });
+link(
+  join(updateScope, ".bin/browserslist"),
+  `../browserslist/${browserslistBin}`,
+);
