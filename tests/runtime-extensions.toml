@@ -7,12 +7,16 @@ gates = [
   ".#checks.x86_64-linux.native-application-provision",
   ".#checks.x86_64-linux.cargo-test",
   ".#checks.x86_64-linux.native-application-backup",
+  ".#checks.x86_64-linux.native-application-transition",
+  ".#checks.x86_64-linux.native-application-postgres-transition",
 ]
 qualified_cases = [
   "nix.x86_64-linux.postgres-lifecycle-test",
   "nix.x86_64-linux.postgres-lifecycle-oracle-test",
   "vm.x86_64-linux.native-source-local-recovery",
   "vm.x86_64-linux.native-application-provision",
+  "vm.x86_64-linux.native-application-transition",
+  "vm.x86_64-linux.native-application-postgres-transition",
 ]
 
 [[extensions]]
@@ -29,7 +33,14 @@ sha256 = "1e9bbd4cd466cd3cbce58eceee62c70e17c5abd000a20fc5b5c03810cb1efc52"
 
 [[extensions]]
 path = "python/harbor_db/transition_manifest.py"
-sha256 = "833f44d2ffa20fe9c4ac569c0090d4d556fb068368104b94efc5313f38a7b429"
+sha256 = "2c68b97c95476fec50ec7a8d5a2e74663e511299e5c2993b3d5245040354793a"
+
+# Consumer validators must never inherit a root coordinator's identity or
+# environment. Both transition VMs exercise real root CLI identity dropping;
+# the frozen resource oracle and all original Python methods remain exact.
+[[extensions]]
+path = "python/harbor_db/resource.py"
+sha256 = "65d633c737708557deb45a8db21e6f76792a97ba46c57d6fb95540484e939164"
 
 [[extensions]]
 path = "python/harbor_db/cutover.py"

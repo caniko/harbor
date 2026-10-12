@@ -57,6 +57,9 @@ pub fn validate_operator_policy(config: &Value) -> Result<()> {
                 "operator transition manifests must be immutable store files ({key}): {error}"
             ))
         })?;
+        if matches!(key, "source_manifest" | "target_manifest") {
+            resource::consumer_policy(&durable::read_config_json(Path::new(path))?)?;
+        }
     }
     if let Some(commands) = config.get("commands").and_then(Value::as_object) {
         for command in commands.values() {

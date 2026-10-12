@@ -3,6 +3,7 @@ use super::{Result, durable, invalid, process, string};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
+    os::unix::{fs::MetadataExt, process::CommandExt},
     path::{Path, PathBuf},
 };
 pub fn valid_name(s: &str) -> bool {
@@ -66,6 +67,44 @@ fn counter(v: &Value) -> Result<String> {
     }
     Ok(s)
 }
+/// Validate nested consumer policy before a privileged coordinator can dispatch it.
+pub(super) fn consumer_policy(
+    c: &Value,
+) -> Result<Option<(Vec<String>, String, process::Identity)>> {
+    let argv = strings(c.get("consumer_command"))?;
+    if argv.is_empty() {
+        return Ok(None);
+    }
+    let executable = durable::immutable_store_reference(Path::new(&argv[0]))?;
+    if std::fs::metadata(&executable)?.mode() & 0o111 == 0 {
+        return Err(invalid(
+            "consumer validator requires an immutable executable",
+        ));
+    }
+    let uid = unsafe { libc::geteuid() };
+    let user = match c.get("user") {
+        Some(value) => value
+            .as_str()
+            .ok_or_else(|| invalid("invalid resource user"))?
+            .to_owned(),
+        None if uid != 0 => process::current_username()?,
+        None => {
+            return Err(invalid(
+                "root consumer validation requires the declared resource user",
+            ));
+        }
+    };
+    let identity = process::account(&user)?;
+    if identity.uid == 0
+        || (uid != 0 && (uid != identity.uid || unsafe { libc::getuid() } != identity.uid))
+    {
+        return Err(invalid(
+            "consumer validator requires the unprivileged resource user",
+        ));
+    }
+    Ok(Some((argv, user, identity)))
+}
+
 pub fn contract(c: &Value) -> Result<Value> {
     let state = state_directory(c)?;
     let name = string(c, "resource")?;
@@ -73,37 +112,59 @@ pub fn contract(c: &Value) -> Result<Value> {
         return Err(invalid("invalid resource name"));
     }
     let mut consumer = json!({});
-    if let Some(cmd) = c.get("consumer_command") {
-        let argv = strings(Some(cmd))?;
-        if !argv.is_empty() {
-            let mut command = std::process::Command::new(&argv[0]);
-            command.args(&argv[1..]);
-            let output = process::output(&mut command)?;
-            if !output.status.success() {
-                return Err(invalid(format!(
-                    "consumer storage validation failed: {}",
-                    process::text(&output.stderr)?.trim()
-                )));
+    if let Some((argv, user, identity)) = consumer_policy(c)? {
+        let mut command = std::process::Command::new(&argv[0]);
+        command
+            .args(&argv[1..])
+            .env_clear()
+            .envs([
+                ("PATH", Path::new(&argv[0]).parent().unwrap().as_os_str()),
+                ("HOME", std::ffi::OsStr::new("/")),
+                ("LANG", std::ffi::OsStr::new("C.UTF-8")),
+                ("USER", std::ffi::OsStr::new(&user)),
+                ("LOGNAME", std::ffi::OsStr::new(&user)),
+            ])
+            .current_dir("/");
+        if unsafe { libc::geteuid() } == 0 {
+            // SAFETY: identity is resolved before fork; the child hook
+            // only calls setgroups/setgid/setuid with preallocated data.
+            unsafe {
+                command.pre_exec(move || {
+                    if libc::setgroups(identity.groups.len(), identity.groups.as_ptr()) != 0
+                        || libc::setgid(identity.gid) != 0
+                        || libc::setuid(identity.uid) != 0
+                    {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
             }
-            consumer = super::codec::decode_str(&process::text(&output.stdout)?)?;
-            let m = consumer
-                .as_object()
-                .ok_or_else(|| invalid("invalid consumer storage contract"))?;
-            if m.keys().any(|k| {
-                ![
-                    "binding",
-                    "directories",
-                    "required_files",
-                    "minimum_counters",
-                ]
-                .contains(&k.as_str())
-            }) || ["binding", "directories", "required_files"]
-                .iter()
-                .any(|k| !m.contains_key(*k))
-                || !consumer["binding"].is_object()
-            {
-                return Err(invalid("invalid consumer storage contract"));
-            }
+        }
+        let output = process::output(&mut command)?;
+        if !output.status.success() {
+            return Err(invalid(format!(
+                "consumer storage validation failed: {}",
+                process::text(&output.stderr)?.trim()
+            )));
+        }
+        consumer = super::codec::decode_str(&process::text(&output.stdout)?)?;
+        let m = consumer
+            .as_object()
+            .ok_or_else(|| invalid("invalid consumer storage contract"))?;
+        if m.keys().any(|k| {
+            ![
+                "binding",
+                "directories",
+                "required_files",
+                "minimum_counters",
+            ]
+            .contains(&k.as_str())
+        }) || ["binding", "directories", "required_files"]
+            .iter()
+            .any(|k| !m.contains_key(*k))
+            || !consumer["binding"].is_object()
+        {
+            return Err(invalid("invalid consumer storage contract"));
         }
     }
     let dirs: BTreeSet<_> = strings(c.get("directories"))?

@@ -1525,6 +1525,12 @@ execution = { kind = "nix", installable = ".#checks.x86_64-linux.native-applicat
 [[cases.artifact_specs]]
 version = 1
 source = "vm.x86_64-linux.native-application-transition"
+path = "nix-outputs.json"
+kind = "nix_outputs"
+required = true
+[[cases.artifact_specs]]
+version = 1
+source = "vm.x86_64-linux.native-application-transition"
 path = "junit.xml"
 kind = "junit"
 required = true
@@ -1532,6 +1538,12 @@ required = true
 version = 1
 source = "vm.x86_64-linux.native-application-transition"
 path = "backend-transition-acceptance.json"
+kind = "semantic"
+required = true
+[[cases.artifact_specs]]
+version = 1
+source = "vm.x86_64-linux.native-application-transition"
+path = "consumer-privileges-acceptance.json"
 kind = "semantic"
 required = true
 
@@ -1546,6 +1558,12 @@ execution = { kind = "nix", installable = ".#checks.x86_64-linux.native-applicat
 [[cases.artifact_specs]]
 version = 1
 source = "vm.x86_64-linux.native-application-postgres-transition"
+path = "nix-outputs.json"
+kind = "nix_outputs"
+required = true
+[[cases.artifact_specs]]
+version = 1
+source = "vm.x86_64-linux.native-application-postgres-transition"
 path = "junit.xml"
 kind = "junit"
 required = true
@@ -1553,6 +1571,12 @@ required = true
 version = 1
 source = "vm.x86_64-linux.native-application-postgres-transition"
 path = "postgres-transition-acceptance.json"
+kind = "semantic"
+required = true
+[[cases.artifact_specs]]
+version = 1
+source = "vm.x86_64-linux.native-application-postgres-transition"
+path = "consumer-privileges-acceptance.json"
 kind = "semantic"
 required = true
 
@@ -2589,7 +2613,7 @@ source = "tests/resource_storage.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "resource_storage"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["startup_binding_missing_markers_and_required_files_fail_closed", "adoption_preserves_unlinked_lock_and_retries_partial_markers", "consumer_binding_floors_and_files_are_retained", "consumer_failure_preserves_diagnostics_and_does_not_publish", "transition_barriers_and_redirects_are_rejected", "consumer_exec_retains_authority_fd_until_exit", "authority_cannot_be_replaced", "python_and_rust_read_and_retry_each_others_authority_without_rewriting_receipts"]
+selectors = ["startup_binding_missing_markers_and_required_files_fail_closed", "adoption_preserves_unlinked_lock_and_retries_partial_markers", "consumer_binding_floors_and_files_are_retained", "consumer_failure_preserves_diagnostics_and_does_not_publish", "transition_barriers_and_redirects_are_rejected", "consumer_exec_retains_authority_fd_until_exit", "authority_cannot_be_replaced", "python_and_rust_read_and_retry_each_others_authority_without_rewriting_receipts", "consumer_validators_reject_mutable_executables_before_dispatch_in_both_engines"]
 
 [[inventories]]
 origin = "rust"

@@ -15,7 +15,13 @@ fn consumer(t: &Path, c: &mut Value) -> Value {
     fs::write(t.join("state/review.toml"), "[sessions]\n").unwrap();
     let v = json!({"binding":{"dataset":"one","config_sha256":"verified"},"directories":[t.join("data")],"required_files":[t.join("state/review.toml")],"minimum_counters":{"revision":42,"review:one":1}});
     fs::write(t.join("consumer.json"), v.to_string()).unwrap();
-    c["consumer_command"] = json!(["cat", t.join("consumer.json")]);
+    c["consumer_command"] = json!([
+        std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("cat"))
+            .find(|path| path.is_file())
+            .unwrap(),
+        t.join("consumer.json")
+    ]);
     v
 }
 
@@ -145,7 +151,7 @@ fn consumer_binding_floors_and_files_are_retained() {
 fn consumer_failure_preserves_diagnostics_and_does_not_publish() {
     let (t, mut c) = fixture();
     c["consumer_command"] = json!([
-        "/bin/sh",
+        fs::canonicalize("/bin/sh").unwrap(),
         "-c",
         "printf 'contract rejected\r\n' >&2; exit 1"
     ]);
@@ -154,6 +160,47 @@ fn consumer_failure_preserves_diagnostics_and_does_not_publish() {
         "consumer storage validation failed: contract rejected"
     );
     assert!(!t.path().join("authority/identity.json").exists());
+}
+
+#[test]
+fn consumer_validators_reject_mutable_executables_before_dispatch_in_both_engines() {
+    use harbor_db::storage::process;
+    use std::os::unix::fs::PermissionsExt;
+    let (t, mut c) = fixture();
+    let executable = t.path().join("validator");
+    let marker = t.path().join("dispatched");
+    fs::write(
+        &executable,
+        format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    c["consumer_command"] = json!([executable]);
+    for program in [executable.clone(), std::path::PathBuf::from("sh")] {
+        c["consumer_command"][0] = json!(program);
+        assert!(
+            resource::contract(&c).is_err(),
+            "mutable consumer dispatched"
+        );
+        let script = "import json,sys; from harbor_db import resource; c=json.loads(sys.argv[1]);\ntry: resource.contract(c)\nexcept (OSError,ValueError): pass\nelse: raise AssertionError('mutable consumer dispatched')";
+        let mut spec = process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            c.to_string(),
+        ]);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        process::execute(&spec).unwrap();
+        assert!(!marker.exists());
+        assert!(!t.path().join("authority/identity.json").exists());
+    }
 }
 #[test]
 fn transition_barriers_and_redirects_are_rejected() {

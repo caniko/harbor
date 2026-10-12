@@ -222,7 +222,21 @@ establish content freshness for a manually restored backup with the same identit
 that requires the consumer's record/revision checks.
 
 An optional `consumer_command` argv runs a read-only application validator under
-the authority lock. It returns JSON with `binding`, `directories`,
+the authority lock. Its executable and every alias hop must be immutable Nix
+store files. The authority's `user` selects the unprivileged resource account;
+root-run inspection drops UID, GID and supplementary groups before executing the
+validator. Missing or root identities fail closed. Already-unprivileged callers
+must match the selected account; older manifests without `user` may use only the
+caller's own unprivileged account. Nix cutover authorities default `user` to the
+resource's service user. Hand-written transition authority manifests with a
+validator must add that account explicitly before root-run planning.
+
+Validators receive a clean environment containing only `USER`, `LOGNAME`,
+`LANG=C.UTF-8`, `HOME=/`, and a `PATH` limited to the immutable executable's
+directory. Their working directory is `/`; pass configuration and data paths
+explicitly in the immutable argv rather than relying on operator environment or
+relative paths. Executable aliases retain their original argv spelling for
+multi-call binaries. The validator returns JSON with `binding`, `directories`,
 `required_files`, and optional `minimum_counters` (nonnegative integer witnesses).
 The binding and directory identities must match adoption. All files established
 at adoption remain mandatory; later files may be added. Every adopted counter
@@ -234,7 +248,7 @@ every subsequent save or arbitrary cross-file restores.
 `serve -- /absolute/path/to/consumer ...` repeats validation and execs the consumer
 with a shared authority lease inherited for its lifetime. Offline adoption cannot
 race that writer. The validator, adoption operation, and runtime must use the
-same bind mounts, permissions, and configuration environment.
+same bind mounts, resource permissions, and explicit configuration paths.
 
 ## Backup publication
 

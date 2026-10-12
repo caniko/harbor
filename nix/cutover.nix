@@ -128,7 +128,13 @@ in {
       description = "Bounded byte-verification and custody certification budget.";
     };
     resources = mkOption {
-      type = types.attrsOf (types.submodule ({name, ...}: {
+      type = types.attrsOf (types.submodule ({
+        name,
+        config,
+        ...
+      }: let
+        resourceUser = config.user;
+      in {
         options = {
           kind = mkOption {
             type = types.enum ["filesystem"];
@@ -177,6 +183,11 @@ in {
                 resource = mkOption {
                   type = types.str;
                   default = name;
+                };
+                user = mkOption {
+                  type = types.str;
+                  default = resourceUser;
+                  description = "Unprivileged resource account for immutable consumer validators, including root-run transition inspection.";
                 };
                 state_dir = mkOption {type = types.strMatching "/.*";};
                 directories = mkOption {type = types.listOf (types.strMatching "/.*");};

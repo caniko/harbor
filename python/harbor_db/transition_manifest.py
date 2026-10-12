@@ -21,7 +21,9 @@ def validate_operator_policy(config):
     for key in ("source_manifest", "target_manifest", "backup_manifest", "postgres_manifest", "custody_manifest"):
         if key in ("postgres_manifest", "custody_manifest") and config.get(key) is None:
             continue
-        immutable_store_reference(config[key])
+        selected = immutable_store_reference(config[key])
+        if key in ("source_manifest", "target_manifest"):
+            resource.consumer_policy(read_json(selected))
     for command in config.get("commands", {}).values():
         immutable_store_reference(command["argv"][0], executable=True)
     for key in ("runuser", "systemctl", "busctl"):

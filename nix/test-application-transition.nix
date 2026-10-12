@@ -9,14 +9,37 @@
   storage = nativePackage;
   bridge = import ./test-native-bridge.nix {inherit pkgs;};
   legacyStorage = import ./test-python-package.nix {inherit pkgs;};
+  consumerCaseId = "vm.x86_64-linux.${
+    if interop
+    then "native-"
+    else ""
+  }application-${
+    if withPostgres
+    then "postgres-"
+    else ""
+  }transition";
+  consumerChecks = ''
+    import json, os
+    start_all()
+    primary.wait_for_unit("multi-user.target")
+    consumer_evidence = json.loads(primary.succeed("${pkgs.python3}/bin/python3 -B ${../tests/check_consumer_privileges.py} ${storage}/bin/harbor-db-resource ${legacyStorage}/bin/harbor-db-resource ${pkgs.python3}/bin/python3 ${consumerCaseId}"))
+    with open(os.path.join(os.environ["out"], "consumer-privileges-acceptance.json"), "w") as exported:
+        json.dump(consumer_evidence, exported)
+  '';
   sourceAuthority = {
     resource = "demo";
+    user = "demo";
     state_dir = "/var/lib/demo-authority";
     directories = ["/var/lib/demo-old"];
     binding.backend = "filesystem-source";
     required_files = [];
     required_mounts = [];
-    consumer_command = [];
+    consumer_command = [
+      "${pkgs.python3}/bin/python3"
+      "-B"
+      "-c"
+      ''import json,os,pwd; account=pwd.getpwnam("demo"); assert os.getuid()==os.geteuid()==account.pw_uid!=0; assert os.getgid()==os.getegid()==account.pw_gid!=0; assert set(os.getgroups())==set(os.getgrouplist("demo",account.pw_gid)); assert os.environ["USER"]==os.environ["LOGNAME"]=="demo"; print(json.dumps({"binding":{"validator":"demo"},"directories":[],"required_files":[]}))''
+    ];
   };
   targetAuthority =
     sourceAuthority
@@ -271,7 +294,8 @@ in
       testScript = {nodes, ...}:
         if withPostgres && interop
         then
-          bridge.script {
+          consumerChecks
+          + bridge.script {
             fixture = "${testPackage}/bin/harbor-db-postgres-transition-fixture";
             arguments = [
               "--config"
@@ -293,10 +317,11 @@ in
             artifact = "postgres-transition-acceptance.json";
           }
         else if withPostgres
-        then builtins.readFile ./test-application-postgres-transition.py
+        then consumerChecks + builtins.readFile ./test-application-postgres-transition.py
         else if interop
         then
-          bridge.script {
+          consumerChecks
+          + bridge.script {
             fixture = "${testPackage}/bin/harbor-db-backend-transition-fixture";
             arguments = [
               "--source-manifest"
@@ -311,58 +336,60 @@ in
             nodes = ["primary" "certifier"];
             artifact = "backend-transition-acceptance.json";
           }
-        else ''
-          import json
-          start_all()
-          def align(receiver, sender):
-              seconds = max(int(host.succeed("date +%s").strip()) for host in (receiver, sender))
-              receiver.succeed(f"date --set=@{seconds}")
-          primary.wait_for_unit("multi-user.target")
-          certifier.wait_for_unit("multi-user.target")
-          primary.succeed("runuser -u demo -- sh -c 'printf source-revision-seven > /var/lib/demo-old/records'")
-          primary.succeed("runuser -u demo -- harbor-db-resource --config ${sourceManifest} adopt --identity retained-resource")
-          primary.succeed("systemctl start demo.service")
-          primary.wait_for_unit("demo.service")
-          contract = primary.succeed("readlink -f /etc/harbor-db/demo-transition.json").strip()
-          transition = f"harbor-db-transition --config {contract}"
-          primary.succeed(transition + " plan --candidate " + contract)
-          result = json.loads(primary.succeed(transition + " prepare"))
-          assert result["status"] == "awaiting-independent-restore"
-          primary.fail("systemctl is-active demo.service")
-          primary.succeed("systemctl start demo.service")
-          primary.fail("systemctl is-active demo.service")
-          primary.fail("runuser -u demo -- harbor-db-resource --config ${sourceManifest} check")
-          primary.crash()
-          primary.start()
-          primary.wait_for_unit("multi-user.target")
-          primary.succeed("systemctl start demo.service")
-          primary.fail("systemctl is-active demo.service")
-          point = result["backup"].split("/")[-1]
-          archive = primary.succeed(f"tar -C /var/lib/demo-backups -czf - {point} | base64 -w0").strip()
-          certifier.succeed(f"printf '%s' '{archive}' | base64 -d | tar -xzf - -C /var/lib/demo-backups")
-          align(certifier, primary)
-          backup_contract = certifier.succeed("readlink -f /etc/harbor-db/demo-backup.json").strip()
-          proof = json.loads(certifier.succeed(f"runuser -u demo -- harbor-db-application-backup --config {backup_contract} certify /var/lib/demo-backups/{point} --state /var/lib/demo-certifier"))
-          encoded = certifier.succeed(f"base64 -w0 /var/lib/demo-certifier/{proof['source_acceptance_sha256']}.json").strip()
-          primary.succeed(f"install -d -m 0700 /var/lib/demo-evidence; umask 077; printf '%s' '{encoded}' | base64 -d > /var/lib/demo-evidence/independent.json")
-          primary.fail("runuser -u demo -- sh -c 'printf forged > /var/lib/demo-evidence/independent.json'")
-          align(primary, certifier)
-          assert json.loads(primary.succeed(transition + " prepare"))["phase"] == "prepared"
-          candidate = primary.succeed("readlink -f /run/current-system/specialisation/target").strip()
-          primary.succeed(transition + " bind-candidate --candidate " + candidate)
-          primary.succeed(candidate + "/bin/switch-to-configuration test")
-          primary.fail("systemctl is-active demo.service")
-          primary.succeed(transition + " commit")
-          primary.succeed("test -f /var/lib/harbor-db-transitions/demo/inhibited.json")
-          primary.succeed(transition + " enable-writes")
-          primary.succeed("systemctl start demo.service")
-          primary.wait_for_unit("demo.service")
-          primary.succeed(transition + " complete")
-          primary.fail(transition + " abort")
-          primary.succeed("runuser -u demo -- harbor-db-resource --config ${targetManifest} check")
-          primary.fail("runuser -u demo -- harbor-db-resource --config ${sourceManifest} check")
-          primary.succeed(transition + " retire")
-          primary.succeed("test -f /var/lib/demo-old/records")
-          primary.succeed("grep acknowledged /var/lib/demo-new/records")
-        '';
+        else
+          consumerChecks
+          + ''
+            import json
+            start_all()
+            def align(receiver, sender):
+                seconds = max(int(host.succeed("date +%s").strip()) for host in (receiver, sender))
+                receiver.succeed(f"date --set=@{seconds}")
+            primary.wait_for_unit("multi-user.target")
+            certifier.wait_for_unit("multi-user.target")
+            primary.succeed("runuser -u demo -- sh -c 'printf source-revision-seven > /var/lib/demo-old/records'")
+            primary.succeed("runuser -u demo -- harbor-db-resource --config ${sourceManifest} adopt --identity retained-resource")
+            primary.succeed("systemctl start demo.service")
+            primary.wait_for_unit("demo.service")
+            contract = primary.succeed("readlink -f /etc/harbor-db/demo-transition.json").strip()
+            transition = f"harbor-db-transition --config {contract}"
+            primary.succeed(transition + " plan --candidate " + contract)
+            result = json.loads(primary.succeed(transition + " prepare"))
+            assert result["status"] == "awaiting-independent-restore"
+            primary.fail("systemctl is-active demo.service")
+            primary.succeed("systemctl start demo.service")
+            primary.fail("systemctl is-active demo.service")
+            primary.fail("runuser -u demo -- harbor-db-resource --config ${sourceManifest} check")
+            primary.crash()
+            primary.start()
+            primary.wait_for_unit("multi-user.target")
+            primary.succeed("systemctl start demo.service")
+            primary.fail("systemctl is-active demo.service")
+            point = result["backup"].split("/")[-1]
+            archive = primary.succeed(f"tar -C /var/lib/demo-backups -czf - {point} | base64 -w0").strip()
+            certifier.succeed(f"printf '%s' '{archive}' | base64 -d | tar -xzf - -C /var/lib/demo-backups")
+            align(certifier, primary)
+            backup_contract = certifier.succeed("readlink -f /etc/harbor-db/demo-backup.json").strip()
+            proof = json.loads(certifier.succeed(f"runuser -u demo -- harbor-db-application-backup --config {backup_contract} certify /var/lib/demo-backups/{point} --state /var/lib/demo-certifier"))
+            encoded = certifier.succeed(f"base64 -w0 /var/lib/demo-certifier/{proof['source_acceptance_sha256']}.json").strip()
+            primary.succeed(f"install -d -m 0700 /var/lib/demo-evidence; umask 077; printf '%s' '{encoded}' | base64 -d > /var/lib/demo-evidence/independent.json")
+            primary.fail("runuser -u demo -- sh -c 'printf forged > /var/lib/demo-evidence/independent.json'")
+            align(primary, certifier)
+            assert json.loads(primary.succeed(transition + " prepare"))["phase"] == "prepared"
+            candidate = primary.succeed("readlink -f /run/current-system/specialisation/target").strip()
+            primary.succeed(transition + " bind-candidate --candidate " + candidate)
+            primary.succeed(candidate + "/bin/switch-to-configuration test")
+            primary.fail("systemctl is-active demo.service")
+            primary.succeed(transition + " commit")
+            primary.succeed("test -f /var/lib/harbor-db-transitions/demo/inhibited.json")
+            primary.succeed(transition + " enable-writes")
+            primary.succeed("systemctl start demo.service")
+            primary.wait_for_unit("demo.service")
+            primary.succeed(transition + " complete")
+            primary.fail(transition + " abort")
+            primary.succeed("runuser -u demo -- harbor-db-resource --config ${targetManifest} check")
+            primary.fail("runuser -u demo -- harbor-db-resource --config ${sourceManifest} check")
+            primary.succeed(transition + " retire")
+            primary.succeed("test -f /var/lib/demo-old/records")
+            primary.succeed("grep acknowledged /var/lib/demo-new/records")
+          '';
     }

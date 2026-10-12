@@ -4,12 +4,13 @@ import argparse
 import contextlib
 import json
 import os
+import pwd
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-from .durable import lock, read_json, write_json
+from .durable import immutable_store_reference, lock, read_json, write_json
 from .postgres import require_mounts
 
 
@@ -25,14 +26,42 @@ def state_directory(config):
     return state
 
 
+def consumer_policy(config):
+    argv = config.get("consumer_command", [])
+    if not isinstance(argv, list) or any(not isinstance(value, str) for value in argv):
+        raise AuthorityError("invalid consumer command")
+    if not argv:
+        return None
+    immutable_store_reference(argv[0], executable=True)
+    uid = os.geteuid()
+    user = config.get("user")
+    if user is None:
+        if uid == 0:
+            raise AuthorityError("root consumer validation requires the declared resource user")
+        user = pwd.getpwuid(uid).pw_name
+    account = pwd.getpwnam(user)
+    if account.pw_uid == 0 or (uid != 0 and (uid != account.pw_uid or os.getuid() != account.pw_uid)):
+        raise AuthorityError("consumer validator requires the unprivileged resource user")
+    return argv, user, account
+
+
 def contract(config):
     require_mounts(config)
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", config["resource"]):
         raise AuthorityError("invalid resource name")
     state = state_directory(config)
     consumer = {}
-    if config.get("consumer_command"):
-        result = subprocess.run(config["consumer_command"], capture_output=True, text=True, check=False)
+    policy = consumer_policy(config)
+    if policy:
+        argv, user, account = policy
+        identity = (dict(user=account.pw_uid, group=account.pw_gid,
+                         extra_groups=os.getgrouplist(user, account.pw_gid))
+                    if os.geteuid() == 0 else {})
+        result = subprocess.run(argv, capture_output=True, text=True, check=False,
+                                stdin=subprocess.DEVNULL, cwd="/", env={
+                                    "PATH": str(Path(argv[0]).parent), "HOME": "/",
+                                    "LANG": "C.UTF-8", "USER": user, "LOGNAME": user,
+                                }, **identity)
         if result.returncode:
             raise AuthorityError(f"consumer storage validation failed: {result.stderr.strip()}")
         consumer = json.loads(result.stdout)
