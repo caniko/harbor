@@ -83,17 +83,17 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1791211737,
-        "narHash": "sha256-1e1aWOxpMyxdcaJJ3KZf+BAx20gJK4hY3s6RplOY6ds=",
-        "ref": "feat/shared-timezone-env",
-        "rev": "1f272a44dea9dc531b30efb384720ddb46f083e3",
-        "revCount": 43,
+        "lastModified": 1791799864,
+        "narHash": "sha256-NfxwCOZd2dTtP6k0CldvICIiJXP/7j0zf/ewdcx1xtM=",
+        "ref": "feat/scoped-dev-runtime",
+        "rev": "780f01e218d159826e47ae125525f3280954b3e7",
+        "revCount": 47,
         "type": "git",
         "url": "https://github.com/caniko/harbor-meta.git"
       },
       "original": {
-        "ref": "feat/shared-timezone-env",
-        "rev": "1f272a44dea9dc531b30efb384720ddb46f083e3",
+        "ref": "feat/scoped-dev-runtime",
+        "rev": "780f01e218d159826e47ae125525f3280954b3e7",
         "type": "git",
         "url": "https://github.com/caniko/harbor-meta.git"
       }

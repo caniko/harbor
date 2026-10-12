@@ -123,83 +123,9 @@ in rec {
   }:
     python.withPackages packages;
 
-  mkUvDevShell = {
-    pkgs,
-    timeZone ? "UTC",
-    python ? pkgs.python313,
-    uvExtra ? null,
-    devGroup ? "dev",
-    basePackages ? [],
-    extraPackages ? [],
-    baseLibs ? [],
-    extraLibs ? [],
-    extraEnv ? {},
-    pythonPathEntries ? [],
-    helperPackages ? [],
-    helperSpecs ? [],
-    shellHookPrefix ? "",
-    shellHookSuffix ? "",
-    autoSync ? true,
-    opencodeLsp ? {
-      enable = true;
-    },
-  }: let
-    uvFlags = nixLib.concatStringsSep " " (
-      (nixLib.optional (uvExtra != null) "--extra ${uvExtra}")
-      ++ (nixLib.optional (devGroup != null) "--group ${devGroup}")
-    );
-    generatedHelpers = map (spec: mkUvHelper ({inherit pkgs;} // spec)) helperSpecs;
-    opencodeLspEnabled = opencodeLsp.enable or true;
-    opencodeLspHook =
-      if opencodeLspEnabled && opencodeLspLib != null
-      then
-        (opencodeLspLib.mkShell {
-          inherit pkgs;
-          profiles = ["python"];
-        }).shellHook
-      else "";
-    pythonPath =
-      if pythonPathEntries == []
-      then ""
-      else ''
-        export PYTHONPATH="${nixLib.concatStringsSep ":" pythonPathEntries}''${PYTHONPATH:+:$PYTHONPATH}"
-      '';
-    syncHook = nixLib.optionalString autoSync ''
-      unset UV_NO_SYNC
-      uv sync ${uvFlags}
-      export UV_NO_SYNC=1
-      . .venv/bin/activate
-    '';
-  in
-    if metaDevShell == null
-    then throw "harbor-py: mkUvDevShell requires the harbor-meta flake input"
-    else
-      metaDevShell.mkShell {
-        inherit pkgs timeZone;
-        packages =
-          [
-            python
-            pkgs.uv
-          ]
-          ++ basePackages
-          ++ extraPackages
-          ++ generatedHelpers
-          ++ helperPackages;
-        env =
-          {
-            LD_LIBRARY_PATH = nixLib.makeLibraryPath (baseLibs ++ extraLibs);
-            UV_LINK_MODE = "copy";
-            UV_PYTHON_DOWNLOADS = "never";
-          }
-          // extraEnv;
-        extraShellHook = ''
-          ${shellHookPrefix}
-          ${opencodeLspHook}
-          ${pythonPath}
-          ${syncHook}
-          ${shellHookSuffix}
-        '';
-      };
+  mkUvDevShell = import ./uv-dev-shell.nix {
+    inherit nixLib metaDevShell opencodeLspLib mkUvHelper;
+  };
 
   mkUvDevShells = {
     pkgs,
