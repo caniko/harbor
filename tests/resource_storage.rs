@@ -6,6 +6,64 @@ use std::{fs, path::Path};
 
 #[path = "fixtures/python_store.rs"]
 mod python_store;
+
+#[test]
+fn consumer_snapshot_allows_advancing_evidence_but_rejects_namespace_changes_and_regressions_in_both_engines()
+ {
+    let (t, c) = fixture();
+    let old = t.path().join("state/old");
+    let new = t.path().join("state/new");
+    fs::write(&old, b"retained").unwrap();
+    fs::write(&new, b"new").unwrap();
+    let pinned = json!({"version":1,"resource":"archive","binding":{},"directories":c["directories"],"required_files":[old],"minimum_counters":{"saved":2}});
+    let mut advanced = pinned.clone();
+    advanced["required_files"] = json!([old, new]);
+    advanced["minimum_counters"]["saved"] = json!(3);
+    resource::require_contract(&advanced, Some(&pinned)).unwrap();
+    for field in [
+        "binding",
+        "directories",
+        "required_files",
+        "minimum_counters",
+    ] {
+        let mut regressed = advanced.clone();
+        regressed[field] = match field {
+            "binding" => json!({"changed":true}),
+            "directories" => json!([]),
+            "required_files" => json!([new]),
+            _ => json!({"saved":1}),
+        };
+        assert!(resource::require_contract(&regressed, Some(&pinned)).is_err());
+    }
+    let script = r#"import json,sys
+from harbor_db import resource
+pinned,advanced=map(json.loads,sys.argv[1:])
+resource.require_contract(advanced,pinned)
+for field,value in [('binding',{'changed':True}),('directories',[]),('required_files',advanced['required_files'][1:]),('minimum_counters',{'saved':1})]:
+    try: resource.require_contract(dict(advanced,**{field:value}),pinned)
+    except ValueError: pass
+    else: raise AssertionError('regressed snapshot admitted')
+"#;
+    let result = std::process::Command::new("python3")
+        .args([
+            "-B",
+            "-c",
+            script,
+            &pinned.to_string(),
+            &advanced.to_string(),
+        ])
+        .env(
+            "PYTHONPATH",
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        )
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
 fn fixture() -> (tempfile::TempDir, Value) {
     let t = tempfile::tempdir().unwrap();
     for d in ["authority", "data", "state"] {

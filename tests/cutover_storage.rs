@@ -360,7 +360,17 @@ cutover.certify_filesystem(c,restores,'verified',now=100)
 expected=resource.contract(c['authority'])
 receipt=Path(c['custody_file']).read_bytes()
 consumer.write_text(json.dumps(a))
+try: cutover.validate_storage_namespaces(manifest,deadline=time.monotonic()+5)
+except ValueError as error: assert 'authority mismatch' in str(error),str(error)
+else: raise AssertionError('consumer hid adopted directories')
+identity=Path(c['authority']['state_dir'])/'identity.json'
+adopted=identity.read_bytes()
+first=resource.contract(c['authority'])
+cutover.write_json(identity,dict(first,identity='verified'))
+for directory in first['directories']:
+    cutover.write_json(resource.anchor(c['authority'],Path(directory)),{'resource':c['authority']['resource'],'identity':'verified'})
 contracts=cutover.validate_storage_namespaces(manifest,deadline=time.monotonic()+5)
+identity.write_bytes(adopted)
 consumer.write_text(json.dumps(b))
 cutover.check_resource(c,phase='activate',now=101)
 for action in [lambda:cutover.check_resource(c,phase='activate',now=101,pinned=contracts['archive']),
@@ -415,11 +425,33 @@ assert result['inventory']==accepted['inventory']
             let expected = resource::contract(&f.config["authority"]).unwrap();
             let receipt = durable::read_json(&f.state.join("custody.json")).unwrap();
             durable::write_json(&consumer, &a).unwrap();
+            assert!(
+                cutover::validate_storage_namespaces_until(
+                    &manifest,
+                    Instant::now() + Duration::from_secs(5)
+                )
+                .unwrap_err()
+                .to_string()
+                .contains("authority mismatch")
+            );
+            let identity = f.state.join("identity.json");
+            let adopted = fs::read(&identity).unwrap();
+            let mut first = resource::contract(&f.config["authority"]).unwrap();
+            first["identity"] = json!("verified");
+            durable::write_json(&identity, &first).unwrap();
+            for directory in custody::paths(&first, "directories").unwrap() {
+                durable::write_json(
+                    &resource::anchor(&f.config["authority"], &directory).unwrap(),
+                    &json!({"resource":"archive","identity":"verified"}),
+                )
+                .unwrap();
+            }
             let contracts = cutover::validate_storage_namespaces_until(
                 &manifest,
                 Instant::now() + Duration::from_secs(5),
             )
             .unwrap();
+            fs::write(&identity, adopted).unwrap();
             durable::write_json(&consumer, &b).unwrap();
             f.check("activate", 101).unwrap();
             assert!(
@@ -526,6 +558,194 @@ assert time.monotonic()-start<1,'validator exceeded the total coordinator budget
         "{}",
         String::from_utf8_lossy(&result.stderr)
     );
+}
+
+#[test]
+fn consumer_unselected_adopted_directories_cannot_hide_from_restore_admission_in_both_engines() {
+    use harbor_db::storage::{durable, resource};
+    for python in [false, true] {
+        let f = Fixture::new();
+        let other = f.temp.path().join("other");
+        let state = f.temp.path().join("other-state");
+        fs::create_dir(&other).unwrap();
+        fs::create_dir(&state).unwrap();
+        let consumer = f.temp.path().join("consumer.json");
+        let cat = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("cat"))
+            .find(|path| path.is_file())
+            .unwrap();
+        let mut peer = f.config.clone();
+        peer["authority"] = json!({"resource":"other","state_dir":state,"directories":[other],"binding":{},"consumer_command":[cat,consumer]});
+        peer["custody_file"] = json!(state.join("custody.json"));
+        let mut manifest = f.manifest();
+        manifest["resources"]["other"] = peer.clone();
+        let full = json!({"binding":{},"directories":[f.restore],"required_files":[]});
+        let hidden = json!({"binding":{},"directories":[],"required_files":[]});
+        if python {
+            let script = r#"import json,sys,time
+from pathlib import Path
+from harbor_db import cutover,resource
+manifest,peer,full,hidden=map(json.loads,sys.argv[1:])
+consumer=Path(peer['authority']['consumer_command'][1])
+consumer.write_text(json.dumps(full))
+resource.adopt(peer['authority'],'peer')
+consumer.write_text(json.dumps(hidden))
+for contracts in (None,{'archive':resource.contract(manifest['resources']['archive']['authority']),'other':resource.contract(peer['authority'])}):
+    try: cutover.validate_restore_namespaces(manifest,full['directories'],contracts=contracts)
+    except ValueError as error: assert 'authority mismatch' in str(error),str(error)
+    else: raise AssertionError('non-selected authority was hidden')
+assert not Path(manifest['resources']['archive']['custody_file']).exists()
+"#;
+            let mut command = std::process::Command::new("python3");
+            command
+                .args([
+                    "-B",
+                    "-c",
+                    &python_store::script(script),
+                    &manifest.to_string(),
+                    &peer.to_string(),
+                    &full.to_string(),
+                    &hidden.to_string(),
+                ])
+                .env(
+                    "PYTHONPATH",
+                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+                );
+            let result = output(&mut command);
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        } else {
+            durable::write_json(&consumer, &full).unwrap();
+            resource::adopt(&peer["authority"], "peer").unwrap();
+            durable::write_json(&consumer, &hidden).unwrap();
+            assert!(
+                cutover::validate_restore_namespaces(&manifest, std::slice::from_ref(&f.restore))
+                    .unwrap_err()
+                    .to_string()
+                    .contains("authority mismatch")
+            );
+            let forged = json!({"archive":resource::contract(&f.config["authority"]).unwrap(),"other":resource::contract(&peer["authority"]).unwrap()});
+            assert!(
+                cutover::validate_restore_namespaces_with_contracts(
+                    &manifest,
+                    std::slice::from_ref(&f.restore),
+                    Some(&forged),
+                    std::time::Instant::now() + std::time::Duration::from_secs(5)
+                )
+                .unwrap_err()
+                .to_string()
+                .contains("authority mismatch")
+            );
+            assert!(!f.state.join("custody.json").exists());
+        }
+    }
+}
+
+#[test]
+fn consumer_large_snapshots_use_bounded_worker_stdin_and_direct_certification_keeps_its_deadline_in_both_engines()
+ {
+    use harbor_db::storage::durable;
+    use std::time::{Duration, Instant};
+    for python in [false, true] {
+        let mut f = Fixture::new();
+        let interpreter = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("python3"))
+            .find(|path| path.is_file())
+            .unwrap();
+        let consumer = f.temp.path().join("consumer.json");
+        let counter = f.temp.path().join("calls");
+        let body =
+            json!({"binding":{"large":"x".repeat(200_000)},"directories":[],"required_files":[]});
+        durable::write_json(&consumer, &body).unwrap();
+        let code = "import pathlib,sys,time;p=pathlib.Path(sys.argv[1]);n=int(p.read_text()) if p.exists() else 0;p.write_text(str(n+1));time.sleep(4 if n else 0);print(pathlib.Path(sys.argv[2]).read_text())";
+        f.config["authority"]["consumer_command"] =
+            json!([interpreter, "-B", "-c", code, counter, consumer]);
+        f.config["authority"]["consumer_timeout_seconds"] = json!(300);
+        let contract = f.temp.path().join("contract.json");
+        let mut manifest = f.manifest();
+        manifest["activation_timeout_seconds"] = json!(1);
+        durable::write_json(&contract, &manifest).unwrap();
+        fs::write(
+            f.temp.path().join("sitecustomize.py"),
+            python_store::script(""),
+        )
+        .unwrap();
+        let argv = |phase: &str| {
+            let mut command = if python {
+                let mut command = std::process::Command::new(&interpreter);
+                command.args(["-B", "-m", "harbor_db.cutover"]).env(
+                    "PYTHONPATH",
+                    format!(
+                        "{}:{}/python",
+                        f.temp.path().display(),
+                        env!("CARGO_MANIFEST_DIR")
+                    ),
+                );
+                command
+            } else {
+                std::process::Command::new(env!("CARGO_BIN_EXE_harbor-db-cutover"))
+            };
+            command
+                .args([phase, "--contract"])
+                .arg(&contract)
+                .args(["--host", "fixture"]);
+            command
+        };
+        // The first expansion is quick; direct-worker revalidation must consume
+        // the remaining one-second activation budget, rather than its 300 s limit.
+        let start = Instant::now();
+        let result = output(
+            argv("certify-worker")
+                .args([
+                    "--phase",
+                    "certify",
+                    "--worker",
+                    "archive",
+                    "--certify-identity",
+                    "retained",
+                    "--certify-roots",
+                ])
+                .arg(&f.restore),
+        );
+        assert!(!result.status.success(), "{result:?}");
+        assert!(start.elapsed() < Duration::from_secs(3));
+        assert!(!f.state.join("identity.json").exists() && !f.state.join("custody.json").exists());
+        // With a stable large contract and sufficient budget, the real parent
+        // and child certify and check successfully; no JSON is passed in argv.
+        let cat = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("cat"))
+            .find(|path| path.is_file())
+            .unwrap();
+        f.config["authority"]["consumer_command"] = json!([cat, consumer]);
+        manifest["resources"]["archive"] = f.config.clone();
+        manifest["activation_timeout_seconds"] = json!(10);
+        durable::write_json(&contract, &manifest).unwrap();
+        let result = output(
+            argv("certify")
+                .args([
+                    "--resource",
+                    "archive",
+                    "--identity",
+                    "retained",
+                    "--restore-root",
+                ])
+                .arg(&f.restore),
+        );
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let result = output(&mut argv("check"));
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
 }
 
 #[test]

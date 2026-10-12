@@ -298,6 +298,13 @@ pub fn inspection_with_contract(
     c: &Value,
     pinned: Option<&Value>,
 ) -> Result<(durable::Lease, Value)> {
+    inspection_until(c, pinned, None)
+}
+pub fn inspection_until(
+    c: &Value,
+    pinned: Option<&Value>,
+    deadline: Option<Instant>,
+) -> Result<(durable::Lease, Value)> {
     let s = state_directory(c)?;
     if !s.join("identity.json").exists() {
         return Err(invalid(
@@ -306,17 +313,47 @@ pub fn inspection_with_contract(
     }
     let l = durable::lock(&s.join("lock"), true, false)?;
     require_stable(c)?;
-    let expected = contract(c)?;
+    let expected = contract_until(c, deadline)?;
     require_contract(&expected, pinned)?;
     let r = verify(c, &expected)?;
     Ok((l, r))
 }
 
 pub fn require_contract(observed: &Value, pinned: Option<&Value>) -> Result<()> {
-    if pinned.is_some_and(|pinned| pinned != observed) {
+    let Some(pinned) = pinned else {
+        return Ok(());
+    };
+    if ["version", "resource", "binding", "directories"]
+        .iter()
+        .any(|key| observed.get(key) != pinned.get(key))
+    {
         return Err(invalid(
             "consumer authority differs from the namespace inspection contract",
         ));
+    }
+    let files = strings(observed.get("required_files"))?;
+    let retained = strings(pinned.get("required_files"))?;
+    if retained.iter().any(|file| !files.contains(file)) {
+        return Err(invalid(
+            "consumer evidence regressed since namespace inspection",
+        ));
+    }
+    require_files(&retained)?;
+    if let Some(counters) = pinned.get("minimum_counters") {
+        for (key, floor) in counters
+            .as_object()
+            .ok_or_else(|| invalid("invalid pinned counters"))?
+        {
+            let floor = counter(floor)?;
+            let current = counter(observed["minimum_counters"].get(key).ok_or_else(|| {
+                invalid("consumer evidence regressed since namespace inspection")
+            })?)?;
+            if (current.len(), &current) < (floor.len(), &floor) {
+                return Err(invalid(
+                    "consumer evidence regressed since namespace inspection",
+                ));
+            }
+        }
     }
     Ok(())
 }

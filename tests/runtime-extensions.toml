@@ -40,11 +40,11 @@ sha256 = "2c68b97c95476fec50ec7a8d5a2e74663e511299e5c2993b3d5245040354793a"
 # the frozen resource oracle and all original Python methods remain exact.
 [[extensions]]
 path = "python/harbor_db/resource.py"
-sha256 = "8fdb9eb2d629703c162e847e9e8bf17b7172c8d6fa326b6b3b2e888d1c0631ef"
+sha256 = "2ccc82f938787a8dbbed6c64fc1356ad29cf6b8ad8594fdd8e61772b20ed0047"
 
 [[extensions]]
 path = "python/harbor_db/cutover.py"
-sha256 = "660951cfb1435bab2dd9b08d1914e816120977b9a587bd4438cc2862ec604d86"
+sha256 = "548f2de72ce082b4778b33a19e5ed53a8a286efd8c548a00b447b4ed55197c0a"
 
 [[extensions]]
 path = "python/harbor_db/provision.py"

@@ -159,21 +159,31 @@ def require_stable(config):
 
 
 @contextlib.contextmanager
-def inspection(config, *, pinned=None):
+def inspection(config, *, pinned=None, deadline=None):
     """Retain existing authority while an additional consumer guard inspects it."""
     state = state_directory(config)
     if not (state / "identity.json").exists():
         raise AuthorityError("storage is not adopted; explicit adoption is required")
     with lock(state / "lock", shared=True):
         require_stable(config)
-        expected = contract(config)
+        expected = contract(config, deadline=deadline)
         require_contract(expected, pinned)
         yield verify(config, expected)
 
 
 def require_contract(observed, pinned):
-    if pinned is not None and observed != pinned:
+    if pinned is None:
+        return
+    if any(observed.get(key) != pinned.get(key) for key in ("version", "resource", "binding", "directories")):
         raise AuthorityError("consumer authority differs from the namespace inspection contract")
+    retained = pinned.get("required_files", [])
+    if not set(retained).issubset(observed.get("required_files", [])):
+        raise AuthorityError("consumer evidence regressed since namespace inspection")
+    require_files(retained)
+    for key, floor in pinned.get("minimum_counters", {}).items():
+        current = observed.get("minimum_counters", {}).get(key)
+        if type(floor) is not int or floor < 0 or type(current) is not int or current < floor:
+            raise AuthorityError("consumer evidence regressed since namespace inspection")
 
 
 def serve(config, argv, *, inspect=None):

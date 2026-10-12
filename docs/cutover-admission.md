@@ -63,10 +63,16 @@ roots and mounted descendants. Hard links, root bind mounts and nested empty
 directory aliases cannot give shared storage separate resource leases. Traversal
 uses the coordinator's bounded inspection budget, including every consumer
 validator expansion. Each validator receives only the remaining total budget.
-The coordinator passes the exact expanded authority contracts to inspection and
-certification workers. A worker rejects any changed consumer contract before
-checking or publishing corpus evidence, so its directories are the same ones
-that passed global namespace inspection. Worker/serve processes retain
+Every enrolled filesystem snapshot is verified against its adopted authority,
+including resources not selected for certification. Prepared transitions verify
+their recorded source/target authorities and protect both live and target roots.
+The coordinator passes expanded snapshots through bounded worker stdin (64 MiB
+aggregate limit), avoiding per-argument limits for large consumer contracts.
+Workers require exact namespace and binding fields; required files may be added
+and counters may advance, while missing files and regressed witnesses reject.
+Direct certification workers share one activation deadline through snapshot
+input, namespace expansion, consumer revalidation and final publication checks.
+Worker/serve processes retain
 their own authority lease and startup guard without requiring read access to
 other applications' private corpora.
 

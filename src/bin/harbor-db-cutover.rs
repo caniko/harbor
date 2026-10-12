@@ -34,6 +34,13 @@ enum Command {
         worker: Option<String>,
         #[arg(long, hide = true, requires = "worker")]
         authority_contract: Option<String>,
+        #[arg(
+            long,
+            hide = true,
+            requires = "worker",
+            conflicts_with = "authority_contract"
+        )]
+        authority_contract_stdin: bool,
     },
     Certify {
         #[command(flatten)]
@@ -63,6 +70,8 @@ enum Command {
         database_requirements: String,
         #[arg(long, hide = true)]
         namespace_contracts: Option<String>,
+        #[arg(long, hide = true, conflicts_with = "namespace_contracts")]
+        namespace_contracts_stdin: bool,
     },
     Serve {
         #[command(flatten)]
@@ -96,19 +105,32 @@ fn run(cli: Cli) -> Result<i32> {
             worker,
             candidate,
             authority_contract,
+            authority_contract_stdin,
             ..
         } => {
             let result = if let Some(worker) = worker {
-                let pinned = authority_contract
+                let seconds = manifest[if phase == "preflight" {
+                    "timeout_seconds"
+                } else {
+                    "activation_timeout_seconds"
+                }]
+                .as_u64()
+                .unwrap_or(if phase == "preflight" { 30 } else { 900 });
+                let deadline = Instant::now() + Duration::from_secs(seconds);
+                let mut pinned = authority_contract
                     .as_deref()
                     .map(harbor_db::storage::codec::decode_str)
                     .transpose()?;
-                cutover::check_resource_with_contract(
+                if authority_contract_stdin {
+                    pinned = Some(cutover::read_snapshot(deadline)?);
+                }
+                cutover::check_resource_until(
                     select(&worker)?,
                     &phase,
                     None,
                     candidate.as_deref(),
                     pinned.as_ref(),
+                    Some(deadline),
                 )?
             } else {
                 cutover::check_manifest(&path, &manifest, &phase, candidate.as_deref())?
@@ -141,10 +163,7 @@ fn run(cli: Cli) -> Result<i32> {
                     .filter(|remaining| !remaining.is_zero())
                     .ok_or_else(|| invalid("cutover inspection budget exhausted"))
             };
-            let mut extra = vec![
-                "--namespace-contracts".into(),
-                serde_json::to_string(&contracts)?,
-            ];
+            let mut extra = vec!["--namespace-contracts-stdin".into()];
             if let Some(dependency) = config["database_resource"].as_str() {
                 let result = cutover::execute_worker(
                     &path,
@@ -156,6 +175,7 @@ fn run(cli: Cli) -> Result<i32> {
                         extra: &[],
                         command_name: "check",
                         as_root: false,
+                        input: None,
                     },
                 )?;
                 let hash = string(&result, "database_snapshot_sha256")?;
@@ -195,6 +215,7 @@ fn run(cli: Cli) -> Result<i32> {
                     // Inspect private global namespaces in the certifying child
                     // before it permanently drops to the selected resource user.
                     as_root: unsafe { libc::geteuid() } == 0,
+                    input: Some(&contracts),
                 },
             )?;
             Ok(0)
@@ -206,9 +227,10 @@ fn run(cli: Cli) -> Result<i32> {
             database_snapshot,
             database_requirements,
             namespace_contracts,
+            namespace_contracts_stdin,
             ..
         } => {
-            let pinned = namespace_contracts
+            let mut pinned = namespace_contracts
                 .as_deref()
                 .map(harbor_db::storage::codec::decode_str)
                 .transpose()?;
@@ -218,6 +240,9 @@ fn run(cli: Cli) -> Result<i32> {
                         .as_u64()
                         .unwrap_or(900),
                 );
+            if namespace_contracts_stdin {
+                pinned = Some(cutover::read_snapshot(deadline)?);
+            }
             let contracts = cutover::validate_restore_namespaces_with_contracts(
                 &manifest,
                 &certify_roots,
@@ -226,14 +251,17 @@ fn run(cli: Cli) -> Result<i32> {
             )?;
             cutover::enter_certification_user(select(&worker)?)?;
             let requirements = harbor_db::storage::codec::decode_str(&database_requirements)?;
-            cutover::certify_filesystem_with_contract(
+            cutover::certify_filesystem_with_context(
                 select(&worker)?,
                 &certify_roots,
                 &certify_identity,
                 None,
                 database_snapshot.as_deref(),
                 &requirements,
-                contracts.get(&worker),
+                cutover::CertificationContext {
+                    pinned: contracts.get(&worker),
+                    deadline: Some(deadline),
+                },
             )?;
             println!("{{}}");
             Ok(0)

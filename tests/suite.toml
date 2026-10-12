@@ -10,7 +10,7 @@ argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
 deadline_seconds = 30
-selectors = ["consumer_limits_reject_large_output_and_deadlines_and_release_authority_in_both_engines"]
+selectors = ["consumer_limits_reject_large_output_and_deadlines_and_release_authority_in_both_engines", "consumer_snapshot_allows_advancing_evidence_but_rejects_namespace_changes_and_regressions_in_both_engines"]
 
 [[inventories]]
 origin = "rust"
@@ -20,7 +20,7 @@ source = "tests/cutover_storage.rs"
 argv_prefix = ["cargo", "test", "--locked", "--features", "testing", "--test", "cutover_storage"]
 argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
-selectors = ["consumer_expanded_custody_requires_every_restore_and_checks_global_namespaces_in_both_engines", "consumer_namespace_snapshot_rejects_worker_drift_and_prepared_custody_uses_its_record_in_both_engines", "consumer_expansion_uses_the_remaining_global_deadline_in_both_engines"]
+selectors = ["consumer_expanded_custody_requires_every_restore_and_checks_global_namespaces_in_both_engines", "consumer_namespace_snapshot_rejects_worker_drift_and_prepared_custody_uses_its_record_in_both_engines", "consumer_expansion_uses_the_remaining_global_deadline_in_both_engines", "consumer_unselected_adopted_directories_cannot_hide_from_restore_admission_in_both_engines", "consumer_large_snapshots_use_bounded_worker_stdin_and_direct_certification_keeps_its_deadline_in_both_engines"]
 
 [[inventories]]
 origin = "rust"
