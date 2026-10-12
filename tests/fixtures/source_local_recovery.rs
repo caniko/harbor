@@ -418,8 +418,10 @@ fn run(args: Args) -> Result<()> {
         "read-slow-capture-source-policy",
     )?)?;
     slow["recovery"]["max_age_seconds"] = json!(2);
+    // Record checks are one PostgreSQL-prepared statement. Delay once while
+    // retaining the exact ordered record columns used by the normal capture.
     slow["recovery"]["record_checks"][0]["sql"] = json!(format!(
-        "SELECT pg_sleep(4); {}",
+        "SELECT records.* FROM pg_sleep(4), ({}) AS records ORDER BY records.id",
         field(&slow["recovery"]["record_checks"][0], "sql")?
     ));
     g.shell("primary", format!("printf '%s\\n' {} > {slow_config}; chown postgres:postgres {slow_config}; touch {ROOT}/base/{}/backup_manifest", q(&slow.to_string()), q(&backup)), true, "bounded-slow-record-capture-config")?;
