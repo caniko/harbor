@@ -167,6 +167,45 @@ in
     '';
     assertions = [
       {
+        name = "source-roles-require-effective-replication-capacity";
+        message = "Every local source needs nonzero effective WAL sender and slot capacity; source-local minima and target-only independence are retained.";
+        assertion = let
+          accepted = role: local: slots: senders: let
+            selected =
+              (localEval.extendModules {
+                modules = [
+                  {
+                    services.harbor-db.pgBackup = {
+                      role = lib.mkForce role;
+                      targetSettings.sourceLocalRecovery.enable = lib.mkForce local;
+                    };
+                    services.postgresql.settings = {
+                      max_replication_slots = lib.mkForce slots;
+                      max_wal_senders = lib.mkForce senders;
+                    };
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "source roles require nonzero effective replication capacity" a.message) selected.assertions;
+        in
+          lib.all (role:
+            lib.all (local:
+              accepted role local 2 3
+              && !accepted role local 0 3
+              && !accepted role local 2 0
+              && !accepted role local 0 0
+              && !accepted role local (-1) 3
+              && !accepted role local 2 (-1))
+            (
+              if role == "both"
+              then [false true]
+              else [false]
+            )
+            && accepted role false 1 1) ["source" "both"]
+          && accepted "target" false 0 0;
+      }
+      {
         name = "source-roles-require-effective-replication-wal-level";
         message = "Every local replication source requires effective replica or logical WAL; target-only hosts retain independent remote source settings.";
         assertion = let

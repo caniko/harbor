@@ -31,9 +31,13 @@ senders: the continuous receiver holds one slot/sender while a streaming base
 backup uses the second slot and two concurrent connections. Evaluation checks
 both `sourceSettings` and the effective PostgreSQL settings, so an override
 cannot silently reduce this capacity.
+Every source-only or combined source role also requires at least one effective
+WAL sender and replication slot when source-local recovery is disabled. Target-only
+hosts retain independent source settings; effective zero/negative capacity on a
+local source is rejected before generating an unusable replication service.
 The effective `services.postgresql.settings.wal_level` must be `replica` or
 `logical`. `minimal` cannot produce streaming physical recovery and PostgreSQL
-will not start with nonzero WAL senders; source-local evaluation rejects it even
+will not start with nonzero WAL senders; source-role evaluation rejects it even
 when selected by an explicit PostgreSQL override.
 Every enabled WAL-receiver and base-backup slot name must contain 1–63 lowercase
 ASCII letters, digits or underscores. Names are validated before producer
@@ -142,6 +146,17 @@ require a new capture identifier and fresh certification; legacy local snapshots
 remain locally admissible but cannot establish off-host recovery without a fresh
 machine-bound source snapshot. Independent machines must have distinct installed
 machine identities, including restored/cloned operating-system images.
+
+Installed machine identity admission requires Linux 6.13 or newer with pidfd
+namespace ioctls. Both engines obtain the actual calling thread's user, mount and
+UTS namespaces through its kernel pidfd; the user namespace and the mount/UTS
+owning user namespaces must be the initial host user namespace. Root-created
+systemd private mount namespaces remain admissible. Caller-created user/mount/UTS
+namespaces are rejected before hashing `/etc/machine-id`, even when that file,
+`/proc/self/uid_map`, or the entire PID/proc view has been substituted. Unsupported
+kernel interfaces fail closed. Namespace identifiers and ioctl numbers use the
+[Linux pidfd UAPI](https://github.com/torvalds/linux/blob/v6.18/include/uapi/linux/pidfd.h)
+and [nsfs UAPI](https://github.com/torvalds/linux/blob/v6.18/include/uapi/linux/nsfs.h).
 
 The source-local producer validates the live retained fence before capture. It
 serializes with backup publication, pruning and recovery inspection through the

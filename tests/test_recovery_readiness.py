@@ -18,6 +18,9 @@ class RecoveryReadinessTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        # Unit fixtures model one stable host; real namespace and two-machine
+        # certification exercise the production identity boundary in the VM.
+        self.enterContext(patch.object(recovery.application_backup, "machine", return_value="1" * 64))
         self.backup = self.root / "backup"
         self.base = self.backup / "base" / "base-1"
         self.base.mkdir(parents=True)

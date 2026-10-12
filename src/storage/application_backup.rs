@@ -9,7 +9,7 @@ use std::{
     fs,
     io::Read,
     os::{
-        fd::RawFd,
+        fd::{AsRawFd, FromRawFd, RawFd},
         unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
@@ -290,10 +290,61 @@ pub(super) fn machine() -> Result<String> {
     // time. Runtime environment cannot replace machine custody, and lifecycle
     // packages built without `testing` always require the installed identity.
     #[cfg(feature = "testing")]
-    let path = option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("/etc/machine-id");
-    #[cfg(not(feature = "testing"))]
-    let path = "/etc/machine-id";
-    codec::file_digest(&fs::canonicalize(path)?)
+    if let Some(path) = option_env!("HARBOR_DB_TEST_MACHINE_ID") {
+        return codec::file_digest(&fs::canonicalize(path)?);
+    }
+    trusted_host_namespaces()?;
+    codec::file_digest(&fs::canonicalize("/etc/machine-id")?)
+}
+fn trusted_host_namespaces() -> Result<()> {
+    // Linux UAPI: pidfd.h and nsfs.h. Unlike /proc/self/ns or uid_map,
+    // these descriptors refer directly to this kernel task and cannot be
+    // substituted by caller-controlled bind mounts or a fresh PID/proc view.
+    const USER_NS_INIT_INO: u64 = 0xEFFFFFFD;
+    const NS_GET_USERNS: libc::c_ulong = 0xB701;
+    const NS_GET_NSTYPE: libc::c_ulong = 0xB703;
+    let namespace = |fd: RawFd, request: libc::c_ulong| -> Result<fs::File> {
+        let descriptor = unsafe { libc::ioctl(fd, request, 0) };
+        if descriptor < 0 {
+            return Err(invalid(format!(
+                "machine identity requires Linux 6.13+ pidfd namespace support: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
+        Ok(unsafe { fs::File::from_raw_fd(descriptor) })
+    };
+    // Bind the calling thread, not a thread-group leader that could be in a
+    // different namespace. PIDFD_THREAD is O_EXCL in the Linux pidfd UAPI.
+    let descriptor = unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_open,
+            libc::syscall(libc::SYS_gettid),
+            libc::O_EXCL,
+        )
+    };
+    if descriptor < 0 {
+        return Err(invalid(format!(
+            "machine identity requires a kernel-bound calling-thread pidfd: {}",
+            std::io::Error::last_os_error()
+        )));
+    }
+    let task = unsafe { fs::File::from_raw_fd(descriptor as RawFd) };
+    for (request, own_user_namespace) in [(0xFF09, true), (0xFF03, false), (0xFF0A, false)] {
+        let selected = namespace(task.as_raw_fd(), request)?;
+        let owner = if own_user_namespace {
+            selected
+        } else {
+            namespace(selected.as_raw_fd(), NS_GET_USERNS)?
+        };
+        if unsafe { libc::ioctl(owner.as_raw_fd(), NS_GET_NSTYPE, 0) } != libc::CLONE_NEWUSER
+            || owner.metadata()?.ino() != USER_NS_INIT_INO
+        {
+            return Err(invalid(
+                "machine identity rejects caller-controlled namespaces",
+            ));
+        }
+    }
+    Ok(())
 }
 fn capture_receipt(backup: &Path) -> Result<Value> {
     const LIMIT: u64 = 4096;
@@ -442,6 +493,17 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
             if !fs::symlink_metadata(&workspace)?.is_dir() {
                 return Err(invalid("incomplete restore workspace is redirected"));
             }
+            let cleanup_tree = if protected && exists(&sealed) {
+                let metadata = fs::symlink_metadata(&sealed)?;
+                if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
+                    return Err(invalid(
+                        "retained certification tree is not root-controlled",
+                    ));
+                }
+                &sealed
+            } else {
+                &partial
+            };
             let worker = if protected {
                 Some(publication::Worker::new(
                     string(c, "worker_user")?,
@@ -454,7 +516,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
             execute(
                 c,
                 "cleanup",
-                &partial,
+                cleanup_tree,
                 &workspace,
                 lease.fd(),
                 worker.as_ref(),

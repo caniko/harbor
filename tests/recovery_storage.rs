@@ -1243,7 +1243,7 @@ fn restored_clusters_cannot_share_primary_or_selected_backup_inodes_in_both_engi
             let before = fs::read(&source).unwrap();
             let result = if python {
                 let mut spec=harbor_db::storage::process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),
-                    "import json,sys\nfrom pathlib import Path\nfrom harbor_db import recovery\nc=json.loads(sys.argv[1])\ntry: recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,now=int(sys.argv[2]),hostname='primary-host')\nexcept ValueError as e: print(json.dumps({'error':str(e)}))\nelse: print(json.dumps({'accepted':True}))".into(),f.config.to_string(),f.now.to_string()]);
+                    "import json,sys\nfrom pathlib import Path\nfrom harbor_db import recovery\nif sys.argv[3]: recovery.application_backup.machine=lambda:recovery.application_backup.digest(sys.argv[3])\nc=json.loads(sys.argv[1])\ntry: recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,now=int(sys.argv[2]),hostname='primary-host')\nexcept ValueError as e: print(json.dumps({'error':str(e)}))\nelse: print(json.dumps({'accepted':True}))".into(),f.config.to_string(),f.now.to_string(),option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("").into()]);
                 spec.environment = Some(std::collections::BTreeMap::from([
                     (
                         "PYTHONPATH".into(),
@@ -1311,7 +1311,7 @@ fn primary_and_selected_backup_cannot_share_inodes_even_with_an_independent_rest
             let rejected = if python || mounted {
                 fs::write(f.p("config.json"), f.config.to_string()).unwrap();
                 let mut argv = if python {
-                    vec!["python3".into(),"-B".into(),"-c".into(),"import json,sys;from pathlib import Path;from harbor_db import recovery;c=json.loads(sys.argv[1]);recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,hostname='primary-host')".into(),f.config.to_string()]
+                    vec!["python3".into(),"-B".into(),"-c".into(),"import json,sys;from pathlib import Path;from harbor_db import recovery\nif sys.argv[2]: recovery.application_backup.machine=lambda:recovery.application_backup.digest(sys.argv[2])\nc=json.loads(sys.argv[1]);recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,hostname='primary-host')".into(),f.config.to_string(),option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("").into()]
                 } else {
                     vec![
                         env!("CARGO_BIN_EXE_harbor-db-postgres").into(),

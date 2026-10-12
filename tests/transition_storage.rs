@@ -568,7 +568,7 @@ if root_uid:
         return os.stat_result(fields)
     patch.object(Path,'lstat',mapped_lstat).start()
 original_digest=application_backup.digest
-if sys.argv[3]: patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
+if sys.argv[3]: patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[3])).start()
 backup,receipt=application_transition.capture_source(json.loads(sys.argv[1]),json.loads(sys.argv[2]),())
 assert receipt['consistency']=='quiesced' and (backup/'acceptance.json').is_file()
 print(json.dumps({'backup':str(backup),'receipt':receipt}))

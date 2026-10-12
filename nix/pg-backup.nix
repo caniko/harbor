@@ -452,6 +452,10 @@ in {
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires at least two replication slots and three WAL senders, including effective PostgreSQL settings.";
           }
           {
+            assertion = !sourceRole || (config.services.postgresql.settings.max_replication_slots >= 1 && config.services.postgresql.settings.max_wal_senders >= 1);
+            message = "services.harbor-db.pgBackup source roles require nonzero effective replication capacity for WAL senders and slots.";
+          }
+          {
             assertion = !sourceRole || lib.elem config.services.postgresql.settings.wal_level ["replica" "logical"];
             message = "services.harbor-db.pgBackup source roles require effective wal_level=replica or logical for streaming replication and physical recovery.";
           }

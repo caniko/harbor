@@ -7,7 +7,7 @@
   postgres = pkgs.postgresql_18;
   legacyPackage = import ./test-python-package.nix {inherit pkgs;};
   bridge = import ./test-native-bridge.nix {inherit pkgs;};
-  tools = [pkgs.bash pkgs.coreutils pkgs.diffutils pkgs.util-linux pkgs.systemd pkgs.findutils pkgs.gnugrep pkgs.gnutar postgres nativePackage];
+  tools = [pkgs.bash pkgs.coreutils pkgs.diffutils pkgs.util-linux pkgs.inetutils pkgs.systemd pkgs.findutils pkgs.gnugrep pkgs.gnutar postgres nativePackage];
   fixtureConfig = {
     native_package = toString nativePackage;
     legacy_package = toString legacyPackage;

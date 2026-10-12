@@ -234,7 +234,7 @@ fn automatic_manual_capture_remains_pinned_after_scheduled_retention_in_both_eng
         durable::write_json(&config, &c).unwrap();
         let mut command = if python {
             let mut command = std::process::Command::new("python3");
-            command.args(["-B", "-c", "import sys\nfrom unittest.mock import patch\nfrom harbor_db import application_backup\nfixture=sys.argv.pop(1)\noriginal=application_backup.digest\nif fixture:\n patch.object(application_backup,'digest',side_effect=lambda path: original(fixture if str(path)=='/etc/machine-id' else path)).start()\nraise SystemExit(application_backup.main())", option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("")]);
+            command.args(["-B", "-c", "import sys\nfrom unittest.mock import patch\nfrom harbor_db import application_backup\nfixture=sys.argv.pop(1)\noriginal=application_backup.digest\nif fixture:\n patch.object(application_backup,'machine',side_effect=lambda:original(fixture)).start()\nraise SystemExit(application_backup.main())", option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("")]);
             command.env(
                 "PYTHONPATH",
                 format!("{}/python", env!("CARGO_MANIFEST_DIR")),
@@ -511,7 +511,7 @@ from unittest.mock import patch
 from harbor_db import application_backup
 if sys.argv[5]:
     original_digest=application_backup.digest
-    patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[5] if str(path)=='/etc/machine-id' else path)).start()
+    patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[5])).start()
 c=json.loads(sys.argv[1])
 try:
     if sys.argv[2]=='capture': result=application_backup.capture(c,sys.argv[3],retry_incomplete=sys.argv[4]=='true')
@@ -666,7 +666,7 @@ fn hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chm
         durable::write_json(&config_file, &c).unwrap();
         let invoke = |operation: &str, argument: &str| {
             if python {
-                let script = "import json,sys\nfrom pathlib import Path\nfrom harbor_db import application_backup\nfrom unittest.mock import patch\nif sys.argv[4]:\n original_digest=application_backup.digest\n patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[4] if str(path)=='/etc/machine-id' else path)).start()\nc=json.loads(Path(sys.argv[1]).read_text())\ntry:\n if sys.argv[2]=='capture': application_backup.capture(c,sys.argv[3])\n else: application_backup.inspect(c,Path(sys.argv[3]))\n outcome={'ok':True}\nexcept ValueError as error: outcome={'error':str(error)}\nprint(json.dumps(outcome))";
+                let script = "import json,sys\nfrom pathlib import Path\nfrom harbor_db import application_backup\nfrom unittest.mock import patch\nif sys.argv[4]:\n original_digest=application_backup.digest\n patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[4])).start()\nc=json.loads(Path(sys.argv[1]).read_text())\ntry:\n if sys.argv[2]=='capture': application_backup.capture(c,sys.argv[3])\n else: application_backup.inspect(c,Path(sys.argv[3]))\n outcome={'ok':True}\nexcept ValueError as error: outcome={'error':str(error)}\nprint(json.dumps(outcome))";
                 let mut spec = process::CommandSpec::new(vec![
                     "python3".into(),
                     "-B".into(),
@@ -818,14 +818,21 @@ int fsync(int fd) {
                 command
             } else {
                 let mut command = Command::new("python3");
-                command.args(["-B", "-c", r#"import json,sys
+                command.args([
+                    "-B",
+                    "-c",
+                    r#"import json,sys
 from harbor_db import application_backup
 from unittest.mock import patch
 if sys.argv[3]:
     original=application_backup.digest
-    patch.object(application_backup,'digest',side_effect=lambda path: original(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
+    patch.object(application_backup,'machine',side_effect=lambda: original(sys.argv[3])).start()
 print(json.dumps(application_backup.capture(json.load(open(sys.argv[1])),sys.argv[2])))
-"#, config_path.to_str().unwrap(), attempt, option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("")]);
+"#,
+                    config_path.to_str().unwrap(),
+                    attempt,
+                    option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or(""),
+                ]);
                 command
             };
             command
@@ -889,7 +896,7 @@ from harbor_db import application_backup
 from unittest.mock import patch
 if sys.argv[3]:
     original_digest=application_backup.digest
-    patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
+    patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[3])).start()
 config,action=json.loads(sys.argv[1]),sys.argv[2]
 if action == 'inspect': result=application_backup.inspect(config,Path(config['root'])/'mixed')
 else: result=application_backup.capture(config,'mixed',retry_incomplete=action=='retry')
@@ -1344,7 +1351,7 @@ from unittest.mock import patch
 from harbor_db import application_backup
 if sys.argv[4]:
     original_digest=application_backup.digest
-    patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[4] if str(path)=='/etc/machine-id' else path)).start()
+    patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[4])).start()
 try: print(json.dumps({'ok':application_backup.certify(json.loads(sys.argv[1]),sys.argv[2],sys.argv[3])}))
 except ValueError as error: print(json.dumps({'error':str(error)}))
 "#;

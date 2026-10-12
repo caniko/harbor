@@ -49,11 +49,11 @@ sha256 = "20e61fc4db3e92ff24689198a51744b71d562525b6670e009fb1bbe8eb05afc0"
 
 [[extensions]]
 path = "tests/test_fence_recovery.py"
-sha256 = "272ba7f286bcc31b4af7282076a1c79c6f7a2334cd74506d1339d12c139281a8"
+sha256 = "8f1bceea3c7583bfb5c298d4ad1d3b606ce858659643f0cc17285df7a307139a"
 
 [[extensions]]
 path = "python/harbor_db/application_backup.py"
-sha256 = "0fedc0efdd99840b3226b0eb21adcc53683c3d79245217c20ba2355b41edf48c"
+sha256 = "7dcc88456c1564975fc2a1f5b2ebce31a6d03b2c8aa3b5792896377177d175e9"
 
 [[extensions]]
 path = "python/harbor_db/durable.py"
@@ -69,7 +69,7 @@ sha256 = "0685d1e6b43c10ac8637614090f099dcbe6a5d7b859c899e07377f74841c524c"
 
 [[extensions]]
 path = "tests/test_application_backup.py"
-sha256 = "57cd96e9c83f699bf7213094d98011b2fefd6034233dafb444278bfe1b4ee730"
+sha256 = "b1941bd9edff022c6e37be19fedbabf037420ae38e0eb9090f28294e69c366c8"
 
 [[extensions]]
 path = "python/harbor_db/postgres.py"
@@ -84,4 +84,4 @@ sha256 = "fc3e386880bd57129d00a7ca9d78ae0a5b05f600b12620e6cb6e3a7b33ceb6d4"
 # the current fixtures add same-machine rejection and distinct-machine evidence.
 [[extensions]]
 path = "tests/test_recovery_readiness.py"
-sha256 = "2a619e61771794b34497070e76cb10a8db315947c68b54898ebb65dcf62e9071"
+sha256 = "056ee66e80921c7616a053e72f94cf5c2b942238b5f672dcc602a8baa9a5e2e5"

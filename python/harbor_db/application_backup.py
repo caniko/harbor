@@ -29,6 +29,27 @@ def identity(value):
 
 
 def machine():
+    # Linux pidfd/nsfs UAPI binds the actual calling thread. Proc namespace
+    # aliases and uid_map files are caller-mountable and are not trust anchors.
+    import fcntl
+    import threading
+    descriptors = []
+    try:
+        task = os.pidfd_open(threading.get_native_id(), os.O_EXCL)
+        descriptors.append(task)
+        for request, own_user_namespace in ((0xFF09, True), (0xFF03, False), (0xFF0A, False)):
+            selected = fcntl.ioctl(task, request)
+            descriptors.append(selected)
+            owner = selected if own_user_namespace else fcntl.ioctl(selected, 0xB701)
+            if not own_user_namespace:
+                descriptors.append(owner)
+            if fcntl.ioctl(owner, 0xB703) != 0x10000000 or os.fstat(owner).st_ino != 0xEFFFFFFD:
+                raise ValueError("machine identity rejects caller-controlled namespaces")
+    except OSError as error:
+        raise ValueError("machine identity requires Linux 6.13+ calling-thread pidfd namespace support") from error
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
     return digest("/etc/machine-id")
 
 
@@ -181,9 +202,15 @@ def capture(config, attempt, *, retry_incomplete=False):
             if workspace.exists():
                 if workspace.is_symlink() or not workspace.is_dir():
                     raise ValueError("incomplete restore workspace is redirected")
+                cleanup_tree = partial
+                if protected and (sealed.exists() or sealed.is_symlink()):
+                    info = sealed.lstat()
+                    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                        raise ValueError("retained certification tree is not root-controlled")
+                    cleanup_tree = sealed
                 retry_worker = publication.Worker(config["worker_user"], root / f"{attempt}.retry-credentials-{time.time_ns()}", config.get("credentials")) if protected else None
                 try:
-                    execute(config, "cleanup", partial, workspace, lease, retry_worker)
+                    execute(config, "cleanup", cleanup_tree, workspace, lease, retry_worker)
                 finally:
                     if retry_worker is not None:
                         retry_worker.close()

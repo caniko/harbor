@@ -700,6 +700,36 @@ fn run(args: Args) -> Result<()> {
             &format!("{engine}-UTS-rejection-binds-stable-machine-not-hostname"),
         )?;
     }
+    g.shell(
+        "primary",
+        "printf 'caller-chosen-machine-id\\n' > /run/namespace-fake-machine-id; printf '0 0 4294967295\\n' > /run/namespace-fake-uid-map; chmod 0644 /run/namespace-fake-machine-id /run/namespace-fake-uid-map",
+        true,
+        "namespace-spoof-inputs-do-not-change-installed-machine-id",
+    )?;
+    for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
+        for fresh_proc in [false, true] {
+            let command = format!(
+                "mount --bind /run/namespace-fake-machine-id /etc/machine-id; mount --bind /run/namespace-fake-uid-map /proc/self/uid_map; hostname caller-chosen-remote; exec {}/bin/harbor-db-postgres --config /run/namespace-certifier.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432",
+                q(package)
+            );
+            let rejected = g.shell(
+                "primary",
+                format!(
+                    "runuser -u postgres -- unshare --user --map-root-user --mount --uts {} -- sh -ec {} 2>&1",
+                    if fresh_proc { "--pid --fork --mount-proc" } else { "" },
+                    q(&command)
+                ),
+                false,
+                &format!("{engine}-namespace-machine-spoof-fresh-proc-{fresh_proc}-rejected"),
+            )?;
+            g.check(
+                rejected.contains("caller-controlled namespaces"),
+                &format!(
+                    "{engine}-kernel-pidfd-identity-rejects-mount-and-proc-spoof-{fresh_proc}"
+                ),
+            )?;
+        }
+    }
     let local_receipt:Value = serde_json::from_str(&g.shell("primary",format!("{pg} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432"),true,"native-source-host-disposable-restoration-certification")?)?;
     g.check(
         local_receipt["executor_host"] == source_host

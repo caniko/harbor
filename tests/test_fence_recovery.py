@@ -38,6 +38,9 @@ class FenceRecoveryTest(unittest.TestCase):
         (self.root / "recovery.lock").touch(mode=0o600)
         self.enterContext(patch.object(recovery, "backup", return_value=({}, {"recovery_target_lsn": "0/200"})))
         self.enterContext(patch.object(recovery, "verify_backup"))
+        # This synthetic fence fixture has no installed host identity. The VM
+        # exercises actual machine and namespace admission without this stub.
+        self.enterContext(patch.object(recovery.application_backup, "machine", return_value="1" * 64))
 
     def publish_evidence(self, fence_token):
         settings = self.config["recovery"]

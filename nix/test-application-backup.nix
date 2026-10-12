@@ -35,6 +35,7 @@
             assert time.monotonic() < deadline, "concurrent mutation did not run"
             time.sleep(0.05)
         (workspace / "records").write_bytes((backup / "records").read_bytes())
+        (workspace / "restore-origin").write_text(str(backup))
         assert (workspace / "records").read_text() == "retained revision seven"
         (root / "certify-undo").touch()
         while not (root / "certify-restored").exists():
@@ -45,6 +46,12 @@
     elif stage == "verify":
         assert (workspace / "records").read_bytes() == (backup / "records").read_bytes()
         print(json.dumps({"version": 1, "status": "verified", "semantic_sha256": hashlib.sha256((workspace / "records").read_bytes()).hexdigest()}))
+    elif stage == "cleanup":
+        origin = workspace / "restore-origin"
+        if origin.exists():
+            assert origin.read_text() == str(backup), "cleanup retry changed the certified backup argument"
+        if pathlib.Path("/run/backup-fd/fail-cleanup").exists():
+            raise RuntimeError("interrupted protected cleanup")
   '';
   holder = pkgs.writeText "backup-fd-holder.py" ''
     import array, json, os, pathlib, socket, time
@@ -192,6 +199,21 @@ in
           machine.succeed(f"test \"$(cat /var/lib/demo-backup/{point}/records)\" = 'retained revision seven'")
           machine.succeed(f"python3 -c 'import json,os; i=os.stat(\"/var/lib/demo-backup/{point}/records\"); assert [i.st_dev,i.st_ino]!=json.load(open(\"/run/backup-fd/inode\"))'")
           machine.succeed("rm /run/backup-fd/attack /run/backup-fd/written")
+      for engine, command in (("native", "harbor-db-application-backup"), ("python", "${pythonPeer}/bin/harbor-db-application-backup")):
+          point = engine + "-cleanup-retry"
+          capture = command + " --config /run/forced-backup-policy.json capture --attempt " + point
+          machine.succeed("cp /var/lib/demo-backup/LAST_SUCCESS /run/cleanup-last-success; touch /run/backup-fd/fail-cleanup")
+          machine.fail(capture)
+          machine.succeed("cmp /run/cleanup-last-success /var/lib/demo-backup/LAST_SUCCESS; test -d /var/lib/demo-backup/" + point + ".sealed; test -f /var/lib/demo-backup/" + point + ".restore-workspace/restore-origin; touch /run/backup-fd/attack")
+          machine.wait_until_succeeds("test -f /run/backup-fd/written")
+          machine.succeed("rm /run/backup-fd/fail-cleanup /run/backup-fd/attack /run/backup-fd/written")
+          machine.succeed(capture + " --retry-incomplete")
+          machine.succeed("touch /run/backup-fd/attack")
+          machine.wait_until_succeeds("test -f /run/backup-fd/written")
+          machine.succeed("rm /run/backup-fd/attack /run/backup-fd/written")
+          machine.succeed(command + " --config /run/forced-backup-policy.json inspect /var/lib/demo-backup/" + point)
+          machine.succeed("test ! -d /var/lib/demo-backup/" + point + ".restore-workspace; test ! -d /var/lib/demo-backup/" + point + ".sealed; test $(find /var/lib/demo-backup -maxdepth 1 -name '" + point + ".abandoned-*' | wc -l) = 1")
+          points.append(point)
       machine.succeed("test $(stat -c %a /var/lib/demo-backup/lock) = 640")
       machine.succeed("install -d -m 0750 -o demo -g demo /var/lib/worker-adapter; printf '#!/bin/sh\\ntouch /var/lib/worker-adapter/executed\\n' > /var/lib/worker-adapter/executable; chown demo:demo /var/lib/worker-adapter/executable; chmod 0750 /var/lib/worker-adapter/executable; ln -s ${pkgs.python3}/bin/python3 /var/lib/worker-adapter/store-alias")
       machine.succeed("install -m 0400 -o demo -g demo /etc/backup-fixture-token /var/lib/worker-adapter/secret; install -m 0600 /etc/backup-fixture-token /var/lib/worker-adapter/root-secret; ln -s /etc/backup-fixture-token /var/lib/worker-adapter/secret-link; chown -h demo:demo /var/lib/worker-adapter/secret-link")

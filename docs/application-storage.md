@@ -238,7 +238,10 @@ frozen tree; the same tree is accepted and published. Worker-owned staging and
 handles retained from capture cannot substitute the bytes exercised by the
 certifier, even if a competing process restores the original staging bytes before
 the final inventory check. Interrupted attempts retain the protected tree for the
-existing intent-bound retry policy.
+existing intent-bound retry policy. Retry cleanup receives that retained sealed
+tree whenever it exists, checks its root-controlled directory ownership/mode,
+and drains the old restore before abandoning either tree. It does not substitute
+the worker-owned capture staging path for the certified restore origin.
 
 `harbor-db-postgres-drill --package POSTGRES restore|cleanup BACKUP WORKSPACE`
 supplies a reusable logical PostgreSQL restore adapter for `database.dump`.
@@ -281,6 +284,13 @@ are never overwritten. `inspect BACKUP` rechecks bytes, contracts and freshness.
 The private state directory and persistent `lock` inode must already exist. Its
 receipt binds the original acceptance hash, actual machine identity, executables
 and semantic identity. Execution on the original machine cannot claim independence.
+Machine identity admission uses kernel pidfd descriptors for the calling thread's
+user/mount/UTS namespaces, requiring the host initial user namespace and host-owned
+mount/UTS namespaces before reading the installed identity. Caller-controlled
+namespace views, including substituted procfs aliases, fail closed; Linux 6.13+
+pidfd namespace ioctls are required. Root-created systemd private mounts remain
+supported. Testing-only immutable machine fixtures are explicit test substitutions
+and are not available as production runtime overrides.
 If a caller loses the response after receipt publication, retry executes restore
 and all byte/tool/semantic checks again, then returns the matching retained receipt
 with its original `certified_at`, bytes and inode. Conflicting evidence or a
