@@ -6,7 +6,7 @@
   inherit (pkgs) lib;
   inherit (import ./eval-checks.nix {inherit pkgs;}) mkEvalCheck;
   eval = import "${pkgs.path}/nixos/lib/eval-config.nix" {
-    system = "x86_64-linux";
+    system = pkgs.stdenv.hostPlatform.system;
     modules = [
       lifecycleModule
       # Multiple consumers import the default module; its options must appear
@@ -111,6 +111,11 @@ in
         ${pkgs.systemd}/bin/systemd-run ${pkgs.systemd}/bin/systemctl
     '';
     assertions = [
+      {
+        name = "lifecycle-configuration-matches-check-platform";
+        message = "Lifecycle configuration and preparation dependencies must use the check's native platform.";
+        assertion = eval.pkgs.stdenv.hostPlatform.system == pkgs.stdenv.hostPlatform.system;
+      }
       {
         name = "upgrade-requires-immutable-validator";
         message = "Worker-writable validator entrypoints cannot authorize staged upgrade publication.";

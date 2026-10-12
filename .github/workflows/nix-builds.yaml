@@ -213,6 +213,11 @@ jobs:
       - name: Project setup
         run: |
           test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+          # Ubuntu's AppArmor restriction denies UID mapping by Nix-store unshare.
+          # Enable the namespace substrate on this disposable hosted runner; the
+          # mandatory in-sandbox probe and all namespace rejection tests still run.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 0
           sudo install -d -m 1777 -o root -g root /var/cache/sccache
           test ! -L /var/cache/sccache
           test "$(stat -c '%u:%a' /var/cache/sccache)" = 0:1777
