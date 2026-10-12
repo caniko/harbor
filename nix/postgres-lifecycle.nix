@@ -445,10 +445,23 @@ in {
               worker_started=false
               unit="harbor-db-recovery-prepare-$$"
               cleanup_preparation() {
-                if "$worker_started"; then ${pkgs.systemd}/bin/systemctl stop "$unit.service" || return $?; fi
+                if "$worker_started"; then
+                  if ! ${pkgs.systemd}/bin/systemctl stop "$unit.service"; then
+                    # --collect may already have unloaded a failed unit, or
+                    # dispatch may have failed before the unit was created.
+                    # Remove staged credentials only after confirming no live
+                    # worker can still need them when stopping itself failed.
+                    local state
+                    state=$(${pkgs.systemd}/bin/systemctl show --property=ActiveState --value "$unit.service") || return $?
+                    case "$state" in
+                      inactive|failed) ;;
+                      *) return 1 ;;
+                    esac
+                  fi
+                fi
                 if [ -n "$credential_dir" ]; then ${pkgs.coreutils}/bin/rm -rf -- "$credential_dir"; fi
               }
-              trap cleanup_preparation EXIT
+              trap 'cleanup_preparation || :' EXIT
               trap 'exit 130' INT
               trap 'exit 143' TERM
               ${lib.optionalString (preparation.offHostReceiptImportFile != null) ''

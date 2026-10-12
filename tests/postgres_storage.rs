@@ -875,9 +875,13 @@ fn native_postmaster_retains_main_pid_lease_and_logical_restore_is_private() {
 from pathlib import Path
 sys.stderr=sys.stdout
 root=Path(sys.argv[1]);source=Path(sys.argv[2]);corpus=Path(sys.argv[3]);binary=sys.argv[4]
-for path in (Path('/nix'),Path('/proc'),Path('/dev'),source,corpus):
+paths=[Path('/nix'),Path('/proc'),Path('/dev'),source,corpus]
+# Registrations without F resolve the interpreter again inside this chroot.
+if Path('/run/binfmt').is_dir(): paths.append(Path('/run/binfmt'))
+for path in paths:
     target=root/path.relative_to('/');target.mkdir(parents=True,exist_ok=True)
     subprocess.run(['mount','--rbind',str(path),str(target)],check=True,stderr=subprocess.STDOUT)
+    subprocess.run(['mountpoint','-q',str(target)],check=True,stderr=subprocess.STDOUT)
 (root/'tmp').mkdir(mode=0o1777);(root/'etc').mkdir()
 (root/'etc/passwd').write_text('postgres:x:71:71:fixture:/tmp:/bin/sh\n')
 (root/'etc/group').write_text('postgres:x:71:\n')

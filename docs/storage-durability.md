@@ -172,8 +172,14 @@ root hook uses `stage-off-host-receipt` to read a pinned, single-link regular in
 under a 16 MiB limit into a fresh private root-owned `0400` file. Only that private
 copy is passed to systemd's `LoadCredential`; a rejected source never starts the
 preparation worker. The private staging directory is cleaned after success,
-failure or interruption after the worker has stopped. Missing evidence retains
-the existing independent-restore readiness boundary.
+failure or interruption after the worker has stopped. If stopping fails because
+the transient unit was never created or has already been collected, cleanup also
+accepts a successful systemd readback of `ActiveState=inactive` or `failed`. Active,
+transitioning, empty or unavailable readback preserves the staged copy for a
+potentially surviving worker. Cleanup preserves the original dispatch, worker or
+interruption failure status, including with shell `errexit` enabled. Missing
+evidence retains the existing
+independent-restore readiness boundary.
 
 Configured recovery record, compatibility and transition custody inventory checks
 share one command builder and execute as one prepared SQL

@@ -2033,9 +2033,13 @@ fn rejected_barrier_installation_preserves_policy_markers_and_drop_ins_in_both_e
 from pathlib import Path
 sys.stderr=sys.stdout
 root=Path(sys.argv[1]);source=Path(sys.argv[2]);binary=sys.argv[3]
-for path in (Path('/nix'),Path('/proc'),Path('/dev'),source):
+paths=[Path('/nix'),Path('/proc'),Path('/dev'),source]
+# Registrations without F resolve the interpreter again inside this chroot.
+if Path('/run/binfmt').is_dir(): paths.append(Path('/run/binfmt'))
+for path in paths:
     target=root/path.relative_to('/');target.mkdir(parents=True,exist_ok=True)
     subprocess.run(['mount','--rbind',str(path),str(target)],check=True,stderr=subprocess.STDOUT)
+    subprocess.run(['mountpoint','-q',str(target)],check=True,stderr=subprocess.STDOUT)
 (root/'tmp').mkdir(mode=0o1777)
 (root/'etc').mkdir()
 (root/'etc/passwd').write_text('root:x:0:0:fixture:/tmp:/bin/sh\n')
