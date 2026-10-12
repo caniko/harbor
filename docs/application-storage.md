@@ -238,10 +238,15 @@ frozen tree; the same tree is accepted and published. Worker-owned staging and
 handles retained from capture cannot substitute the bytes exercised by the
 certifier, even if a competing process restores the original staging bytes before
 the final inventory check. Interrupted attempts retain the protected tree for the
-existing intent-bound retry policy. Retry cleanup receives that retained sealed
-tree whenever it exists, checks its root-controlled directory ownership/mode,
-and drains the old restore before abandoning either tree. It does not substitute
-the worker-owned capture staging path for the certified restore origin.
+existing intent-bound retry policy. The root-owned intent journal records
+`cleanup_origin = partial` before capture and switches durably to `sealed` only
+after the protected copy, permissions, inventory comparison and file/directory
+flushes complete. Restore and cleanup use that recorded origin. A failed or
+interrupted copy may leave an incomplete seal; retry still drains the workspace
+against the partial capture argument. Once the journal selects the seal, retry
+requires its root-controlled ownership/mode and preserves the certified restore
+origin. Legacy attempts without an origin remain retryable only when no seal
+exists; an ambiguous legacy seal requires explicit operator cleanup.
 
 `harbor-db-postgres-drill --package POSTGRES restore|cleanup BACKUP WORKSPACE`
 supplies a reusable logical PostgreSQL restore adapter for `database.dump`.
@@ -291,6 +296,11 @@ namespace views, including substituted procfs aliases, fail closed; Linux 6.13+
 pidfd namespace ioctls are required. Root-created systemd private mounts remain
 supported. Testing-only immutable machine fixtures are explicit test substitutions
 and are not available as production runtime overrides.
+Exported native lifecycle executables are statically linked and their smoke gate
+rejects any ELF interpreter or dynamic dependency. Machine admission, identity
+reads and receipt publication therefore execute outside a caller-controlled
+`LD_PRELOAD`/`LD_LIBRARY_PATH` loader. The Python peer remains test-only; both
+engines share namespace admission, cleanup-origin journals and receipt formats.
 If a caller loses the response after receipt publication, retry executes restore
 and all byte/tool/semantic checks again, then returns the matching retained receipt
 with its original `certified_at`, bytes and inode. Conflicting evidence or a

@@ -31,6 +31,7 @@ struct Args {
 struct Config {
     native_package: String,
     legacy_package: String,
+    identity_preload: String,
     postgres_package: String,
     coreutils_package: String,
     shell: String,
@@ -705,6 +706,26 @@ fn run(args: Args) -> Result<()> {
         "printf 'caller-chosen-machine-id\\n' > /run/namespace-fake-machine-id; printf '0 0 4294967295\\n' > /run/namespace-fake-uid-map; chmod 0644 /run/namespace-fake-machine-id /run/namespace-fake-uid-map",
         true,
         "namespace-spoof-inputs-do-not-change-installed-machine-id",
+    )?;
+    let preload = format!(
+        "LD_PRELOAD={} HARBOR_FAKE_MACHINE_ID=/run/namespace-fake-machine-id",
+        q(&c.identity_preload)
+    );
+    g.shell(
+        "primary",
+        format!("runuser -u postgres -- env {preload} python3 -c {}", q("import socket; assert socket.gethostname()=='loader-chosen-remote'; assert open('/etc/machine-id').read().strip()=='caller-chosen-machine-id'")),
+        true,
+        "loader-interposer-really-substitutes-hostname-and-machine-id",
+    )?;
+    let rejected = g.shell(
+        "primary",
+        format!("runuser -u postgres -- env {preload} {}/bin/harbor-db-postgres --config /run/namespace-certifier.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432 2>&1", q(&c.native_package)),
+        false,
+        "native-off-host-certifier-rejects-loader-controlled-identity",
+    )?;
+    g.check(
+        rejected.contains("independent machine"),
+        "static-certifier-retains-same-machine-custody-under-preload",
     )?;
     for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
         for fresh_proc in [false, true] {

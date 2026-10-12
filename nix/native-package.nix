@@ -7,6 +7,8 @@ in
     src = pkgs.lib.cleanSource ../.;
     cargoLock.lockFile = ../Cargo.lock;
     cargoBuildFlags = ["--bins"];
+    CARGO_BUILD_TARGET = pkgs.stdenv.hostPlatform.rust.rustcTarget;
+    RUSTFLAGS = "-C target-feature=+crt-static -L native=${pkgs.glibc.static}/lib";
     doCheck = false;
     disallowedReferences = [pkgs.python3];
     passthru.harborDbRuntime = "rust";

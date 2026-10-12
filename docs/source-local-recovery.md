@@ -147,6 +147,12 @@ remain locally admissible but cannot establish off-host recovery without a fresh
 machine-bound source snapshot. Independent machines must have distinct installed
 machine identities, including restored/cloned operating-system images.
 
+The exported native lifecycle package is statically linked: its smoke check
+rejects an ELF interpreter or dynamic dependency on every operator executable.
+An unprivileged certifier's `LD_PRELOAD` cannot interpose namespace admission,
+hostname/machine-id reads or receipt publication. Direct Cargo development builds
+and the Python cross-engine peer are not production packages.
+
 Installed machine identity admission requires Linux 6.13 or newer with pidfd
 namespace ioctls. Both engines obtain the actual calling thread's user, mount and
 UTS namespaces through its kernel pidfd; the user namespace and the mount/UTS

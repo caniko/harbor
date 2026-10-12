@@ -197,17 +197,12 @@ def capture(config, attempt, *, retry_incomplete=False):
         intent_file = root / f"{attempt}.intent.json"
         workspace = root / f"{attempt}.restore-workspace"
         if any(p.exists() or p.is_symlink() for p in (intent_file, staging, workspace, *([sealed, credentials] if protected else []))):
-            if not retry_incomplete or read_json(intent_file) != attempt_intent:
+            if not retry_incomplete:
                 raise ValueError("backup attempt already exists or its immutable intent changed")
+            cleanup_tree = capture_cleanup_tree(intent_file, attempt_intent, partial, sealed, protected)
             if workspace.exists():
                 if workspace.is_symlink() or not workspace.is_dir():
                     raise ValueError("incomplete restore workspace is redirected")
-                cleanup_tree = partial
-                if protected and (sealed.exists() or sealed.is_symlink()):
-                    info = sealed.lstat()
-                    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-                        raise ValueError("retained certification tree is not root-controlled")
-                    cleanup_tree = sealed
                 retry_worker = publication.Worker(config["worker_user"], root / f"{attempt}.retry-credentials-{time.time_ns()}", config.get("credentials")) if protected else None
                 try:
                     execute(config, "cleanup", cleanup_tree, workspace, lease, retry_worker)
@@ -223,13 +218,39 @@ def capture(config, attempt, *, retry_incomplete=False):
                     entry.rename(abandoned / entry.name)
             sync_directory(abandoned)
             sync_directory(root)
-        write_json(intent_file, attempt_intent)
+        write_json(intent_file, attempt_intent | ({"cleanup_origin": "partial"} if protected else {}))
         worker = publication.Worker(config["worker_user"], credentials, config.get("credentials")) if protected else None
         try:
             return capture_attempt(config, attempt, root, staging, partial, sealed, destination, workspace, tools, lease, worker)
         finally:
             if worker is not None:
                 worker.close()
+
+
+def capture_cleanup_tree(intent, expected, partial, sealed, protected):
+    """The journal, rather than seal existence, owns the durable cleanup origin."""
+    retained = read_json(intent)
+    if not isinstance(retained, dict):
+        raise ValueError("backup attempt immutable intent changed")
+    has_origin = "cleanup_origin" in retained
+    origin = retained.pop("cleanup_origin", None) if protected else None
+    if retained != expected:
+        raise ValueError("backup attempt immutable intent changed")
+    if not protected:
+        return partial
+    info = intent.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077 or info.st_nlink != 1:
+        raise ValueError("capture cleanup journal is not root-controlled")
+    if not has_origin and not os.path.lexists(sealed):
+        return partial  # A legacy attempt that never created a seal is unambiguous.
+    if origin == "partial":
+        return partial
+    if origin != "sealed":
+        raise ValueError("protected capture lacks an unambiguous cleanup origin")
+    info = sealed.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+        raise ValueError("retained certification tree is not root-controlled")
+    return sealed
 
 
 def capture_attempt(config, attempt, root, staging, partial, sealed, destination, workspace, tools, lease, worker):
@@ -239,6 +260,8 @@ def capture_attempt(config, attempt, root, staging, partial, sealed, destination
         publication.worker_directory(workspace, worker.account)
     else:
         workspace.mkdir(mode=0o700)
+    intent = root / f"{attempt}.intent.json"
+    expected = {"manifest_sha256": identity(config), "executables": tools}
     certification_tree = partial
     try:
         execute(config, "capture", partial, workspace, lease, worker)
@@ -251,10 +274,13 @@ def capture_attempt(config, attempt, root, staging, partial, sealed, destination
             publication.reader_permissions(sealed, root.stat().st_gid)
             if inventory(sealed) != artifacts:
                 raise ValueError("backup artifact changed before protected certification")
+            sync_tree(sealed)
+            write_json(intent, expected | {"cleanup_origin": "sealed"})
             certification_tree = sealed
         receipt = certification(config, certification_tree, workspace, lease, artifacts, worker)
     finally:
-        execute(config, "cleanup", certification_tree, workspace, lease, worker)
+        cleanup_tree = capture_cleanup_tree(intent, expected, partial, sealed, worker is not None)
+        execute(config, "cleanup", cleanup_tree, workspace, lease, worker)
         shutil.rmtree(workspace)
         sync_directory(root)
     if inventory(certification_tree) != artifacts:
@@ -329,6 +355,7 @@ def fresh(config, captured_at, now):
 
 def certify(config, backup, state):
     """Execute restoration of a copied point on an independent machine."""
+    executor_machine = machine()
     validate(config, check_root=False)
     if config["version"] == 2 and os.geteuid() == 0:
         raise ValueError("independent backup certification requires an unprivileged account")
@@ -339,7 +366,7 @@ def certify(config, backup, state):
         raise ValueError("certifier state must be private and owned")
     with lock(state / "lock") as lease:
         source = verify_bytes(config, backup)
-        if source["executor_machine_sha256"] == digest("/etc/machine-id") or source["executor"] == socket.gethostname():
+        if source["executor_machine_sha256"] == executor_machine or source["executor"] == socket.gethostname():
             raise ValueError("independent restoration must execute on a different machine")
         workspace = Path(tempfile.mkdtemp(prefix="restore-", dir=state))
         tools = executables(config)

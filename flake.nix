@@ -141,7 +141,15 @@
             mainProgram = "harbor-db";
           };
         };
-      cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+      # Production receipt authority must not execute in a caller-controlled
+      # dynamic loader. Testing builds retain preload-based fault injection.
+      productionArgs =
+        commonArgs
+        // {
+          CARGO_BUILD_TARGET = pkgs.stdenv.hostPlatform.rust.rustcTarget;
+          RUSTFLAGS = "-C target-feature=+crt-static -L native=${pkgs.glibc.static}/lib";
+        };
+      cargoArtifacts = craneLib.buildDepsOnly productionArgs;
       buildCache = harbor-rs.lib.mkBuildCachePolicy {
         inherit pkgs;
         sccachePackage = harbor-rs.packages.${pkgs.stdenv.hostPlatform.system}.sccache;
@@ -152,7 +160,7 @@
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
       };
-      harbor-db = craneLib.buildPackage (commonArgs
+      harbor-db = craneLib.buildPackage (productionArgs
         // {
           inherit cargoArtifacts;
           doCheck = false;

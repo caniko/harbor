@@ -3,6 +3,7 @@
   module,
 }: let
   pythonPeer = import ./test-python-package.nix {inherit pkgs;};
+  identityPreload = import ./test-identity-preload.nix {inherit pkgs;};
   adapter = pkgs.writeText "backup-adapter.py" ''
     import hashlib, json, os, pathlib, sys, socket, array, time
     stage, backup, workspace = sys.argv[1:]
@@ -14,6 +15,15 @@
     if stage == "capture":
         backup.mkdir()
         (backup / "records").write_text("retained revision seven")
+        (workspace / "capture-origin").write_text(str(backup))
+        if pathlib.Path("/run/backup-fd/fail-copy").exists():
+            # Real ENOSPC during the protected copy leaves a partial seal.
+            for name in ("blob-one", "blob-two"):
+                with open(backup / name, "wb") as stream:
+                    for _ in range(40): stream.write(b"x" * (1024 * 1024))
+            digest = hashlib.sha256((backup / "records").read_bytes()).hexdigest()
+            (backup / "capture.json").write_text(json.dumps({"version": 1, "consistency": "quiesced", "semantic_sha256": digest}))
+            sys.exit(0)
         connection = socket.socket(socket.AF_UNIX)
         connection.connect("/run/backup-fd/socket")
         with open(backup / "records", "r+b") as mutable:
@@ -48,8 +58,8 @@
         print(json.dumps({"version": 1, "status": "verified", "semantic_sha256": hashlib.sha256((workspace / "records").read_bytes()).hexdigest()}))
     elif stage == "cleanup":
         origin = workspace / "restore-origin"
-        if origin.exists():
-            assert origin.read_text() == str(backup), "cleanup retry changed the certified backup argument"
+        if not origin.exists(): origin = workspace / "capture-origin"
+        assert origin.read_text() == str(backup), "cleanup retry changed its durable backup argument"
         if pathlib.Path("/run/backup-fd/fail-cleanup").exists():
             raise RuntimeError("interrupted protected cleanup")
   '';
@@ -148,7 +158,7 @@ in
         mode = "0600";
       };
       environment.systemPackages = [pkgs.python3];
-      system.extraDependencies = [pythonPeer];
+      system.extraDependencies = [pythonPeer identityPreload];
       systemd.services.backup-fd-holder = {
         serviceConfig = {
           User = "demo";
@@ -214,6 +224,35 @@ in
           machine.succeed(command + " --config /run/forced-backup-policy.json inspect /var/lib/demo-backup/" + point)
           machine.succeed("test ! -d /var/lib/demo-backup/" + point + ".restore-workspace; test ! -d /var/lib/demo-backup/" + point + ".sealed; test $(find /var/lib/demo-backup -maxdepth 1 -name '" + point + ".abandoned-*' | wc -l) = 1")
           points.append(point)
+      # The certifier must call namespace admission before executing restoration.
+      machine.succeed("install -d -m 0700 -o reader -g reader /var/lib/backup-certifier; install -m 0600 -o reader -g reader /dev/null /var/lib/backup-certifier/lock; printf 'caller-chosen-machine-id\\n' > /run/backup-machine-id")
+      for engine, command in (("native", "harbor-db-application-backup"), ("python", "${pythonPeer}/bin/harbor-db-application-backup")):
+          certify = command + " --config /run/forced-backup-policy.json certify /var/lib/demo-backup/" + points[2] + " --state /var/lib/backup-certifier"
+          rejected = machine.fail("runuser -u reader -- unshare --user --map-current-user --mount --uts -- sh -ec " + shlex.quote("mount --bind /run/backup-machine-id /etc/machine-id; hostname namespace-remote; " + certify) + " 2>&1")
+          assert "caller-controlled namespaces" in rejected, (engine, rejected)
+      # A caller-controlled loader cannot forge native machine custody. Prove
+      # that the same interposer really substitutes Python's hostname/read.
+      machine.succeed("runuser -u reader -- env LD_PRELOAD=${identityPreload}/lib/identity.so HARBOR_FAKE_MACHINE_ID=/run/backup-machine-id python3 -c 'import socket; assert socket.gethostname()==\"loader-chosen-remote\"; assert open(\"/etc/machine-id\").read().strip()==\"caller-chosen-machine-id\"'")
+      rejected = machine.fail("runuser -u reader -- env LD_PRELOAD=${identityPreload}/lib/identity.so HARBOR_FAKE_MACHINE_ID=/run/backup-machine-id harbor-db-application-backup --config /run/forced-backup-policy.json certify /var/lib/demo-backup/" + points[2] + " --state /var/lib/backup-certifier 2>&1")
+      assert "different machine" in rejected, rejected
+      machine.succeed("test $(find /var/lib/backup-certifier -mindepth 1 -maxdepth 1 | wc -l) = 1")
+      for engine, command in (("native", "harbor-db-application-backup"), ("python", "${pythonPeer}/bin/harbor-db-application-backup")):
+          root = "/srv/" + engine + "-incomplete-copy"
+          machine.succeed("install -d -m 2750 -g demo-backup " + root + "; mount -t tmpfs -o size=96M,mode=2750,gid=$(getent group demo-backup | cut -d: -f3) tmpfs " + root + "; install -m 0640 -g demo-backup /dev/null " + root + "/lock")
+          policy = "/run/" + engine + "-incomplete-copy.json"
+          machine.succeed("python3 -c 'import json; p=json.load(open(\"/run/forced-backup-policy.json\")); p[\"root\"]=\"" + root + "\"; json.dump(p,open(\"" + policy + "\",\"w\"))'")
+          capture = command + " --config " + policy + " capture --attempt interrupted"
+          machine.succeed("touch /run/backup-fd/fail-copy /run/backup-fd/fail-cleanup")
+          machine.fail(capture)
+          machine.succeed("test -d " + root + "/interrupted.sealed; test -f " + root + "/interrupted.restore-workspace/capture-origin; test ! -e " + root + "/LAST_SUCCESS")
+          machine.succeed("python3 -c 'import json; assert json.load(open(\"" + root + "/interrupted.intent.json\"))[\"cleanup_origin\"]==\"partial\"'")
+          machine.succeed("rm /run/backup-fd/fail-copy /run/backup-fd/fail-cleanup; mount -o remount,size=256M " + root)
+          machine.succeed(capture + " --retry-incomplete")
+          machine.succeed(command + " --config " + policy + " inspect " + root + "/interrupted")
+          machine.succeed("touch /run/backup-fd/attack")
+          machine.wait_until_succeeds("test -f /run/backup-fd/written")
+          machine.succeed("rm /run/backup-fd/attack /run/backup-fd/written")
+          machine.succeed("test $(find " + root + " -maxdepth 1 -name 'interrupted.abandoned-*' | wc -l) = 1; umount " + root)
       machine.succeed("test $(stat -c %a /var/lib/demo-backup/lock) = 640")
       machine.succeed("install -d -m 0750 -o demo -g demo /var/lib/worker-adapter; printf '#!/bin/sh\\ntouch /var/lib/worker-adapter/executed\\n' > /var/lib/worker-adapter/executable; chown demo:demo /var/lib/worker-adapter/executable; chmod 0750 /var/lib/worker-adapter/executable; ln -s ${pkgs.python3}/bin/python3 /var/lib/worker-adapter/store-alias")
       machine.succeed("install -m 0400 -o demo -g demo /etc/backup-fixture-token /var/lib/worker-adapter/secret; install -m 0600 /etc/backup-fixture-token /var/lib/worker-adapter/root-secret; ln -s /etc/backup-fixture-token /var/lib/worker-adapter/secret-link; chown -h demo:demo /var/lib/worker-adapter/secret-link")

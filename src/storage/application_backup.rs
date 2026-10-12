@@ -448,6 +448,54 @@ fn permissions(path: &Path) -> Result<()> {
 fn exists(p: &Path) -> bool {
     fs::symlink_metadata(p).is_ok()
 }
+fn capture_cleanup_tree<'a>(
+    intent: &Path,
+    expected: &Value,
+    partial: &'a Path,
+    sealed: &'a Path,
+    protected: bool,
+) -> Result<&'a Path> {
+    // The journal, rather than seal existence, owns the durable cleanup origin.
+    let mut retained = durable::read_json(intent)?;
+    let origin = if protected {
+        retained
+            .as_object_mut()
+            .ok_or_else(|| invalid("backup attempt immutable intent changed"))?
+            .remove("cleanup_origin")
+    } else {
+        None
+    };
+    if &retained != expected {
+        return Err(invalid("backup attempt immutable intent changed"));
+    }
+    if !protected {
+        return Ok(partial);
+    }
+    let metadata = fs::symlink_metadata(intent)?;
+    if !metadata.is_file()
+        || metadata.uid() != 0
+        || metadata.mode() & 0o077 != 0
+        || metadata.nlink() != 1
+    {
+        return Err(invalid("capture cleanup journal is not root-controlled"));
+    }
+    match origin.as_ref().and_then(Value::as_str) {
+        None if origin.is_none() && !exists(sealed) => Ok(partial),
+        Some("partial") => Ok(partial),
+        Some("sealed") => {
+            let metadata = fs::symlink_metadata(sealed)?;
+            if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
+                return Err(invalid(
+                    "retained certification tree is not root-controlled",
+                ));
+            }
+            Ok(sealed)
+        }
+        _ => Err(invalid(
+            "protected capture lacks an unambiguous cleanup origin",
+        )),
+    }
+}
 pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value> {
     let root = validate(c, true)?;
     if !super::resource::valid_name(attempt) || matches!(attempt, "LAST_SUCCESS" | "lock") {
@@ -484,26 +532,17 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
         || exists(&workspace)
         || (protected && (exists(&sealed) || exists(&credentials)))
     {
-        if !retry_incomplete || durable::read_json(&intent)? != attempt_intent {
+        if !retry_incomplete {
             return Err(invalid(
                 "backup attempt already exists or its immutable intent changed",
             ));
         }
+        let cleanup_tree =
+            capture_cleanup_tree(&intent, &attempt_intent, &partial, &sealed, protected)?;
         if exists(&workspace) {
             if !fs::symlink_metadata(&workspace)?.is_dir() {
                 return Err(invalid("incomplete restore workspace is redirected"));
             }
-            let cleanup_tree = if protected && exists(&sealed) {
-                let metadata = fs::symlink_metadata(&sealed)?;
-                if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
-                    return Err(invalid(
-                        "retained certification tree is not root-controlled",
-                    ));
-                }
-                &sealed
-            } else {
-                &partial
-            };
             let worker = if protected {
                 Some(publication::Worker::new(
                     string(c, "worker_user")?,
@@ -546,7 +585,11 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
         durable::sync_directory(&abandoned)?;
         durable::sync_directory(&root)?;
     }
-    durable::write_json(&intent, &attempt_intent)?;
+    let mut journal = attempt_intent.clone();
+    if protected {
+        journal["cleanup_origin"] = json!("partial");
+    }
+    durable::write_json(&intent, &journal)?;
     let worker = if protected {
         Some(publication::Worker::new(
             string(c, "worker_user")?,
@@ -588,6 +631,9 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
                     "backup artifact changed before protected certification",
                 ));
             }
+            durable::sync_tree(&sealed)?;
+            journal["cleanup_origin"] = json!("sealed");
+            durable::write_json(&intent, &journal)?;
             certification_tree = &sealed;
         }
         let receipt = certification(
@@ -603,7 +649,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     execute(
         c,
         "cleanup",
-        certification_tree,
+        capture_cleanup_tree(&intent, &attempt_intent, &partial, &sealed, protected)?,
         &workspace,
         lease.fd(),
         worker.as_ref(),
@@ -703,6 +749,7 @@ pub fn inspect_retained(c: &Value, b: &Path) -> Result<Value> {
     Ok(receipt)
 }
 pub fn certify(c: &Value, b: &Path, state: &Path) -> Result<Value> {
+    let executor_machine = machine()?;
     validate(c, false)?;
     if c["version"] == 2 && unsafe { libc::geteuid() } == 0 {
         return Err(invalid(
@@ -724,7 +771,7 @@ pub fn certify(c: &Value, b: &Path, state: &Path) -> Result<Value> {
     }
     let lease = durable::lock(&state.join("lock"), false, false)?;
     let source = verify_bytes(c, b, None)?;
-    if source["executor_machine_sha256"] == machine()? || source["executor"] == hostname()? {
+    if source["executor_machine_sha256"] == executor_machine || source["executor"] == hostname()? {
         return Err(invalid(
             "independent restoration must execute on a different machine",
         ));

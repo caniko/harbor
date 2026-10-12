@@ -1183,6 +1183,20 @@ dimension = "interruption"
 evidence = "Both production CLIs reach protected certification, record the sealed restore origin in the private workspace, then fail cleanup without replacing LAST_SUCCESS. After explicit retry, the adapter requires the identical sealed backup argument, drains the retained workspace, and admits a new capture while retaining the interrupted attempt in a private abandoned directory. Retained capture descriptors cannot change the published retry point."
 
 [[coverage]]
+case = "vm.x86_64-linux.native-application-backup"
+capability = "application-backup"
+operation = "harbor-db-application-backup.capture"
+dimension = "interruption"
+evidence = "Both production CLIs exhaust a bounded tmpfs during the protected copy, retain an incomplete seal and a failed cleanup workspace, and leave cleanup_origin=partial with no LAST_SUCCESS. After capacity is restored, explicit retry must pass the original partial backup argument, retain the abandoned trees and certify a fresh protected capture. Seal directory existence alone cannot select its cleanup origin."
+
+[[coverage]]
+case = "vm.x86_64-linux.native-application-backup"
+capability = "application-backup"
+operation = "harbor-db-application-backup.certify"
+dimension = "rejection"
+evidence = "Native and Python independent certifiers reject substituted machine IDs and hostnames inside caller-created user/mount/UTS namespaces before restoring or publishing a receipt. An interposer proven to replace Python hostname/machine-id reads cannot forge same-machine custody through the statically linked native application certifier."
+
+[[coverage]]
 case = "vm.x86_64-linux.native-application-transition"
 capability = "nixos"
 operation = "nixos.application-transition"
@@ -5405,7 +5419,7 @@ case = "vm.x86_64-linux.native-source-local-recovery"
 capability = "postgres"
 operation = "harbor-db-postgres.certify-recovery"
 dimension = "rejection"
-evidence = "Both production packages reject source-machine certification after the unprivileged PostgreSQL account creates user/mount/UTS namespaces, substitutes /etc/machine-id and /proc/self/uid_map, and changes its hostname. The attack repeats under a fresh PID namespace with a newly mounted procfs; errors must identify caller-controlled namespace rejection through kernel pidfd admission. Root-created UTS renames still reach the distinct-machine rejection, while real independent two-machine and source-local certification remain positive."
+evidence = "Both production packages reject source-machine certification after the unprivileged PostgreSQL account creates user/mount/UTS namespaces, substitutes /etc/machine-id and /proc/self/uid_map, and changes its hostname. The attack repeats under a fresh PID namespace with a newly mounted procfs; errors must identify caller-controlled namespace rejection through kernel pidfd admission. Root-created UTS renames still reach the distinct-machine rejection, while real independent two-machine and source-local certification remain positive. The production native certifier also rejects off-host certification under LD_PRELOAD after the same interposer proves it substitutes dynamic hostname/machine-id reads; static custody retains the installed identity before receipt publication."
 
 [[coverage]]
 case = "vm.x86_64-linux.native-source-local-recovery"
