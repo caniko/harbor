@@ -167,6 +167,10 @@ in
           ExecStart = "${pkgs.python3}/bin/python3 ${holder}";
         };
       };
+      # The restore fixture synchronizes its concurrent inode mutation through
+      # these markers. ProtectSystem=strict otherwise makes /run read-only in
+      # the scheduled backup service, even though the holder can write there.
+      systemd.services.harbor-db-demo-backup.serviceConfig.ReadWritePaths = ["/run/backup-fd"];
       services.harbor-db.projects.demo.backup = {
         enable = true;
         user = "demo";
