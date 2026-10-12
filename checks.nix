@@ -28,10 +28,10 @@
   bevyTemplateTreefmt = builtins.readFile (bevyTemplateRoot + "/nix/treefmt.nix");
   bevyTemplateHooks = builtins.readFile (bevyTemplateRoot + "/nix/pre-commit.nix");
 in
-  (import ./tests/upstream-binary.nix {
+  (pkgs.lib.optionalAttrs isLinux (import ./tests/upstream-binary.nix {
     inherit pkgs;
     harborLib = self.lib;
-  })
+  }))
   // {
     opencode-rust-default = let
       rustConfig = self.lib.opencode.configTextFor {lsp = self.lib.opencodeRust.rustLsp;};
