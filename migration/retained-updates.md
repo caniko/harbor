@@ -65,3 +65,21 @@ package selections, including the recovery and transition VMs. Canonical-source
 and hosted qualification remain pending. The archived tips and these snapshot
 results preserve implementation and evidence; predecessor retirement still
 requires canonical acceptance and verified consumer migration.
+
+## Command-scoped core runtimes
+
+The signed predecessor tip `780f01e218d159826e47ae125525f3280954b3e7`
+adds one commit beyond `c86dd5f7879aea4a30850af9bcbf5dfadb94e684`.
+Its complete original history is retained at
+`refs/migration-retained/predecessor-harbor-meta-780f01e-20261013`.
+The public archival tag is
+`retained-ref/20261013/harbor-meta/heads/feat/shared-timezone-env`; an independent
+HTTPS fetch verified the original tip after publication.
+
+`components/core/lib/runtime.nix` and `checks/scoped-runtime.nix` retain the
+original command-scoped launcher and runtime/composition assertions. The active
+`lib/shell.nix` preserves child dependency inheritance, environment precedence,
+and ordered, once-only hooks. Documentation uses the canonical `lib.core`
+namespace. Root input and workflow ownership replaces the predecessor's
+standalone flake/check wiring. Producer qualification and consumer acceptance
+remain separate from this source reconciliation.
