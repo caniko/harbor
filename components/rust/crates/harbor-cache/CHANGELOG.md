@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.1] - 2026-10-13
+
+Retry the first registry release after the signed `0.1.0` archive workflow
+failed its monorepo qualification before packaging or upload.
+
+- Repair the reciprocal Browserslist/update-db executable link in the frozen
+  OpenPencil dependency archive and retain a focused regression gate.
+- The Harbor cache library API and behavior remain identical to the prepared
+  `0.1.0` candidate; the original signed tag and failed-run evidence are retained.
+
 ## [0.1.0] - 2026-10-12
 
 First registry release of the existing Harbor cache helper library.

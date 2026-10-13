@@ -1,7 +1,9 @@
 /** Repair Bun 1.4.2's racy links in this frozen OpenPencil graph.
  * Package contents and dependency edges remain untouched. The lock's unaliased
  * react-is entry owns the shared name; npm aliases keep their own local links.
- * ESLint and Browserslist peers resolve correctly, but Bun can omit their bins.
+ * The ESLint and browserslist peers resolve correctly, but Bun sometimes omits
+ * their executable links, including both directions of the circular
+ * Browserslist/update-db dependency.
  */
 import {
   existsSync,
@@ -12,7 +14,7 @@ import {
   symlinkSync,
   unlinkSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { join, normalize, relative } from "node:path";
 
 function link(path: string, target: string) {
   if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
@@ -41,52 +43,42 @@ link(
   relative(join(store, "node_modules"), target),
 );
 
-// The peer-context suffix is Bun-owned; require exactly one matching scope.
-const scopes = readdirSync(store).filter((name) =>
-  name.startsWith("@eslint-community+eslint-utils@"),
-);
-if (scopes.length !== 1) {
-  throw new Error(`unexpected ESLint utility peer contexts: ${scopes}`);
-}
-const scope = join(store, scopes[0], "node_modules");
-const eslint = JSON.parse(
-  readFileSync(join(scope, "eslint/package.json"), "utf8"),
-);
-const executable = eslint.bin.eslint;
-if (!lstatSync(join(scope, "eslint", executable)).isFile()) {
-  throw new Error("missing resolved ESLint executable");
-}
-mkdirSync(join(scope, ".bin"), { recursive: true });
-link(join(scope, ".bin/eslint"), `../eslint/${executable}`);
-
-// The circular Browserslist/update-db peer graph has the same bin-link race.
-const updateScopes = readdirSync(store).filter((name) =>
-  name.startsWith("update-browserslist-db@"),
-);
-if (updateScopes.length !== 1) {
-  throw new Error(
-    `unexpected Browserslist update peer contexts: ${updateScopes}`,
+function peerBin(prefix: string, dependency: string, command: string) {
+  // The peer-context suffix is Bun-owned; require exactly one matching scope.
+  const scopes = readdirSync(store).filter((name) => name.startsWith(prefix));
+  if (scopes.length !== 1) {
+    throw new Error(`unexpected ${prefix} peer contexts: ${scopes}`);
+  }
+  const scope = join(store, scopes[0], "node_modules");
+  const manifest = JSON.parse(
+    readFileSync(join(scope, dependency, "package.json"), "utf8"),
   );
+  if (
+    manifest.name !== dependency ||
+    lock.packages[dependency][0] !== `${dependency}@${manifest.version}`
+  ) {
+    throw new Error(
+      `resolved ${dependency} peer does not match the frozen lock`,
+    );
+  }
+  // npm's string form declares a single executable named after the package;
+  // Bun records the equivalent command map in its frozen lock.
+  const executable =
+    typeof manifest.bin === "string" && manifest.name === command
+      ? manifest.bin
+      : manifest.bin[command];
+  if (
+    typeof executable !== "string" ||
+    normalize(executable) !==
+      normalize(lock.packages[dependency][2].bin[command]) ||
+    !lstatSync(join(scope, dependency, executable)).isFile()
+  ) {
+    throw new Error(`missing resolved ${dependency} executable`);
+  }
+  mkdirSync(join(scope, ".bin"), { recursive: true });
+  link(join(scope, ".bin", command), `../${dependency}/${executable}`);
 }
-const updateScope = join(store, updateScopes[0], "node_modules");
-const browserslist = JSON.parse(
-  readFileSync(join(updateScope, "browserslist/package.json"), "utf8"),
-);
-if (
-  browserslist.name !== "browserslist" ||
-  `browserslist@${browserslist.version}` !== lock.packages.browserslist[0]
-) {
-  throw new Error("resolved Browserslist peer does not match the frozen lock");
-}
-const browserslistBin = browserslist.bin.browserslist;
-if (
-  browserslistBin !== lock.packages.browserslist[2].bin.browserslist ||
-  !lstatSync(join(updateScope, "browserslist", browserslistBin)).isFile()
-) {
-  throw new Error("missing frozen Browserslist executable");
-}
-mkdirSync(join(updateScope, ".bin"), { recursive: true });
-link(
-  join(updateScope, ".bin/browserslist"),
-  `../browserslist/${browserslistBin}`,
-);
+
+peerBin("@eslint-community+eslint-utils@", "eslint", "eslint");
+peerBin("update-browserslist-db@", "browserslist", "browserslist");
+peerBin("browserslist@", "update-browserslist-db", "update-browserslist-db");

@@ -36,3 +36,25 @@ and frozen fixtures, and the command-scoped shell integration remain bound to
 their retained sources. Required production, native-platform, cold-archive and
 hosted gates apply to the resulting integrated revision before cutover or
 predecessor retirement.
+
+## Later default update
+
+The retained default tip `795a24f9bd0a463df5f093d600c00f54b19fcd85` adds
+reciprocal OpenPencil peer-bin normalization and the independent Harbor Cache
+`0.1.1` release preparation. It is reconciled after the supervisor fixture repair
+at `97b01824e58b733a151e4c0423d7802e62a3a815`, whose native and packaged VM gates
+passed with the production busy-lease behavior intact.
+
+The three later conflicts retain the portable core check wiring alongside the
+new CAD dependency-links gate, adopt the default's lock-bound peer normalizer,
+and combine both regression suites. All five tests remain: forward and reciprocal
+peer restoration with package-byte/idempotence checks, regular-file refusal in
+both directions, and frozen-version mismatch rejection. The new fixture also
+exercises npm's string `bin` form and equivalent normalized executable paths.
+The normalizer matches the retained default source byte-for-byte; source pins,
+Bun version and fixed-output hash remain the captured production contract.
+
+The changed cold recipe requires two fresh installations and matching archive
+and payload evidence. Local source reconciliation and the default's merged PR
+do not establish producer acceptance; full integrated-source qualification and
+exact-revision hosted admission remain required.

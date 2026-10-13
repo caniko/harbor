@@ -19,80 +19,86 @@ afterEach(() => {
 });
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "open-pencil-links-"));
+  const root = mkdtempSync(join(tmpdir(), "open-pencil-peer-bins-"));
   roots.push(root);
   const store = join(root, "node_modules/.bun");
-  const manifest = (name: string, value: object) => {
-    const path = join(store, name);
-    mkdirSync(path, { recursive: true });
-    writeFileSync(join(path, "package.json"), JSON.stringify(value));
+  const packages = {
+    "react-is": { version: "19.2.4", bin: {} },
+    eslint: { version: "10.4.0", bin: { eslint: "bin/eslint.js" } },
+    browserslist: { version: "4.28.8", bin: { browserslist: "cli.js" } },
+    "update-browserslist-db": {
+      version: "1.3.1",
+      bin: { "update-browserslist-db": "cli.js" },
+    },
   };
-  manifest("react-is@19.2.4/node_modules/react-is", {
-    name: "react-is",
-    version: "19.2.4",
-  });
+  const scopes = new Map<string, string>();
+  for (const [name, { version, bin }] of Object.entries(packages)) {
+    const suffix = name.includes("browserslist") ? "+fixture" : "";
+    const scope = join(store, `${name}@${version}${suffix}/node_modules`);
+    const directory = join(scope, name);
+    scopes.set(name, scope);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, "package.json"),
+      JSON.stringify({
+        name,
+        version,
+        bin:
+          name === "update-browserslist-db"
+            ? "cli.js"
+            : name === "eslint"
+              ? { eslint: "./bin/eslint.js" }
+              : bin,
+      }),
+    );
+    for (const executable of Object.values(bin)) {
+      const path = join(directory, executable);
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, "#!/usr/bin/env node\n");
+      chmodSync(path, 0o755);
+    }
+  }
+  const peers = [
+    ["@eslint-community+eslint-utils@4.9.1+fixture", "eslint"],
+    ["update-browserslist-db@1.3.1+fixture", "browserslist"],
+    ["browserslist@4.28.8+fixture", "update-browserslist-db"],
+  ];
+  for (const [context, dependency] of peers) {
+    const scope = join(store, context, "node_modules");
+    mkdirSync(scope, { recursive: true });
+    symlinkSync(
+      scopes.get(dependency) + "/" + dependency,
+      join(scope, dependency),
+    );
+  }
   mkdirSync(join(store, "node_modules"));
-  manifest("eslint@10.4.0/node_modules/eslint", {
-    name: "eslint",
-    version: "10.4.0",
-    bin: { eslint: "bin/eslint.js" },
-  });
-  const eslint = join(store, "eslint@10.4.0/node_modules/eslint/bin/eslint.js");
-  mkdirSync(join(eslint, ".."));
-  writeFileSync(eslint, "#!/usr/bin/env node\n");
-  chmodSync(eslint, 0o755);
-  const eslintPeer = join(
-    store,
-    "@eslint-community+eslint-utils@4.9.1+fixture/node_modules",
-  );
-  mkdirSync(eslintPeer, { recursive: true });
-  symlinkSync(
-    "../../eslint@10.4.0/node_modules/eslint",
-    join(eslintPeer, "eslint"),
-  );
-  manifest("browserslist@4.28.8+fixture/node_modules/browserslist", {
-    name: "browserslist",
-    version: "4.28.8",
-    bin: { browserslist: "cli.js" },
-  });
-  const executable = join(
-    store,
-    "browserslist@4.28.8+fixture/node_modules/browserslist/cli.js",
-  );
-  writeFileSync(
-    executable,
-    "#!/usr/bin/env node\nconsole.log('browserslist');\n",
-  );
-  chmodSync(executable, 0o755);
-  const peer = join(store, "update-browserslist-db@1.3.1+fixture/node_modules");
-  mkdirSync(join(peer, ".bin"), { recursive: true });
-  symlinkSync(
-    "../../browserslist@4.28.8+fixture/node_modules/browserslist",
-    join(peer, "browserslist"),
-  );
   writeFileSync(
     join(root, "bun.lock"),
     JSON.stringify({
-      packages: {
-        "react-is": ["react-is@19.2.4"],
-        browserslist: [
-          "browserslist@4.28.8",
-          "",
-          { bin: { browserslist: "cli.js" } },
-        ],
-      },
+      packages: Object.fromEntries(
+        Object.entries(packages).map(([name, { version, bin }]) => [
+          name,
+          [`${name}@${version}`, "", { bin }],
+        ]),
+      ),
     }),
   );
+  const scope = scopes.get("browserslist")!;
+  const bin = join(scope, ".bin/update-browserslist-db");
+  const executable = join(scope, "update-browserslist-db/cli.js");
+  const peer = scopes.get("update-browserslist-db")!;
+  mkdirSync(join(peer, ".bin"), { recursive: true });
+  const browserslistExecutable = join(peer, "browserslist/cli.js");
   const run = () =>
     Bun.spawnSync({
       cmd: [process.execPath, join(import.meta.dir, "normalize-links.ts")],
       cwd: root,
     });
-  return { peer, executable, run };
+  return { bin, executable, peer, browserslistExecutable, run };
 }
 
 test("restores the missing frozen Browserslist peer bin without changing package bytes", () => {
-  const { peer, executable, run } = fixture();
+  const { peer, browserslistExecutable: executable, run } = fixture();
   const before = readFileSync(executable);
   expect(run().exitCode).toBe(0);
   expect(existsSync(join(peer, ".bin/browserslist"))).toBe(true);
@@ -126,4 +132,22 @@ test("rejects a resolved Browserslist version outside the frozen lock", () => {
   );
   expect(run().exitCode).not.toBe(0);
   expect(existsSync(join(peer, ".bin/browserslist"))).toBe(false);
+});
+
+test("restores the reciprocal circular peer executable without changing package bytes", () => {
+  const { bin, executable, run } = fixture();
+  const before = readFileSync(executable);
+  expect(run().exitCode).toBe(0);
+  expect(readlinkSync(bin)).toBe("../update-browserslist-db/cli.js");
+  expect(readFileSync(executable)).toEqual(before);
+  expect(run().exitCode).toBe(0);
+  expect(readlinkSync(bin)).toBe("../update-browserslist-db/cli.js");
+});
+
+test("refuses to overwrite a regular file at the reciprocal peer executable", () => {
+  const { bin, run } = fixture();
+  mkdirSync(join(bin, ".."), { recursive: true });
+  writeFileSync(bin, "foreign file");
+  expect(run().exitCode).not.toBe(0);
+  expect(readFileSync(bin, "utf8")).toBe("foreign file");
 });

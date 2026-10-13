@@ -171,7 +171,10 @@ in {
               bootstrap-inputs = bootstrapInputs;
               module-contracts = moduleContracts;
             }
-            // portableCoreChecks)))))
+            // portableCoreChecks)
+          // nixlib.optionalAttrs (name == "cad" && system == "x86_64-linux") {
+            dependency-links = desktopChecks.open-pencil-dependency-links;
+          }))))
     componentNames);
   in
     collect "checks" system
