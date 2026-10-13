@@ -210,7 +210,7 @@ in {
     });
     shell = pkgs.mkShell (databaseTestEnvironment
       // {
-        packages = [toolchain.rustToolchain pkgs.pkg-config pkgs.openssl pkgs.git pkgs.python3 pkgs.uv pkgs.jq formatters.${system}.config.build.wrapper];
+        packages = [toolchain.rustToolchain pkgs.pkg-config pkgs.openssl pkgs.git pkgs.python3 pkgs.uv pkgs.jq formatters.${system}.config.build.wrapper] ++ nixlib.optionals pkgs.stdenv.hostPlatform.isLinux [pkgs.util-linux];
         shellHook = nixlib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
           # nix-direnv may cache exports after Nix removes its shell TMPDIR.
           export HARBOR_DB_TEST_TMPDIR="''${XDG_RUNTIME_DIR:-/tmp}"
