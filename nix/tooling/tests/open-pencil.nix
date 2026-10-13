@@ -183,6 +183,17 @@
             pass
   '';
 in {
+  open-pencil-dependency-links =
+    pkgs.runCommand "open-pencil-dependency-links" {
+      nativeBuildInputs = [pkgs.bun];
+    } ''
+      export TMPDIR="$PWD/temporary"
+      mkdir -p "$TMPDIR"
+      cp ${../../packages/open-pencil-desktop/normalize-links.ts} normalize-links.ts
+      cp ${../../packages/open-pencil-desktop/normalize-links.test.ts} normalize-links.test.ts
+      bun test normalize-links.test.ts
+      touch $out
+    '';
   # Static gate: linkage, desktop entry, icons, CLI round-trip.
   open-pencil-package-smoke =
     pkgs.runCommand "open-pencil-package-smoke" {

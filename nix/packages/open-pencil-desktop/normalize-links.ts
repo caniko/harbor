@@ -2,7 +2,8 @@
  * Package contents and dependency edges remain untouched. The lock's unaliased
  * react-is entry owns the shared name; npm aliases keep their own local links.
  * The ESLint and browserslist peers resolve correctly, but Bun sometimes omits
- * their executable links.
+ * their executable links, including both directions of the circular
+ * Browserslist/update-db dependency.
  */
 import {
   existsSync,
@@ -13,7 +14,7 @@ import {
   symlinkSync,
   unlinkSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { join, normalize, relative } from "node:path";
 
 function link(path: string, target: string) {
   if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
@@ -60,8 +61,18 @@ function peerBin(prefix: string, dependency: string, command: string) {
       `resolved ${dependency} peer does not match the frozen lock`,
     );
   }
-  const executable = manifest.bin[command];
-  if (!lstatSync(join(scope, dependency, executable)).isFile()) {
+  // npm's string form declares a single executable named after the package;
+  // Bun records the equivalent command map in its frozen lock.
+  const executable =
+    typeof manifest.bin === "string" && manifest.name === command
+      ? manifest.bin
+      : manifest.bin[command];
+  if (
+    typeof executable !== "string" ||
+    normalize(executable) !==
+      normalize(lock.packages[dependency][2].bin[command]) ||
+    !lstatSync(join(scope, dependency, executable)).isFile()
+  ) {
     throw new Error(`missing resolved ${dependency} executable`);
   }
   mkdirSync(join(scope, ".bin"), { recursive: true });
@@ -70,3 +81,4 @@ function peerBin(prefix: string, dependency: string, command: string) {
 
 peerBin("@eslint-community+eslint-utils@", "eslint", "eslint");
 peerBin("update-browserslist-db@", "browserslist", "browserslist");
+peerBin("browserslist@", "update-browserslist-db", "update-browserslist-db");

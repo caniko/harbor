@@ -162,6 +162,9 @@ in {
             template-contract = templateContract;
             bootstrap-inputs = bootstrapInputs;
             module-contracts = moduleContracts;
+          }
+          // nixlib.optionalAttrs (name == "cad" && system == "x86_64-linux") {
+            dependency-links = desktopChecks.open-pencil-dependency-links;
           }))))
     componentNames);
   in
