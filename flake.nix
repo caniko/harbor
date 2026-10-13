@@ -4,11 +4,11 @@
   inputs = {
     # Consume qualified tool sources without their consumer flake graphs.
     simit = {
-      url = "git+https://github.com/caniko/simit.git?ref=feat/harbor-monorepo-components&rev=f30d82931ea3689de3c3ea9a0ab0f0e0bfd10b8d";
+      url = "git+https://github.com/caniko/simit.git?ref=migrate/harbor-monorepo-reconcile-20261012-current&rev=90bed59acf2312e5d68c6df2a88751633db4d4fe";
       flake = false;
     };
     plinth-source = {
-      url = "git+https://github.com/caniko/plinth.git?ref=fix/dioxus-0.7.10&rev=4718cc09d9d1b54cc10e23e60c37b656bf7285a6";
+      url = "git+https://github.com/caniko/plinth.git?ref=migrate/harbor-combined-20261012-features&rev=534dfa6dd6217db97b7ccd313501120a3c34d912";
       flake = false;
     };
     # CAD's minimum FreeCAD version establishes the shared package-set floor.

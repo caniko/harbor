@@ -3,6 +3,97 @@ concurrency:
   cancel-in-progress: false
   group: ${{ github.workflow_ref }}-${{ github.ref }}
 jobs:
+  build:
+    env:
+      CARGO_HOME: /tmp/.cargo
+      NIX_CONFIG: experimental-features = nix-command flakes
+      XDG_CACHE_HOME: /tmp/.cache
+    needs:
+    - qualified
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ github.sha }}
+    - name: Install Nix
+      uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+    - name: Configure GitHub input transport
+      run: |
+        git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
+        git config --global --add url.https://github.com/.insteadOf git@github.com:
+    - env:
+        GITHUB_TOKEN: ${{ github.token }}
+      name: Validate signed release tag
+      run: |
+        set -euo pipefail
+        tag="${GITHUB_REF_NAME:-${FORGE_REF_NAME:-${CODEBERG_REF_NAME:-}}}"
+        if [ -z "$tag" ]; then
+          ref="${GITHUB_REF:-${FORGE_REF:-${CODEBERG_REF:-}}}"
+          tag="${ref#refs/tags/}"
+        fi
+
+        case "$tag" in anx-plugin-zenodo/v*) version="${tag#anx-plugin-zenodo/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
+        if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
+
+        if ! command -v gpg >/dev/null 2>&1; then
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends gnupg
+          else
+            echo "gpg is required to verify signed release tags" >&2
+            exit 1
+          fi
+        fi
+        git_fetch() {
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+            git -c "http.extraHeader=$auth_header" fetch "$@"
+          else
+            git fetch "$@"
+          fi
+        }
+        GNUPGHOME="$(mktemp -d)"
+        export GNUPGHOME
+        trap 'rm -rf "$GNUPGHOME"' EXIT
+        chmod 700 "$GNUPGHOME"
+        # The release checkout cannot supply its own verification key.
+        # Fetch the repository's independently maintained default-branch key.
+        git_fetch --no-tags origin HEAD
+        git show "FETCH_HEAD:keys/maintainers.gpg" > "$GNUPGHOME/maintainers.gpg"
+        test -s "$GNUPGHOME/maintainers.gpg"
+        gpg --batch --import "$GNUPGHOME/maintainers.gpg"
+
+        git_fetch --force --tags origin "refs/tags/${tag}:refs/tags/${tag}"
+        git verify-tag "$tag"
+        validated_sha="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"
+        checkout_sha="$(git rev-parse --verify HEAD)"
+        if [ "$validated_sha" != "$checkout_sha" ]; then
+          echo "Signed tag commit does not match the checkout being published" >&2
+          exit 1
+        fi
+    - name: Test anx-plugin-zenodo
+      run: nix develop -c cargo test --locked -p anx-plugin-zenodo --all-targets --all-features
+    - name: Clippy anx-plugin-zenodo
+      run: nix develop -c cargo clippy --locked -p anx-plugin-zenodo --all-targets --all-features -- -D warnings
+    - name: Package coordinated release set
+      run: nix develop -c cargo package --locked --allow-dirty --no-verify -p anx-plugin-zenodo --target-dir "$RUNNER_TEMP/simit-package-target"
+    - name: Build immutable archive anx-plugin-zenodo
+      run: |
+        set -euo pipefail
+        version="${GITHUB_REF_NAME#anx-plugin-zenodo/v}"
+        test "$(nix develop -c cargo pkgid --locked -p anx-plugin-zenodo | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version"
+        mkdir -p "$RUNNER_TEMP/simit-crates/anx-plugin-zenodo"
+        cp "$RUNNER_TEMP/simit-package-target/package/anx-plugin-zenodo-$version.crate" "$RUNNER_TEMP/simit-crates/anx-plugin-zenodo/"
+    - name: Retain original-run archive anx-plugin-zenodo
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        if-no-files-found: error
+        name: simit-crate-anx-plugin-zenodo-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/simit-crates/anx-plugin-zenodo/*.crate
+        retention-days: 30
+    timeout-minutes: 60
   component-android:
     env:
       NIX_CONFIG: experimental-features = nix-command flakes
@@ -10,7 +101,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -24,7 +115,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-android'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-android'
       timeout-minutes: 90
     timeout-minutes: 360
   component-cad:
@@ -34,7 +128,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -48,13 +142,22 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad'
       timeout-minutes: 90
     - name: blender-companion
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.blender-mcp-runtime'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.blender-mcp-runtime'
       timeout-minutes: 90
     - name: openpencil-companion
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --print-build-logs --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --print-build-logs --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp'
       timeout-minutes: 180
     timeout-minutes: 360
   component-core:
@@ -64,7 +167,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -78,22 +181,40 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: history
-      run: nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/check_history.py'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/check_history.py'
       timeout-minutes: 30
     - name: format
-      run: nix develop --print-build-logs .#ci --command sh -ec 'treefmt --ci'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'treefmt --ci'
       timeout-minutes: 30
     - name: test
-      run: nix develop --print-build-logs .#ci --command sh -ec 'cargo test --locked -p harbor-evidence --all-targets --jobs 2'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'cargo test --locked -p harbor-evidence --all-targets --jobs 2'
       timeout-minutes: 30
     - name: clippy
-      run: nix develop --print-build-logs .#ci --command sh -ec 'cargo clippy --locked -p harbor-evidence --all-targets --jobs 2 -- -D warnings'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'cargo clippy --locked -p harbor-evidence --all-targets --jobs 2 -- -D warnings'
       timeout-minutes: 30
     - name: module-platforms
-      run: nix develop --print-build-logs .#ci --command sh -ec 'for system in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do nix eval --raw .#checks.$system.harbor-modules.drvPath; done'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'for system in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do nix eval --raw .#checks.$system.harbor-modules.drvPath; done'
       timeout-minutes: 30
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core'
       timeout-minutes: 90
     timeout-minutes: 360
   component-database:
@@ -103,7 +224,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -117,10 +238,16 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: hosted-cache
-      run: nix develop --print-build-logs .#ci --command sh -ec 'test "${RUNNER_ENVIRONMENT:-}" = github-hosted && test -r /dev/kvm && test -w /dev/kvm && sudo install -d -m 1777 -o root -g root /var/cache/sccache && test ! -L /var/cache/sccache && test "$(stat -c '\''%u:%a'\'' /var/cache/sccache)" = 0:1777 && printf '\''%s\n'\'' '\''extra-sandbox-paths = /var/cache/sccache'\'' '\''log-lines = 250'\'' | sudo tee -a /etc/nix/nix.conf && sudo systemctl restart nix-daemon.service && nix config show sandbox-paths | grep -F /var/cache/sccache'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'test "${RUNNER_ENVIRONMENT:-}" = github-hosted && test -r /dev/kvm && test -w /dev/kvm && sudo install -d -m 1777 -o root -g root /var/cache/sccache && test ! -L /var/cache/sccache && test "$(stat -c '\''%u:%a'\'' /var/cache/sccache)" = 0:1777 && printf '\''%s\n'\'' '\''extra-sandbox-paths = /var/cache/sccache'\'' '\''log-lines = 250'\'' | sudo tee -a /etc/nix/nix.conf && sudo systemctl restart nix-daemon.service && nix config show sandbox-paths | grep -F /var/cache/sccache'
       timeout-minutes: 30
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-database .#database-storage-lifecycle .#database-harbor-db-cached'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-database .#database-storage-lifecycle .#database-harbor-db-cached'
       timeout-minutes: 90
     timeout-minutes: 360
   component-evm:
@@ -130,7 +257,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -144,7 +271,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-evm'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-evm'
       timeout-minutes: 90
     timeout-minutes: 360
   component-go:
@@ -154,7 +284,7 @@ jobs:
     needs: plan
     runs-on: ${{ matrix.runner }}
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -168,7 +298,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-go'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-go'
       timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -189,7 +322,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -203,7 +336,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-javascript'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-javascript'
       timeout-minutes: 90
     timeout-minutes: 360
   component-llm:
@@ -213,7 +349,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -227,7 +363,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#llm-default'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#llm-default'
       timeout-minutes: 30
     timeout-minutes: 360
   component-macos-sdk:
@@ -237,7 +376,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -251,7 +390,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: pin
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix eval --json .#lib.pins.macosSdk | jq -e '\''(.sdkVersion | test("^[0-9]+([.][0-9]+)+$")) and (.outputHash | startswith("sha256-")) and (.storePath | startswith("/nix/store/")) and .attic.cacheName == "harbor-macos-sdk"'\'''
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix eval --json .#lib.pins.macosSdk | jq -e '\''(.sdkVersion | test("^[0-9]+([.][0-9]+)+$")) and (.outputHash | startswith("sha256-")) and (.storePath | startswith("/nix/store/")) and .attic.cacheName == "harbor-macos-sdk"'\'''
       timeout-minutes: 30
     timeout-minutes: 360
   component-ntt:
@@ -261,7 +403,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -275,7 +417,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-ntt'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-ntt'
       timeout-minutes: 90
     timeout-minutes: 360
   component-projects:
@@ -285,7 +430,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -299,7 +444,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-projects'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-projects'
       timeout-minutes: 90
     timeout-minutes: 360
   component-python:
@@ -309,7 +457,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -323,7 +471,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-python'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-python'
       timeout-minutes: 90
     timeout-minutes: 360
   component-rust:
@@ -333,7 +484,7 @@ jobs:
     needs: plan
     runs-on: ${{ matrix.runner }}
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -347,16 +498,28 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: test
-      run: nix develop --print-build-logs .#ci --command sh -ec 'set --; if [ "$(uname -s)" = Darwin ]; then set -- --exclude harbor-cad --exclude harbor-db; fi; simit test --git-fixtures -- cargo test --locked --workspace "$@" --jobs 2 -- --test-threads=2'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'set --; if [ "$(uname -s)" = Darwin ]; then set -- --exclude harbor-cad --exclude harbor-db; fi; simit test --git-fixtures -- cargo test --locked --workspace "$@" --jobs 2 -- --test-threads=2'
       timeout-minutes: 30
     - name: clippy
-      run: nix develop --print-build-logs .#ci --command sh -ec 'set --; if [ "$(uname -s)" = Darwin ]; then set -- --exclude harbor-cad --exclude harbor-db; fi; cargo clippy --locked --workspace "$@" --all-targets --jobs 2 -- -D warnings'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'set --; if [ "$(uname -s)" = Darwin ]; then set -- --exclude harbor-cad --exclude harbor-db; fi; cargo clippy --locked --workspace "$@" --all-targets --jobs 2 -- -D warnings'
       timeout-minutes: 30
     - name: sandbox-runtime
-      run: 'nix develop --print-build-logs .#ci --command sh -ec ''bash -euc ''\''''if [ "$(uname -s)" = Darwin ]; then echo "Linux namespace runtime: not applicable on Darwin"; exit 0; fi; test "$(uname -s)" = Linux; test "${RUNNER_ENVIRONMENT:-}" = github-hosted; if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1''\'''''''
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'bash -euc '\''if [ "$(uname -s)" = Darwin ]; then echo "Linux namespace runtime: not applicable on Darwin"; exit 0; fi; test "$(uname -s)" = Linux; test "${RUNNER_ENVIRONMENT:-}" = github-hosted; if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1'\'''
       timeout-minutes: 30
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-rust'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-rust'
       timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -375,7 +538,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -389,7 +552,10 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-solana'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-solana'
       timeout-minutes: 90
     timeout-minutes: 360
   component-tex:
@@ -399,7 +565,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -413,17 +579,22 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-tex .#tex-anx-plugin-zenodo .#tex-anx-plugin-pandoc'
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-tex .#tex-anx-plugin-zenodo .#tex-anx-plugin-pandoc'
       timeout-minutes: 90
     timeout-minutes: 360
   plan:
     env:
       NIX_CONFIG: experimental-features = nix-command flakes
+    needs:
+    - verify-source
     outputs:
       selected: ${{ steps.plan.outputs.selected }}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
@@ -450,83 +621,6 @@ jobs:
         cat plan.json
       shell: bash
     timeout-minutes: 20
-  publish-anx-plugin-zenodo:
-    env:
-      CARGO_HOME: /tmp/.cargo
-      NIX_CONFIG: experimental-features = nix-command flakes
-      XDG_CACHE_HOME: /tmp/.cache
-    needs:
-    - validate
-    permissions:
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-    - name: Install Nix
-      uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
-    - name: Configure GitHub input transport
-      run: |
-        git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
-        git config --global --add url.https://github.com/.insteadOf git@github.com:
-    - name: Add cargo bin to PATH
-      run: echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-    - name: Package archive with verification
-      run: nix develop -c cargo package -p anx-plugin-zenodo --allow-dirty
-    - name: Registry dry-run
-      run: nix develop -c cargo publish -p anx-plugin-zenodo --dry-run
-    - env:
-        CRATES_IO_API_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
-      name: Publish
-      run: |
-        set -euo pipefail
-        crate_name='anx-plugin-zenodo'
-        version="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
-        version="${version#*/v}"
-        if [ -z "$version" ]; then echo "Could not determine release version from tag ref" >&2; exit 1; fi
-        # Preflight: fail fast on auth/ownership/validation vs propagation delay.
-        if [ -z "${CRATES_IO_API_TOKEN:-}" ] && [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then echo "CRATES_IO_API_TOKEN is required to publish to crates.io" >&2; exit 1; fi
-        export CARGO_REGISTRY_TOKEN="${CARGO_REGISTRY_TOKEN:-$CRATES_IO_API_TOKEN}"
-        status="$(curl --retry 3 -sS -o /tmp/simit-crate.json -w '%{http_code}' -A 'simit publish-workspace preflight' "https://crates.io/api/v1/crates/${crate_name}/${version}" || echo 000)"
-        case "$status" in
-          200)
-            echo "${crate_name} ${version} already exists on crates.io; verifying it is the intended release"
-            published_checksum="$(jq -er --arg v "$version" '.version | select(.num == $v) | .checksum' /tmp/simit-crate.json 2>/dev/null || true)"
-            local_crate="target/package/${crate_name}-${version}.crate"
-            if [ -n "$published_checksum" ] && [ -f "$local_crate" ]; then
-              local_checksum="$(sha256sum "$local_crate" | awk '{print $1}')"
-              if [ "$local_checksum" = "$published_checksum" ]; then echo "checksum matches; resuming (already published)"; exit 0; fi
-            fi
-            echo "conflict: ${crate_name} ${version} exists but checksum does not match the local archive; refusing to treat as success" >&2; exit 1;;
-          404) ;;
-          401|403) echo "authorization/ownership failure checking ${crate_name} ${version} (HTTP $status)" >&2; exit 1;;
-          *) echo "Could not check crates.io for ${crate_name} ${version} before publishing (HTTP $status)" >&2; exit 1;;
-        esac
-        nix develop -c cargo publish -p anx-plugin-zenodo
-        # Bounded propagation wait: dependents need this version visible.
-        for attempt in $(seq 1 20); do
-          code="$(curl --retry 2 -sS -o /dev/null -w '%{http_code}' -A 'simit publish-workspace propagation' "https://crates.io/api/v1/crates/${crate_name}/${version}" || echo 000)"
-          case "$code" in 200) echo "propagated ${crate_name} ${version} (attempt $attempt)"; break;; 404) echo "waiting for ${crate_name} ${version} (attempt $attempt/20)"; sleep 30;; 401|403) echo "authorization failure while waiting (HTTP $code)" >&2; exit 1;; *) echo "unexpected registry status $code while waiting" >&2; exit 1;; esac
-          if [ "$attempt" = 20 ]; then echo "propagation timeout for ${crate_name} ${version}" >&2; exit 1; fi
-        done
-    timeout-minutes: 60
-  publish-report:
-    if: always()
-    needs:
-    - publish-anx-plugin-zenodo
-    permissions:
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-    - name: Release result
-      run: |
-        set -euo pipefail
-        echo "coordinated workspace publish finished (see per-crate job statuses for the auditable result)"
-        echo "resume: re-dispatch this workflow; already-published crates with matching checksums exit 0, conflicts fail"
   qualified:
     if: ${{ always() }}
     needs:
@@ -554,47 +648,76 @@ jobs:
       name: Require every selected component
       run: printf '%s' "$RESULTS" | jq -e --argjson selected "$SELECTED" '. as $jobs | $jobs.plan.result == "success" and all($selected[]; $jobs["component-" + .].result == "success")'
     timeout-minutes: 5
-  validate:
-    env:
-      CARGO_HOME: /tmp/.cargo
-      NIX_CONFIG: experimental-features = nix-command flakes
-      XDG_CACHE_HOME: /tmp/.cache
-    needs:
-    - qualified
+  verify-source:
     permissions:
       contents: read
-      id-token: write
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-    - name: Install Nix
-      uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
-    - name: Configure GitHub input transport
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
         git config --global --add url.https://github.com/.insteadOf git@github.com:
-    - name: Validate signed release tag and lockstep versions
+        git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
+        git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - env:
+        GITHUB_TOKEN: ${{ github.token }}
+      name: Validate signed release tag
       run: |
         set -euo pipefail
-        tag="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
+        tag="${GITHUB_REF_NAME:-${FORGE_REF_NAME:-${CODEBERG_REF_NAME:-}}}"
+        if [ -z "$tag" ]; then
+          ref="${GITHUB_REF:-${FORGE_REF:-${CODEBERG_REF:-}}}"
+          tag="${ref#refs/tags/}"
+        fi
+
         case "$tag" in anx-plugin-zenodo/v*) version="${tag#anx-plugin-zenodo/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
-        if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.+-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
-        test -s keys/maintainers.gpg
-        GNUPGHOME="$(mktemp -d)"; export GNUPGHOME; chmod 700 "$GNUPGHOME"
-        gpg --batch --import keys/maintainers.gpg
-        git fetch --force --tags origin "refs/tags/${tag}:refs/tags/${tag}"
+        if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
+
+        if ! command -v gpg >/dev/null 2>&1; then
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends gnupg
+          else
+            echo "gpg is required to verify signed release tags" >&2
+            exit 1
+          fi
+        fi
+        git_fetch() {
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+            git -c "http.extraHeader=$auth_header" fetch "$@"
+          else
+            git fetch "$@"
+          fi
+        }
+        GNUPGHOME="$(mktemp -d)"
+        export GNUPGHOME
+        trap 'rm -rf "$GNUPGHOME"' EXIT
+        chmod 700 "$GNUPGHOME"
+        # The release checkout cannot supply its own verification key.
+        # Fetch the repository's independently maintained default-branch key.
+        git_fetch --no-tags origin HEAD
+        git show "FETCH_HEAD:keys/maintainers.gpg" > "$GNUPGHOME/maintainers.gpg"
+        test -s "$GNUPGHOME/maintainers.gpg"
+        gpg --batch --import "$GNUPGHOME/maintainers.gpg"
+
+        git_fetch --force --tags origin "refs/tags/${tag}:refs/tags/${tag}"
         git verify-tag "$tag"
-        validated_sha="$(git rev-list -n 1 "$tag")"
-        test "$validated_sha" = "${GITHUB_SHA:?missing workflow event SHA}" || { echo "Signed tag commit does not match the workflow event SHA; refusing a moved tag" >&2; exit 1; }
-        git checkout --detach "$validated_sha"
-        test "$(nix develop -c cargo pkgid -p anx-plugin-zenodo | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version" || { echo "anx-plugin-zenodo version does not match tag $tag" >&2; exit 1; }
+        validated_sha="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"
+        checkout_sha="$(git rev-parse --verify HEAD)"
+        if [ "$validated_sha" != "$checkout_sha" ]; then
+          echo "Signed tag commit does not match the checkout being published" >&2
+          exit 1
+        fi
     timeout-minutes: 15
-name: Publish anx-plugin-zenodo
+name: Build Crate anx-plugin-zenodo
 on:
   push:
     tags:
     - anx-plugin-zenodo/v[0-9]*
-  workflow_dispatch: null
 permissions:
   contents: read
