@@ -8,6 +8,9 @@
 
   cfg = config.services.harbor-db;
 
+  safeCredentialName = name: builtins.match "[A-Za-z0-9_.-]{1,255}" name != null && !(lib.elem name ["." ".."]);
+  safeEnvironmentName = name: builtins.match "[A-Za-z_][A-Za-z0-9_]*" name != null;
+
   sqlIdentifier = value: "\"" + builtins.replaceStrings ["\""] ["\"\""] value + "\"";
 
   credentialEntries = credentials:
@@ -820,6 +823,9 @@
   };
 in {
   imports = [
+    ./application-provision.nix
+    ./application-backup.nix
+    ./application-transition.nix
     (lib.mkAliasOptionModule ["services" "harbor-db" "operations"] ["services" "harbor-db" "migrations"])
   ];
 
@@ -930,12 +936,16 @@ in {
               assertion = lib.all (credential: builtins.hasAttr credential credentialSources) (operation.runner.credentialArgs ++ lib.attrValues operation.runner.credentialEnvironment);
               message = "services.harbor-db.projects.${name}.operations.${operationName}: credential references need a matching credentials entry";
             }
+            {
+              assertion = lib.all safeEnvironmentName (builtins.attrNames operation.runner.credentialEnvironment);
+              message = "services.harbor-db.projects.${name}.operations.${operationName}: credential environment names must be portable ASCII identifiers";
+            }
           ])
           operations);
       in
         [
           {
-            assertion = operations != {};
+            assertion = operations != {} || project.postgres.provision.enable || project.backup.enable || project.transition.enable;
             message = "services.harbor-db.projects.${name}: configure runner or at least one enabled operation";
           }
           {
@@ -943,8 +953,12 @@ in {
             message = "services.harbor-db.package must be set when a project uses generated plan units";
           }
           {
-            assertion = lib.all (credential: builtins.match "[A-Za-z0-9_.-]+" credential != null) (builtins.attrNames credentialSources);
-            message = "services.harbor-db.projects.${name}: credential names must be safe systemd credential names";
+            assertion = lib.all safeCredentialName (builtins.attrNames credentialSources);
+            message = "services.harbor-db.projects.${name}: credential names must be filename-safe ASCII IDs of 1..255 bytes, excluding '.' and '..'";
+          }
+          {
+            assertion = lib.all safeEnvironmentName (builtins.attrNames project.environment);
+            message = "services.harbor-db.projects.${name}: environment names must be portable ASCII identifiers";
           }
           {
             assertion = !project.postgres.grants.enable || project.postgres.enable;
@@ -982,7 +996,7 @@ in {
         ++ operationAssertions)
       enabledProjects);
 
-      services.harbor-db.migrations = lib.mapAttrs projectToMigration enabledProjects;
+      services.harbor-db.migrations = lib.mapAttrs projectToMigration (lib.filterAttrs (_: project: enabledOperations project != {}) enabledProjects);
     })
 
     (mkIf (enabledMigrations != {}) {
@@ -992,8 +1006,12 @@ in {
             message = "services.harbor-db.migrations.${name}: migration names must be valid systemd unit-name fragments";
           }
           {
-            assertion = lib.all (credential: builtins.match "[A-Za-z0-9_.-]+" credential != null) (builtins.attrNames migration.credentials);
-            message = "services.harbor-db.migrations.${name}: credential names must be safe systemd credential names";
+            assertion = lib.all safeCredentialName (builtins.attrNames migration.credentials);
+            message = "services.harbor-db.migrations.${name}: credential names must be filename-safe ASCII IDs of 1..255 bytes, excluding '.' and '..'";
+          }
+          {
+            assertion = lib.all safeEnvironmentName (builtins.attrNames migration.environment);
+            message = "services.harbor-db.migrations.${name}: environment names must be portable ASCII identifiers";
           }
         ])
         enabledMigrations);

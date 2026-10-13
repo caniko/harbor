@@ -22,13 +22,59 @@ Candidate-owned `postgresCompatibilityChecks` run cheap read-only SQL against
 the live primary before building. Each query must return exactly one true value;
 unsupported schemas or failed migrations block admission. The accepted recovery
 policy still defines its backup age and restore requirements.
+While first-rollout `switchAdoption` is configured, automatic PostgreSQL enrollment
+uses that request's explicit local endpoint. After the one-shot request is retired,
+cutover checks retain `/run/postgresql` and use the effective
+`services.postgresql.settings.port`, including non-default service ports.
 
 ## Historical filesystem state
 
-Declare each authoritative corpus as a filesystem resource. Its authority state
-must be outside the corpus. Set every matching `dataDirectories` entry's
-`create = false`; missing historical storage is an error. Explicit initialization
+Declare each authoritative corpus as a filesystem resource. Every authority state
+directory and corpus root must be globally pairwise disjoint, including across
+resources. Equality and containment in either direction reject during Nix and
+native/Python manifest admission before authority locks or state writes. This
+keeps one resource's identity and transition journals outside another resource's
+certified corpus and exclusive lease. Set every `dataDirectories` entry at or beneath a
+custody root to `create = false`; missing historical storage is an error. Explicit initialization
 of genuinely new state remains a separate policy choice.
+Each `custody_file` must be a dedicated direct child of its authority directory.
+The names `identity.json`, `transition.json` and `lock` are reserved authority
+controls. Nix and both runtime manifest readers reject them, and direct
+certification checks the receipt path before taking a lease or adopting storage.
+Rejected paths preserve existing authority bytes/inodes and do not publish root
+identity markers.
+
+With custody enforcement enabled, authority roots, data directory paths and
+directory-creating tmpfiles paths must use normalized absolute spelling. Dot and
+parent components, repeated separators and trailing separators are rejected
+before creation; this comparison does not depend on the historical path existing.
+Managed PostgreSQL preparation applies the same normalized-path admission to
+provisioned directories, writable preparation paths and the protected primary
+and authority roots before containment checks or root-run directory creation.
+
+Global namespace admission includes every filesystem corpus and authority-state
+root plus the data, lifecycle-state and startup-inhibition paths read from each
+enrolled PostgreSQL policy. All must be pairwise disjoint in both containment
+directions. The startup namespace remains protected during inode inspection too,
+so marker/policy writes cannot invalidate a filesystem custody receipt. Before
+dispatching user-scoped inspection or certification workers, the coordinator also
+compares complete inode inventories across these namespaces, including directory
+roots and mounted descendants. Hard links, root bind mounts and nested empty
+directory aliases cannot give shared storage separate resource leases. Traversal
+uses the coordinator's bounded inspection budget, including every consumer
+validator expansion. Each validator receives only the remaining total budget.
+Every enrolled filesystem snapshot is verified against its adopted authority,
+including resources not selected for certification. Prepared transitions verify
+their recorded source/target authorities and protect both live and target roots.
+The coordinator passes expanded snapshots through bounded worker stdin (64 MiB
+aggregate limit), avoiding per-argument limits for large consumer contracts.
+Workers require exact namespace and binding fields; required files may be added
+and counters may advance, while missing files and regressed witnesses reject.
+Direct certification workers share one activation deadline through snapshot
+input, namespace expansion, consumer revalidation and final publication checks.
+Worker/serve processes retain
+their own authority lease and startup guard without requiring read access to
+other applications' private corpora.
 
 Database inventory queries may additionally return `size`, `sha256`,
 `git_repository = true` and `git_has_commits` for each path. Certification checks
@@ -36,7 +82,12 @@ both source and independent restore against those requirements. Git repositories
 must be bare and pass `git fsck --full --strict`; database-nonempty repositories
 must resolve `HEAD` to a commit. Shallow history, partial clones and external
 object alternates cannot claim complete custody. The immutable `git_executable`
-is part of the resource contract. Activation repeats these integrity checks.
+is part of the resource contract. Nix admits only normalized store paths and
+realizes the manifest after checking that each resolves to a regular store file.
+Both engines validate a root-owned, read-only, executable store file and its
+immutable alias chain before execution, including external manifests. Mutable
+runtime aliases to a store executable are rejected. Activation repeats these
+integrity checks.
 
 Cutover capability version 3 guards all seven declared systemd writer phases
 (`ExecCondition`, `ExecStartPre`, `ExecStart`, `ExecStartPost`, `ExecReload`,
@@ -49,8 +100,9 @@ startup custody, then execs the real shell with the shared lease inherited.
 It covers externally invoked Git commands and hooks when the web service is
 stopped. Operator-launched maintenance must use the same guarded entrypoints.
 
-Application-provided boot tmpfiles directory-creation rules for these exact
-guarded roots are converted to permission-only rules. This also covers applications
+Application-provided boot tmpfiles directory-creation rules at or beneath
+guarded roots are converted to permission-only rules. Descendants cannot create
+missing parent roots; sibling paths remain independent. This also covers applications
 whose upstream module has no require-existing initialization option.
 
 The `harbor-db-cutover certify` command compares every regular file's SHA-256,
@@ -60,6 +112,13 @@ special files, overlapping source/restore roots and changed source data. It uses
 the existing resource adoption engine after equality succeeds, then durably
 publishes its receipt. Equal record counts or equal file sizes do not establish
 custody.
+
+Restored roots, files and directories must have inodes independent of the union
+of every enrolled corpus, authority, PostgreSQL primary, lifecycle and startup
+namespace's inventory. The coordinator rejects lexical containment and complete
+inode overlap before dispatching a certifying worker. A bind mount of another source root or
+one of its entries cannot certify a restore, even with identical inventories,
+disjoint path spelling and a regular-file link count of one.
 
 For a resource with `database_resource = "postgresql"`, certification also
 requires executed recovery evidence and live records matching the accepted

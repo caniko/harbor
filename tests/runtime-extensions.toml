@@ -1,0 +1,98 @@
+version = 1
+baseline_head = "4b2850507a2e9bdfe198caf9178ea7b99ffb03a5"
+gates = [
+  ".#checks.x86_64-linux.postgres-lifecycle-test",
+  ".#checks.x86_64-linux.postgres-lifecycle-oracle-test",
+  ".#checks.x86_64-linux.native-source-local-recovery",
+  ".#checks.x86_64-linux.native-application-provision",
+  ".#checks.x86_64-linux.cargo-test",
+  ".#checks.x86_64-linux.native-application-backup",
+  ".#checks.x86_64-linux.native-application-transition",
+  ".#checks.x86_64-linux.native-application-postgres-transition",
+]
+qualified_cases = [
+  "nix.x86_64-linux.postgres-lifecycle-test",
+  "nix.x86_64-linux.postgres-lifecycle-oracle-test",
+  "vm.x86_64-linux.native-source-local-recovery",
+  "vm.x86_64-linux.native-application-provision",
+  "vm.x86_64-linux.native-application-transition",
+  "vm.x86_64-linux.native-application-postgres-transition",
+]
+
+[[extensions]]
+path = "python/harbor_db/backup.py"
+sha256 = "47e441ba84dfef1a86f07d6e91f88ff09a1d22076f6c316830a20f2a6fcceac5"
+
+[[extensions]]
+path = "python/harbor_db/recovery.py"
+sha256 = "7f0e8e12b8af4c7d9f3dc31da97d1cd2182cd5ad1b11d5e81d2763aaa8dcbb81"
+
+[[extensions]]
+path = "python/harbor_db/application_transition.py"
+sha256 = "8acf47afa57c6596b36d460d7a6d63acf68967e757ea6ee7570529d0e85ad5d5"
+
+[[extensions]]
+path = "python/harbor_db/transition_manifest.py"
+sha256 = "2c68b97c95476fec50ec7a8d5a2e74663e511299e5c2993b3d5245040354793a"
+
+# Consumer validators must never inherit a root coordinator's identity or
+# environment. Both transition VMs exercise real root CLI identity dropping;
+# the frozen resource oracle and all original Python methods remain exact.
+[[extensions]]
+path = "python/harbor_db/resource.py"
+sha256 = "79f16bb3d570fef25f32d677a7312c6c79afc917a3d8f7e0654e6e73affe3906"
+
+[[extensions]]
+path = "python/harbor_db/cutover.py"
+sha256 = "f0771a2899a5fafbaf76cd6fb568151e8670011dd035a5e4502b8e2a19490c9a"
+
+[[extensions]]
+path = "python/harbor_db/provision.py"
+sha256 = "a40a5ad8b408f3f53ba0041ad983e2f68582022cf1905a3c6c7ae9eccc938b76"
+
+[[extensions]]
+path = "tests/test_application_provision.py"
+sha256 = "958f1c84f67fd46f7eab054c334dd312c851b74559c032036c08e5e5653bcc69"
+
+[[extensions]]
+path = "tests/test_application_transition.py"
+sha256 = "20e61fc4db3e92ff24689198a51744b71d562525b6670e009fb1bbe8eb05afc0"
+
+[[extensions]]
+path = "tests/test_fence_recovery.py"
+sha256 = "8f1bceea3c7583bfb5c298d4ad1d3b606ce858659643f0cc17285df7a307139a"
+
+[[extensions]]
+path = "python/harbor_db/application_backup.py"
+sha256 = "2adddbbf177525eb80141a2ebd0c7ed8bf6b0c572e493485d0c59e6310b91a51"
+
+[[extensions]]
+path = "python/harbor_db/durable.py"
+sha256 = "d776fe23812536d42108e41c37204a84ddb33a64da6974b2f4b11124260fd985"
+
+[[extensions]]
+path = "python/harbor_db/postgres_drill.py"
+sha256 = "00c42cdd3cbf46009bd258c8ba1c162e79f064a8d77ba413de4d1e6208b3138b"
+
+[[extensions]]
+path = "python/harbor_db/process.py"
+sha256 = "b9c3a59f3b9b31a60e4831f630623a25f2cc8cb76c50f84b43169c1a1d853890"
+
+[[extensions]]
+path = "tests/test_application_backup.py"
+sha256 = "b1941bd9edff022c6e37be19fedbabf037420ae38e0eb9090f28294e69c366c8"
+
+[[extensions]]
+path = "python/harbor_db/postgres.py"
+sha256 = "5ea04c373d0524ddd998c9b47473a49c240eff27c8f6021f69831233a4e69dce"
+
+[[extensions]]
+path = "tests/test_postgres_lifecycle.py"
+sha256 = "fc3e386880bd57129d00a7ca9d78ae0a5b05f600b12620e6cb6e3a7b33ceb6d4"
+
+# Stable machine identity extends the original recovery admission contract.
+# Retain the exact baseline test as an oracle and all 174 method identities;
+# the current fixtures add same-machine rejection and distinct-machine evidence.
+[[extensions]]
+path = "tests/test_recovery_readiness.py"
+sha256 = "056ee66e80921c7616a053e72f94cf5c2b942238b5f672dcc602a8baa9a5e2e5"

@@ -2,19 +2,53 @@
 runtime = "nix"
 runner = "ubuntu-24.04"
 workspace = true
-with_nextest = true
-with_docs = true
+# The explicit cargo-test and cargo-doc installables provide tests and docs.
+with_nextest = false
+with_docs = false
 provider = "actions"
 platform = "github"
 nix_builds = [
+  ".#packages.aarch64-linux.storage-lifecycle-rust",
+  ".#packages.aarch64-linux.harbor-db-test",
+  ".#checks.aarch64-linux.cargo-test",
+  ".#checks.aarch64-linux.cutover-eval",
+  ".#checks.aarch64-linux.native-cli-smoke",
+  ".#checks.aarch64-linux.native-package-eval",
+  ".#checks.aarch64-linux.native-storage-eval",
+  ".#checks.aarch64-linux.postgres-lifecycle-eval",
+  ".#checks.aarch64-linux.application-provision-eval",
+  ".#checks.aarch64-linux.module-eval",
+  ".#packages.x86_64-linux.storage-lifecycle-rust",
+  ".#packages.x86_64-linux.harbor-db-test",
+  ".#checks.x86_64-linux.native-package-eval",
+  ".#checks.x86_64-linux.native-storage-eval",
+  ".#checks.x86_64-linux.native-cli-smoke",
+  ".#checks.x86_64-linux.native-supervisor",
+  ".#checks.x86_64-linux.native-postgres-backup-service",
+  ".#checks.x86_64-linux.native-source-local-recovery",
+  ".#checks.x86_64-linux.native-postgres-crash-rollback",
+  ".#checks.x86_64-linux.native-postgres-interrupted-upgrade",
+  ".#checks.x86_64-linux.native-postgres-recovery-acceptance",
+  ".#checks.x86_64-linux.native-postgres-writer-fence",
+  ".#checks.x86_64-linux.native-application-provision",
+  ".#checks.x86_64-linux.native-application-backup",
+  ".#checks.x86_64-linux.native-application-transition",
+  ".#checks.x86_64-linux.native-application-postgres-transition",
   ".#packages.x86_64-linux.storage-lifecycle",
   ".#checks.x86_64-linux.postgres-lifecycle-test",
+  ".#checks.x86_64-linux.postgres-lifecycle-oracle-test",
   ".#checks.x86_64-linux.cutover-eval",
   ".#packages.x86_64-linux.harbor-db-cached",
   ".#checks.x86_64-linux.postgres-lifecycle-eval",
   ".#checks.x86_64-linux.postgres-crash-rollback",
   ".#checks.x86_64-linux.postgres-interrupted-upgrade",
   ".#checks.x86_64-linux.postgres-recovery-acceptance",
+  ".#checks.x86_64-linux.postgres-writer-fence",
+  ".#checks.x86_64-linux.application-provision-eval",
+  ".#checks.x86_64-linux.application-provision",
+  ".#checks.x86_64-linux.application-backup",
+  ".#checks.x86_64-linux.application-transition",
+  ".#checks.x86_64-linux.application-postgres-transition",
   ".#checks.x86_64-linux.pg-backup-eval",
   ".#checks.x86_64-linux.module-eval",
   ".#checks.x86_64-linux.module-smoke",
@@ -25,6 +59,15 @@ nix_builds = [
   ".#checks.x86_64-linux.cargo-clippy",
 ]
 
+# cargo-test already realizes all-targets/all-features native storage and harness tests.
+# Native ARM rows qualify both packages and all eight original non-VM gates.
+# Put them first so the bounded matrix establishes ARM evidence promptly.
+# Generated with qualified Simit bae2cfad9055d95f8cd56eb4d7a4a593d1384105,
+# production artifact 11732182980 (run 38215367233). Its complete execution tree
+# and all 290 source-file hashes match the signed producer candidate.
+# Regenerate: simit init ci --platform github --ci-provider actions --runtime nix
+# Verify with the same command plus --check --diff, then retain native ARM runs.
+# The ten native VM checks are exported only on x86_64-linux and require KVM.
 [ci.nix_build]
 only = true
 timeout_minutes = 90
@@ -36,6 +79,11 @@ capture_results = true
 artifact_retention_days = 14
 extra_setup = ['''
 test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+# Ubuntu's AppArmor restriction denies UID mapping by Nix-store unshare.
+# Enable the namespace substrate on this disposable hosted runner; the
+# mandatory in-sandbox probe and all namespace rejection tests still run.
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 0
 sudo install -d -m 1777 -o root -g root /var/cache/sccache
 test ! -L /var/cache/sccache
 test "$(stat -c '%u:%a' /var/cache/sccache)" = 0:1777
@@ -43,3 +91,7 @@ printf '%s\n' 'extra-sandbox-paths = /var/cache/sccache' 'log-lines = 250' | sud
 sudo systemctl restart nix-daemon.service
 nix config show sandbox-paths | grep -F /var/cache/sccache
 ''']
+
+[ci.nix_build.system_runners]
+"aarch64-linux" = "ubuntu-24.04-arm"
+"x86_64-linux" = "ubuntu-24.04"

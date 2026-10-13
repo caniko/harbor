@@ -2,36 +2,60 @@
   config,
   lib,
   pkgs,
+  harborDbStoragePackage,
   ...
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
+  storagePaths = import ./storage-paths.nix {inherit lib;};
+  immutableFiles = import ./immutable-files.nix {inherit lib;};
+  normalizedPath = storagePaths.normalizedAbsolute;
   cfg = config.services.harbor-db.postgresql;
   pg = config.services.postgresql;
-  manifest = pkgs.writeText "harbor-db-postgresql.json" (builtins.toJSON ({
+  rawManifest = pkgs.writeText "harbor-db-postgresql.json" (builtins.toJSON ({
       inherit (cfg) resource;
       data_dir = pg.dataDir;
       major = lib.versions.major pg.finalPackage.version;
       package = toString pg.finalPackage;
       state_dir = cfg.stateDir;
       required_mounts = cfg.requiredMounts;
+      writer_fence = {
+        control_role = "postgres";
+        replication_roles = cfg.writerFence.replicationRoles;
+        allowed_preload_libraries = cfg.writerFence.allowedPreloadLibraries;
+      };
+      startup_inhibition = {
+        state_dir = cfg.writerFence.startupStateDir;
+        unit = "postgresql.service";
+        setup_units = cfg.writerFence.setupUnits;
+        drop_in_root = "/etc/systemd/system.control";
+        systemctl = "${pkgs.systemd}/bin/systemctl";
+        busctl = "${pkgs.systemd}/bin/busctl";
+        runuser = "${pkgs.util-linux}/bin/runuser";
+        adapter = lib.getExe cfg.package;
+      };
     }
     // lib.optionalAttrs (cfg.recovery != null) {
-      recovery = {
-        system_identifier = cfg.recovery.systemIdentifier;
-        backup_root = cfg.recovery.backupRoot;
-        snapshot_file = cfg.recovery.snapshotFile;
-        receipt_file = cfg.recovery.receiptFile;
-        off_host_receipt_file = cfg.recovery.offHostReceiptFile;
-        source_hostname = cfg.recovery.sourceHostname;
-        max_age_seconds = cfg.recovery.maxAgeSeconds;
-        verify_timeout_seconds = cfg.recovery.verifyTimeoutSeconds;
-        record_checks =
-          lib.mapAttrsToList (name: check: {
-            inherit name;
-            inherit (check) database sql;
-          })
-          cfg.recovery.recordChecks;
-      };
+      recovery =
+        {
+          system_identifier = cfg.recovery.systemIdentifier;
+          require_writer_fence = cfg.recovery.requireWriterFence;
+          backup_root = cfg.recovery.backupRoot;
+          snapshot_file = cfg.recovery.snapshotFile;
+          receipt_file = cfg.recovery.receiptFile;
+          off_host_receipt_file = cfg.recovery.offHostReceiptFile;
+          source_hostname = cfg.recovery.sourceHostname;
+          max_age_seconds = cfg.recovery.maxAgeSeconds;
+          verify_timeout_seconds = cfg.recovery.verifyTimeoutSeconds;
+          record_checks =
+            lib.mapAttrsToList (name: check: {
+              inherit name;
+              inherit (check) database sql;
+            })
+            cfg.recovery.recordChecks;
+        }
+        // lib.optionalAttrs (cfg.recovery.repositoryProtocol != "legacy") {
+          repository_protocol = cfg.recovery.repositoryProtocol;
+        };
     }
     // lib.optionalAttrs (cfg.upgrade != null) {
       upgrade = {
@@ -41,9 +65,15 @@
         initdb_args = cfg.upgrade.initdbArgs;
         extra_config = cfg.upgrade.extraConfig;
         validate_command = cfg.upgrade.validateCommand;
+        immutable_tools = true;
+        executable_files = cfg.upgrade.executableFiles;
         copy_command = ["${pkgs.coreutils}/bin/cp" "-aL" "--reflink=auto"];
       };
     }));
+  manifest =
+    if cfg.upgrade == null
+    then rawManifest
+    else immutableFiles.checkedManifest "Harbor DB PostgreSQL upgrade" (cfg.upgrade.executableFiles ++ lib.optional (cfg.upgrade.validateCommand != []) (lib.head cfg.upgrade.validateCommand)) rawManifest;
   command = "${lib.getExe cfg.package} --config ${manifest}";
   liveArgs = lib.optionalString (cfg.switchAdoption != null) (lib.escapeShellArgs [
     "--system-identifier"
@@ -62,11 +92,12 @@
     export_command = preparation.exportCommand;
   });
 in {
+  imports = [./postgres-writer-clients.nix ./storage-package-argument.nix];
   options.services.harbor-db.postgresql = {
     enable = mkEnableOption "adopted PostgreSQL identity guards and staged upgrades";
     package = mkOption {
       type = types.package;
-      default = import ./postgres-package.nix {inherit pkgs;};
+      default = harborDbStoragePackage;
       description = "Harbor DB PostgreSQL lifecycle adapter.";
     };
     resource = mkOption {
@@ -96,7 +127,17 @@ in {
       type = types.nullOr (types.submodule {
         options = {
           systemIdentifier = mkOption {type = types.strMatching "[1-9][0-9]*";};
+          requireWriterFence = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Require confirmed writer exclusion and the same fence token in the source snapshot before live adoption and cutover. Disable only when retiring accepted bootstrap enrollment; active fencing remains enforced at startup.";
+          };
           backupRoot = mkOption {type = types.strMatching "/.*";};
+          repositoryProtocol = mkOption {
+            type = types.enum ["legacy" "source-local-v1"];
+            default = "legacy";
+            description = "Recovery repository selection. source-local-v1 consumes an immutable fenced capture under recovery/ and preserves the backup service's legacy LAST_SUCCESS timestamp.";
+          };
           snapshotFile = mkOption {type = types.strMatching "/.*";};
           receiptFile = mkOption {type = types.strMatching "/.*";};
           offHostReceiptFile = mkOption {
@@ -130,6 +171,29 @@ in {
           };
         };
       });
+    };
+    writerFence = {
+      setupUnits = mkOption {
+        type = types.listOf (types.strMatching "[a-zA-Z0-9_-]+\\.service");
+        default = ["postgresql-setup.service"];
+        description = "Setup services inhibited with primary startup during stopped fence transitions, including across legacy generations. The persistent root-owned gate is read back for every unit before stopping the primary.";
+      };
+      startupStateDir = mkOption {
+        type = types.strMatching "/.*";
+        default = "/var/lib/harbor-db/postgresql-startup";
+        description = "Separate root-owned persistent systemd startup-inhibition state. Explicit inhibit-startup provisions it; PostgreSQL never writes it.";
+      };
+      replicationRoles = mkOption {
+        type = types.listOf (types.strMatching "[a-z_][a-z0-9_]*");
+        default = [];
+        apply = lib.unique;
+        description = "Physical-only localhost SCRAM replication roles admitted during an explicit writer fence. They cannot open SQL connections. Source-local recovery automatically includes its replicator receiver role.";
+      };
+      allowedPreloadLibraries = mkOption {
+        type = types.listOf (types.strMatching "[A-Za-z0-9_.-]+");
+        default = [];
+        description = "Audited non-application-writer preload libraries allowed by live fence inspection; unknown libraries block readiness.";
+      };
     };
     recoveryPreparation = mkOption {
       default = null;
@@ -189,7 +253,7 @@ in {
           offHostReceiptImportFile = mkOption {
             type = types.nullOr (types.strMatching "/.*");
             default = null;
-            description = "Transported independent receipt. When present, systemd passes a private credential copy for validation and atomic evidence import.";
+            description = "Root-controlled transported independent receipt. Root pins and copies only sources with trusted ownership and non-writable ancestry into private storage before systemd credential loading, validation and atomic evidence import.";
           };
         };
       });
@@ -248,7 +312,12 @@ in {
           };
           validateCommand = mkOption {
             type = types.listOf types.str;
-            description = "Validation argv. Receives the offline staging directory as its final argument; must stop any server it starts before returning.";
+            description = "Validation argv with an immutable store executable. Receives the offline staging directory as its final argument; must stop any server it starts before returning.";
+          };
+          executableFiles = mkOption {
+            type = types.listOf types.str;
+            default = [];
+            description = "Additional immutable upgrade adapter/interpreter files bound into the journal contract.";
           };
         };
       });
@@ -262,24 +331,83 @@ in {
         message = "services.harbor-db.postgresql requires services.postgresql.enable.";
       }
       {
+        assertion = lib.length cfg.writerFence.setupUnits == lib.length (lib.unique cfg.writerFence.setupUnits) && !(lib.elem "postgresql.service" cfg.writerFence.setupUnits);
+        message = "Writer-fence setup units must be unique and distinct from the primary postgresql.service unit.";
+      }
+      {
         assertion = cfg.stateDir != pg.dataDir && !(lib.hasPrefix "${pg.dataDir}/" cfg.stateDir);
         message = "Harbor DB identity state must be outside the PostgreSQL data directory.";
       }
       {
-        assertion = cfg.upgrade == null || cfg.upgrade.validateCommand != [];
-        message = "Staged PostgreSQL upgrades require consumer validation.";
+        assertion = cfg.stateDir != "/" && normalizedPath cfg.stateDir && builtins.match "/[A-Za-z0-9_./-]+" cfg.stateDir != null;
+        message = "Harbor DB identity state requires a dedicated normalized absolute directory.";
+      }
+      {
+        assertion = let
+          state = cfg.writerFence.startupStateDir;
+        in
+          state
+          != "/"
+          && normalizedPath state
+          && builtins.match "[^[:space:]]*" state != null
+          && !(lib.hasInfix "\\" state || lib.hasInfix "%" state)
+          && lib.all normalizedPath [pg.dataDir cfg.stateDir]
+          && lib.all (protected: storagePaths.disjoint [state protected]) [pg.dataDir cfg.stateDir];
+        message = "PostgreSQL startup inhibition requires a normalized dedicated path disjoint from identity state and PostgreSQL data storage.";
+      }
+      {
+        assertion = cfg.upgrade == null || (cfg.upgrade.validateCommand != [] && lib.all immutableFiles.storePath (cfg.upgrade.executableFiles ++ [(lib.head cfg.upgrade.validateCommand)]));
+        message = "Staged PostgreSQL upgrades require consumer validation with immutable store executables and adapter files.";
       }
       {
         assertion = cfg.recovery == null || cfg.recovery.recordChecks != {};
         message = "PostgreSQL recovery admission requires consumer record-level checks.";
       }
       {
+        assertion =
+          cfg.recovery
+          == null
+          || lib.length (lib.unique ([cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile))
+          == (
+            if cfg.recovery.offHostReceiptFile == null
+            then 2
+            else 3
+          );
+        message = "PostgreSQL recovery snapshots, local receipts and off-host receipts must use distinct paths.";
+      }
+      {
+        assertion =
+          cfg.recovery
+          == null
+          || (let
+            evidence = [cfg.recovery.backupRoot cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
+            protected = [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir];
+          in
+            lib.all normalizedPath protected && lib.all (path: lib.all (root: storagePaths.disjoint [path root]) protected) evidence);
+        message = "PostgreSQL recovery evidence must remain outside PostgreSQL storage, lifecycle authority and startup-inhibition trees.";
+      }
+      {
         assertion = cfg.recovery == null || cfg.switchAdoption == null || cfg.recovery.systemIdentifier == cfg.switchAdoption.systemIdentifier;
         message = "Recovery and switch adoption must name the same authoritative cluster.";
       }
       {
+        assertion =
+          cfg.recovery
+          == null
+          || (let
+            evidence = [cfg.recovery.snapshotFile cfg.recovery.receiptFile] ++ lib.optional (cfg.recovery.offHostReceiptFile != null) cfg.recovery.offHostReceiptFile;
+            controls = map (name: "${cfg.recovery.backupRoot}/${name}") ["recovery" "base" "wal" "locks" "BACKUP_LOCK" "LAST_SUCCESS"] ++ map (name: "${builtins.dirOf cfg.recovery.snapshotFile}/${name}") ["recovery.lock" "preparation.lock" "preparation.json"];
+          in
+            cfg.recovery.backupRoot != "/" && lib.all normalizedPath (evidence ++ [cfg.recovery.backupRoot]) && lib.all (path: lib.all (control: storagePaths.disjoint [path control]) controls) evidence);
+        message = "PostgreSQL recovery evidence must use normalized paths outside producer repository control namespaces and evidence lock files.";
+      }
+      {
         assertion = preparation == null || (cfg.recovery != null && lib.all (argv: argv != [] && lib.hasPrefix "/" (builtins.head argv)) ([preparation.readinessCommand preparation.backupCommand preparation.restoreCommand] ++ lib.optional (preparation.exportCommand != []) preparation.exportCommand));
         message = "Managed recovery preparation requires a recovery policy and absolute executable argv.";
+      }
+      {
+        assertion = preparation == null || cfg.recovery == null || cfg.recovery.repositoryProtocol != "source-local-v1" || cfg.recovery.requireWriterFence;
+        message = "Managed source-local recovery preparation requires writer fencing; read-only certification and retired enrollment may remain unfenced.";
       }
       {
         assertion =
@@ -287,9 +415,13 @@ in {
           == null
           || lib.all (path:
             lib.all (protected:
-              path != "/" && path != protected && !(lib.hasPrefix "${path}/" protected) && !(lib.hasPrefix "${protected}/" path)) [pg.dataDir cfg.stateDir])
+              path != "/" && path != protected && !(lib.hasPrefix "${path}/" protected) && !(lib.hasPrefix "${protected}/" path)) [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir])
           preparation.readWritePaths;
-        message = "Managed recovery preparation must not grant writable access to the primary or authority tree.";
+        message = "Managed recovery preparation must not grant writable access to the primary, authority or startup inhibition tree.";
+      }
+      {
+        assertion = preparation == null || lib.all normalizedPath (preparation.readWritePaths ++ preparation.provisionDirectories ++ [pg.dataDir cfg.stateDir cfg.writerFence.startupStateDir]);
+        message = "Managed recovery preparation requires normalized absolute writable, provisioned and protected paths before containment checks.";
       }
       {
         assertion = preparation == null || lib.all (path: lib.any (writable: path == writable || lib.hasPrefix "${writable}/" path) preparation.readWritePaths) preparation.provisionDirectories;
@@ -309,17 +441,39 @@ in {
             ${pkgs.coreutils}/bin/install -d -m 0700 -o postgres -g postgres ${lib.escapeShellArgs preparation.provisionDirectories} || exit $?
           ''}
               credential_args=()
-              ${lib.optionalString (preparation.offHostReceiptImportFile != null) ''
-            if [ -e ${lib.escapeShellArg preparation.offHostReceiptImportFile} ]; then
-              credential_args+=(${lib.escapeShellArg "--property=LoadCredential=recovery-off-host:${preparation.offHostReceiptImportFile}"})
-            fi
-          ''}
+              credential_dir=""
+              worker_started=false
               unit="harbor-db-recovery-prepare-$$"
-              # Do not release the caller's activation lease with a surviving
-              # transient backup/restore process after interruption.
-              trap '${pkgs.systemd}/bin/systemctl stop "$unit.service"' EXIT
+              cleanup_preparation() {
+                if "$worker_started"; then
+                  if ! ${pkgs.systemd}/bin/systemctl stop "$unit.service"; then
+                    # --collect may already have unloaded a failed unit, or
+                    # dispatch may have failed before the unit was created.
+                    # Remove staged credentials only after confirming no live
+                    # worker can still need them when stopping itself failed.
+                    local state
+                    state=$(${pkgs.systemd}/bin/systemctl show --property=ActiveState --value "$unit.service") || return $?
+                    case "$state" in
+                      inactive|failed) ;;
+                      *) return 1 ;;
+                    esac
+                  fi
+                fi
+                if [ -n "$credential_dir" ]; then ${pkgs.coreutils}/bin/rm -rf -- "$credential_dir"; fi
+              }
+              trap 'cleanup_preparation || :' EXIT
               trap 'exit 130' INT
               trap 'exit 143' TERM
+              ${lib.optionalString (preparation.offHostReceiptImportFile != null) ''
+            if [ -e ${lib.escapeShellArg preparation.offHostReceiptImportFile} ]; then
+              credential_dir=$(${pkgs.coreutils}/bin/mktemp -d /run/harbor-db-recovery-import.XXXXXXXX) || exit $?
+              ${command} stage-off-host-receipt --source ${lib.escapeShellArg preparation.offHostReceiptImportFile} --destination "$credential_dir/receipt.json" || exit $?
+              credential_args+=("--property=LoadCredential=recovery-off-host:$credential_dir/receipt.json")
+            fi
+          ''}
+              # Do not release the caller's activation lease with a surviving
+              # transient backup/restore process after interruption.
+              worker_started=true
               ${pkgs.systemd}/bin/systemd-run --quiet --wait --pipe --collect \
                 --unit="$unit" --property=Type=oneshot \
                 --property=User=postgres --property=Group=postgres \
@@ -333,6 +487,7 @@ in {
                 -- ${command} prepare-recovery --preparation-config ${preparationManifest} \
                 ${lib.escapeShellArgs ["--socket-dir" preparation.socketDir "--port" (toString preparation.port)]} || exit $?
               trap - EXIT INT TERM
+              if [ -n "$credential_dir" ]; then ${pkgs.coreutils}/bin/rm -rf -- "$credential_dir" || exit $?; fi
               ;;
           esac
         '';

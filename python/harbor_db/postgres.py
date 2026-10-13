@@ -156,11 +156,11 @@ def reject_upgrade(config):
         raise LifecycleError("unfinished upgrade; explicit upgrade resume is required")
 
 
-def recovery_admission(config):
+def recovery_admission(config, **kwargs):
     if config.get("recovery") is None:
         return contextlib.nullcontext()
     from .recovery import admission
-    return admission(config)
+    return admission(config, **kwargs)
 
 
 def adopt(config, expected_identifier):
@@ -189,7 +189,7 @@ def adopt_live(config, expected_identifier, socket_dir, port):
     path = Path(config["state_dir"]) / "identity.json"
     # Later activations must coexist with the writer's shared lifetime lease.
     already_adopted = path.exists()
-    with recovery_admission(config), lock(Path(config["state_dir"]) / "lock", shared=already_adopted, create=not already_adopted):
+    with recovery_admission(config, socket_dir=socket_dir, port=port), lock(Path(config["state_dir"]) / "lock", shared=already_adopted, create=not already_adopted):
         reject_upgrade(config)
         if already_adopted or path.exists():
             verify_identity(config)
@@ -210,6 +210,8 @@ def check(config):
     with lock(Path(config["state_dir"]) / "lock", shared=True):
         reject_upgrade(config)
         verify_identity(config)
+        from . import writer_fence
+        writer_fence.startup(config)
 
 
 def serve(config):
@@ -225,6 +227,8 @@ def serve(config):
         verify_identity(config)
         os.set_inheritable(lease, True)
         executable = str(Path(config["package"]) / "bin/postgres")
+        from . import writer_fence
+        fence = writer_fence.startup(config)
         # PGDATA or data_directory in postgresql.conf must never select a
         # different cluster from the one just checked under the authority lease.
         os.execv(executable, [
@@ -233,6 +237,7 @@ def serve(config):
             # configuration. Server-wide durability must outrank those settings.
             "-c", "fsync=on", "-c", "full_page_writes=on",
             "-c", "synchronous_commit=on",
+            *(["-c", f"hba_file={fence['hba_file']}"] if fence is not None else []),
         ])
 
 
@@ -255,6 +260,50 @@ def control_digest(data):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def upgrade_contract(config):
+    settings = config["upgrade"]
+    tools = {Path(package) / "bin" / name
+             for package in (config["package"], settings["package"])
+             for name in ("pg_ctl", "pg_controldata")}
+    tools.update(Path(config["package"]) / "bin" / name for name in ("initdb", "pg_upgrade"))
+    for package in (config["package"], settings["package"]):
+        tools.update(path for path in (Path(package) / "bin").iterdir() if path.is_file())
+    for key in ("copy_command", "validate_command"):
+        argv = settings.get(key, [])
+        if not isinstance(argv, list) or any(not isinstance(arg, str) for arg in argv):
+            raise LifecycleError("upgrade command arguments must be strings")
+        if key == "validate_command" and not argv:
+            raise LifecycleError("upgrade requires a consumer validation command")
+        if argv:
+            if settings.get("immutable_tools") is True:
+                from .durable import immutable_store_reference
+                if immutable_store_reference(argv[0]).stat().st_mode & 0o111 == 0:
+                    raise LifecycleError("upgrade command requires an executable immutable store file")
+            tools.add(Path(argv[0]))
+            tools.update(Path(arg) for arg in argv[1:] if Path(arg).is_file())
+    files = settings.get("executable_files", [])
+    if not isinstance(files, list) or any(not isinstance(path, str) for path in files):
+        raise LifecycleError("upgrade adapter files must be an array of paths")
+    tools.update(Path(path) for path in files)
+    executables = {}
+    for path in sorted(tools):
+        if not path.is_absolute() or not path.is_file():
+            raise LifecycleError("upgrade executable or adapter file is absent")
+        if settings.get("immutable_tools") is True:
+            from .durable import immutable_store_reference
+            path_for_read = immutable_store_reference(str(path))
+        else:
+            path_for_read = path
+        with path_for_read.open("rb") as stream:
+            executables[str(path)] = hashlib.file_digest(stream, "sha256").hexdigest()
+    return {"config": config, "executables": executables}
+
+
+def validate_operator_upgrade_policy(config):
+    """Immutable tools for actual operator dispatch; preserve library fixtures."""
+    upgrade_contract({**config, "upgrade": {**config["upgrade"], "immutable_tools": True}})
+
+
 def upgrade(config, *, retry_incomplete=False):
     """Upgrade offline by copy, preserving all interrupted output for diagnosis.
 
@@ -273,8 +322,12 @@ def upgrade(config, *, retry_incomplete=False):
     target = Path(config["data_dir"])
     staging = target.with_name(target.name + ".harbor-staging")
     source_copy = target.with_name(target.name + ".harbor-source")
-    if Path(source["data_dir"]) in (target, staging, source_copy):
-        raise LifecycleError("source and destination must differ")
+    locations = (Path(source["data_dir"]), target, staging, source_copy)
+    for index, location in enumerate(locations):
+        if location.resolve() != location:
+            raise LifecycleError("upgrade storage paths must not be redirected")
+        if any(location.is_relative_to(other) or other.is_relative_to(location) for other in locations[:index]):
+            raise LifecycleError("upgrade source, target, staging and source-copy paths must be disjoint")
     journal_path = state / "upgrade.json"
     # Upgrades always operate on adopted authority, including journal resumes.
     with lock(state / "lock") as lease:
@@ -299,11 +352,13 @@ def upgrade(config, *, retry_incomplete=False):
             raise LifecycleError("external tablespaces are unsupported for staged upgrades")
         if (Path(source["data_dir"]) / "pg_wal").is_symlink():
             raise LifecycleError("external WAL storage is unsupported for staged upgrades")
+        contract = upgrade_contract(config)
         intent = {
-            "version": 1, "source": source_record, "source_control": digest,
+            "version": 2, "source": source_record, "source_control": digest,
             "target": {k: config[k] for k in ("resource", "data_dir", "major", "package")},
             "staging": str(staging),
             "source_copy": str(source_copy),
+            "contract": contract,
         }
         if journal is not None:
             if any(journal.get(k) != v for k, v in intent.items()):
@@ -368,6 +423,8 @@ def upgrade(config, *, retry_incomplete=False):
         require_stopped(config["package"], staging)
         if control_digest(source["data_dir"]) != digest:
             raise LifecycleError("registered source changed during offline upgrade")
+        if upgrade_contract(config) != contract:
+            raise LifecycleError("upgrade executable or contract changed during validation")
         journal["identity"] = identity(
             config, inspect_cluster(config["package"], staging, config["major"]),
         )
@@ -414,11 +471,33 @@ def main():
         live.add_argument("--system-identifier", required=True)
         live.add_argument("--socket-dir", default="/run/postgresql")
         live.add_argument("--port", type=int, default=5432)
-    commands.add_parser("inspect-recovery", help="read-only backup and record-level recovery admission")
+    recovery_inspection = commands.add_parser("inspect-recovery", help="read-only backup and record-level recovery admission")
+    recovery_inspection.add_argument("--socket-dir")
+    recovery_inspection.add_argument("--port", type=int)
+    fence_open = commands.add_parser("fence-open", help="prepare a durable writer fence while the primary is stopped")
+    fence_open.add_argument("--system-identifier", required=True)
+    fence_close = commands.add_parser("fence-close", help="explicitly thaw a stopped primary; never starts PostgreSQL")
+    fence_close.add_argument("--token", required=True)
+    offline_fence = commands.add_parser("inspect-offline-fence", help="verify a stopped fence transition before startup release")
+    offline_fence.add_argument("--token", required=True)
+    offline_fence.add_argument("--phase", choices=["prepared", "closed"], required=True)
+    inhibit = commands.add_parser("inhibit-startup", help="root-owned persistent systemd gate before offline fence transitions")
+    inhibit.add_argument("--system-identifier", required=True)
+    release = commands.add_parser("release-startup", help="explicitly release startup after a verified stopped transition; never starts PostgreSQL")
+    release.add_argument("--token", required=True)
+    release.add_argument("--fence-token", required=True)
+    release.add_argument("--phase", choices=["prepared", "closed"], required=True)
+    fence_live = commands.add_parser("inspect-fence", help="verify the restarted primary excludes application SQL writers")
+    fence_live.add_argument("--token", required=True)
+    fence_live.add_argument("--socket-dir", default="/run/postgresql")
+    fence_live.add_argument("--port", type=int, default=5432)
     preparation = commands.add_parser("prepare-recovery", help="explicit managed backup/snapshot/restore preparation before adoption")
     preparation.add_argument("--preparation-config", type=Path, required=True)
     preparation.add_argument("--socket-dir", required=True)
     preparation.add_argument("--port", type=int, required=True)
+    staging = commands.add_parser("stage-off-host-receipt", help="root-coordinated trusted copy for systemd receipt import")
+    staging.add_argument("--source", type=Path, required=True)
+    staging.add_argument("--destination", type=Path, required=True)
     for command in ("snapshot-records", "certify-recovery"):
         recovery_parser = commands.add_parser(command, help="execute record checks and publish bound recovery evidence")
         recovery_parser.add_argument("--socket-dir", required=True)
@@ -426,11 +505,16 @@ def main():
         if command == "certify-recovery":
             recovery_parser.add_argument("--data-dir", required=True)
     migration = commands.add_parser("upgrade", help="explicit offline staged upgrade")
+    retirement = commands.add_parser("retire-capture", help="retire one obsolete source-local capture; selected/in-use evidence is preserved")
+    retirement.add_argument("--capture-id", required=True)
     migration.add_argument("--retry-incomplete", action="store_true")
     args = parser.parse_args()
     try:
         config = json.loads(args.config.read_text())
-        if args.command == "adopt":
+        if args.command == "stage-off-host-receipt":
+            from . import recovery
+            recovery.stage_off_host_import(args.source, args.destination)
+        elif args.command == "adopt":
             adopt(config, args.system_identifier)
         elif args.command in ("inspect-live", "adopt-live"):
             operation = inspect_live if args.command == "inspect-live" else adopt_live
@@ -439,10 +523,40 @@ def main():
             check(config)
         elif args.command == "serve":
             return serve(config)
+        elif args.command in ("inhibit-startup", "release-startup"):
+            from . import startup_inhibition
+            # The privileged adapter/runuser argv must come from immutable,
+            # root-owned policy, never a service-user-writable manifest.
+            path = args.config.resolve()
+            info = path.stat()
+            if not str(path).startswith("/nix/store/") or info.st_uid != 0 or info.st_mode & 0o022:
+                raise LifecycleError("startup inhibition requires immutable root-owned policy")
+            config = json.loads(path.read_text())
+            if args.command == "inhibit-startup":
+                result = startup_inhibition.inhibit(config, args.system_identifier)
+            else:
+                result = startup_inhibition.release(config, path, args.token, args.fence_token, args.phase)
+            print(json.dumps(result, sort_keys=True))
+        elif args.command in ("fence-open", "fence-close", "inspect-fence", "inspect-offline-fence"):
+            from . import writer_fence
+            if args.command == "fence-open":
+                result = writer_fence.open_fence(config, args.system_identifier)
+            elif args.command == "fence-close":
+                result = writer_fence.close_fence(config, args.token)
+            elif args.command == "inspect-offline-fence":
+                result = writer_fence.inspect_offline(config, args.token, args.phase)
+            else:
+                result = writer_fence.inspect_live(config, args.token, args.socket_dir, args.port)
+            print(json.dumps(result, sort_keys=True))
+        elif args.command == "retire-capture":
+            from . import recovery_repository
+            print(json.dumps(recovery_repository.retire(config, args.capture_id), sort_keys=True))
         elif args.command in ("inspect-recovery", "snapshot-records", "certify-recovery", "prepare-recovery"):
             from . import recovery
             if args.command == "inspect-recovery":
-                result = recovery.check(config)
+                if (args.socket_dir is None) != (args.port is None):
+                    raise LifecycleError("live recovery inspection requires both local socket and port")
+                result = recovery.check(config) if args.socket_dir is None else recovery.live_check(config, args.socket_dir, args.port)
             elif args.command == "prepare-recovery":
                 result = recovery.prepare(config, json.loads(args.preparation_config.read_text()), args.socket_dir, args.port)
             elif args.command == "snapshot-records":
@@ -452,8 +566,9 @@ def main():
             # Receipts expose digests, never private query results or records.
             print(json.dumps(result, sort_keys=True))
         else:
+            validate_operator_upgrade_policy(config)
             upgrade(config, retry_incomplete=args.retry_incomplete)
-    except (LifecycleError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+    except (LifecycleError, OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
         print(f"harbor-db-postgres: {error}", file=sys.stderr)
         return 1
     return 0
