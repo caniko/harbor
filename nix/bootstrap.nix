@@ -17,18 +17,23 @@
       pathString = toString path;
     in
       craneLib.filterCargoSources path type
+      || builtins.elem pathString (map (name: "${toString inputs.simit.outPath}/${name}") ["README.md" "LICENSE" "CHANGELOG.md"])
       || pkgs.lib.hasInfix "/src/review/assets/" pathString
       || pkgs.lib.hasSuffix "/src/monorepo/native_release.py" pathString
-      || pkgs.lib.hasSuffix "/tests/fixtures/native-release-contract.py" pathString
+      || pkgs.lib.hasInfix "/tests/fixtures/" pathString
       || pkgs.lib.hasSuffix "ci-actions.json" pathString
       || pkgs.lib.hasSuffix "/.github" pathString
       || pkgs.lib.hasSuffix "/.github/workflows" pathString
-      || pkgs.lib.hasInfix "/.github/workflows/" pathString;
+      || pkgs.lib.hasInfix "/.github/workflows/" pathString
+      || pkgs.lib.hasSuffix "/.simit" pathString
+      || pkgs.lib.hasSuffix "/.simit/workflows" pathString
+      || pkgs.lib.hasInfix "/.simit/workflows/" pathString;
   };
   commonArgs = {
     src = source;
     strictDeps = true;
     cargoExtraArgs = "--all-features";
+    nativeBuildInputs = [pkgs.perl];
   };
   preCommitBin = pkgs.runCommand "pre-commit-bin" {} ''
     mkdir -p "$out/bin"
@@ -45,8 +50,8 @@ in {
   simit = craneLib.buildPackage (commonArgs
     // {
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-      nativeBuildInputs = [preCommitBin];
-      nativeCheckInputs = [pkgs.git pkgs.gnupg pkgs.python3 pkgs.actionlint];
+      nativeBuildInputs = commonArgs.nativeBuildInputs ++ [preCommitBin];
+      nativeCheckInputs = [pkgs.git pkgs.gnupg pkgs.nodejs pkgs.jq pkgs.python3 pkgs.actionlint];
     });
   plinthProject = craneLib.buildPackage (projectArgs
     // {

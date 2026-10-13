@@ -9,7 +9,14 @@ rust-version = "1.88"
 documentation = "https://docs.rs/harbor-cache"
 keywords = ["nix", "attic", "cache", "jwt"]
 categories = ["development-tools::build-utils"]
-include = ["src/**", "tests/**", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE"]
+include = [
+  "src/**",
+  "tests/**",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
 
 [package.metadata.docs.rs]
 all-features = true

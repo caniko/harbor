@@ -342,17 +342,17 @@
     "plinth-source": {
       "flake": false,
       "locked": {
-        "lastModified": 1785581994,
-        "narHash": "sha256-KBemurUDJtFmwpSLyJh9PjufBii5ia6XThH+2mD6ptM=",
-        "ref": "fix/dioxus-0.7.10",
-        "rev": "4718cc09d9d1b54cc10e23e60c37b656bf7285a6",
-        "revCount": 235,
+        "lastModified": 1791804307,
+        "narHash": "sha256-6KgeSIF6U084TeSb3i8Pf57S8BkDa4Kk3cti+P9/s9g=",
+        "ref": "migrate/harbor-combined-20261012-features",
+        "rev": "534dfa6dd6217db97b7ccd313501120a3c34d912",
+        "revCount": 394,
         "type": "git",
         "url": "https://github.com/caniko/plinth.git"
       },
       "original": {
-        "ref": "fix/dioxus-0.7.10",
-        "rev": "4718cc09d9d1b54cc10e23e60c37b656bf7285a6",
+        "ref": "migrate/harbor-combined-20261012-features",
+        "rev": "534dfa6dd6217db97b7ccd313501120a3c34d912",
         "type": "git",
         "url": "https://github.com/caniko/plinth.git"
       }
@@ -455,17 +455,17 @@
     "simit": {
       "flake": false,
       "locked": {
-        "lastModified": 1791787856,
-        "narHash": "sha256-7GHAbEI1mSlvBcGpVzamO/jFNk1t7yVWpsl2ODnQOdU=",
-        "ref": "feat/harbor-monorepo-components",
-        "rev": "db0883dc27476235f37f5e6f0be6b214648c5302",
-        "revCount": 430,
+        "lastModified": 1791837349,
+        "narHash": "sha256-0oBRRUR3vZaC1c7PM306xeWaXTZy+b9rzhmJdNaT9VU=",
+        "ref": "migrate/harbor-monorepo-reconcile-20261012-current",
+        "rev": "90bed59acf2312e5d68c6df2a88751633db4d4fe",
+        "revCount": 616,
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       },
       "original": {
-        "ref": "feat/harbor-monorepo-components",
-        "rev": "db0883dc27476235f37f5e6f0be6b214648c5302",
+        "ref": "migrate/harbor-monorepo-reconcile-20261012-current",
+        "rev": "90bed59acf2312e5d68c6df2a88751633db4d4fe",
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       }
