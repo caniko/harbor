@@ -121,6 +121,30 @@ mod tests {
     }
 
     #[test]
+    fn legacy_attic_payload_keeps_strict_base64url_decoding() {
+        // Fixed pre-migration wire bytes, independent of the encoder under test.
+        let parts: Vec<_> = VALID_JWT.split('.').collect();
+        let padded = format!("{}.{}==.{}", parts[0], parts[1], parts[2]);
+        assert!(decode_payload(&padded).is_err());
+        // The final Q encodes four unused zero bits; R changes only those bits.
+        let noncanonical = format!(
+            "{}.{}R.{}",
+            parts[0],
+            &parts[1][..parts[1].len() - 1],
+            parts[2]
+        );
+        assert!(decode_payload(&noncanonical).is_err());
+        let payload = decode_payload(VALID_JWT).unwrap();
+        assert_eq!(payload.attic_scopes, "cache:test-push");
+        assert_eq!(
+            status(&payload, payload.exp),
+            JwtStatus::Expired {
+                ago: Duration::ZERO
+            }
+        );
+    }
+
+    #[test]
     fn status_valid() {
         let payload = decode_payload(VALID_JWT).unwrap();
         let s = status(&payload, 1_700_000_000);
@@ -166,12 +190,12 @@ mod tests {
     #[test]
     fn format_duration_short() {
         assert_eq!(format_duration(Duration::from_secs(45)), "0 min");
-        assert_eq!(format_duration(Duration::from_mins(2)), "2 min");
+        assert_eq!(format_duration(Duration::from_secs(2 * 60)), "2 min");
     }
 
     #[test]
     fn format_duration_days() {
-        assert_eq!(format_duration(Duration::from_hours(25)), "1d 1h");
-        assert_eq!(format_duration(Duration::from_hours(168)), "7d 0h");
+        assert_eq!(format_duration(Duration::from_secs(25 * 60 * 60)), "1d 1h");
+        assert_eq!(format_duration(Duration::from_secs(168 * 60 * 60)), "7d 0h");
     }
 }
