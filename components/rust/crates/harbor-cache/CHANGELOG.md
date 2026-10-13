@@ -1,9 +1,13 @@
 # Changelog
 
-## [0.1.0]
+## [0.1.0] - 2026-10-12
 
-- First registry release of the existing JWT diagnostics, cache publication and
-  token issuance helpers, with documentation and license texts in the archive.
-- Use Base64 0.23 with regression coverage for legacy Attic JWT decoding and
-  strict rejection of padded and noncanonical payloads.
-- Retain injectable clocks, command options and Rust 1.88 support.
+First registry release of the existing Harbor cache helper library.
+
+- Attic push and administrator token-issuance helpers with caller-supplied
+  executable paths and operation options.
+- JWT payload decoding, expiry status with an explicit clock, and human time
+  formatting helpers. Payload decoding does not validate token signatures.
+- Base64 0.23 dependency convergence, retaining the existing public API and
+  deterministic expiry semantics.
+- Rust 1.88 release metadata, package documentation, and bundled licenses.

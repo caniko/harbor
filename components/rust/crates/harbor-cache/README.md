@@ -1,11 +1,13 @@
 # harbor-cache
 
-Reusable Attic helpers for Harbor and downstream Rust tooling: JWT payload
-decoding and expiry reporting, cache push invocation and administrator token
-issuance. Commands invoke the caller-supplied Attic executable.
+Reusable Attic helpers for Harbor and downstream Rust tooling. The library
+provides JWT payload decoding and time-based expiry reporting, cache push
+invocation, and administrator token-issuance invocation.
 
-JWT decoding does **not** verify signatures or authorize access. Expiry checks
-take an explicit clock value so consumers can test policy deterministically.
+JWT decoding reads payload data; it does **not** verify token signatures or
+authorize access. Expiry checks take an explicit clock value, so consumers can
+test their policy deterministically. Push and issuance operations invoke the
+caller-supplied Attic executable rather than another product frontend.
 
 ```rust
 use harbor_cache::{JwtPayload, JwtStatus, status};
@@ -22,8 +24,8 @@ assert_eq!(status(&payload, 3_000), JwtStatus::Expired {
 });
 ```
 
-See the [API documentation](https://docs.rs/harbor-cache) and the
-[Harbor repository](https://github.com/caniko/harbor) for Nix integration.
-Rust 1.88 is supported. The crate requires no Canix inventory or credentials.
+See [API documentation](https://docs.rs/harbor-cache) for operation options and
+the [Harbor repository](https://github.com/caniko/harbor) for Nix integration.
+This crate does not require Canix fleet inventory or credentials.
 
-Licensed under MIT OR Apache-2.0; both texts are included in the crate.
+Licensed under MIT OR Apache-2.0; both license texts are included in the crate.

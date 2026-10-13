@@ -10,9 +10,9 @@
       (!pkgs.lib.hasPrefix (toString (src + "/.cargo")) (toString path))
       && (
         (craneLib.filterCargoSources path type)
+        # Workspace crates embed their README as compile-time rustdoc.
+        || pkgs.lib.hasSuffix "/README.md" (toString path)
         || (builtins.match ".*/tests/fixtures/.*" path != null)
-        # harbor-cache embeds its crate documentation during compilation.
-        || pkgs.lib.hasSuffix "/crates/harbor-cache/README.md" (toString path)
       );
     name = "harbor-rs-source";
   };
