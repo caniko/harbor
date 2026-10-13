@@ -62,9 +62,10 @@ nix_builds = [
 # cargo-test already realizes all-targets/all-features native storage and harness tests.
 # Native ARM rows qualify both packages and all eight original non-VM gates.
 # Put them first so the bounded matrix establishes ARM evidence promptly.
-# Generated with qualified Simit bae2cfad9055d95f8cd56eb4d7a4a593d1384105,
-# production artifact 11732182980 (run 38215367233). Its complete execution tree
-# and all 290 source-file hashes match the signed producer candidate.
+# Generated with qualified Simit a84c67c04b555c06112cc74b23c9c7030ab01d52,
+# production artifact 11796731199 (run 38360956608, attempt 1).
+# Its execution tree and all 317 source hashes match the signed producer.
+# Generator SHA-256: 18d67d1cb692a58c2d820451078bed63a6edc37545244155c574f5e018f138aa.
 # Regenerate: simit init ci --platform github --ci-provider actions --runtime nix
 # Verify with the same command plus --check --diff, then retain native ARM runs.
 # The ten native VM checks are exported only on x86_64-linux and require KVM.
