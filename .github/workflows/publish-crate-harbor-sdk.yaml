@@ -186,6 +186,12 @@ jobs:
         # shellcheck disable=SC2016
         nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/check_history.py'
       timeout-minutes: 30
+    - name: userns-contracts
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'python3 -B -m unittest discover -s scripts -p test_ci_userns.py'
+      timeout-minutes: 5
     - name: format
       run: |-
         # Expand the project command inside the Nix child shell.
@@ -237,6 +243,12 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
+    - name: userns
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/ci_userns.py'
+      timeout-minutes: 5
     - name: hosted-cache
       run: |-
         # Expand the project command inside the Nix child shell.
@@ -497,6 +509,12 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
+    - name: userns
+      run: |-
+        # Expand the project command inside the Nix child shell.
+        # shellcheck disable=SC2016
+        nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/ci_userns.py'
+      timeout-minutes: 5
     - name: test
       run: |-
         # Expand the project command inside the Nix child shell.
