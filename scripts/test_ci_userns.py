@@ -2,6 +2,8 @@
 
 import contextlib
 import io
+from pathlib import Path
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -83,6 +85,16 @@ class AdmissionTests(unittest.TestCase):
         self.assertIn("/nix/store/*-util-linux-*/bin/unshare", ci_userns.PROFILE)
         self.assertNotIn("/nix/store/**", ci_userns.PROFILE)
         self.assertNotIn("sysctl", ci_userns.PROFILE)
+
+    def test_qualification_lanes_preserve_the_global_namespace_restriction(self):
+        manifest = Path(__file__).resolve().parents[1] / "simit.toml"
+        configuration = tomllib.loads(manifest.read_text())
+        for component in configuration["monorepo"]["components"]:
+            for gate in component.get("checks", []):
+                with self.subTest(component=component["id"], gate=gate["id"]):
+                    self.assertNotIn(
+                        "apparmor_restrict_unprivileged_userns=0", gate["run"]
+                    )
 
 
 if __name__ == "__main__":

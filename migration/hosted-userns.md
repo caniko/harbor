@@ -22,6 +22,13 @@ map, mount, profile load, or unexpected global-policy change fails the lane.
 The [AppArmor documentation](https://documentation.ubuntu.com/server/how-to/security/apparmor/)
 describes loading profiles with `apparmor_parser`.
 
+The sandbox runtime lane also enters through the admitted util-linux `unshare`
+profile before launching its Bubblewrap fixtures. The Rust shell is prepared
+first, then the fixture process receives its own user and mount namespace. This
+replaces the older lane's global sysctl override while retaining all real
+namespace, isolation and nested-desktop acceptance tests. The global restriction
+stays enabled for the rest of the ephemeral runner.
+
 For local capability diagnosis, run `python3 scripts/ci_userns.py --check` in
 the approved Harbor shell. This mode only probes the namespace. The Darwin
 lane retains the portable workspace scope. Database test sources and their

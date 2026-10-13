@@ -440,7 +440,7 @@ jobs:
       run: |-
         # Expand the project command inside the Nix child shell.
         # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'bash -euc '\''if [ "$(uname -s)" = Darwin ]; then echo "Linux namespace runtime: not applicable on Darwin"; exit 0; fi; test "$(uname -s)" = Linux; test "${RUNNER_ENVIRONMENT:-}" = github-hosted; if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1'\'''
+        nix develop --print-build-logs .#ci --command sh -ec 'bash -euc '\''if [ "$(uname -s)" = Darwin ]; then echo "Linux namespace runtime: not applicable on Darwin"; exit 0; fi; test "$(uname -s)" = Linux; test "${RUNNER_ENVIRONMENT:-}" = github-hosted; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command unshare --user --map-root-user --mount --fork --kill-child cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1'\'''
       timeout-minutes: 30
     - name: nix
       run: |-
