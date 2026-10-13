@@ -11,6 +11,8 @@
       && (
         (craneLib.filterCargoSources path type)
         || (builtins.match ".*/tests/fixtures/.*" path != null)
+        # harbor-cache embeds its crate documentation during compilation.
+        || pkgs.lib.hasSuffix "/crates/harbor-cache/README.md" (toString path)
       );
     name = "harbor-rs-source";
   };
