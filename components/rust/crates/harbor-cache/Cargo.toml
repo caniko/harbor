@@ -6,11 +6,10 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/caniko/harbor"
 description = "Generic Attic helpers for harbor-rs and downstream tooling"
 rust-version = "1.88"
-readme = "README.md"
 documentation = "https://docs.rs/harbor-cache"
 keywords = ["nix", "attic", "cache", "jwt"]
 categories = ["development-tools::build-utils"]
-include = ["src/**", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE"]
+include = ["src/**", "tests/**", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE"]
 
 [package.metadata.docs.rs]
 all-features = true

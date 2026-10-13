@@ -121,6 +121,30 @@ mod tests {
     }
 
     #[test]
+    fn legacy_attic_payload_keeps_strict_base64url_decoding() {
+        // Fixed pre-migration wire bytes, independent of the encoder under test.
+        let parts: Vec<_> = VALID_JWT.split('.').collect();
+        let padded = format!("{}.{}==.{}", parts[0], parts[1], parts[2]);
+        assert!(decode_payload(&padded).is_err());
+        // The final Q encodes four unused zero bits; R changes only those bits.
+        let noncanonical = format!(
+            "{}.{}R.{}",
+            parts[0],
+            &parts[1][..parts[1].len() - 1],
+            parts[2]
+        );
+        assert!(decode_payload(&noncanonical).is_err());
+        let payload = decode_payload(VALID_JWT).unwrap();
+        assert_eq!(payload.attic_scopes, "cache:test-push");
+        assert_eq!(
+            status(&payload, payload.exp),
+            JwtStatus::Expired {
+                ago: Duration::ZERO
+            }
+        );
+    }
+
+    #[test]
     fn status_valid() {
         let payload = decode_payload(VALID_JWT).unwrap();
         let s = status(&payload, 1_700_000_000);
