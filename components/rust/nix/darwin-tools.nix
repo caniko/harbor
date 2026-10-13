@@ -40,6 +40,10 @@
     checks = {
       cli = cli;
       ci = ci;
+      native-runner = import ./checks/native-runner.nix {
+        inherit pkgs;
+        metaDevShell = harborRoot.lib.core.devShell;
+      };
     };
   };
 in {

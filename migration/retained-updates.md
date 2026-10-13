@@ -2,7 +2,8 @@
 
 This record supplements `retained-work.md`, whose 112-commit coverage is bound
 to the initial `imported-ref` namespace. These later tips are preserved under
-`refs/tags/retained-ref/20261012/`. The dispositions below describe the active
+`refs/tags/retained-ref/20261012/` and `refs/tags/retained-ref/20261013/`.
+The dispositions below describe the active
 source reconciled after `14ef53b1aec5a398e802514cdd1197d54e1c54d0`; producer
 qualification and consumer acceptance remain separate gates.
 
@@ -83,3 +84,43 @@ and ordered, once-only hooks. Documentation uses the canonical `lib.core`
 namespace. Root input and workflow ownership replaces the predecessor's
 standalone flake/check wiring. Producer qualification and consumer acceptance
 remain separate from this source reconciliation.
+
+The root exposes the portable `core-scoped-runtime` check and includes it in
+the Darwin core qualification groups. The retained timezone-consumer fixture
+supplies `builtins.all` for the runner's new argument-list assertion.
+
+## Managed Python development environments
+
+The signed tip `685f22e60df4fd9faf3d806f8ded1a8e401823fa` adds one commit
+beyond `d8d116ebb3f91603b0780e34c51a72d46b47a0ca` and is archived at
+`retained-ref/20261013/harbor-py/heads/trunk`. An independent HTTPS fetch
+verified the original tip after publication.
+
+The active `components/python/lib/uv-dev-shell.nix`, `lib/venv.py`,
+`tests/test_venv.py`, and `checks/managed-venv.nix` match that tip byte-for-byte.
+The Python facade delegates `mkUvDevShell` to the retained constructor; the
+root-owned component check includes the managed-venv gate. The integration
+preserves the existing TorchCodec compatibility recipe and root dependency
+graph rather than importing the predecessor's older standalone definitions.
+
+Native offline regressions and the Linux Nix hook check passed. Four-system
+evaluation exposes the managed-venv gate, with native runtime execution still
+required on each selected hosted platform before producer admission.
+
+## Native Rust target runners
+
+The signed tip `ad028e0278441392a104dbd0f1126dcc9958c638` adds one commit
+beyond `195f8a7e81d67102868631015b6794280b492c88` and is archived at
+`retained-ref/20261013/harbor-rs/heads/feat/portable-release-files`. An
+independent HTTPS fetch verified the original tip after publication.
+
+The active `components/rust/lib/dev-shell.nix`, `lib/native-runner.nix`, and
+`nix/checks/native-runner.nix` match that tip byte-for-byte. Linux component
+checks and the native Darwin tool groups expose the retained executable check.
+The shell forwards composed `inputsFrom` dependencies to Crane, preserves
+cross-target runner variables, and rejects competing native runner overrides.
+
+The Linux Cargo run/test/bench gate passed. Four-system evaluation exposes all
+three restored runtime checks; hosted native execution remains a separate
+producer-admission requirement. Original predecessor working-tree and index
+edits remain preserved outside these integrated signed-commit deltas.

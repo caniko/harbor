@@ -142,6 +142,14 @@ in {
     blenderCheck = nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
       blender-mcp-runtime = import ./tooling/tests/blender.nix {inherit self inputs pkgs;};
     };
+    # Core's retained component outputs are Linux-scoped; its shared shell
+    # library also serves the portable Rust and Python Darwin consumers.
+    portableCoreChecks = nixlib.optionalAttrs (!pkgs.stdenv.hostPlatform.isLinux) {
+      scoped-runtime = import ../components/core/checks/scoped-runtime.nix {
+        inherit pkgs;
+        devShell = self.lib.core.devShell;
+      };
+    };
     sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
       pkgs.runCommand "harbor-component-source-materialization" {} ''
         set -euo pipefail
@@ -157,15 +165,17 @@ in {
           name = check;
           inherit path;
         }) ((components.${name}.checks.${system} or {})
-          // nixlib.optionalAttrs (name == "core") {
-            source-materialization = sourceMaterialization;
-            template-contract = templateContract;
-            bootstrap-inputs = bootstrapInputs;
-            module-contracts = moduleContracts;
-          }))))
+          // nixlib.optionalAttrs (name == "core") ({
+              source-materialization = sourceMaterialization;
+              template-contract = templateContract;
+              bootstrap-inputs = bootstrapInputs;
+              module-contracts = moduleContracts;
+            }
+            // portableCoreChecks)))))
     componentNames);
   in
     collect "checks" system
+    // nixlib.mapAttrs' (key: value: nixlib.nameValuePair "core-${key}" value) portableCoreChecks
     // groups
     // desktopChecks
     // blenderCheck
