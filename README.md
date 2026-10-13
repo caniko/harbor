@@ -15,7 +15,7 @@ catalog, platform support, Blender/OpenPencil MCP and CAD runtime contracts.
 The root `flake.nix` and `flake.lock` own the input graph. Component output
 adapters are imported with those inputs and a component-local `self`; their
 former input declarations and lockfiles do not participate in root evaluation.
-The root Cargo workspace has eight members, with one lockfile and package-scoped
+The root Cargo workspace has nine members, with one lockfile and package-scoped
 Nix builds. Templates and test fixtures keep their independent project manifests.
 
 | Component                                               | Nix library namespace             |
@@ -39,6 +39,10 @@ modules, and formatter modules use `<component>-<name>` output names. For exampl
 `packages.<system>.rust-harbor-rs`, `nixosModules.database-harbor-db`, and
 `homeManagerModules.cad-default`. `default` and `ci` shells share the root
 toolchain and formatter; the CI shell also supplies the pinned Simit generator.
+On Linux, both shells consume the database check's PostgreSQL and immutable
+configuration fixtures for native workspace tests. Native tests retain the
+installed machine identity; sandboxed DB checks own their testing-only identity
+substitution.
 
 ## Qualification
 
@@ -58,9 +62,10 @@ aggregates every check exported by that component. Database qualification retain
 the hosted KVM and sandbox-cache prerequisites. Go keeps its Linux, ARM Linux,
 and ARM macOS native runners. Rust qualifies its workspace and Nix outputs on
 x86-64 Linux and ARM macOS; namespace runtime acceptance runs on Linux. Linux
-qualifies all eight Cargo members. macOS qualifies the seven portable members
-with `--workspace --exclude harbor-cad`: CAD's worker is Linux-only and retains
-its dedicated Linux component and runtime checks.
+qualifies all nine Cargo members. macOS qualifies the seven portable members
+with `--workspace --exclude harbor-cad --exclude harbor-db`: CAD's worker and
+DB's lifecycle engines are Linux-only and retain their dedicated Linux component
+and runtime checks.
 ELF audit contracts use a deterministic ELF fixture on every native platform;
 Linux also audits the cargo-built executable, and resolver tests check both
 `--skip-ldd` isolation and the missing-library failure path.

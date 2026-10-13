@@ -186,18 +186,32 @@ in {
       toolchainProfile = "nightly";
       cache.enable = false;
     };
-    shell = pkgs.mkShell {
-      packages = [toolchain.rustToolchain pkgs.pkg-config pkgs.openssl pkgs.git pkgs.python3 pkgs.uv pkgs.jq formatters.${system}.config.build.wrapper];
-    };
+    # Native workspace tests consume the DB check's existing immutable fixtures.
+    # Machine-ID substitution belongs only to sandboxed testing-feature checks;
+    # a native shell must retain the installed machine's custody identity.
+    databaseTestEnvironment = nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (let
+      databaseTest = self.checks.${system}.database-cargo-test;
+    in {
+      inherit (databaseTest) HARBOR_DB_TEST_POSTGRES HARBOR_DB_TEST_POSTGRES_17 HARBOR_DB_TEST_CONFIG_FIXTURE;
+      HARBOR_DB_TEST_ROOT_UID = "0";
+    });
+    shell = pkgs.mkShell (databaseTestEnvironment
+      // {
+        packages = [toolchain.rustToolchain pkgs.pkg-config pkgs.openssl pkgs.git pkgs.python3 pkgs.uv pkgs.jq formatters.${system}.config.build.wrapper];
+        shellHook = nixlib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+          export HARBOR_DB_TEST_TMPDIR="''${TMPDIR:-/tmp}"
+        '';
+      });
   in
     collect "devShells" system
     // {
       default = shell;
     }
     // {
-      ci = pkgs.mkShell {
-        inputsFrom = [shell];
-        packages = [(bootstrap system).simit];
-      };
+      ci = pkgs.mkShell (databaseTestEnvironment
+        // {
+          inputsFrom = [shell];
+          packages = [(bootstrap system).simit];
+        });
     });
 }
