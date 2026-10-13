@@ -1,18 +1,19 @@
+diff --git a/src/blender_mcp/observability/telemetry.py b/src/blender_mcp/observability/telemetry.py
+index b74992e..3f4fbc0 100644
 --- a/src/blender_mcp/observability/telemetry.py
 +++ b/src/blender_mcp/observability/telemetry.py
-@@ -13,7 +13,8 @@
- from dataclasses import dataclass
+@@ -16,6 +16,7 @@ from dataclasses import dataclass
  from enum import Enum
  from importlib.metadata import PackageNotFoundError, version
  from pathlib import Path
 +from types import SimpleNamespace
  from typing import Any
-
+ 
  import httpx
-@@ -313,10 +314,41 @@
+@@ -313,10 +314,41 @@ class TelemetryCollector:
  # Global telemetry instance
  _telemetry_collector: TelemetryCollector | None = None
-
+ 
 +# Canix: fail-closed telemetry disablement. The upstream constructor imports
 +# config, creates persistent identity state, and starts a background worker
 +# before honoring the disable switch, so forcing DISABLE_TELEMETRY=true in the
@@ -42,7 +43,7 @@
 +        _disabled_telemetry_instance.config = SimpleNamespace(enabled=False)
 +    return _disabled_telemetry_instance
 +
-
+ 
  def get_telemetry() -> TelemetryCollector:
      """Get the global telemetry collector instance"""
      global _telemetry_collector

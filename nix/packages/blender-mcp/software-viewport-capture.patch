@@ -1,6 +1,7 @@
 --- a/blender_extension/bridge/scene.py
 +++ b/blender_extension/bridge/scene.py
-@@ -558,3 +558,32 @@
+@@ -555,6 +555,35 @@
+ 
              # Load and resize if needed
              img = bpy.data.images.load(filepath)
 +            # Mesa's llvmpipe GL_FRONT read can be black under Xvfb even
@@ -33,3 +34,5 @@
 +                    finally:
 +                        offscreen.free()
              width, height = img.size
+ 
+             if max(width, height) > max_size:

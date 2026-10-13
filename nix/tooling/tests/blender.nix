@@ -55,6 +55,11 @@ in
     nativeBuildInputs = [python pkgs.xvfb-run];
   } ''
       ${pkgs.python3}/bin/python3 -B ${../../packages/blender-mcp/test_startup.py} ${../../modules/blender-mcp-startup.py}
+      ${pkgs.python3}/bin/python3 -B ${../../packages/blender-mcp}/test_registry_launcher.py \
+        --extension ${extension}/share/blender-mcp-extension/blender_mcp \
+        --server ${self.packages.${pkgs.stdenv.hostPlatform.system}.blender-mcp}/${pkgs.python3.sitePackages}/blender_mcp \
+        --launcher ${bridge} \
+        --desktop ${desktop}/bin/blender-mcp-desktop
     # The sandbox has no host /run/opengl-driver. Both Xvfb and Blender must
     # resolve the same store-backed Mesa GLX vendor and software DRI driver.
     export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [pkgs.mesa pkgs.libglvnd]}"

@@ -49,15 +49,27 @@
         mkdir -p -m 0700 "$dir"
       fi
     }
-    if [ -z "''${BLENDER_MCP_RUNTIME_DIR:-}" ]; then
-      if [ -n "''${XDG_RUNTIME_DIR:-}" ]; then
-        BLENDER_MCP_RUNTIME_DIR="$XDG_RUNTIME_DIR/blender-mcp"
-      else
-        BLENDER_MCP_RUNTIME_DIR="$HOME/.local/state/canix/blender/runtime"
-      fi
+    # Resolve the registry exactly like the add-on's runtime_directory():
+    # an explicit BLENDER_MCP_RUNTIME_DIR is the registry directory itself
+    # and is preserved verbatim, otherwise the registry is <base>/instances
+    # below XDG_RUNTIME_DIR with the XDG state directory as fallback. The
+    # add-on only creates its registry leaf with 0700 and leaves the parent
+    # at the umask default, so create the private parent first and the
+    # registry second; either launch order then finds the same 0700 tree.
+    if [ -n "''${BLENDER_MCP_RUNTIME_DIR:-}" ]; then
       export BLENDER_MCP_RUNTIME_DIR
+      _blender_mcp_private_dir "$BLENDER_MCP_RUNTIME_DIR" || exit 1
+    else
+      if [ -n "''${XDG_RUNTIME_DIR:-}" ]; then
+        _blender_mcp_base="$XDG_RUNTIME_DIR/blender-mcp"
+      else
+        _blender_mcp_base="''${XDG_STATE_HOME:-$HOME/.local/state}/blender-mcp"
+      fi
+      _blender_mcp_private_dir "$_blender_mcp_base" || exit 1
+      BLENDER_MCP_RUNTIME_DIR="$_blender_mcp_base/instances"
+      export BLENDER_MCP_RUNTIME_DIR
+      _blender_mcp_private_dir "$BLENDER_MCP_RUNTIME_DIR" || exit 1
     fi
-    _blender_mcp_private_dir "$BLENDER_MCP_RUNTIME_DIR" || exit 1
     if [ -z "''${BLENDER_MCP_TMPDIR:-}" ]; then
       BLENDER_MCP_TMPDIR="$BLENDER_MCP_RUNTIME_DIR/tmp"
       export BLENDER_MCP_TMPDIR

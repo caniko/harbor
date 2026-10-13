@@ -7,7 +7,6 @@ rust-version = "1.88"
 license = "Apache-2.0"
 publish = false
 repository = "https://github.com/caniko/harbor-db"
-homepage = "https://github.com/caniko/harbor-db"
 
 [lib]
 path = "src/lib.rs"
@@ -34,3 +33,6 @@ tokio = { version = "1", features = [
   "rt-multi-thread",
 ] }
 toml = "0.9"
+
+[lints]
+workspace = true

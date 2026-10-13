@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Nix builds of `harbor-rs` and `harbor-ci` retain workspace README files used
+  by dependency crates as compile-time documentation.
 - Direnv loads the Rust tools and OpenCode LSP configuration through one shell,
   preventing the two shell loads from deleting each other's cached profiles.
 - Generated GitHub workflows scope required-gate permissions to the job, isolate
@@ -65,6 +67,8 @@
 
 ### Changed
 
+- Monorepo crate releases retain credential-free signed-tag archives and publish
+  through independent workflows using the protected `simit-crates-io` environment.
 - CI and template pre-commit hooks use treefmt as the sole formatter, and
   development shells include the configured treefmt wrapper.
 - Cranelift code generation is now opt-in because its unsupported LLVM `\x01`

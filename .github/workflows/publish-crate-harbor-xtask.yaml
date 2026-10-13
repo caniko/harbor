@@ -3,6 +3,97 @@ concurrency:
   cancel-in-progress: false
   group: ${{ github.workflow_ref }}-${{ github.ref }}
 jobs:
+  build:
+    env:
+      CARGO_HOME: /tmp/.cargo
+      NIX_CONFIG: experimental-features = nix-command flakes
+      XDG_CACHE_HOME: /tmp/.cache
+    needs:
+    - qualified
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ github.sha }}
+    - name: Install Nix
+      uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+    - name: Configure GitHub input transport
+      run: |
+        git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
+        git config --global --add url.https://github.com/.insteadOf git@github.com:
+    - env:
+        GITHUB_TOKEN: ${{ github.token }}
+      name: Validate signed release tag
+      run: |
+        set -euo pipefail
+        tag="${GITHUB_REF_NAME:-${FORGE_REF_NAME:-${CODEBERG_REF_NAME:-}}}"
+        if [ -z "$tag" ]; then
+          ref="${GITHUB_REF:-${FORGE_REF:-${CODEBERG_REF:-}}}"
+          tag="${ref#refs/tags/}"
+        fi
+
+        case "$tag" in harbor-xtask/v*) version="${tag#harbor-xtask/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
+        if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
+
+        if ! command -v gpg >/dev/null 2>&1; then
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends gnupg
+          else
+            echo "gpg is required to verify signed release tags" >&2
+            exit 1
+          fi
+        fi
+        git_fetch() {
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+            git -c "http.extraHeader=$auth_header" fetch "$@"
+          else
+            git fetch "$@"
+          fi
+        }
+        GNUPGHOME="$(mktemp -d)"
+        export GNUPGHOME
+        trap 'rm -rf "$GNUPGHOME"' EXIT
+        chmod 700 "$GNUPGHOME"
+        # The release checkout cannot supply its own verification key.
+        # Fetch the repository's independently maintained default-branch key.
+        git_fetch --no-tags origin HEAD
+        git show "FETCH_HEAD:keys/maintainers.gpg" > "$GNUPGHOME/maintainers.gpg"
+        test -s "$GNUPGHOME/maintainers.gpg"
+        gpg --batch --import "$GNUPGHOME/maintainers.gpg"
+
+        git_fetch --force --tags origin "refs/tags/${tag}:refs/tags/${tag}"
+        git verify-tag "$tag"
+        validated_sha="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"
+        checkout_sha="$(git rev-parse --verify HEAD)"
+        if [ "$validated_sha" != "$checkout_sha" ]; then
+          echo "Signed tag commit does not match the checkout being published" >&2
+          exit 1
+        fi
+    - name: Test harbor-xtask
+      run: nix develop -c cargo test --locked -p harbor-xtask --all-targets --all-features
+    - name: Clippy harbor-xtask
+      run: nix develop -c cargo clippy --locked -p harbor-xtask --all-targets --all-features -- -D warnings
+    - name: Package coordinated release set
+      run: nix develop -c cargo package --locked --allow-dirty --no-verify -p harbor-xtask --target-dir "$RUNNER_TEMP/simit-package-target"
+    - name: Build immutable archive harbor-xtask
+      run: |
+        set -euo pipefail
+        version="${GITHUB_REF_NAME#harbor-xtask/v}"
+        test "$(nix develop -c cargo pkgid --locked -p harbor-xtask | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version"
+        mkdir -p "$RUNNER_TEMP/simit-crates/harbor-xtask"
+        cp "$RUNNER_TEMP/simit-package-target/package/harbor-xtask-$version.crate" "$RUNNER_TEMP/simit-crates/harbor-xtask/"
+    - name: Retain original-run archive harbor-xtask
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        if-no-files-found: error
+        name: simit-crate-harbor-xtask-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/simit-crates/harbor-xtask/*.crate
+        retention-days: 30
+    timeout-minutes: 60
   component-android:
     env:
       NIX_CONFIG: experimental-features = nix-command flakes
@@ -485,6 +576,8 @@ jobs:
   plan:
     env:
       NIX_CONFIG: experimental-features = nix-command flakes
+    needs:
+    - verify-source
     outputs:
       selected: ${{ steps.plan.outputs.selected }}
     runs-on: ubuntu-latest
@@ -516,83 +609,6 @@ jobs:
         cat plan.json
       shell: bash
     timeout-minutes: 20
-  publish-harbor-xtask:
-    env:
-      CARGO_HOME: /tmp/.cargo
-      NIX_CONFIG: experimental-features = nix-command flakes
-      XDG_CACHE_HOME: /tmp/.cache
-    needs:
-    - validate
-    permissions:
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-    - name: Install Nix
-      uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
-    - name: Configure GitHub input transport
-      run: |
-        git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
-        git config --global --add url.https://github.com/.insteadOf git@github.com:
-    - name: Add cargo bin to PATH
-      run: echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-    - name: Package archive with verification
-      run: nix develop -c cargo package -p harbor-xtask --allow-dirty
-    - name: Registry dry-run
-      run: nix develop -c cargo publish -p harbor-xtask --dry-run
-    - env:
-        CRATES_IO_API_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
-      name: Publish
-      run: |
-        set -euo pipefail
-        crate_name='harbor-xtask'
-        version="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
-        version="${version#*/v}"
-        if [ -z "$version" ]; then echo "Could not determine release version from tag ref" >&2; exit 1; fi
-        # Preflight: fail fast on auth/ownership/validation vs propagation delay.
-        if [ -z "${CRATES_IO_API_TOKEN:-}" ] && [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then echo "CRATES_IO_API_TOKEN is required to publish to crates.io" >&2; exit 1; fi
-        export CARGO_REGISTRY_TOKEN="${CARGO_REGISTRY_TOKEN:-$CRATES_IO_API_TOKEN}"
-        status="$(curl --retry 3 -sS -o /tmp/simit-crate.json -w '%{http_code}' -A 'simit publish-workspace preflight' "https://crates.io/api/v1/crates/${crate_name}/${version}" || echo 000)"
-        case "$status" in
-          200)
-            echo "${crate_name} ${version} already exists on crates.io; verifying it is the intended release"
-            published_checksum="$(jq -er --arg v "$version" '.version | select(.num == $v) | .checksum' /tmp/simit-crate.json 2>/dev/null || true)"
-            local_crate="target/package/${crate_name}-${version}.crate"
-            if [ -n "$published_checksum" ] && [ -f "$local_crate" ]; then
-              local_checksum="$(sha256sum "$local_crate" | awk '{print $1}')"
-              if [ "$local_checksum" = "$published_checksum" ]; then echo "checksum matches; resuming (already published)"; exit 0; fi
-            fi
-            echo "conflict: ${crate_name} ${version} exists but checksum does not match the local archive; refusing to treat as success" >&2; exit 1;;
-          404) ;;
-          401|403) echo "authorization/ownership failure checking ${crate_name} ${version} (HTTP $status)" >&2; exit 1;;
-          *) echo "Could not check crates.io for ${crate_name} ${version} before publishing (HTTP $status)" >&2; exit 1;;
-        esac
-        nix develop -c cargo publish -p harbor-xtask
-        # Bounded propagation wait: dependents need this version visible.
-        for attempt in $(seq 1 20); do
-          code="$(curl --retry 2 -sS -o /dev/null -w '%{http_code}' -A 'simit publish-workspace propagation' "https://crates.io/api/v1/crates/${crate_name}/${version}" || echo 000)"
-          case "$code" in 200) echo "propagated ${crate_name} ${version} (attempt $attempt)"; break;; 404) echo "waiting for ${crate_name} ${version} (attempt $attempt/20)"; sleep 30;; 401|403) echo "authorization failure while waiting (HTTP $code)" >&2; exit 1;; *) echo "unexpected registry status $code while waiting" >&2; exit 1;; esac
-          if [ "$attempt" = 20 ]; then echo "propagation timeout for ${crate_name} ${version}" >&2; exit 1; fi
-        done
-    timeout-minutes: 60
-  publish-report:
-    if: always()
-    needs:
-    - publish-harbor-xtask
-    permissions:
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-    - name: Release result
-      run: |
-        set -euo pipefail
-        echo "coordinated workspace publish finished (see per-crate job statuses for the auditable result)"
-        echo "resume: re-dispatch this workflow; already-published crates with matching checksums exit 0, conflicts fail"
   qualified:
     if: ${{ always() }}
     needs:
@@ -620,47 +636,76 @@ jobs:
       name: Require every selected component
       run: printf '%s' "$RESULTS" | jq -e --argjson selected "$SELECTED" '. as $jobs | $jobs.plan.result == "success" and all($selected[]; $jobs["component-" + .].result == "success")'
     timeout-minutes: 5
-  validate:
-    env:
-      CARGO_HOME: /tmp/.cargo
-      NIX_CONFIG: experimental-features = nix-command flakes
-      XDG_CACHE_HOME: /tmp/.cache
-    needs:
-    - qualified
+  verify-source:
     permissions:
       contents: read
-      id-token: write
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-    - name: Install Nix
-      uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
-    - name: Configure GitHub input transport
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
         git config --global --add url.https://github.com/.insteadOf git@github.com:
-    - name: Validate signed release tag and lockstep versions
+        git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
+        git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - env:
+        GITHUB_TOKEN: ${{ github.token }}
+      name: Validate signed release tag
       run: |
         set -euo pipefail
-        tag="${GITHUB_REF_NAME:-${GITHUB_REF#refs/tags/}}"
+        tag="${GITHUB_REF_NAME:-${FORGE_REF_NAME:-${CODEBERG_REF_NAME:-}}}"
+        if [ -z "$tag" ]; then
+          ref="${GITHUB_REF:-${FORGE_REF:-${CODEBERG_REF:-}}}"
+          tag="${ref#refs/tags/}"
+        fi
+
         case "$tag" in harbor-xtask/v*) version="${tag#harbor-xtask/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
-        if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.+-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
-        test -s keys/maintainers.gpg
-        GNUPGHOME="$(mktemp -d)"; export GNUPGHOME; chmod 700 "$GNUPGHOME"
-        gpg --batch --import keys/maintainers.gpg
-        git fetch --force --tags origin "refs/tags/${tag}:refs/tags/${tag}"
+        if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
+
+        if ! command -v gpg >/dev/null 2>&1; then
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends gnupg
+          else
+            echo "gpg is required to verify signed release tags" >&2
+            exit 1
+          fi
+        fi
+        git_fetch() {
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+            git -c "http.extraHeader=$auth_header" fetch "$@"
+          else
+            git fetch "$@"
+          fi
+        }
+        GNUPGHOME="$(mktemp -d)"
+        export GNUPGHOME
+        trap 'rm -rf "$GNUPGHOME"' EXIT
+        chmod 700 "$GNUPGHOME"
+        # The release checkout cannot supply its own verification key.
+        # Fetch the repository's independently maintained default-branch key.
+        git_fetch --no-tags origin HEAD
+        git show "FETCH_HEAD:keys/maintainers.gpg" > "$GNUPGHOME/maintainers.gpg"
+        test -s "$GNUPGHOME/maintainers.gpg"
+        gpg --batch --import "$GNUPGHOME/maintainers.gpg"
+
+        git_fetch --force --tags origin "refs/tags/${tag}:refs/tags/${tag}"
         git verify-tag "$tag"
-        validated_sha="$(git rev-list -n 1 "$tag")"
-        test "$validated_sha" = "${GITHUB_SHA:?missing workflow event SHA}" || { echo "Signed tag commit does not match the workflow event SHA; refusing a moved tag" >&2; exit 1; }
-        git checkout --detach "$validated_sha"
-        test "$(nix develop -c cargo pkgid -p harbor-xtask | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version" || { echo "harbor-xtask version does not match tag $tag" >&2; exit 1; }
+        validated_sha="$(git rev-parse --verify "refs/tags/${tag}^{commit}")"
+        checkout_sha="$(git rev-parse --verify HEAD)"
+        if [ "$validated_sha" != "$checkout_sha" ]; then
+          echo "Signed tag commit does not match the checkout being published" >&2
+          exit 1
+        fi
     timeout-minutes: 15
-name: Publish harbor-xtask
+name: Build Crate harbor-xtask
 on:
   push:
     tags:
     - harbor-xtask/v[0-9]*
-  workflow_dispatch: null
 permissions:
   contents: read

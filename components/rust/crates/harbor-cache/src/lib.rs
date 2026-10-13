@@ -1,5 +1,7 @@
 //! Generic Attic helpers shared by harbor-rs and canix.
 
+#![doc = include_str!("../README.md")]
+
 pub mod jwt;
 pub mod push;
 pub mod token;
