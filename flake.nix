@@ -4,7 +4,7 @@
   inputs = {
     # Consume qualified tool sources without their consumer flake graphs.
     simit = {
-      url = "git+https://github.com/caniko/simit.git?ref=feat/harbor-monorepo-components&rev=f30d82931ea3689de3c3ea9a0ab0f0e0bfd10b8d";
+      url = "git+https://github.com/caniko/simit.git?ref=feat/harbor-monorepo-components&rev=db0883dc27476235f37f5e6f0be6b214648c5302";
       flake = false;
     };
     plinth-source = {
@@ -19,7 +19,7 @@
     flake-parts.url = "github:hercules-ci/flake-parts/31729ca8cbdb4fa927b34e5f4353e6a83f39e993";
     flake-utils.url = "github:numtide/flake-utils/11707dc2f618dd54ca8739b309ec4fc024de578b";
     rust-overlay = {
-      url = "github:oxalica/rust-overlay/35ca0490d13a3d38c4602d0eb9600a30fa63a367";
+      url = "github:oxalica/rust-overlay/c1cfa7a2c809d364ac1a7e9b3ec418afa3f19793";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     treefmt-nix = {

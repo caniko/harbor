@@ -542,7 +542,7 @@ in
       assert stable.buildCache.contract.compiler == stable.rustToolchain.version;
       assert !(pkgs.lib.hasInfix "-Z" stable.cargoConfig.configText);
       assert nightly.toolchainProfile == "nightly";
-      assert nightly.buildCache.contract.rustToolchain.channel == "nightly-2026-09-15";
+      assert nightly.buildCache.contract.rustToolchain.channel == "nightly-2026-10-11";
       assert pkgs.lib.hasInfix "-Zthreads=0" nightly.cargoConfig.configText;
         pkgs.runCommand "check-mkToolchain-fleet-profiles" {} "touch $out";
 
@@ -3960,7 +3960,7 @@ in
       assert policy.contract.namespace == "test-rust-v7-sccache-${pkgs.sccache.version}";
       assert policy.contract.sccacheVersion == pkgs.sccache.version;
       assert policy.contract.compiler == pkgs.buildPackages.rustc.version;
-      assert policy.contract.rustToolchain.channel == "nightly-2026-09-15";
+      assert policy.contract.rustToolchain.channel == "nightly-2026-10-11";
       assert policy.contract.redisSocketPath == "/run/redis-sccache/redis.sock";
       assert policy.contract.hostCacheRoot == "/var/cache/sccache";
       assert policy.sharedCacheDir == "/tmp/sccache/test-rust-v7-sccache-${pkgs.sccache.version}";

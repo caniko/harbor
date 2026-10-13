@@ -77,7 +77,7 @@
         treefmt = inputs.treefmt-nix.lib.evalModule pkgs {
           imports = [harbor-meta.treefmtModules.nix harbor-meta.treefmtModules.toml self.treefmtModules.javascript];
           projectRootFile = "flake.nix";
-          settings.global.excludes = [".crow/**"];
+          settings.excludes = [".crow/**"];
         };
       in {
         # The maintained compatibility branch retains Intel macOS and patched pnpm.
