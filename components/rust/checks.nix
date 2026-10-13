@@ -29,6 +29,10 @@
   bevyTemplateHooks = builtins.readFile (bevyTemplateRoot + "/nix/pre-commit.nix");
 in
   {
+    native-runner = import ./nix/checks/native-runner.nix {
+      inherit pkgs;
+      metaDevShell = self.inputs.harbor-meta.lib.devShell;
+    };
     opencode-rust-default = let
       rustConfig = self.lib.opencode.configTextFor {lsp = self.lib.opencodeRust.rustLsp;};
     in
