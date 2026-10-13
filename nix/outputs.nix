@@ -199,7 +199,8 @@ in {
       // {
         packages = [toolchain.rustToolchain pkgs.pkg-config pkgs.openssl pkgs.git pkgs.python3 pkgs.uv pkgs.jq formatters.${system}.config.build.wrapper];
         shellHook = nixlib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-          export HARBOR_DB_TEST_TMPDIR="''${TMPDIR:-/tmp}"
+          # nix-direnv may cache exports after Nix removes its shell TMPDIR.
+          export HARBOR_DB_TEST_TMPDIR="''${XDG_RUNTIME_DIR:-/tmp}"
         '';
       });
   in
