@@ -161,6 +161,15 @@ pub struct Verification {
     pub reasons: Vec<String>,
 }
 
+impl Verification {
+    fn record(&mut self, verdict: Verdict, reason: impl Into<String>) {
+        if rank(&verdict) > rank(&self.verdict) {
+            self.verdict = verdict;
+        }
+        self.reasons.push(reason.into());
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessRegistration {
@@ -1040,32 +1049,44 @@ pub fn verify(run: &Path) -> Result<Verification> {
             });
         }
     };
-    let mut reasons = Vec::new();
-    let mut verdict = Verdict::Passed;
-    let mut raise = |next: Verdict| {
-        if rank(&next) > rank(&verdict) {
-            verdict = next;
-        }
+    let mut verification = Verification {
+        verdict: Verdict::Passed,
+        reasons: Vec::new(),
     };
     if let Some(failure) = optional::<serde_json::Value>(&run.join("launch-failed.json"))? {
-        raise(Verdict::Failed);
-        reasons.push(format!(
-            "detached launch failed: {}",
-            failure
-                .get("reason")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown launch error")
-        ));
-        return Ok(Verification { verdict, reasons });
+        verification.record(
+            Verdict::Failed,
+            format!(
+                "detached launch failed: {}",
+                failure
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown launch error")
+            ),
+        );
+        return Ok(verification);
     }
     if let Err(e) = validate_spec(&spec) {
-        raise(Verdict::Indeterminate);
-        reasons.push(e.to_string());
+        verification.record(Verdict::Indeterminate, e.to_string());
     }
     if let Err(e) = validate_service_executable(run) {
-        raise(Verdict::Indeterminate);
-        reasons.push(e.to_string());
+        verification.record(Verdict::Indeterminate, e.to_string());
     }
+    if let Some(results) = verified_results(run, spec.cases.len(), &mut verification)? {
+        for (case, result) in spec.cases.iter().zip(&results) {
+            verify_case(run, case, result, &mut verification);
+        }
+    }
+    Ok(verification)
+}
+
+// A missing or inconsistent result carrier stops case inspection. A missing
+// terminal receipt still permits case failures to dominate an incomplete run.
+fn verified_results(
+    run: &Path,
+    case_count: usize,
+    verification: &mut Verification,
+) -> Result<Option<Vec<CaseResult>>> {
     let interrupted =
         !run.join("terminal.json").exists() && run.join("interrupted-terminal.json").exists();
     let result_path = run.join(if interrupted {
@@ -1081,118 +1102,117 @@ pub fn verify(run: &Path) -> Result<Verification> {
     let results: Vec<CaseResult> = match optional(&result_path) {
         Ok(Some(results)) => results,
         Ok(None) => {
-            raise(Verdict::Incomplete);
-            reasons.push("execution results missing".into());
-            return Ok(Verification { verdict, reasons });
+            verification.record(Verdict::Incomplete, "execution results missing");
+            return Ok(None);
         }
         Err(e) => {
-            raise(Verdict::Indeterminate);
-            reasons.push(e.to_string());
-            return Ok(Verification { verdict, reasons });
+            verification.record(Verdict::Indeterminate, e.to_string());
+            return Ok(None);
         }
     };
     let terminal: Option<serde_json::Value> = match optional(&terminal_path) {
         Ok(value) => value,
         Err(e) => {
-            raise(Verdict::Indeterminate);
-            reasons.push(e.to_string());
+            verification.record(Verdict::Indeterminate, e.to_string());
             None
         }
     };
-    if let Some(terminal) = &terminal {
-        if terminal.get("results_sha256").and_then(|v| v.as_str())
-            != Some(evidence::hash(&evidence::bounded_read(&result_path)?).as_str())
-            || results.len() != spec.cases.len()
-        {
-            raise(Verdict::Indeterminate);
-            reasons.push("terminal result integrity mismatch".into());
-            return Ok(Verification { verdict, reasons });
-        }
-        if interrupted {
-            let original_hash = optional::<Vec<CaseResult>>(&run.join("results.json"))?
-                .map(|_| {
-                    evidence::bounded_read(&run.join("results.json")).map(|b| evidence::hash(&b))
-                })
-                .transpose()?;
-            if terminal
-                .get("original_results_sha256")
-                .and_then(|v| v.as_str())
-                != original_hash.as_deref()
-            {
-                raise(Verdict::Indeterminate);
-                reasons.push("pre-interruption results integrity mismatch".into());
-                return Ok(Verification { verdict, reasons });
-            }
-        }
-    } else {
-        raise(Verdict::Incomplete);
-        reasons.push("worker has not published terminal evidence".into());
+    let Some(terminal) = terminal else {
+        verification.record(
+            Verdict::Incomplete,
+            "worker has not published terminal evidence",
+        );
+        return Ok(Some(results));
+    };
+    if terminal.get("results_sha256").and_then(|v| v.as_str())
+        != Some(evidence::hash(&evidence::bounded_read(&result_path)?).as_str())
+        || results.len() != case_count
+    {
+        verification.record(Verdict::Indeterminate, "terminal result integrity mismatch");
+        return Ok(None);
     }
-    for (case, result) in spec.cases.iter().zip(&results) {
-        if result.id != case.id {
-            raise(Verdict::Indeterminate);
-            reasons.push("case identity mismatch".into());
-            continue;
-        }
-        if result.reason != ExitReason::Exited
-            || result.code != Some(0)
-            || result.signal.is_some()
-            || !result.evidence_errors.is_empty()
+    if interrupted {
+        let original_hash = optional::<Vec<CaseResult>>(&run.join("results.json"))?
+            .map(|_| evidence::bounded_read(&run.join("results.json")).map(|b| evidence::hash(&b)))
+            .transpose()?;
+        if terminal
+            .get("original_results_sha256")
+            .and_then(|v| v.as_str())
+            != original_hash.as_deref()
         {
-            raise(
-                if matches!(
-                    result.reason,
-                    ExitReason::Interrupted | ExitReason::UnsupportedPlatform
-                ) {
-                    Verdict::Incomplete
-                } else {
-                    Verdict::Failed
-                },
+            verification.record(
+                Verdict::Indeterminate,
+                "pre-interruption results integrity mismatch",
             );
-            reasons.push(format!(
+            return Ok(None);
+        }
+    }
+    Ok(Some(results))
+}
+
+fn verify_case(run: &Path, case: &CaseSpec, result: &CaseResult, verification: &mut Verification) {
+    if result.id != case.id {
+        verification.record(Verdict::Indeterminate, "case identity mismatch");
+        return;
+    }
+    let incomplete = matches!(
+        result.reason,
+        ExitReason::Interrupted | ExitReason::UnsupportedPlatform
+    );
+    if result.reason != ExitReason::Exited
+        || result.code != Some(0)
+        || result.signal.is_some()
+        || !result.evidence_errors.is_empty()
+    {
+        verification.record(
+            if incomplete {
+                Verdict::Incomplete
+            } else {
+                Verdict::Failed
+            },
+            format!(
                 "{}: {:?}, code {:?}, signal {:?}",
                 case.id, result.reason, result.code, result.signal
-            ));
-            reasons.extend(result.evidence_errors.clone());
-        }
-        if matches!(
-            result.reason,
-            ExitReason::Interrupted | ExitReason::UnsupportedPlatform
-        ) {
-            continue;
-        }
-        let descriptors = artifacts(run, case);
-        if !descriptors
-            .iter()
-            .any(|a| a.required && !matches!(a.kind, evidence::ArtifactKind::File))
-        {
-            raise(Verdict::Failed);
-            reasons.push(format!(
+            ),
+        );
+        verification.reasons.extend(result.evidence_errors.clone());
+    }
+    if incomplete {
+        return;
+    }
+    let descriptors = artifacts(run, case);
+    if !descriptors
+        .iter()
+        .any(|a| a.required && !matches!(a.kind, evidence::ArtifactKind::File))
+    {
+        verification.record(
+            Verdict::Failed,
+            format!(
                 "{}: acceptance requires semantic, JUnit or Nix output evidence",
                 case.id
-            ));
-        }
-        for artifact in &descriptors {
-            match result
-                .artifacts
-                .iter()
-                .find(|r| r.source == artifact.source && r.original_path == artifact.path)
-            {
-                Some(receipt) => {
-                    if let Err(e) = evidence::validate(run, artifact, receipt) {
-                        raise(Verdict::Indeterminate);
-                        reasons.push(e.to_string());
-                    }
+            ),
+        );
+    }
+    for artifact in &descriptors {
+        match result
+            .artifacts
+            .iter()
+            .find(|r| r.source == artifact.source && r.original_path == artifact.path)
+        {
+            Some(receipt) => {
+                if let Err(e) = evidence::validate(run, artifact, receipt) {
+                    verification.record(Verdict::Indeterminate, e.to_string());
                 }
-                None if artifact.required => {
-                    raise(Verdict::Failed);
-                    reasons.push(format!("{}: required artifact missing", case.id));
-                }
-                None => {}
             }
+            None if artifact.required => {
+                verification.record(
+                    Verdict::Failed,
+                    format!("{}: required artifact missing", case.id),
+                );
+            }
+            None => {}
         }
     }
-    Ok(Verification { verdict, reasons })
 }
 fn rank(verdict: &Verdict) -> u8 {
     match verdict {

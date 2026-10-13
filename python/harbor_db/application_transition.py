@@ -3,7 +3,6 @@
 import argparse
 import contextlib
 import json
-import os
 import re
 import secrets
 import sys
@@ -12,7 +11,7 @@ import pwd
 from pathlib import Path
 
 from . import application_backup, resource
-from .durable import immutable_store_reference, lock, read_json, sync_directory, write_json
+from .durable import immutable_store_reference, lock, read_json, sync_directory
 from .transition_manifest import (candidate_path, custody_entry, fence, generation, inspect_barriers, install_barriers,
                                   independent_receipt, intent, release_barriers, require_root, stop_units, validate, validate_operator_policy, worker, write_owned)
 

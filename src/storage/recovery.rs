@@ -859,30 +859,8 @@ pub fn certify(
             || settings["receipt_file"] == settings["off_host_receipt_file"],
     )?;
     verify_backup(config, &directory, &leases)?;
-    let observed = super::codec::decode_str(&query_leased(
-        config,
-        socket,
-        port,
-        "postgres",
-        "SELECT json_build_object('data_dir', current_setting('data_directory'), 'major', (current_setting('server_version_num')::int / 10000)::text, 'system_identifier', system_identifier::text, 'read_only', current_setting('default_transaction_read_only'), 'in_recovery', pg_is_in_recovery(), 'replay_lsn', pg_last_wal_replay_lsn()::text) FROM pg_control_system()",
-        &leases,
-    )?)?;
-    let expected = json!({"data_dir":restored,"major":major(config)?,"system_identifier":settings["system_identifier"],"read_only":"on","in_recovery":false});
-    if expected
-        .as_object()
-        .unwrap()
-        .iter()
-        .any(|(key, v)| observed.get(key) != Some(v))
-    {
-        return Err(invalid(
-            "restored endpoint is not the declared disposable read-only recovery",
-        ));
-    }
-    if lsn(&observed["replay_lsn"])? < lsn(&binding["recovery_target_lsn"])? {
-        return Err(invalid(
-            "restored endpoint did not reach the recovery point",
-        ));
-    }
+    let observed =
+        verify_restored_endpoint(config, settings, &binding, &restored, socket, port, &leases)?;
     let actual = records(config, settings, socket, port, &leases)?;
     if actual != source["records"] {
         return Err(invalid(
@@ -902,6 +880,42 @@ pub fn certify(
     result["replay_lsn"] = observed["replay_lsn"].clone();
     durable::write_json(&absolute(&path(settings, "receipt_file")?)?, &result)?;
     Ok(result)
+}
+
+fn verify_restored_endpoint(
+    config: &Value,
+    settings: &Value,
+    binding: &Value,
+    restored: &Path,
+    socket: &Path,
+    port: u16,
+    leases: &[RawFd],
+) -> Result<Value> {
+    let observed = super::codec::decode_str(&query_leased(
+        config,
+        socket,
+        port,
+        "postgres",
+        "SELECT json_build_object('data_dir', current_setting('data_directory'), 'major', (current_setting('server_version_num')::int / 10000)::text, 'system_identifier', system_identifier::text, 'read_only', current_setting('default_transaction_read_only'), 'in_recovery', pg_is_in_recovery(), 'replay_lsn', pg_last_wal_replay_lsn()::text) FROM pg_control_system()",
+        leases,
+    )?)?;
+    let expected = json!({"data_dir":restored,"major":major(config)?,"system_identifier":settings["system_identifier"],"read_only":"on","in_recovery":false});
+    if expected
+        .as_object()
+        .unwrap()
+        .iter()
+        .any(|(key, v)| observed.get(key) != Some(v))
+    {
+        return Err(invalid(
+            "restored endpoint is not the declared disposable read-only recovery",
+        ));
+    }
+    if lsn(&observed["replay_lsn"])? < lsn(&binding["recovery_target_lsn"])? {
+        return Err(invalid(
+            "restored endpoint did not reach the recovery point",
+        ));
+    }
+    Ok(observed)
 }
 fn machine_acceptance(source: &Value, executor: &Value, off_host: bool) -> Result<()> {
     // Old legacy snapshots can still establish local recovery; they cannot
@@ -1369,6 +1383,46 @@ fn accept_prepared_restore(
     Ok(())
 }
 
+// Only bootstrap a missing snapshot. The backup lease spans journal binding and
+// capture, while the caller's preparation and writer leases remain held.
+fn capture_prepared_snapshot(
+    config: &Value,
+    settings: &Value,
+    backup_command: &[String],
+    journal: &Path,
+    endpoint: (&Path, u16),
+    now: Option<i64>,
+    outer: &[RawFd],
+) -> Result<()> {
+    if !exists(journal) {
+        for key in ["receipt_file", "off_host_receipt_file"] {
+            if let Some(receipt) = settings[key].as_str()
+                && exists(Path::new(receipt))
+            {
+                return Err(invalid(
+                    "recovery receipts exist without their bound source snapshot",
+                ));
+            }
+        }
+        preparation_command(backup_command, outer)?;
+    }
+    let backup_lease = backup_lease(settings)?;
+    let mut held = outer.to_vec();
+    held.push(backup_lease.fd());
+    let (_, binding) = backup(config, settings, clock(now)?, &held)?;
+    if exists(journal) {
+        if durable::read_json(&absolute(journal)?)? != binding {
+            return Err(invalid(
+                "managed preparation backup changed before snapshot; refusing replacement",
+            ));
+        }
+    } else {
+        durable::write_json(journal, &binding)?;
+    }
+    snapshot_leased(config, endpoint.0, endpoint.1, now, &held)?;
+    Ok(())
+}
+
 pub fn prepare(config: &Value, preparation: &Value, socket: &Path, port: u16) -> Result<Value> {
     prepare_at(config, preparation, socket, port, None)
 }
@@ -1416,33 +1470,15 @@ pub fn prepare_at(
         ));
     }
     if !exists(&source_snapshot) {
-        let journal = anchor.with_file_name("preparation.json");
-        if !exists(&journal) {
-            for key in ["receipt_file", "off_host_receipt_file"] {
-                if let Some(receipt) = settings[key].as_str()
-                    && exists(Path::new(receipt))
-                {
-                    return Err(invalid(
-                        "recovery receipts exist without their bound source snapshot",
-                    ));
-                }
-            }
-            preparation_command(&commands.backup, &leases)?;
-        }
-        let backup_lease = backup_lease(settings)?;
-        let mut held = leases.clone();
-        held.push(backup_lease.fd());
-        let (_, binding) = backup(config, settings, clock(now)?, &held)?;
-        if exists(&journal) {
-            if durable::read_json(&absolute(&journal)?)? != binding {
-                return Err(invalid(
-                    "managed preparation backup changed before snapshot; refusing replacement",
-                ));
-            }
-        } else {
-            durable::write_json(&journal, &binding)?;
-        }
-        snapshot_leased(config, socket, port, now, &held)?;
+        capture_prepared_snapshot(
+            config,
+            settings,
+            &commands.backup,
+            &anchor.with_file_name("preparation.json"),
+            (socket, port),
+            now,
+            &leases,
+        )?;
     } else {
         verify_prepared_snapshot(config, settings, now, &fence, &leases)?;
     }

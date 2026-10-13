@@ -200,8 +200,25 @@ pub fn owned_ancestors(path: &Path) -> Result<()> {
 pub fn validate(config: &Value) -> Result<(Value, Value)> {
     let (source, target) = validate_bindings(config)?;
     validate_barrier_paths(config, &source, &target)?;
-    let source_roots = paths(&source, "directories")?;
-    let target_roots = paths(&target, "directories")?;
+    let (source_roots, target_roots) = validate_corpus_roots(&source, &target)?;
+    validate_backup_namespace(config, &source, &source_roots, &target_roots)?;
+    validate_workers(config)?;
+    custody_entry(config, &target)?;
+    let receipt = Path::new(string(config, "independent_receipt")?);
+    owned_ancestors(receipt)?;
+    if receipt.exists() {
+        independent_receipt(config)?;
+    }
+    Ok((source, target))
+}
+
+fn overlaps(first: &Path, second: &Path) -> bool {
+    first.starts_with(second) || second.starts_with(first)
+}
+
+fn validate_corpus_roots(source: &Value, target: &Value) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+    let source_roots = paths(source, "directories")?;
+    let target_roots = paths(target, "directories")?;
     for path in source_roots.iter().chain(&target_roots) {
         custody::validate_path(
             path.to_str()
@@ -209,56 +226,58 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
         )?;
         super::recovery::absolute(path)?;
     }
-    if source_roots.iter().any(|source| {
-        target_roots
-            .iter()
-            .any(|target| source.starts_with(target) || target.starts_with(source))
-    }) {
+    if source_roots
+        .iter()
+        .any(|source| target_roots.iter().any(|target| overlaps(source, target)))
+    {
         return Err(invalid("source and target corpus roots must be disjoint"));
     }
+    Ok((source_roots, target_roots))
+}
+
+fn validate_backup_namespace(
+    config: &Value,
+    source: &Value,
+    source_roots: &[PathBuf],
+    target_roots: &[PathBuf],
+) -> Result<()> {
     let backup = durable::read_config_json(Path::new(string(config, "backup_manifest")?))?;
     let backup_root = Path::new(string(&backup, "root")?);
     custody::validate_path(string(&backup, "root")?)?;
     super::recovery::absolute(backup_root)?;
     let barrier = Path::new(string(config, "barrier_dir")?);
-    if backup_root.starts_with(barrier) || barrier.starts_with(backup_root) {
+    if overlaps(backup_root, barrier) {
         return Err(invalid(
             "backup and transition barrier roots must be disjoint",
         ));
     }
-    let authority = Path::new(string(&source, "state_dir")?);
-    if backup_root.starts_with(authority) || authority.starts_with(backup_root) {
+    let authority = Path::new(string(source, "state_dir")?);
+    if overlaps(backup_root, authority) {
         return Err(invalid("backup and authority roots must be disjoint"));
     }
     if source_roots
         .iter()
-        .chain(&target_roots)
-        .any(|corpus| backup_root.starts_with(corpus) || corpus.starts_with(backup_root))
+        .chain(target_roots)
+        .any(|corpus| overlaps(backup_root, corpus))
     {
         return Err(invalid("backup and corpus roots must be disjoint"));
     }
     let receipt = Path::new(string(config, "independent_receipt")?);
-    if receipt.starts_with(backup_root) || backup_root.starts_with(receipt) {
+    if overlaps(receipt, backup_root) {
         return Err(invalid(
             "independent receipt and backup publication storage must be disjoint",
         ));
     }
     if source_roots
         .iter()
-        .chain(&target_roots)
-        .any(|corpus| receipt.starts_with(corpus) || corpus.starts_with(receipt))
+        .chain(target_roots)
+        .any(|corpus| overlaps(receipt, corpus))
     {
         return Err(invalid(
             "independent receipt and corpus roots must be disjoint",
         ));
     }
-    validate_workers(config)?;
-    custody_entry(config, &target)?;
-    owned_ancestors(receipt)?;
-    if receipt.exists() {
-        independent_receipt(config)?;
-    }
-    Ok((source, target))
+    Ok(())
 }
 
 /// Root CLI evidence is imported into root-controlled storage, outside the
@@ -408,10 +427,7 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
     if let Some(entry) = custody_entry(config, target)? {
         controls.push(PathBuf::from(string(&entry, "custody_file")?));
     }
-    if controls
-        .iter()
-        .any(|control| receipt.starts_with(control) || control.starts_with(receipt))
-    {
+    if controls.iter().any(|control| overlaps(receipt, control)) {
         return Err(invalid(
             "independent receipt and transition control storage must be disjoint",
         ));
@@ -423,7 +439,7 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
     if barrier.exists() {
         owned(barrier, true)?;
     }
-    if barrier.starts_with(authority) || authority.starts_with(barrier) {
+    if overlaps(barrier, authority) {
         return Err(invalid(
             "root startup barriers must be outside application-owned authority",
         ));
@@ -432,7 +448,7 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
         .iter()
         .chain(paths(target, "directories")?.iter())
     {
-        if barrier.starts_with(p) || p.starts_with(barrier) {
+        if overlaps(barrier, p) {
             return Err(invalid(
                 "startup barriers must be outside the guarded storage",
             ));

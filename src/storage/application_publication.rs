@@ -338,6 +338,20 @@ mod tests {
     use super::*;
     use std::io::{Seek, SeekFrom, Write};
 
+    fn python_peer(script: &str, arguments: &[String]) -> process::CommandSpec {
+        let mut argv = vec!["python3".into(), "-B".into(), "-c".into(), script.into()];
+        argv.extend_from_slice(arguments);
+        let mut spec = process::CommandSpec::new(argv);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        spec
+    }
+
     fn root_source_fixture(test: &str) -> bool {
         if std::env::var_os("HARBOR_CREDENTIAL_ALIAS_CHILD").is_none() {
             let root = tempfile::tempdir().unwrap();
@@ -555,21 +569,7 @@ else: raise AssertionError('worker-controlled credential source was copied')
 assert not copied.exists(),'credential rejection mutated the copy namespace'
 assert (root/'worker-secret').read_bytes()==b'confidential source bytes'
 "#;
-        let mut spec = process::CommandSpec::new(vec![
-            "python3".into(),
-            "-B".into(),
-            "-c".into(),
-            script.into(),
-            user,
-            root.path().display().to_string(),
-        ]);
-        spec.environment = Some(std::collections::BTreeMap::from([
-            (
-                "PYTHONPATH".into(),
-                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
-            ),
-            ("PATH".into(), std::env::var("PATH").unwrap()),
-        ]));
+        let spec = python_peer(script, &[user, root.path().display().to_string()]);
         process::execute(&spec).unwrap();
     }
 
@@ -599,21 +599,7 @@ except ValueError: accepted=False
 else: accepted=True
 assert accepted == json.loads(sys.argv[2])
 "#;
-            let mut spec = process::CommandSpec::new(vec![
-                "python3".into(),
-                "-B".into(),
-                "-c".into(),
-                script.into(),
-                sources.to_string(),
-                accepted.to_string(),
-            ]);
-            spec.environment = Some(std::collections::BTreeMap::from([
-                (
-                    "PYTHONPATH".into(),
-                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
-                ),
-                ("PATH".into(), std::env::var("PATH").unwrap()),
-            ]));
+            let spec = python_peer(script, &[sources.to_string(), accepted.to_string()]);
             process::execute(&spec).unwrap();
         }
     }
@@ -638,21 +624,13 @@ application_publication.copy_tree(source,destination)
 assert os.stat(source/'records').st_ino != os.stat(destination/'records').st_ino
 "#;
         let peer = root.path().join("peer");
-        let mut spec = process::CommandSpec::new(vec![
-            "python3".into(),
-            "-B".into(),
-            "-c".into(),
-            script.into(),
-            source.to_string_lossy().into_owned(),
-            peer.to_string_lossy().into_owned(),
-        ]);
-        spec.environment = Some(std::collections::BTreeMap::from([
-            (
-                "PYTHONPATH".into(),
-                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
-            ),
-            ("PATH".into(), std::env::var("PATH").unwrap()),
-        ]));
+        let spec = python_peer(
+            script,
+            &[
+                source.to_string_lossy().into_owned(),
+                peer.to_string_lossy().into_owned(),
+            ],
+        );
         process::execute(&spec).unwrap();
         writer.seek(SeekFrom::Start(0)).unwrap();
         writer
@@ -691,14 +669,13 @@ assert os.stat(source/'records').st_ino != os.stat(destination/'records').st_ino
         for python in [false, true] {
             let destination = root.path().join(if python { "python" } else { "native" });
             let accepted = if python {
-                let mut spec = process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),"from pathlib import Path;import sys;from harbor_db.application_publication import copy_tree;copy_tree(*map(Path,sys.argv[1:]))".into(),source.display().to_string(),destination.display().to_string()]);
-                spec.environment = Some(std::collections::BTreeMap::from([
-                    (
-                        "PYTHONPATH".into(),
-                        format!("{}/python", env!("CARGO_MANIFEST_DIR")),
-                    ),
-                    ("PATH".into(), std::env::var("PATH").unwrap()),
-                ]));
+                let mut spec = python_peer(
+                    "from pathlib import Path;import sys;from harbor_db.application_publication import copy_tree;copy_tree(*map(Path,sys.argv[1:]))",
+                    &[
+                        source.display().to_string(),
+                        destination.display().to_string(),
+                    ],
+                );
                 spec.timeout = std::time::Duration::from_secs(120);
                 process::execute(&spec).is_ok()
             } else {
@@ -747,21 +724,13 @@ try: application_publication.copy_tree(Path(sys.argv[1]),Path(sys.argv[2]))
 except (ValueError,OSError): pass
 else: raise AssertionError('unsafe source copied')
 "#;
-            let mut spec = process::CommandSpec::new(vec![
-                "python3".into(),
-                "-B".into(),
-                "-c".into(),
-                script.into(),
-                source.to_string_lossy().into_owned(),
-                root.path().join("peer").to_string_lossy().into_owned(),
-            ]);
-            spec.environment = Some(std::collections::BTreeMap::from([
-                (
-                    "PYTHONPATH".into(),
-                    format!("{}/python", env!("CARGO_MANIFEST_DIR")),
-                ),
-                ("PATH".into(), std::env::var("PATH").unwrap()),
-            ]));
+            let spec = python_peer(
+                script,
+                &[
+                    source.to_string_lossy().into_owned(),
+                    root.path().join("peer").to_string_lossy().into_owned(),
+                ],
+            );
             process::execute(&spec).unwrap();
             assert_eq!(fs::read(secret).unwrap(), b"outside staged artifacts");
         }
