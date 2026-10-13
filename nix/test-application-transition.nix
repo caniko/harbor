@@ -29,6 +29,7 @@
   sourceAuthority = {
     resource = "demo";
     user = "demo";
+    consumer_timeout_seconds = 30;
     state_dir = "/var/lib/demo-authority";
     directories = ["/var/lib/demo-old"];
     binding.backend = "filesystem-source";

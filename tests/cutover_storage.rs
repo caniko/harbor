@@ -828,6 +828,15 @@ fn consumer_prepared_namespace_scan_retains_source_roots_with_target_identity_in
         if python {
             let script = r#"import json,sys,time
 from harbor_db import cutover
+# Transition fixtures also model sandbox root-owned ancestors. Retain real
+# modes, kinds and inodes, as in the native testing engine and transition suite.
+if store_uid:
+    def ancestor_lstat(path, *args, **kwargs):
+        info=original_store_lstat(path, *args, **kwargs)
+        if info.st_uid!=store_uid: return info
+        fields=list(info); fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',ancestor_lstat).start()
 manifest,alias=map(json.loads,sys.argv[1:])
 contracts=cutover.validate_storage_namespaces(manifest)
 assert any(str(root).endswith('/source') for root,_ in cutover.namespace_roots(manifest,contracts=contracts))
