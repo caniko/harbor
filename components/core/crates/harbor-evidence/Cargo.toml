@@ -6,6 +6,22 @@ rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/caniko/harbor"
 description = "Source-bound artifact acceptance and atomic evidence for Harbor consumers"
+readme = "README.md"
+documentation = "https://docs.rs/harbor-evidence"
+keywords = ["nix", "artifacts", "provenance", "ci"]
+categories = ["development-tools::build-utils"]
+include = [
+  "src/**",
+  "tests/**",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["-D", "warnings"]
 
 [[bin]]
 name = "harbor"
