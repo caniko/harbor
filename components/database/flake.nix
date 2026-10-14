@@ -228,6 +228,7 @@
           HARBOR_DB_TEST_POSTGRES_17 = pkgs.postgresql_17;
           HARBOR_DB_TEST_CONFIG_FIXTURE = configurationFixture pkgs;
           HARBOR_DB_TEST_MACHINE_ID = pkgs.writeText "harbor-db-test-machine-id" "00000000000000000000000000000001\n";
+          HARBOR_DB_TEST_PRIVATE_ROOT = "1";
           preBuild = ''
             export HARBOR_DB_TEST_ROOT_UID=$(${pkgs.coreutils}/bin/stat -Lc %u "$HARBOR_DB_TEST_CONFIG_FIXTURE/postgresql.json")
           '';
