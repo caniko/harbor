@@ -130,3 +130,24 @@ The Linux Cargo run/test/bench gate passed. Four-system evaluation exposes all
 three restored runtime checks; hosted native execution remains a separate
 producer-admission requirement. Original predecessor working-tree and index
 edits remain preserved outside these integrated signed-commit deltas.
+
+## Publisher-owned static binary packages
+
+The refreshed original Rust checkout adds branch `feat/upstream-static-binaries`
+at signed tip `608afb8f1157044f9901b39bdae54f23e0227e95`. Its four implementation
+commits after `f2ca823` are `417f596`, `8e303af`, `731830d` and `608afb8`.
+The complete history is retained locally at
+`refs/migration-retained/predecessor-harbor-rs-608afb8-20261014` and published as
+signed archival tag
+`retained-ref/20261014/harbor-rs/heads/feat/upstream-static-binaries`.
+
+The active Rust facade exposes `mkUpstreamBinaryPackage`; the constructor retains
+the source's path, static ELF, architecture, executable-entry and optional
+executable-mode contracts. All five source check groups are wired into Linux
+component checks and the existing full Rust qualification lane. The shared
+manifest owns platform selection and bounded execution; the predecessor's
+standalone generated workflow and lock are not separate owners. The existing
+manifest-based release constructor remains covered by the retained legacy check.
+The imported Python ELF fixture follows the shared formatter while retaining its
+fixture semantics. Source integration and archival publication do not establish
+hosted acceptance or permission for consumer cutover.
