@@ -4,7 +4,7 @@
   inputs = {
     # Consume qualified tool sources without their consumer flake graphs.
     simit = {
-      url = "git+https://github.com/caniko/simit.git?ref=migrate/harbor-monorepo-reconcile-20261012-current&rev=90bed59acf2312e5d68c6df2a88751633db4d4fe";
+      url = "git+https://github.com/caniko/simit.git?ref=fix/monorepo-nix-diagnostics-20261014&rev=d55e4e2237bceee9d3faa44c1a220cef4d6b0dfb";
       flake = false;
     };
     plinth-source = {
