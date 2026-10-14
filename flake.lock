@@ -455,17 +455,17 @@
     "simit": {
       "flake": false,
       "locked": {
-        "lastModified": 1791931396,
-        "narHash": "sha256-S21w7OkwyFPRghyU2ONX5dFoByUK7AJkJU0t9JwOWeM=",
+        "lastModified": 1791939107,
+        "narHash": "sha256-KSEhdT660yN+dGrPtgMM+9NYt/CgOJq9ZYjLwgO4BWw=",
         "ref": "fix/monorepo-nix-diagnostics-20261014",
-        "rev": "d55e4e2237bceee9d3faa44c1a220cef4d6b0dfb",
-        "revCount": 618,
+        "rev": "54ae206d02f7ad371bb206c337594615894cd43e",
+        "revCount": 619,
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       },
       "original": {
         "ref": "fix/monorepo-nix-diagnostics-20261014",
-        "rev": "d55e4e2237bceee9d3faa44c1a220cef4d6b0dfb",
+        "rev": "54ae206d02f7ad371bb206c337594615894cd43e",
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       }
