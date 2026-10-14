@@ -2,9 +2,26 @@
 name = "caniko-harbor-sdk"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/caniko/harbor"
 description = "Rust helpers for realizing and publishing macOS SDK archives"
+readme = "README.md"
+documentation = "https://docs.rs/caniko-harbor-sdk"
+keywords = ["nix", "macos", "sdk", "attic"]
+categories = ["development-tools::build-utils"]
+include = [
+  "src/**",
+  "tests/**",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["-D", "warnings"]
 
 [lib]
 name = "harbor_sdk"
