@@ -338,21 +338,29 @@ class ClusterLifecycleTest(unittest.TestCase):
         self.old = self.root / "17"
         (self.old / "PG_VERSION").write_text("17\n")
         (self.old / "pg_tblspc").mkdir()
+        old_package, new_package = self.root / "postgres17", self.root / "postgres18"
+        for package in (old_package, new_package):
+            (package / "bin").mkdir(parents=True)
+            for name in ("pg_ctl", "pg_controldata", "initdb", "pg_upgrade"):
+                (package / "bin" / name).write_text("fixture executable\n")
+        validator = self.root / "validate"
+        validator.write_text("fixture validator\n")
+        self.config["package"] = str(new_package)
         self.config["upgrade"] = {
             "data_dir": str(self.old),
             "major": "17",
-            "package": "/postgres17",
-            "validate_command": ["/validate"],
+            "package": str(old_package),
+            "validate_command": [str(validator)],
         }
         source = dict(
-            self.config, data_dir=str(self.old), major="17", package="/postgres17"
+            self.config, data_dir=str(self.old), major="17", package=str(old_package)
         )
         postgres.adopt(source, "12345")
         stage = self.root / "18.harbor-staging"
         stage.mkdir()
         (stage / "PG_VERSION").write_text("18\n")
         journal = {
-            "version": 1,
+            "version": 2,
             "phase": "ready",
             "source": postgres.identity(source, "12345"),
             "source_control": "digest",
@@ -362,6 +370,7 @@ class ClusterLifecycleTest(unittest.TestCase):
             "staging": str(stage),
             "identity": postgres.identity(self.config, "12345"),
             "source_copy": str(self.root / "18.harbor-source"),
+            "contract": postgres.upgrade_contract(self.config),
         }
         write_json(self.state / "upgrade.json", journal)
         return stage, journal

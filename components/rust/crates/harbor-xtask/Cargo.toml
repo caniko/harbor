@@ -2,9 +2,26 @@
 name = "harbor-xtask"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/caniko/harbor"
 description = "Reusable synchronous xtask helpers for Rust workspaces"
+readme = "README.md"
+documentation = "https://docs.rs/harbor-xtask"
+keywords = ["nix", "cargo", "xtask", "ci"]
+categories = ["development-tools::build-utils"]
+include = [
+  "src/**",
+  "tests/**",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["-D", "warnings"]
 
 [dependencies]
 anyhow = "1"

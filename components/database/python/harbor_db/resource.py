@@ -4,12 +4,15 @@ import argparse
 import contextlib
 import json
 import os
+import pwd
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-from .durable import lock, read_json, write_json
+from . import process
+from .durable import immutable_store_reference, lock, read_json, write_json
 from .postgres import require_mounts
 
 
@@ -29,21 +32,85 @@ def state_directory(config):
     return state
 
 
-def contract(config):
+def consumer_policy(config):
+    argv = config.get("consumer_command", [])
+    if not isinstance(argv, list) or any(not isinstance(value, str) for value in argv):
+        raise AuthorityError("invalid consumer command")
+    if not argv:
+        return None
+    consumer_timeout(config)
+    immutable_store_reference(argv[0], executable=True)
+    uid = os.geteuid()
+    user = config.get("user")
+    if user is None:
+        if uid == 0:
+            raise AuthorityError(
+                "root consumer validation requires the declared resource user"
+            )
+        user = pwd.getpwuid(uid).pw_name
+    account = pwd.getpwnam(user)
+    if account.pw_uid == 0 or (
+        uid != 0 and (uid != account.pw_uid or os.getuid() != account.pw_uid)
+    ):
+        raise AuthorityError(
+            "consumer validator requires the unprivileged resource user"
+        )
+    return argv, user, account
+
+
+def consumer_timeout(config):
+    seconds = config.get("consumer_timeout_seconds", 30)
+    if type(seconds) is not int or not 1 <= seconds <= 300:
+        raise AuthorityError("invalid consumer execution budget")
+    return seconds
+
+
+def contract(config, *, deadline=None):
+    remaining = None if deadline is None else deadline - time.monotonic()
+    if remaining is not None and remaining <= 0:
+        raise AuthorityError("cutover inspection budget exhausted")
     require_mounts(config)
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", config["resource"]):
         raise AuthorityError("invalid resource name")
     state = state_directory(config)
     consumer = {}
-    if config.get("consumer_command"):
-        result = subprocess.run(
-            config["consumer_command"], capture_output=True, text=True, check=False
-        )
-        if result.returncode:
-            raise AuthorityError(
-                f"consumer storage validation failed: {result.stderr.strip()}"
+    policy = consumer_policy(config)
+    if policy:
+        argv, user, account = policy
+        identity = (
+            dict(
+                user=account.pw_uid,
+                group=account.pw_gid,
+                extra_groups=os.getgrouplist(user, account.pw_gid),
             )
-        consumer = json.loads(result.stdout)
+            if os.geteuid() == 0
+            else {}
+        )
+        try:
+            timeout = consumer_timeout(config)
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AuthorityError("cutover inspection budget exhausted")
+                timeout = min(timeout, remaining)
+            output = process.execute(
+                argv,
+                timeout=timeout,
+                maximum_output=1024 * 1024,
+                failure_context="consumer storage validation failed",
+                cwd="/",
+                environment={
+                    "PATH": str(Path(argv[0]).parent),
+                    "HOME": "/",
+                    "LANG": "C.UTF-8",
+                    "USER": user,
+                    "LOGNAME": user,
+                },
+                **identity,
+            )
+        except ValueError as error:
+            raise AuthorityError(str(error)) from error
+        consumer = json.loads(output.decode("utf-8"))
         if (
             not isinstance(consumer, dict)
             or set(consumer)
@@ -143,14 +210,57 @@ def check(config):
         pass
 
 
+def require_stable(config):
+    path = Path(config["state_dir"]) / "transition.json"
+    if path.exists() and read_json(path)["phase"] not in (
+        "planned",
+        "write-enabled",
+        "complete",
+        "aborted",
+    ):
+        raise AuthorityError(
+            "application backend transition is unfinished; ordinary startup is inhibited"
+        )
+
+
 @contextlib.contextmanager
-def inspection(config):
+def inspection(config, *, pinned=None, deadline=None):
     """Retain existing authority while an additional consumer guard inspects it."""
     state = state_directory(config)
     if not (state / "identity.json").exists():
         raise AuthorityError("storage is not adopted; explicit adoption is required")
     with lock(state / "lock", shared=True):
-        yield verify(config, contract(config))
+        require_stable(config)
+        expected = contract(config, deadline=deadline)
+        require_contract(expected, pinned)
+        yield verify(config, expected)
+
+
+def require_contract(observed, pinned):
+    if pinned is None:
+        return
+    if any(
+        observed.get(key) != pinned.get(key)
+        for key in ("version", "resource", "binding", "directories")
+    ):
+        raise AuthorityError(
+            "consumer authority differs from the namespace inspection contract"
+        )
+    retained = pinned.get("required_files", [])
+    if not set(retained).issubset(observed.get("required_files", [])):
+        raise AuthorityError("consumer evidence regressed since namespace inspection")
+    require_files(retained)
+    for key, floor in pinned.get("minimum_counters", {}).items():
+        current = observed.get("minimum_counters", {}).get(key)
+        if (
+            type(floor) is not int
+            or floor < 0
+            or type(current) is not int
+            or current < floor
+        ):
+            raise AuthorityError(
+                "consumer evidence regressed since namespace inspection"
+            )
 
 
 def serve(config, argv, *, inspect=None):
@@ -158,6 +268,7 @@ def serve(config, argv, *, inspect=None):
     if not argv or not Path(argv[0]).is_absolute():
         raise AuthorityError("consumer executable must be an absolute path")
     with lock(state_directory(config) / "lock", shared=True) as lease:
+        require_stable(config)
         verify(config, contract(config))
         if inspect is not None:
             inspect()
@@ -171,7 +282,7 @@ def adopt(config, identifier):
 
 
 @contextlib.contextmanager
-def adoption(config, identifier):
+def adoption(config, identifier, *, expected=None, deadline=None):
     """Keep writers excluded through independent proof and authority publication."""
     if not identifier or len(identifier) > 128:
         raise AuthorityError("a verified nonempty storage identifier is required")
@@ -179,13 +290,18 @@ def adoption(config, identifier):
     # A registered resource must retain its original lock inode, even if a
     # writer still holds that inode after its pathname has disappeared.
     with lock(state / "lock", create=not (state / "identity.json").exists()):
-        yield lambda: publish_adoption(config, identifier)
+        yield lambda: publish_adoption(
+            config, identifier, expected=expected, deadline=deadline
+        )
 
 
-def publish_adoption(config, identifier):
+def publish_adoption(config, identifier, *, expected=None, deadline=None):
     """Called only by the publisher yielded under the existing adoption lease."""
     state = state_directory(config)
-    expected = contract(config)
+    observed = contract(config, deadline=deadline)
+    if expected is not None and observed != expected:
+        raise AuthorityError("consumer authority changed during custody certification")
+    expected = observed if expected is None else expected
     if (state / "identity.json").exists():
         if verify(config, expected)["identity"] != identifier:
             raise AuthorityError("cannot replace adopted storage identity")

@@ -35,6 +35,41 @@ acceptance metadata and excluded from the file inventory.
 `lib.packageTests.mkArtifactVerifier { inherit pkgs; }` produces
 `harbor-verify-artifact` for service/deployment verification:
 
+The implementation is the `harbor-evidence` Rust library and packaged binaries.
+The composable frontends expose `harbor dev artifact snapshot`,
+`harbor dev artifact accept`, `harbor prod artifact verify-local`, and
+`harbor prod artifact verify-http`. The compatibility entry point below retains
+the existing argument contract. Schema-one manifests from previous accepted
+outputs remain valid. Manifest writes are private, atomic and synced; snapshot
+refuses an existing destination, and acceptance replaces it only after the report
+and original artifact bytes are verified. HTTP checks stream hashes under a
+15-second per-asset deadline and refuse redirects. No Python runtime is required.
+
+`harbor_evidence::execution::record_step` journals a caller-supplied executor
+exactly once. It binds the executable and source/input files before and after
+execution, syncs and hashes private raw stdout/stderr, and writes an atomic
+receipt before launch. Pre-spawn refusal, normal failure, timeout, cancellation,
+unknown effect and source drift retain distinct statuses. A `MayMutate` step
+requires application reconciliation even after exit zero; a process receipt
+does not certify application acceptance. Interrupted journals and partial logs
+remain available for reconciliation. Existing receipts refuse replay.
+
+The executor callback owns the configured command and must execute the supplied
+identity, preserve its logs, and settle its process group before returning a
+terminal result. This library does not interpret arguments or certify that an
+application's effects have been reconciled.
+
+### Rust cutover qualification
+
+The 12 October 2026 cutover passes 13 native tests, strict all-target Clippy and
+Cargo package verification. Original helper/test bytes are checksum-bound under
+`/data/nvme0/can/ProjectState/evidence/syndb-rust-ops-migration-20261012-NX0v9tLv/harbor-original/`.
+The earlier artifact package/adapter acceptance passes. Final package/adapter
+qualification for the execution-journal additions encountered bounded evaluation
+lease refusals, followed by a denied native-evaluation shell invocation. It
+remains open, as do upstream publication, released consumer pins and the denied
+formatter-identity capture.
+
 ```sh
 harbor-verify-artifact verify-local --manifest SITE/.harbor/acceptance.json \
   --root SITE --backend BACKEND_STORE_PATH

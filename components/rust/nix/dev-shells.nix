@@ -35,7 +35,7 @@ in
   (harbor.mkDevShells {
     inherit pkgs cross cargoConfig;
     inherit (toolchain) craneLib;
-    packages = [treefmtWrapper pkgs.jq] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [pkgs.bubblewrap pkgs.dbus pkgs.sway] ++ docsPackages ++ harborCiShellTools.packages ++ rsHarborShellTools.packages;
+    packages = [treefmtWrapper pkgs.jq] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [pkgs.bubblewrap pkgs.dbus pkgs.sway pkgs.util-linux] ++ docsPackages ++ harborCiShellTools.packages ++ rsHarborShellTools.packages;
     extraEnv = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
       HARBOR_TEST_BWRAP = pkgs.lib.getExe pkgs.bubblewrap;
       HARBOR_TEST_BASH = pkgs.lib.getExe pkgs.bash;

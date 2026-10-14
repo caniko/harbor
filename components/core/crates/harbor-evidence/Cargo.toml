@@ -1,0 +1,46 @@
+[package]
+name = "harbor-evidence"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/caniko/harbor"
+description = "Source-bound artifact acceptance and atomic evidence for Harbor consumers"
+readme = "README.md"
+documentation = "https://docs.rs/harbor-evidence"
+keywords = ["nix", "artifacts", "provenance", "ci"]
+categories = ["development-tools::build-utils"]
+include = [
+  "src/**",
+  "tests/**",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["-D", "warnings"]
+
+[[bin]]
+name = "harbor"
+path = "src/main.rs"
+
+[[bin]]
+name = "harbor-verify-artifact"
+path = "src/bin/harbor-verify-artifact.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+ureq = "3"
+url = "2"
+walkdir = "2"
+
+[lints]
+workspace = true

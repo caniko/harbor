@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -53,6 +55,7 @@ function fixture() {
       const path = join(directory, executable);
       mkdirSync(join(path, ".."), { recursive: true });
       writeFileSync(path, "#!/usr/bin/env node\n");
+      chmodSync(path, 0o755);
     }
   }
   const peers = [
@@ -83,13 +86,53 @@ function fixture() {
   const scope = scopes.get("browserslist")!;
   const bin = join(scope, ".bin/update-browserslist-db");
   const executable = join(scope, "update-browserslist-db/cli.js");
+  const peer = scopes.get("update-browserslist-db")!;
+  mkdirSync(join(peer, ".bin"), { recursive: true });
+  const browserslistExecutable = join(peer, "browserslist/cli.js");
   const run = () =>
     Bun.spawnSync({
       cmd: [process.execPath, join(import.meta.dir, "normalize-links.ts")],
       cwd: root,
     });
-  return { bin, executable, run };
+  return { bin, executable, peer, browserslistExecutable, run };
 }
+
+test("restores the missing frozen Browserslist peer bin without changing package bytes", () => {
+  const { peer, browserslistExecutable: executable, run } = fixture();
+  const before = readFileSync(executable);
+  expect(run().exitCode).toBe(0);
+  expect(existsSync(join(peer, ".bin/browserslist"))).toBe(true);
+  expect(readlinkSync(join(peer, ".bin/browserslist"))).toBe(
+    "../browserslist/cli.js",
+  );
+  expect(readFileSync(executable)).toEqual(before);
+  expect(run().exitCode).toBe(0);
+  expect(readlinkSync(join(peer, ".bin/browserslist"))).toBe(
+    "../browserslist/cli.js",
+  );
+});
+
+test("refuses to replace an unrelated regular file with the peer bin", () => {
+  const { peer, run } = fixture();
+  const bin = join(peer, ".bin/browserslist");
+  writeFileSync(bin, "operator file");
+  expect(run().exitCode).not.toBe(0);
+  expect(readFileSync(bin, "utf8")).toBe("operator file");
+});
+
+test("rejects a resolved Browserslist version outside the frozen lock", () => {
+  const { peer, run } = fixture();
+  writeFileSync(
+    join(peer, "browserslist/package.json"),
+    JSON.stringify({
+      name: "browserslist",
+      version: "0.0.0",
+      bin: { browserslist: "cli.js" },
+    }),
+  );
+  expect(run().exitCode).not.toBe(0);
+  expect(existsSync(join(peer, ".bin/browserslist"))).toBe(false);
+});
 
 test("restores the reciprocal circular peer executable without changing package bytes", () => {
   const { bin, executable, run } = fixture();

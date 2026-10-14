@@ -15,6 +15,7 @@ let
     ntt = ../../ntt;
   };
   lib = rec {
+    all = builtins.all;
     concatStringsSep = builtins.concatStringsSep;
     mapAttrs = builtins.mapAttrs;
     optional = enabled: value:

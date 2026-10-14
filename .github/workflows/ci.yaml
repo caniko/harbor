@@ -86,8 +86,17 @@ jobs:
     - name: history
       run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check history --nix-diagnostics
       timeout-minutes: 30
+    - name: userns-contracts
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check userns-contracts --nix-diagnostics
+      timeout-minutes: 5
     - name: format
       run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check format --nix-diagnostics
+      timeout-minutes: 30
+    - name: test
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check test --nix-diagnostics
+      timeout-minutes: 30
+    - name: clippy
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check clippy --nix-diagnostics
       timeout-minutes: 30
     - name: module-platforms
       run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check module-platforms --nix-diagnostics
@@ -118,6 +127,9 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
+    - name: userns
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component database --check userns --nix-diagnostics
+      timeout-minutes: 5
     - name: hosted-cache
       run: nix develop --print-build-logs .#ci --command simit monorepo check --component database --check hosted-cache --nix-diagnostics
       timeout-minutes: 30
@@ -366,6 +378,9 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
+    - name: userns
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component rust --check userns --nix-diagnostics
+      timeout-minutes: 5
     - name: test
       run: nix develop --print-build-logs .#ci --command simit monorepo check --component rust --check test --nix-diagnostics
       timeout-minutes: 30

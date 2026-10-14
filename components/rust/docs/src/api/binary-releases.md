@@ -1,5 +1,51 @@
 # Binary release archives
 
+## Publisher-owned static archives
+
+`harbor.lib.rust.mkUpstreamBinaryPackage` installs static Linux executables from
+publisher-owned `tar.gz`, `tar.xz`, or already-unpacked sources. It accepts an
+explicit installed-name-to-source mapping and preserves executable bytes.
+`mkReleaseBinaryPackage` retains its independent Harbor-manifest contract.
+
+```nix
+harbor.lib.rust.mkUpstreamBinaryPackage {
+  inherit pkgs;
+  pname = "example";
+  version = "1.2.3";
+  sources.x86_64-linux = pkgs.fetchurl {
+    url = "https://example.org/releases/1.2.3/example-x86_64-linux-musl.tar.gz";
+    hash = "sha256-...";
+  };
+  binaries.example = "example-1.2.3/example";
+  meta.mainProgram = "example";
+}
+```
+
+Only `x86_64-linux` and `aarch64-linux` targets are supported. The default is
+`pkgs.stdenv.hostPlatform.system`; an explicit `targetSystem` selects an archive
+for another supported architecture without executing its contents during
+installation. Mappings are relative to the source tree or archive root, including
+any enclosing directory. A locked tarball input may strip an enclosing directory;
+use the returned tree's layout for already-unpacked sources.
+
+Destination names must be safe filename components. Source paths cannot contain
+absolute, empty, `.` or `..` components or line breaks. Every path component must
+be nonsymlink, and the payload must be a regular static ELF executable for the
+selected machine. Interpreters, dynamic dependencies, relocatable objects, core
+dumps and shared libraries without an executable entry point are rejected. Static
+PIE is accepted only with a nonzero entry point in executable, file-backed
+`PT_LOAD` data. Fixup is disabled.
+
+Sources must be executable by default. For publishers that archive executable
+ELF payloads with mode `0644`, set `requireExecutable = false` explicitly. Other
+validation remains enforced; installation sets `0755` without changing contents.
+
+Callers own fixed-output hashes or locked non-flake inputs, provenance and
+signature verification, licenses, feature compatibility, and runtime
+qualification. This constructor does not infer wrappers, runtime libraries,
+manifests or auxiliary assets, and does not contact provenance services during
+evaluation or build.
+
 The v1-compatible `mkBinaryRelease` packages one or more already-built binaries into a
 deterministic, static MUSL archive. The archive contains `bin/` and a
 `manifest.json` describing the package name, version, Nix system, Rust target,

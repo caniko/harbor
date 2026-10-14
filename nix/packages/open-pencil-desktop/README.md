@@ -15,9 +15,11 @@ typographic fidelity.
 
 `frontend.nix` requires two independent cold, frozen Bun installs to produce
 byte-identical dependency archives in its fixed-output derivation. The pinned
-Bun 1.4.2 linker races on the shared `react-is` alias and an ESLint peer binary;
+Bun 1.4.2 linker races on the shared `react-is` alias and ESLint/Browserslist peer binaries;
 `normalize-links.ts` binds the alias to the unaliased frozen-lock entry and
-recreates the binary from its already-resolved peer manifest. Package payloads,
+recreates the binaries from their already-resolved peer manifests. The Browserslist
+peer identity and bin path must match the frozen lock. Its missing-bin regression
+also runs inside the fixed-output derivation. Package payloads,
 workspace links, and version-specific dependency links retain their contents.
 The archive stores regular-file bytes independently of Bun's filesystem-dependent
 hardlink sharing and uses numeric owners. Symbolic workspace and dependency links

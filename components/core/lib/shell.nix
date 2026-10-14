@@ -1,4 +1,6 @@
 _: rec {
+  mkRuntime = import ./runtime.nix;
+
   normalize = fragment: {
     packages = fragment.packages or [];
     env = fragment.env or {};
@@ -12,7 +14,7 @@ _: rec {
       in {
         packages = acc.packages ++ spec.packages;
         env = acc.env // spec.env;
-        shellHook = acc.shellHook + spec.shellHook;
+        shellHook = acc.shellHook + "\n" + spec.shellHook;
       }
     ) {
       packages = [];
@@ -24,6 +26,7 @@ _: rec {
   mkShell = {
     pkgs,
     timeZone ? "UTC",
+    shells ? [],
     fragments ? [],
     packages ? [],
     env ? {},
@@ -32,7 +35,12 @@ _: rec {
     mkShellArgs ? {},
   }: let
     merged = merge (
-      fragments
+      map (shell: {
+        env = shell.passthru.devShellSpec.env or (shell.env or {});
+        shellHook = shell.shellHook or "";
+      })
+      shells
+      ++ fragments
       ++ [
         {
           inherit packages env;
@@ -52,6 +60,9 @@ _: rec {
         packages = [pkgs.bashInteractive] ++ merged.packages ++ timezone.packages;
         env = timezone.env // merged.env;
         shellHook = timezone.shellHook + merged.shellHook;
+        # Inherit the builder's actual dependencies, not just spec.packages.
+        # Hooks are merged above so inputsFrom must not run them a second time.
+        inputsFrom = map (shell: shell // {shellHook = "";}) shells ++ (mkShellArgs.inputsFrom or []);
       };
     drv =
       if builder != null
@@ -60,7 +71,7 @@ _: rec {
         pkgs.mkShell (
           mkShellArgs
           // {
-            inherit (spec) packages env shellHook;
+            inherit (spec) packages env shellHook inputsFrom;
           }
         );
   in

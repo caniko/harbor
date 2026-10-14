@@ -3,6 +3,7 @@
   lib,
   options,
   pkgs,
+  harborDbStoragePackage,
   ...
 }: let
   inherit (lib) mkOption types;
@@ -26,10 +27,11 @@
         port =
           if config.services.harbor-db.postgresql.switchAdoption != null
           then config.services.harbor-db.postgresql.switchAdoption.port
-          else 5432;
+          else config.services.postgresql.settings.port;
       };
     };
-  manifest = pkgs.writeText "harbor-db-cutover.json" (builtins.toJSON {
+  immutableFiles = import ./immutable-files.nix {inherit lib;};
+  manifest = immutableFiles.checkedManifest "Harbor DB cutover" (map (entry: entry.git_executable) (lib.attrValues cfg.resources)) (pkgs.writeText "harbor-db-cutover.json" (builtins.toJSON {
     version = 1;
     enforced = cfg.enable;
     host = config.networking.hostName;
@@ -37,11 +39,20 @@
     timeout_seconds = cfg.timeoutSeconds;
     activation_timeout_seconds = cfg.activationTimeoutSeconds;
     inherit resources;
-  });
+  }));
   protectedDirectories = lib.concatMap (entry:
     if entry.kind == "filesystem"
     then entry.authority.directories
     else []) (lib.attrValues resources);
+  custodyNamespaces = import ./custody-namespaces.nix {inherit config lib options;};
+  storagePaths = import ./storage-paths.nix {inherit lib;};
+  normalizedPath = storagePaths.normalizedAbsolute;
+  protectedPath = path:
+    lib.any (root: let
+      prefix = lib.removeSuffix "/" root;
+    in
+      path == prefix || lib.hasPrefix "${prefix}/" path)
+    protectedDirectories;
   requireExisting = rule: let
     matched = builtins.match "([dDvqQ][^[:space:]]*)[[:space:]]+('([^']*)'|\"([^\"]*)\"|([^[:space:]]+))([[:space:]].*)" rule;
     path =
@@ -53,7 +64,9 @@
       then builtins.elemAt matched 3
       else builtins.elemAt matched 4;
   in
-    if cfg.enable && matched != null && lib.elem path protectedDirectories
+    if cfg.enable && matched != null && !normalizedPath path
+    then throw "Harbor-DB custody requires normalized absolute directory-creating tmpfiles paths: ${path}"
+    else if cfg.enable && matched != null && protectedPath path
     then "z ${builtins.elemAt matched 1}${builtins.elemAt matched 5}"
     else rule;
   declaredDirectories =
@@ -72,7 +85,9 @@
       then throw "Harbor-DB guarded writer command must use an absolute executable without systemd privilege/argv modifiers: ${name}"
       else "${cfg.package}/bin/harbor-db-cutover serve --contract ${manifest} --host ${config.networking.hostName} --resource ${lib.head names} -- ${command}";
     startupCheck = "+${cfg.package}/bin/harbor-db-cutover check --contract ${manifest} --host ${config.networking.hostName} --phase startup";
-    commands = lib.filterAttrs (key: _: lib.elem key ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload" "ExecStop" "ExecStopPost"]) service;
+    # Quiescing inhibits startup before stopping writers. Their graceful shutdown
+    # hooks must remain callable until systemd has drained the existing service.
+    commands = lib.filterAttrs (key: _: lib.elem key ["ExecCondition" "ExecStartPre" "ExecStart" "ExecStartPost" "ExecReload"]) service;
   in
     if !cfg.enable || names == []
     then service
@@ -86,8 +101,9 @@
         else wrap command)
       commands;
 in {
+  imports = [./storage-package-argument.nix];
   # Application modules often emit boot-only `d` rules with no initialization
-  # option. Enforced historical roots retain permission repair, never creation.
+  # option. Historical roots and descendants retain repair, never creation.
   options.systemd.tmpfiles.rules = mkOption {apply = rules: map requireExisting rules;};
   options.systemd.services = mkOption {
     type = types.attrsOf (types.submodule ({name, ...}: {
@@ -98,7 +114,7 @@ in {
     enable = lib.mkEnableOption "mandatory rebuild and activation cutover admission";
     package = mkOption {
       type = types.package;
-      default = import ./postgres-package.nix {inherit pkgs;};
+      default = harborDbStoragePackage;
       description = "Harbor-DB cutover and existing storage/recovery engines.";
     };
     timeoutSeconds = mkOption {
@@ -112,7 +128,13 @@ in {
       description = "Bounded byte-verification and custody certification budget.";
     };
     resources = mkOption {
-      type = types.attrsOf (types.submodule ({name, ...}: {
+      type = types.attrsOf (types.submodule ({
+        name,
+        config,
+        ...
+      }: let
+        resourceUser = config.user;
+      in {
         options = {
           kind = mkOption {
             type = types.enum ["filesystem"];
@@ -146,6 +168,11 @@ in {
             description = "Database-owned corpus paths: read-only SQL returns a JSON array of {path, directory} entries relative to the indexed authority root.";
           };
           custody_file = mkOption {type = types.strMatching "/.*";};
+          transition_manifest = mkOption {
+            type = types.nullOr (types.strMatching "/nix/store/.*");
+            default = null;
+            description = "Prepared backend transition admission; ordinary startup still requires committed authority and explicit writer release.";
+          };
           max_age_seconds = mkOption {
             type = types.ints.positive;
             default = 172800;
@@ -157,11 +184,29 @@ in {
                   type = types.str;
                   default = name;
                 };
+                user = mkOption {
+                  type = types.str;
+                  default = resourceUser;
+                  description = "Unprivileged resource account for immutable consumer validators, including root-run transition inspection.";
+                };
+                consumer_timeout_seconds = mkOption {
+                  type = types.ints.between 1 300;
+                  default = 30;
+                  description = "Consumer validator deadline; stdout and stderr are each capped at 1 MiB.";
+                };
                 state_dir = mkOption {type = types.strMatching "/.*";};
                 directories = mkOption {type = types.listOf (types.strMatching "/.*");};
                 binding = mkOption {type = types.attrsOf types.str;};
                 required_files = mkOption {
                   type = types.listOf (types.strMatching "/.*");
+                  default = [];
+                };
+                required_mounts = mkOption {
+                  type = types.listOf types.str;
+                  default = [];
+                };
+                consumer_command = mkOption {
+                  type = types.listOf types.str;
                   default = [];
                 };
               };
@@ -210,6 +255,22 @@ in {
     (lib.mkIf cfg.enable {
       assertions = [
         {
+          assertion = lib.all (entry: normalizedPath entry.custody_file && builtins.dirOf entry.custody_file == entry.authority.state_dir && !(lib.elem (builtins.baseNameOf entry.custody_file) ["identity.json" "transition.json" "lock"])) (lib.attrValues cfg.resources);
+          message = "Harbor-DB custody receipts must be dedicated direct authority children outside identity, transition journal and lock control paths.";
+        }
+        {
+          assertion = lib.all (entry: immutableFiles.storePath entry.git_executable) (lib.attrValues cfg.resources);
+          message = "Harbor-DB Git integrity checkers must be normalized immutable store paths; manifest realization requires regular store-resolved files.";
+        }
+        {
+          assertion = storagePaths.disjoint custodyNamespaces;
+          message = "Harbor-DB filesystem custody roots and authority namespaces must be globally pairwise disjoint across resources, including enrolled PostgreSQL primary/lifecycle state custody namespaces.";
+        }
+        {
+          assertion = lib.all normalizedPath custodyNamespaces && lib.all (entry: normalizedPath entry.path) declaredDirectories;
+          message = "Harbor-DB custody roots and dataDirectories must use normalized absolute paths without '.', '..', repeated or trailing separators.";
+        }
+        {
           assertion = !(cfg.resources ? postgresql);
           message = "Harbor-DB reserves the postgresql cutover resource for automatic lifecycle enrollment.";
         }
@@ -218,7 +279,7 @@ in {
           message = "Harbor-DB cutover admission requires adopted PostgreSQL lifecycle enrollment for every enabled primary.";
         }
         {
-          assertion = lib.all (entry: !(lib.elem entry.path protectedDirectories) || !(entry.create or true)) declaredDirectories;
+          assertion = lib.all (entry: !(protectedPath entry.path) || !(entry.create or true)) declaredDirectories;
           message = "Harbor-DB adopted corpus roots must use dataDirectories.create = false; missing historical data may never be initialized.";
         }
         {
@@ -229,7 +290,7 @@ in {
       environment.etc."harbor-db/cutover.json".source = manifest;
       environment.systemPackages = [cfg.package];
       system.preSwitchChecks."00---harbor-db-cutover" = ''
-        ${cfg.package}/bin/harbor-db-cutover check --contract ${manifest} --host ${lib.escapeShellArg config.networking.hostName} --phase activate || exit $?
+        ${cfg.package}/bin/harbor-db-cutover check --contract ${manifest} --host ${lib.escapeShellArg config.networking.hostName} --phase activate --candidate "$1" || exit $?
       '';
       systemd.services = lib.mkMerge (lib.mapAttrsToList (_: entry:
         lib.genAttrs (map (lib.removeSuffix ".service") entry.runtime_units) (_: {

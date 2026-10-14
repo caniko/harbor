@@ -1,0 +1,284 @@
+#![cfg(feature = "testing")]
+use harbor_db::testing::candidate;
+use std::{fs, process::Command};
+
+#[test]
+fn candidate_inventory_ignores_ambient_repository_worktree_index_and_config_selection() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("selected");
+    let foreign = temp.path().join("foreign");
+    for path in [&source, &foreign] {
+        fs::create_dir(path).unwrap();
+        assert!(
+            Command::new("git")
+                .args(["init", "--quiet"])
+                .current_dir(path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        fs::write(path.join(".gitignore"), "tracked.rs\n").unwrap();
+    }
+    fs::write(source.join("tracked.rs"), "selected tracked source").unwrap();
+    fs::write(source.join("new.rs"), "selected untracked source").unwrap();
+    assert!(
+        Command::new("git")
+            .args(["add", "-f", "tracked.rs"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write(foreign.join("foreign.rs"), "foreign source").unwrap();
+    assert!(
+        Command::new("git")
+            .args(["add", "foreign.rs"])
+            .current_dir(&foreign)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let overrides = [
+        ("GIT_DIR", foreign.join(".git").display().to_string()),
+        ("GIT_WORK_TREE", foreign.display().to_string()),
+        (
+            "GIT_INDEX_FILE",
+            foreign.join(".git/index").display().to_string(),
+        ),
+        ("GIT_COMMON_DIR", foreign.join(".git").display().to_string()),
+        ("GIT_CONFIG_COUNT", "1".into()),
+        ("GIT_CONFIG_KEY_0", "core.worktree".into()),
+        ("GIT_CONFIG_VALUE_0", foreign.display().to_string()),
+    ];
+    for (index, selection) in [
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![3],
+        vec![4, 5, 6],
+        (0..7).collect(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let destination = temp.path().join(format!("retained-{index}"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_harbor-db-test"));
+        command.arg("retain").arg(&source).arg(&destination);
+        for selected in selection {
+            command.env(overrides[selected].0, &overrides[selected].1);
+        }
+        let result = command.output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let retained: candidate::Candidate = serde_json::from_slice(&result.stdout).unwrap();
+        candidate::verify(&retained).unwrap();
+        assert_eq!(
+            fs::read_to_string(retained.source.join("tracked.rs")).unwrap(),
+            "selected tracked source"
+        );
+        assert_eq!(
+            fs::read_to_string(retained.source.join("new.rs")).unwrap(),
+            "selected untracked source"
+        );
+        assert!(!retained.source.join("foreign.rs").exists());
+    }
+}
+
+#[test]
+fn candidate_retention_streams_large_tracked_and_untracked_files() {
+    use std::{
+        io::{Seek, SeekFrom, Write},
+        os::unix::fs::{MetadataExt, PermissionsExt},
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("checkout");
+    fs::create_dir(&source).unwrap();
+    assert!(
+        Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    for name in ["tracked", "untracked"] {
+        let mut file = fs::File::create(source.join(name)).unwrap();
+        file.write_all(b"large fixture header").unwrap();
+        file.seek(SeekFrom::Start(17 * 1024 * 1024)).unwrap();
+        file.write_all(b"complete last byte").unwrap();
+    }
+    fs::set_permissions(source.join("tracked"), fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(
+        Command::new("git")
+            .args(["add", "tracked"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let retained = candidate::retain(&source, &temp.path().join("retained")).unwrap();
+    candidate::verify(&retained).unwrap();
+    for name in ["tracked", "untracked"] {
+        let path = retained.source.join(name);
+        assert_eq!(
+            harbor_db::testing::supervisor::bind_file(&path)
+                .unwrap()
+                .sha256,
+            harbor_db::testing::supervisor::bind_file(&source.join(name))
+                .unwrap()
+                .sha256
+        );
+        assert_eq!(fs::metadata(&path).unwrap().len(), 17 * 1024 * 1024 + 18);
+        assert_ne!(
+            fs::metadata(&path).unwrap().ino(),
+            fs::metadata(source.join(name)).unwrap().ino()
+        );
+        assert_eq!(
+            fs::metadata(&path).unwrap().mode() & 0o777,
+            if name == "tracked" { 0o700 } else { 0o600 }
+        );
+    }
+    fs::OpenOptions::new()
+        .append(true)
+        .open(retained.source.join("untracked"))
+        .unwrap()
+        .write_all(b"changed")
+        .unwrap();
+    assert!(candidate::verify(&retained).is_err());
+}
+
+#[test]
+fn retained_candidate_contains_edits_and_new_sources_but_no_build_or_private_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    fs::create_dir(&source).unwrap();
+    assert!(
+        Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write(source.join("tracked"), "old").unwrap();
+    fs::write(source.join(".gitignore"), "target/\n").unwrap();
+    assert!(
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write(source.join("tracked"), "candidate").unwrap();
+    fs::write(source.join("new.rs"), "crystallized").unwrap();
+    fs::write(source.join(".envrc"), "private-local-state").unwrap();
+    fs::create_dir(source.join("target")).unwrap();
+    fs::write(source.join("target/ignored"), "build").unwrap();
+    fs::create_dir(source.join(".nix-results")).unwrap();
+    std::os::unix::fs::symlink("/nix/store", source.join(".nix-results/result")).unwrap();
+    let retained = candidate::retain(&source, &temp.path().join("retained")).unwrap();
+    assert_eq!(
+        fs::read_to_string(retained.source.join("tracked")).unwrap(),
+        "candidate"
+    );
+    assert!(retained.source.join("new.rs").exists());
+    assert!(!retained.source.join(".envrc").exists());
+    assert!(!retained.source.join("target").exists());
+    assert!(!retained.source.join(".nix-results").exists());
+    candidate::verify(&retained).unwrap();
+    fs::write(retained.source.join("tracked"), "changed").unwrap();
+    assert!(candidate::verify(&retained).is_err());
+}
+
+#[test]
+fn candidate_redirects_and_duplicate_publication_fail_closed() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    fs::create_dir(&source).unwrap();
+    Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&source)
+        .status()
+        .unwrap();
+    std::os::unix::fs::symlink("/etc/passwd", source.join("redirect")).unwrap();
+    assert!(candidate::retain(&source, &temp.path().join("rejected")).is_err());
+    fs::remove_file(source.join("redirect")).unwrap();
+    fs::write(source.join("file"), "retained").unwrap();
+    let destination = temp.path().join("retained");
+    candidate::retain(&source, &destination).unwrap();
+    assert!(candidate::retain(&source, &destination).is_err());
+}
+
+#[test]
+fn generated_hook_link_is_excluded_with_present_or_absent_store_target() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    fs::create_dir(&source).unwrap();
+    assert!(
+        Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write(source.join("source.rs"), "candidate source").unwrap();
+    let hook = source.join(".pre-commit-config.yaml");
+    for (index, target) in [
+        temp.path().join("generated-hook"),
+        temp.path().join("absent-hook"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if index == 0 {
+            fs::write(&target, "generated hook").unwrap();
+        }
+        std::os::unix::fs::symlink(target, &hook).unwrap();
+        assert!(
+            Command::new("git")
+                .args(["add", "."])
+                .current_dir(&source)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let retained =
+            candidate::retain(&source, &temp.path().join(format!("retained-{index}"))).unwrap();
+        assert_eq!(
+            fs::read(retained.source.join("source.rs")).unwrap(),
+            b"candidate source"
+        );
+        assert!(
+            retained
+                .source
+                .join(".pre-commit-config.yaml")
+                .symlink_metadata()
+                .is_err()
+        );
+        candidate::verify(&retained).unwrap();
+        fs::remove_file(&hook).unwrap();
+    }
+}
+
+#[test]
+fn dangling_source_symlink_is_rejected_instead_of_silently_omitted() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    fs::create_dir(&source).unwrap();
+    assert!(
+        Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&source)
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write(source.join("source.rs"), "candidate source").unwrap();
+    std::os::unix::fs::symlink("absent", source.join("redirect.rs")).unwrap();
+    assert!(candidate::retain(&source, &temp.path().join("rejected")).is_err());
+}
