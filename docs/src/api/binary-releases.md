@@ -37,7 +37,10 @@ Mappings must be nonempty. Installed names are single safe filename components;
 source paths must be relative with no empty, `.` or `..` components or line
 breaks. Sources must be regular executable files, with no symlinks in any path
 component. Wrong ELF machines, interpreters, and dynamic dependencies fail the
-build. Fixup is disabled so the installed executable's bytes match the archive.
+build. Only executable ELF types (`ET_EXEC` and static PIE `ET_DYN`) with a
+nonzero entry point in executable, file-backed `PT_LOAD` data are accepted;
+relocatable objects, core dumps and non-executable shared libraries are rejected.
+Fixup is disabled so the installed executable's bytes match the archive.
 No wrappers, runtime libraries, manifests, or auxiliary assets are inferred.
 
 Some publishers archive ELF binaries without the executable bit (Stalwart's
@@ -48,7 +51,12 @@ default continues to reject sources without executable permissions.
 
 Callers own fetching, license metadata, feature compatibility, and release
 provenance. Pin each archive with a fixed-output hash or a locked non-flake
-input. Verify any publisher signatures against the expected repository,
+input. Both archive files and already-unpacked source trees are supported.
+For directory inputs, mappings are relative to the returned tree's root, without
+an extra store-name directory. Nix's tarball fetcher may strip a single enclosing
+directory when creating that tree; use the layout of the returned input rather
+than the original compressed archive in that case.
+Verify any publisher signatures against the expected repository,
 workflow identity and release tag before updating those pins, and retain the
 verification evidence. Signature verification is an update-time operation;
 the helper does not contact a provenance service during evaluation or build.

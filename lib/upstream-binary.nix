@@ -41,6 +41,17 @@ in
       # Paths in binaries are relative to the archive root, including any
       # publisher-owned enclosing directory. Never guess or flatten that layout.
       sourceRoot = ".";
+      unpackPhase = ''
+        runHook preUnpack
+        if test -d "$src"; then
+          # Locked tarball inputs are already unpacked; copy their contents,
+          # including dotfiles and symlinks, without adding a store-name prefix.
+          cp -R -- "$src"/. .
+        else
+          unpackFile "$src"
+        fi
+        runHook postUnpack
+      '';
       nativeBuildInputs = [pkgs.xz];
       dontConfigure = true;
       dontBuild = true;
@@ -75,6 +86,29 @@ in
               inherit machine;
               label = "upstream binary";
             }}
+            header=$(${pkgs.binutils}/bin/readelf -h "$source")
+            type=$(printf '%s\n' "$header" | ${pkgs.gawk}/bin/awk '/^[[:space:]]*Type:/ { print $2 }')
+            case "$type" in
+              EXEC|DYN) ;;
+              *) echo "upstream binary has a non-executable ELF type: $source" >&2; exit 1 ;;
+            esac
+            entry=$(printf '%s\n' "$header" | ${pkgs.gawk}/bin/awk '/Entry point address:/ { print $4 }')
+            # Static PIE is valid, but a shared object with no executable entry
+            # point (or an entry outside executable file-backed LOAD data) is not.
+            ${pkgs.binutils}/bin/readelf -W -l "$source" | ${pkgs.gawk}/bin/awk -v entry="$entry" '
+              BEGIN { entry = strtonum(entry) }
+              $1 == "LOAD" && entry != 0 {
+                flags = ""
+                for (i = 7; i < NF; i++) flags = flags $i
+                offset = entry - strtonum($3)
+                if (index(flags, "E") && offset >= 0 && offset < strtonum($5) && offset < strtonum($6))
+                  loadable = 1
+              }
+              END { exit !loadable }
+            ' || {
+              echo "upstream binary has no loadable executable entry point: $source" >&2
+              exit 1
+            }
             install -m0755 -- "$source" "$out/bin"/${escapeShellArg name}
           '')
           validated}

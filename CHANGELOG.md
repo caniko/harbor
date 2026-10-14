@@ -23,6 +23,11 @@
 
 ### Added
 
+- `mkUpstreamBinaryPackage` consumes publisher-owned static Linux archives or
+  unpacked locked inputs with explicit, byte-preserving executable mappings.
+  It rejects non-executable ELF types and invalid entry points, supports static
+  PIE, and permits an explicit opt-in for archives missing executable permissions.
+
 - `treefmtModules.rust` for composing rustfmt with harbor-meta Nix and TOML
   modules.
 

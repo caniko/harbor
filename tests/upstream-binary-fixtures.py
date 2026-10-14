@@ -25,6 +25,25 @@ def write(name, data, mode=0o755):
     path.chmod(mode)
 
 write("fixture", payload)
+pie_header = struct.pack("<16sHHIQQQIHHHHHH", ident, 3, machine, 1,
+                         120, 64, 0, 0, 64, 56, 1, 0, 0, 0)
+pie_segment = struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0,
+                          120 + len(code), 120 + len(code), 0x1000)
+write("static-pie", pie_header + pie_segment + code)
+for name, elf_type in [("relocatable", 1), ("core", 4)]:
+    invalid = bytearray(payload)
+    struct.pack_into("<H", invalid, 16, elf_type)
+    write(name, invalid)
+shared = bytearray(pie_header + pie_segment + code)
+struct.pack_into("<Q", shared, 24, 0)
+write("shared-library", shared)
+for name, offset, value in [("no-load", 64, 4), ("non-executable-load", 68, 4)]:
+    invalid = bytearray(payload)
+    struct.pack_into("<I", invalid, offset, value)
+    write(name, invalid)
+outside = bytearray(payload)
+struct.pack_into("<Q", outside, 24, base + len(payload))
+write("unmapped-entry", outside)
 write("non-executable", payload, 0o644)
 write("script", b"#!/bin/sh\nexit 0\n")
 wrong = bytearray(payload)

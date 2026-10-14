@@ -36,6 +36,24 @@
       requireExecutable = false;
       binaries.fixture = "release/non-executable";
     });
+  piePackage = harborLib.mkUpstreamBinaryPackage (args
+    // {
+      inherit pkgs;
+      binaries.fixture = "release/static-pie";
+    });
+  directorySource =
+    pkgs.runCommand "upstream-unpacked-source" {
+      nativeBuildInputs = [pkgs.gnutar pkgs.gzip];
+    } ''
+      mkdir -p "$out"
+      tar -xzf ${fixture}/fixture.tar.gz -C "$out"
+    '';
+  directoryPackage = harborLib.mkUpstreamBinaryPackage (args
+    // {
+      inherit pkgs;
+      # A locked non-flake input exposes its unpacked tree through outPath.
+      sources.${system} = {outPath = directorySource;};
+    });
   rejects = extra: !(builtins.tryEval (harborLib.mkUpstreamBinaryPackage (args // {inherit pkgs;} // extra)).drvPath).success;
   failureCases = {
     missing = "release/missing";
@@ -47,6 +65,12 @@
     wrong-machine = "release/wrong-machine";
     dynamic = "release/dynamic";
     dynamic-needed = "release/dynamic-needed";
+    relocatable = "release/relocatable";
+    core = "release/core";
+    shared-library = "release/shared-library";
+    no-load = "release/no-load";
+    non-executable-load = "release/non-executable-load";
+    unmapped-entry = "release/unmapped-entry";
   };
   legacySource =
     pkgs.runCommand "legacy-binary-source" {
@@ -113,6 +137,10 @@ in {
       cmp release/fixture ${package}/bin/fixture
       cmp release/fixture ${xzPackage}/bin/fixture
       cmp release/non-executable ${modePackage}/bin/fixture
+      cmp release/static-pie ${piePackage}/bin/fixture
+      ${piePackage}/bin/fixture
+      cmp release/fixture ${directoryPackage}/bin/fixture
+      ${directoryPackage}/bin/fixture
       test -x ${modePackage}/bin/fixture
       ${modePackage}/bin/fixture
       test -x ${package}/bin/fixture
