@@ -2,9 +2,26 @@
 name = "nix_harbor_rs"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/caniko/harbor"
 description = "Type-safe CLI for harbor-rs build helpers"
+readme = "README.md"
+documentation = "https://docs.rs/nix_harbor_rs"
+keywords = ["nix", "cargo", "build", "sdk"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
+include = [
+  "src/**",
+  "tests/**",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["-D", "warnings"]
 
 [[bin]]
 name = "harbor-rs"
