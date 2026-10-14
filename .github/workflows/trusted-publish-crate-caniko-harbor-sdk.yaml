@@ -7,7 +7,7 @@ name: Trusted Crate Publisher
 
 on:
   workflow_run:
-    workflows: ["Build Crate harbor-sdk"]
+    workflows: ["Build Crate caniko-harbor-sdk"]
     types: [completed]
 
 permissions:
@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify-harbor-sdk:
+  verify-caniko-harbor-sdk:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -59,27 +59,27 @@ jobs:
           git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
           git config --global --add url.https://github.com/.insteadOf git@github.com:
 
-      - name: Admit signed source and provider-bound archive harbor-sdk
+      - name: Admit signed source and provider-bound archive caniko-harbor-sdk
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          .simit-publisher-engine/target/release/simit release publisher --publisher-stage prepare --repo "$GITHUB_REPOSITORY" --package harbor-sdk --source-workflow .github/workflows/publish-crate-harbor-sdk.yaml --publisher-workflow .github/workflows/trusted-publish-crate-harbor-sdk.yaml --reconstruct-package harbor-sdk --publisher-output "$RUNNER_TEMP/verified-harbor-sdk" > "$RUNNER_TEMP/verified-harbor-sdk.json"
+          .simit-publisher-engine/target/release/simit release publisher --publisher-stage prepare --repo "$GITHUB_REPOSITORY" --package caniko-harbor-sdk --source-workflow .github/workflows/publish-crate-caniko-harbor-sdk.yaml --publisher-workflow .github/workflows/trusted-publish-crate-caniko-harbor-sdk.yaml --reconstruct-package caniko-harbor-sdk --publisher-output "$RUNNER_TEMP/verified-caniko-harbor-sdk" > "$RUNNER_TEMP/verified-caniko-harbor-sdk.json"
       - name: Checkout original signed source for verification
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           path: .simit-release-source
           persist-credentials: false
-      - name: Verify packaged contents harbor-sdk
+      - name: Verify packaged contents caniko-harbor-sdk
         working-directory: .simit-release-source
         env:
           NIX_CONFIG: "experimental-features = nix-command flakes"
           XDG_CACHE_HOME: "/tmp/.cache"
           CARGO_HOME: "/tmp/.cargo"
-        run: nix develop -c cargo publish --dry-run --locked --manifest-path "$RUNNER_TEMP/verified-harbor-sdk/Cargo.toml"
-  publish-harbor-sdk:
-    needs: [verify-harbor-sdk]
+        run: nix develop -c cargo publish --dry-run --locked --manifest-path "$RUNNER_TEMP/verified-caniko-harbor-sdk/Cargo.toml"
+  publish-caniko-harbor-sdk:
+    needs: [verify-caniko-harbor-sdk]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment:
@@ -112,13 +112,13 @@ jobs:
       - name: Build trusted publisher engine
         working-directory: .simit-publisher-engine
         run: cargo build --release --locked
-      - name: Upload independently verified archive harbor-sdk
+      - name: Upload independently verified archive caniko-harbor-sdk
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CRATES_IO_API_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
-        run: .simit-publisher-engine/target/release/simit release publisher --publisher-stage publish --repo "$GITHUB_REPOSITORY" --package harbor-sdk --source-workflow .github/workflows/publish-crate-harbor-sdk.yaml --publisher-workflow .github/workflows/trusted-publish-crate-harbor-sdk.yaml --reconstruct-package harbor-sdk
+        run: .simit-publisher-engine/target/release/simit release publisher --publisher-stage publish --repo "$GITHUB_REPOSITORY" --package caniko-harbor-sdk --source-workflow .github/workflows/publish-crate-caniko-harbor-sdk.yaml --publisher-workflow .github/workflows/trusted-publish-crate-caniko-harbor-sdk.yaml --reconstruct-package caniko-harbor-sdk
   publish-report:
-    needs: [publish-harbor-sdk]
+    needs: [publish-caniko-harbor-sdk]
     if: always()
     runs-on: ubuntu-24.04
     steps:

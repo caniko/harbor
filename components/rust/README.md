@@ -42,6 +42,20 @@ The library also exports these helpers (re-exported as `harbor-rs.lib.*`):
 - `mkDioxusBuildPlan` / `resolveWasmBindgenCli` — reusable Dioxus command planning and lockfile-to-toolchain version resolution for downstream flakes
 - `mkAndroidApk` / `mkAndroidApkDevBuilder` / `mkAndroidFlavorTable` / `findLocalMavenCache` / `mkAndroidSdk` / `mkAndroidDevShell` — re-exported from [harbor-android](https://github.com/caniko/harbor-android) for one migration release
 
+## Cargo SDK helper
+
+The macOS SDK archive helper's registry package is `caniko-harbor-sdk`, with
+Rust library name `harbor_sdk`. The unqualified crates.io package `harbor-sdk`
+belongs to an unrelated project. Preserve the import name with this dependency:
+
+```toml
+harbor-sdk = { package = "caniko-harbor-sdk", version = "0.1.0" }
+```
+
+The imported source remains at `crates/harbor-sdk`. Its package-qualified release
+tag is `caniko-harbor-sdk/v0.1.0`; registry publication still requires the signed
+tag's source and independent publisher qualification.
+
 ## Prerequisites
 
 - [Nix](https://nixos.org/) with flakes enabled

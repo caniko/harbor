@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Publish the macOS SDK helper as `caniko-harbor-sdk` because `harbor-sdk` is
+  owned by an unrelated crates.io project. The `harbor_sdk` library name and
+  CLI dependency alias remain stable. CLI path dependencies declare their
+  registry versions for packaging.
 - Nix builds of `harbor-rs` and `harbor-ci` retain workspace README files used
   by dependency crates as compile-time documentation.
 - Direnv loads the Rust tools and OpenCode LSP configuration through one shell,

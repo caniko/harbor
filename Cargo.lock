@@ -210,6 +210,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "caniko-harbor-sdk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
+ "thiserror",
+ "which",
+]
+
+[[package]]
 name = "cc"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -749,16 +759,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "walkdir",
-]
-
-[[package]]
-name = "harbor-sdk"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "tempfile",
- "thiserror",
- "which",
 ]
 
 [[package]]
@@ -1318,11 +1318,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "caniko-harbor-sdk",
  "clap",
  "goblin",
  "harbor-cache",
  "harbor-sandbox",
- "harbor-sdk",
  "regex",
  "serde_json",
  "sha2",

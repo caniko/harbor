@@ -34,7 +34,7 @@ jobs:
           tag="${ref#refs/tags/}"
         fi
 
-        case "$tag" in harbor-sdk/v*) version="${tag#harbor-sdk/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
+        case "$tag" in caniko-harbor-sdk/v*) version="${tag#caniko-harbor-sdk/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
         if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
 
         if ! command -v gpg >/dev/null 2>&1; then
@@ -73,25 +73,25 @@ jobs:
           echo "Signed tag commit does not match the checkout being published" >&2
           exit 1
         fi
-    - name: Test harbor-sdk
-      run: nix develop -c cargo test --locked -p harbor-sdk --all-targets --all-features
-    - name: Clippy harbor-sdk
-      run: nix develop -c cargo clippy --locked -p harbor-sdk --all-targets --all-features -- -D warnings
+    - name: Test caniko-harbor-sdk
+      run: nix develop -c cargo test --locked -p caniko-harbor-sdk --all-targets --all-features
+    - name: Clippy caniko-harbor-sdk
+      run: nix develop -c cargo clippy --locked -p caniko-harbor-sdk --all-targets --all-features -- -D warnings
     - name: Package coordinated release set
-      run: nix develop -c cargo package --locked --allow-dirty --no-verify -p harbor-sdk --target-dir "$RUNNER_TEMP/simit-package-target"
-    - name: Build immutable archive harbor-sdk
+      run: nix develop -c cargo package --locked --allow-dirty --no-verify -p caniko-harbor-sdk --target-dir "$RUNNER_TEMP/simit-package-target"
+    - name: Build immutable archive caniko-harbor-sdk
       run: |
         set -euo pipefail
-        version="${GITHUB_REF_NAME#harbor-sdk/v}"
-        test "$(nix develop -c cargo pkgid --locked -p harbor-sdk | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version"
-        mkdir -p "$RUNNER_TEMP/simit-crates/harbor-sdk"
-        cp "$RUNNER_TEMP/simit-package-target/package/harbor-sdk-$version.crate" "$RUNNER_TEMP/simit-crates/harbor-sdk/"
-    - name: Retain original-run archive harbor-sdk
+        version="${GITHUB_REF_NAME#caniko-harbor-sdk/v}"
+        test "$(nix develop -c cargo pkgid --locked -p caniko-harbor-sdk | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version"
+        mkdir -p "$RUNNER_TEMP/simit-crates/caniko-harbor-sdk"
+        cp "$RUNNER_TEMP/simit-package-target/package/caniko-harbor-sdk-$version.crate" "$RUNNER_TEMP/simit-crates/caniko-harbor-sdk/"
+    - name: Retain original-run archive caniko-harbor-sdk
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         if-no-files-found: error
-        name: simit-crate-harbor-sdk-${{ github.run_attempt }}
-        path: ${{ runner.temp }}/simit-crates/harbor-sdk/*.crate
+        name: simit-crate-caniko-harbor-sdk-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/simit-crates/caniko-harbor-sdk/*.crate
         retention-days: 30
     timeout-minutes: 60
   component-android:
@@ -637,7 +637,7 @@ jobs:
           tag="${ref#refs/tags/}"
         fi
 
-        case "$tag" in harbor-sdk/v*) version="${tag#harbor-sdk/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
+        case "$tag" in caniko-harbor-sdk/v*) version="${tag#caniko-harbor-sdk/v}" ;; *) echo 'Tag does not belong to this package' >&2; exit 1 ;; esac
         if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then echo 'Invalid package release version' >&2; exit 1; fi
 
         if ! command -v gpg >/dev/null 2>&1; then
@@ -677,10 +677,10 @@ jobs:
           exit 1
         fi
     timeout-minutes: 15
-name: Build Crate harbor-sdk
+name: Build Crate caniko-harbor-sdk
 on:
   push:
     tags:
-    - harbor-sdk/v[0-9]*
+    - caniko-harbor-sdk/v[0-9]*
 permissions:
   contents: read

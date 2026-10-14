@@ -32,7 +32,7 @@ paths = ["components/rust"]
 cargo_packages = [
   "nix_harbor_rs",
   "harbor-cache",
-  "harbor-sdk",
+  "caniko-harbor-sdk",
   "harbor-xtask",
   "harbor-sandbox",
 ]

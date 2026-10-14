@@ -25,8 +25,8 @@ goblin = { version = "0.10", default-features = false, features = [
   "archive",
   "endian_fd",
 ] }
-harbor-cache = { path = "../crates/harbor-cache" }
-harbor-sdk = { path = "../crates/harbor-sdk" }
+harbor-cache = { version = "0.1.1", path = "../crates/harbor-cache" }
+harbor-sdk = { package = "caniko-harbor-sdk", version = "0.1.0", path = "../crates/harbor-sdk" }
 regex = "1"
 sha2 = "0.10"
 walkdir = "2"
