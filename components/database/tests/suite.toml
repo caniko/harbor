@@ -151,6 +151,7 @@ argv_suffix = ["--", "--exact"]
 maturity = "crystallized"
 selectors = [
   "stale_capture_can_abort_but_changed_bytes_or_evidence_keep_barriers",
+  "unadmitted_postgres_fence_cannot_quiesce_or_change_the_plan",
 ]
 
 [[coverage]]
@@ -3917,6 +3918,19 @@ selectors = [
   "test_terminal_history_is_required_before_reusing_a_transition_slot",
   "test_target_corpus_drift_cannot_hide_behind_a_successful_semantic_callback",
   "test_custody_is_published_with_target_and_original_custody_restored_on_abort",
+]
+
+[[inventories]]
+origin = "python"
+id_prefix = "python."
+selector_prefix = "test_transition_fence_admission.BorrowedFenceAdmissionTest."
+source = "tests/test_transition_fence_admission.py"
+argv_prefix = ["python3", "-B", "-m", "unittest"]
+argv_suffix = []
+env = { PYTHONPATH = "python:tests" }
+selectors = [
+  "test_wrong_fence_plan_leaves_no_journal_and_allows_corrected_retry",
+  "test_stale_fence_before_prepare_preserves_plan_and_running_writers",
 ]
 
 [[inventories]]

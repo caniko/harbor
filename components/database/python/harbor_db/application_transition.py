@@ -119,7 +119,9 @@ def plan(config, candidate, writer_fence_token):
             "a non-PostgreSQL transition cannot borrow an undeclared fence"
         )
     path = journal_path(config)
-    with lock(Path(config["barrier_dir"]) / "lock", create=not path.exists()):
+    with lock(
+        Path(config["barrier_dir"]) / "lock", create=not path.exists()
+    ) as transition_lease:
         if path.exists():
             record = status(config)
             if (
@@ -129,6 +131,9 @@ def plan(config, candidate, writer_fence_token):
                 raise ValueError(
                     "transition resume candidate or fence identity differs"
                 )
+            if not terminal(config, record):
+                with fence(config, record, [transition_lease]):
+                    pass
             return record
         with resource.inspection(source) as authority:
             record = {
@@ -145,17 +150,19 @@ def plan(config, candidate, writer_fence_token):
                 "created_at": int(time.time()),
                 "fence": None,
             }
-            if config["custody_manifest"] is not None:
-                entry = read_json(config["custody_manifest"])
-                custody = Path(entry["custody_file"])
-                if custody.parent != Path(source["state_dir"]):
-                    raise ValueError(
-                        "target custody publication must stay in the established authority directory"
+            # Admit and retain the borrowed fence before publishing immutable intent.
+            with fence(config, record, [transition_lease]):
+                if config["custody_manifest"] is not None:
+                    entry = read_json(config["custody_manifest"])
+                    custody = Path(entry["custody_file"])
+                    if custody.parent != Path(source["state_dir"]):
+                        raise ValueError(
+                            "target custody publication must stay in the established authority directory"
+                        )
+                    record["source_custody"] = (
+                        read_json(custody) if custody.exists() else None
                     )
-                record["source_custody"] = (
-                    read_json(custody) if custody.exists() else None
-                )
-            save(config, record)
+                save(config, record)
             return record
 
 
@@ -418,10 +425,12 @@ def prepare(config):
             "prepared",
         ):
             raise ValueError("transition preparation is not permitted at this phase")
-        save(config, record, "quiescing" if record["phase"] == "planned" else None)
-        install_barriers(config, record)
-        stop_units(config)
-        return prepare_locked(config, transition_lease)
+        # A stale fence must not change the phase or inhibit/stop writers.
+        with fence(config, record, [transition_lease]):
+            save(config, record, "quiescing" if record["phase"] == "planned" else None)
+            install_barriers(config, record)
+            stop_units(config)
+            return prepare_locked(config, transition_lease)
 
 
 def prepare_locked(config, transition_lease):

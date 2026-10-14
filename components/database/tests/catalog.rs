@@ -201,7 +201,15 @@ fn committed_inventory_is_individual_and_migration_bound() {
         .filter_map(|case| case.python_migration_id.clone())
         .collect();
     assert!(frozen.is_subset(&registered));
-    assert_eq!(registered.difference(&frozen).count(), 8);
+    assert_eq!(registered.difference(&frozen).count(), 10);
+    for name in [
+        "test_wrong_fence_plan_leaves_no_journal_and_allows_corrected_retry",
+        "test_stale_fence_before_prepare_preserves_plan_and_running_writers",
+    ] {
+        assert!(registered.contains(&format!(
+            "test_transition_fence_admission.BorrowedFenceAdmissionTest.{name}"
+        )));
+    }
     assert_eq!(
         suite
             .cases
