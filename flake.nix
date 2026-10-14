@@ -2,8 +2,12 @@
   description = "harbor-db - secure generic lifecycle plans and NixOS systemd wiring";
 
   inputs = {
-    harbor-rs.url = "git+https://github.com/caniko/harbor-rs.git?ref=trunk&rev=05cc4f162b55fa904b687db1821e2463fa813e50";
+    harbor-rs.url = "git+https://github.com/caniko/harbor-rs.git?ref=feat/portable-release-files&rev=195f8a7e81d67102868631015b6794280b492c88";
     rs-harbor.follows = "harbor-rs";
+    harbor-meta = {
+      url = "git+https://github.com/caniko/harbor-meta.git?ref=feat/shared-timezone-env&rev=1f272a44dea9dc531b30efb384720ddb46f083e3";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
   };
@@ -11,6 +15,7 @@
   outputs = {
     self,
     harbor-rs,
+    harbor-meta,
     nixpkgs,
     ...
   }: let
@@ -98,6 +103,7 @@
     lib.applicationBackup = 2;
     lib.applicationBackendTransition = 1;
     lib.cutoverPreflight = 3;
+    lib.timezone = harbor-meta.lib.timezone;
     nixosModules.harbor-db = {
       lib,
       pkgs,
@@ -153,10 +159,8 @@
       buildCache = harbor-rs.lib.mkBuildCachePolicy {
         inherit pkgs;
         sccachePackage = harbor-rs.packages.${pkgs.stdenv.hostPlatform.system}.sccache;
-        # The pinned wrapper needs an explicit disk transport when a hosted
-        # runner has no Redis socket. It still prefers the host Redis transport
-        # and admits only the versioned nixbld-owned, group-writable namespace.
-        cacheRoot = "/var/cache/sccache";
+        cacheRoot = null;
+        ephemeralFallback = true;
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
       };
@@ -383,8 +387,8 @@
         pkgs.rustfmt
       ];
     in {
-      default = pkgs.mkShell {inherit packages;};
-      docs = pkgs.mkShell {inherit packages;};
+      default = harbor-meta.lib.devShell.mkShell {inherit pkgs packages;};
+      docs = harbor-meta.lib.devShell.mkShell {inherit pkgs packages;};
     });
   };
 }

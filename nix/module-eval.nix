@@ -8,7 +8,7 @@
   rawCommand = pkgs.writeShellScript "harbor-db-module-eval-raw" "exit 0";
   runner = pkgs.writeShellScriptBin "module-eval-runner" "exit 0";
   evaluate = additional:
-    import "${pkgs.path}/nixos/lib/eval-config.nix" {
+    import (pkgs.path + "/nixos/lib/eval-config.nix") {
       inherit (pkgs) system;
       modules = [
         module
