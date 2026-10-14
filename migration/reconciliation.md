@@ -155,6 +155,16 @@ rewriting otherwise unchanged imported helper files during integration.
 
 ## Preserved work and retirement gate
 
+The original snapshot/disposition tables above describe their recorded historical
+boundaries. The 2026-10-11 refresh is retained at
+`/data/scratch/tmp/opencode/harbor-combined-20261011/predecessor-state-20261011T211112Z/`.
+Later sandbox, database and command-scoped shell tips are preserved and reconciled
+in [retained updates](retained-updates.md); advanced default merges and their
+qualification boundaries are recorded in [default reconciliation](default-reconciliation.md).
+Refresh original-checkout HEADs, refs, index patches, working-tree patches and
+untracked assets against those receipts before applying a retirement disposition.
+An older table's supersession claim does not cover a later unexamined edit.
+
 The 2026-10-08 source snapshot contains each original checkout's HEAD/status,
 committed delta, pending patch, and untracked file bytes. Its `report.json` SHA-256
 is `36f2aaef83d106a141a1544c6cb37477f08b608ad2104ff06c435fb374fdc65d`.

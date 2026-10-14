@@ -58,3 +58,36 @@ The changed cold recipe requires two fresh installations and matching archive
 and payload evidence. Local source reconciliation and the default's merged PR
 do not establish producer acceptance; full integrated-source qualification and
 exact-revision hosted admission remain required.
+
+## Nix worker diagnostics and repair
+
+The next default tip is `acfb79cd3768ec7bc90c3cf1019fe135d50c3d5f`, which
+merges PR #4 on `795a24f`. It contains the signed diagnostics commits
+`d1db6f008f3698c5a5477548ba24b296c9d36e23` and
+`add8bc1a490533f61e077a75d4608df61468ac54`. The current reconciliation joins
+that history with the retained integration at
+`7598b8382f8b5681cf2d35c1b0d7c8664c6ffcee`.
+
+The only conflicts are in seven generated qualification/archive workflows.
+Regeneration through the original-run Simit `54ae206d02f7ad371bb206c337594615894cd43e`
+binary also updates the integration's eighth, evidence-crate archive workflow.
+Its SHA-256 is `9c0f506fbd326a9f0ada591ec1e54a35bec1e51791143fe49bba1a3974f4d9e2`.
+The root source-only Simit declaration, lock node and bootstrap assertion use
+that revision. Plinth and all other input nodes retain their prior identities.
+
+The component manifest keeps every retained gate, command, timeout and native
+platform selection. Generated steps dispatch those commands through
+`simit monorepo check --nix-diagnostics`, and component runners install Nix
+2.35.2, which contains the lost build-slot wakeup repair. The scoped AppArmor
+namespace admission, Linux util-linux declaration, database storage/testing
+engines, nine Cargo members, evidence publisher pair and frozen OpenPencil
+recipe remain from the integration parent. All seven trusted publisher files
+are unchanged.
+
+The earlier default's 307-check qualification and Harbor Cache `0.1.1`
+publication belong to `acfb79c`. The integration parent's 331-check Linux
+qualification belongs to `7598b83`. Neither receipt qualifies their combined
+source. Capture its complete platform/check inventory and production outputs,
+retain exact source/input/derivation identities, and obtain successful
+exact-revision hosted namespace, database and CAD archive evidence before
+consumer cutover or predecessor retirement.

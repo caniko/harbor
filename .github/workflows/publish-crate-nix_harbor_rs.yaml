@@ -106,6 +106,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -115,10 +117,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-android'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component android --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-cad:
@@ -133,6 +132,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -142,22 +143,13 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component cad --check nix --nix-diagnostics
       timeout-minutes: 90
     - name: blender-companion
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.blender-mcp-runtime'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component cad --check blender-companion --nix-diagnostics
       timeout-minutes: 90
     - name: openpencil-companion
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --print-build-logs --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component cad --check openpencil-companion --nix-diagnostics
       timeout-minutes: 180
     timeout-minutes: 360
   component-core:
@@ -172,6 +164,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -181,46 +175,25 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: history
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/check_history.py'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check history --nix-diagnostics
       timeout-minutes: 30
     - name: userns-contracts
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'python3 -B -m unittest discover -s scripts -p test_ci_userns.py'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check userns-contracts --nix-diagnostics
       timeout-minutes: 5
     - name: format
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'treefmt --ci'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check format --nix-diagnostics
       timeout-minutes: 30
     - name: test
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'cargo test --locked -p harbor-evidence --all-targets --jobs 2'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check test --nix-diagnostics
       timeout-minutes: 30
     - name: clippy
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'cargo clippy --locked -p harbor-evidence --all-targets --jobs 2 -- -D warnings'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check clippy --nix-diagnostics
       timeout-minutes: 30
     - name: module-platforms
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'for system in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do nix eval --raw .#checks.$system.harbor-modules.drvPath; done'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check module-platforms --nix-diagnostics
       timeout-minutes: 30
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component core --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-database:
@@ -235,6 +208,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -244,22 +219,13 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: userns
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/ci_userns.py'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component database --check userns --nix-diagnostics
       timeout-minutes: 5
     - name: hosted-cache
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'test "${RUNNER_ENVIRONMENT:-}" = github-hosted && test -r /dev/kvm && test -w /dev/kvm && sudo install -d -m 1777 -o root -g root /var/cache/sccache && test ! -L /var/cache/sccache && test "$(stat -c '\''%u:%a'\'' /var/cache/sccache)" = 0:1777 && printf '\''%s\n'\'' '\''extra-sandbox-paths = /var/cache/sccache'\'' '\''log-lines = 250'\'' | sudo tee -a /etc/nix/nix.conf && sudo systemctl restart nix-daemon.service && nix config show sandbox-paths | grep -F /var/cache/sccache'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component database --check hosted-cache --nix-diagnostics
       timeout-minutes: 30
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-database .#database-storage-lifecycle .#database-harbor-db-cached'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component database --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-evm:
@@ -274,6 +240,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -283,10 +251,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-evm'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component evm --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-go:
@@ -301,6 +266,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -310,10 +277,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-go'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component go --check nix --nix-diagnostics
       timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -339,6 +303,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -348,10 +314,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-javascript'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component javascript --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-llm:
@@ -366,6 +329,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -375,10 +340,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#llm-default'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component llm --check nix --nix-diagnostics
       timeout-minutes: 30
     timeout-minutes: 360
   component-macos-sdk:
@@ -393,6 +355,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -402,10 +366,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: pin
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix eval --json .#lib.pins.macosSdk | jq -e '\''(.sdkVersion | test("^[0-9]+([.][0-9]+)+$")) and (.outputHash | startswith("sha256-")) and (.storePath | startswith("/nix/store/")) and .attic.cacheName == "harbor-macos-sdk"'\'''
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component macos-sdk --check pin --nix-diagnostics
       timeout-minutes: 30
     timeout-minutes: 360
   component-ntt:
@@ -420,6 +381,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -429,10 +392,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-ntt'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component ntt --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-projects:
@@ -447,6 +407,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -456,10 +418,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-projects'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component projects --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-python:
@@ -474,6 +433,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -483,10 +444,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-python'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component python --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-rust:
@@ -501,6 +459,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -510,34 +470,19 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: userns
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'python3 scripts/ci_userns.py'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component rust --check userns --nix-diagnostics
       timeout-minutes: 5
     - name: test
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'set --; if [ "$(uname -s)" = Darwin ]; then set -- --exclude harbor-cad --exclude harbor-db; fi; simit test --git-fixtures -- cargo test --locked --workspace "$@" --jobs 2 -- --test-threads=2'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component rust --check test --nix-diagnostics
       timeout-minutes: 30
     - name: clippy
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'set --; if [ "$(uname -s)" = Darwin ]; then set -- --exclude harbor-cad --exclude harbor-db; fi; cargo clippy --locked --workspace "$@" --all-targets --jobs 2 -- -D warnings'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component rust --check clippy --nix-diagnostics
       timeout-minutes: 30
     - name: sandbox-runtime
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'bash -euc '\''if [ "$(uname -s)" = Darwin ]; then echo "Linux namespace runtime: not applicable on Darwin"; exit 0; fi; test "$(uname -s)" = Linux; test "${RUNNER_ENVIRONMENT:-}" = github-hosted; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command unshare --user --map-root-user --mount --fork --kill-child cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1'\'''
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component rust --check sandbox-runtime --nix-diagnostics
       timeout-minutes: 30
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-rust'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component rust --check nix --nix-diagnostics
       timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -561,6 +506,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -570,10 +517,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-solana'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component solana --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   component-tex:
@@ -588,6 +532,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
@@ -597,10 +543,7 @@ jobs:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
     - name: nix
-      run: |-
-        # Expand the project command inside the Nix child shell.
-        # shellcheck disable=SC2016
-        nix develop --print-build-logs .#ci --command sh -ec 'nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-tex .#tex-anx-plugin-zenodo .#tex-anx-plugin-pandoc'
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component tex --check nix --nix-diagnostics
       timeout-minutes: 90
     timeout-minutes: 360
   plan:
@@ -617,6 +560,8 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+      with:
+        install_url: https://releases.nixos.org/nix/nix-2.35.2/install
     - name: Configure public input transport
       run: |
         git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/

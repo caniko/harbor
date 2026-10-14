@@ -13,13 +13,13 @@ The retained tip is `ae824784966c95e3d16278bdcdd9b60c1502b26a`, archived as
 `harbor-rs/remotes/origin/feat/dev-sandbox-20261002`. Its boundary is
 `f2ca8231d1430f6e1f55deef079fccc6fa24bb98` and it adds five commits.
 
-| Commit                                     | Disposition                        | Active evidence                                                                                                                                                                                                                                          |
-| ------------------------------------------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `41d6bad9ef12f3f3043009a07744bee41225e2ce` | Incorporated                       | `components/rust/crates/harbor-sandbox/`, `cli/src/commands/sandbox.rs`, `lib/dev-sandbox.nix`, and `docs/src/api/dev-sandbox.md` retain isolated source copies, private state, declared desktop capabilities, and readiness-gated warm replacement.     |
-| `5f951111c5cb5e26725ad9c038854866807e9cc2` | Incorporated with shared CI wiring | `nix/checks-dev-sandbox.nix`, the Rust component's flake checks, and root `simit.toml` retain the runtime and exact-output gates. The root workspace and component workflows replace the predecessor's standalone workspace and per-crate CI.            |
-| `c736596031ad21ccc29d43c253f214da8060295c` | Incorporated                       | `nix/dev-shells.nix` retains the launcher changes; `crates/harbor-sandbox/src/process.rs` retains supervised preview dependencies. Both files match the retained tip byte-for-byte.                                                                      |
-| `ec2a17a44e8286b8170d86190fa2cea379ccb965` | Absorbed merge                     | Its sandbox implementations and shared CI policies are covered by the preceding rows. The predecessor merge remains reachable through the archived tip.                                                                                                  |
-| `ae824784966c95e3d16278bdcdd9b60c1502b26a` | Pending publisher integration      | The root package-qualified publisher still executes publication from its tag workflow. The retained signed-source/trusted-publisher split must be regenerated through a hosted-accepted full Simit producer and qualified before predecessor retirement. |
+| Commit                                     | Disposition                        | Active evidence                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `41d6bad9ef12f3f3043009a07744bee41225e2ce` | Incorporated                       | `components/rust/crates/harbor-sandbox/`, `cli/src/commands/sandbox.rs`, `lib/dev-sandbox.nix`, and `docs/src/api/dev-sandbox.md` retain isolated source copies, private state, declared desktop capabilities, and readiness-gated warm replacement.                                                           |
+| `5f951111c5cb5e26725ad9c038854866807e9cc2` | Incorporated with shared CI wiring | `nix/checks-dev-sandbox.nix`, the Rust component's flake checks, and root `simit.toml` retain the runtime and exact-output gates. The root workspace and component workflows replace the predecessor's standalone workspace and per-crate CI.                                                                  |
+| `c736596031ad21ccc29d43c253f214da8060295c` | Incorporated                       | `nix/dev-shells.nix` retains the launcher changes; `crates/harbor-sandbox/src/process.rs` retains supervised preview dependencies. Both files match the retained tip byte-for-byte.                                                                                                                            |
+| `ec2a17a44e8286b8170d86190fa2cea379ccb965` | Absorbed merge                     | Its sandbox implementations and shared CI policies are covered by the preceding rows. The predecessor merge remains reachable through the archived tip.                                                                                                                                                        |
+| `ae824784966c95e3d16278bdcdd9b60c1502b26a` | Incorporated publisher split       | `publish-crate-harbor-sandbox.yaml` builds a credential-free signed-source archive; `trusted-publish-crate-harbor-sandbox.yaml` verifies and publishes through the independent default-branch engine. Exact integrated-source qualification and package-specific publication remain separate retirement gates. |
 
 Thirteen engine, fixture, documentation, and Nix files match the retained tip
 byte-for-byte: the sandbox command; all three sandbox engine files; the test
@@ -33,7 +33,9 @@ the repository metadata at the monorepo. The CLI exposes its sandbox command on
 Linux. Root `Cargo.toml` owns workspace membership; the root lock and generated
 workflows own dependency resolution and publication. Root
 `publish-crate-harbor-sandbox.yaml` retains the `harbor-sandbox/v*` namespace and
-package-only selection while the publisher-boundary update is pending.
+package-only selection. The split was integrated with the qualified `90bed59`
+generator and retained by the `54ae206` diagnostics successor; see
+`bootstrap.md` for current enrollment and release scope.
 
 ## Database lifecycle and recovery
 
@@ -61,11 +63,15 @@ PR14 files without formatting changes. The 548-selector suite preserves all
 Enrollment metadata remains separate from restart-persistent runtime fencing;
 mixed enrollment/runtime schemas require explicit conversion before publication.
 
-The uncommitted source snapshot passed all 35 database checks and nine production
-package selections, including the recovery and transition VMs. Canonical-source
-and hosted qualification remain pending. The archived tips and these snapshot
-results preserve implementation and evidence; predecessor retirement still
-requires canonical acceptance and verified consumer migration.
+The initial uncommitted source snapshot passed all 35 database checks and nine
+production package selections, including the recovery and transition VMs.
+The engines were then committed in `f14d75f`, with later fixture and shared-shell
+repairs retained through `7598b83`. Exact local qualification of that canonical
+revision passed the full 35-entry database aggregate and its production
+selections. The current advanced-default reconciliation requires its own exact
+source and hosted qualification. The archived tips and earlier receipts retain
+their original scopes; predecessor retirement still requires accepted integrated
+source and verified consumer migration.
 
 ## Command-scoped core runtimes
 
