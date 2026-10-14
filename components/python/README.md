@@ -51,7 +51,9 @@ configuration without an `executable` field.
 
 Runtime changes update interpreter aliases without rebuilding a compatible
 venv. Interpreter/site-policy changes rebuild previously managed environments
-with rollback on creation failure. An incompatible unmanaged environment is
+with rollback on creation failure. Preparation and interpreter wrapping share a
+persistent sibling lock, so concurrent helper invocations cannot replace or
+remove another invocation's in-progress environment. An incompatible unmanaged environment is
 preserved with an actionable error. Sync failures stop the hook before
 activation and before setting `UV_NO_SYNC`. `autoSync = false` leaves venv
 creation, synchronization and activation to the caller; use the exposed runtime

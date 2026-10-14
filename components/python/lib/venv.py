@@ -1,9 +1,13 @@
 """Prepare a CPython venv and install its command-scoped interpreter launcher."""
 
 import argparse
+import contextlib
+import fcntl
 import json
+import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -49,7 +53,28 @@ def create(path, site):
     )
 
 
+@contextlib.contextmanager
+def venv_lock(path):
+    # Keep the anchor beside the venv: replacement moves/removes the venv itself.
+    # Never unlink it, including on failure, so waiters retain the same inode.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    anchor = path.parent / f".{path.name}.harbor-python.lock"
+    fd = os.open(anchor, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError(f"venv lock must be a regular file: {anchor}")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
 def prepare(path, site):
+    with venv_lock(path):
+        prepare_locked(path, site)
+
+
+def prepare_locked(path, site):
     if path.is_symlink():
         raise ValueError(f"venv directory must not be a symlink: {path}")
     if compatible(path, site):
@@ -76,6 +101,11 @@ def prepare(path, site):
 
 
 def wrap(path, launcher, site):
+    with venv_lock(path):
+        wrap_locked(path, launcher, site)
+
+
+def wrap_locked(path, launcher, site):
     if path.is_symlink() or not compatible(path, site):
         raise ValueError(
             f"venv does not match the selected interpreter/site policy: {path}"
@@ -117,9 +147,10 @@ def main():
         parser.error("scoped venv launchers require CPython")
     path = args.venv.absolute()
     try:
-        if args.operation == "prepare":
-            prepare(path, args.system_site_packages)
-        wrap(path, args.launcher, args.system_site_packages)
+        with venv_lock(path):
+            if args.operation == "prepare":
+                prepare_locked(path, args.system_site_packages)
+            wrap_locked(path, args.launcher, args.system_site_packages)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"harbor-py: {error}\n")
 

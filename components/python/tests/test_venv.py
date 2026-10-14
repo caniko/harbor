@@ -2,6 +2,7 @@
 
 import os
 import importlib.util
+import multiprocessing
 from pathlib import Path
 import subprocess
 import shutil
@@ -125,6 +126,71 @@ class VenvTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "creation failed"):
                 helper.prepare(self.venv, True)
         self.assertTrue(sentinel.exists())
+        self.assertEqual((self.venv / "pyvenv.cfg").read_bytes(), original)
+        self.assert_runtime()
+
+    def test_concurrent_prepare_waits_for_failed_recreation_and_keeps_restored_venv(
+        self,
+    ):
+        self.manage()
+        sentinel = self.venv / "keep-me"
+        sentinel.touch()
+        original = (self.venv / "pyvenv.cfg").read_bytes()
+        spec = importlib.util.spec_from_file_location("harbor_venv", self.helper)
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        context = multiprocessing.get_context("fork")
+        first_parent, first_child = context.Pipe()
+        second_parent, second_child = context.Pipe()
+
+        def failing_creator():
+            def fail(path, site):
+                first_child.send("creating")
+                if not first_child.poll(10):
+                    raise TimeoutError("recreation release missing")
+                first_child.recv()
+                path.mkdir(exist_ok=True)
+                (path / "partial").touch()
+                raise OSError("creation failed")
+
+            helper.create = fail
+            try:
+                helper.prepare(self.venv, True)
+            except OSError:
+                first_child.send("restored")
+
+        def concurrent_entry():
+            second_child.send("attempting")
+            helper.prepare(self.venv, False)
+            helper.wrap(self.venv, self.wrapper, False)
+            second_child.send("finished")
+
+        first = context.Process(target=failing_creator)
+        second = context.Process(target=concurrent_entry)
+        first.start()
+        try:
+            self.assertTrue(first_parent.poll(5))
+            self.assertEqual(first_parent.recv(), "creating")
+            second.start()
+            self.assertTrue(second_parent.poll(5))
+            self.assertEqual(second_parent.recv(), "attempting")
+            # The second entry must not adopt/create/wrap an environment while
+            # the first entry still owns replacement and rollback.
+            self.assertFalse(second_parent.poll(0.5))
+        finally:
+            first_parent.send("release")
+            for child in (first, second):
+                if child.pid is not None:
+                    child.join(10)
+                    if child.is_alive():
+                        child.terminate()
+                        child.join(5)
+            for connection in (first_parent, first_child, second_parent, second_child):
+                connection.close()
+        self.assertEqual(first.exitcode, 0)
+        self.assertEqual(second.exitcode, 0)
+        self.assertTrue(sentinel.exists())
+        self.assertFalse((self.venv / "partial").exists())
         self.assertEqual((self.venv / "pyvenv.cfg").read_bytes(), original)
         self.assert_runtime()
 
