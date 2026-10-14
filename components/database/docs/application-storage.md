@@ -17,6 +17,11 @@ both the schema owner and the restricted runtime role. `schemaUnits` and
 projects must also be acyclic, including shared schema and runtime units.
 `lib.applicationProvisioning = 2` advertises strict post-schema reconciliation.
 
+Runtime OS users cannot be `root` or `postgres`. Database-scoped peer rules allow
+only the declared runtime and owner mappings and the PostgreSQL control account.
+Explicit local and TCP reject rules terminate admission before permissive global
+HBA rules can authorize an undeclared role.
+
 `schemaUnits` require the generated provision service. `runtimeUnits` require
 the generated permissions service, which runs after the explicit schema units.
 Harbor DB does not invoke schema migrations itself. `tables` overrides exact
@@ -61,7 +66,7 @@ policy can reconcile. Grants on other schemas, relations, columns, sequences,
 functions, types or defaults reject before role/ACL mutation. Read-only checking
 uses the same database-wide dependency check; foreign database/shared-object grants
 cannot be hidden by the managed schema's valid ACLs.
-Effective schema, table, column and sequence privileges are checked across all
+Effective schema, table, column, sequence and routine privileges are checked across all
 non-system schemas too, including access inherited through `PUBLIC`. PostgreSQL's
 system catalogs remain readable. Existing undeclared PUBLIC access requires
 explicit operator reconciliation; a newly created dedicated database with a
@@ -69,9 +74,17 @@ custom managed schema clears its bootstrap `public` schema grants.
 
 Checks cover schema ownership, role membership, exact table/sequence privileges,
 column grants, grant options and defaults for future owner-created objects.
+Provisioning's unspecified port follows `services.postgresql.settings.port`;
+explicit endpoint overrides remain available. The generated role and permission
+services use that same endpoint, including nondefault local primary ports.
 Database, schema, relation and default ACLs reject undeclared grantees. Column
 ACLs permit only the owner; explicit runtime privileges belong at table scope.
 An unrelated grantee requires explicit operator reconciliation before admission.
+Runtime execution of user-schema functions or procedures is undeclared. Reconciliation
+revokes both direct runtime and implicit `PUBLIC` execution on managed routines,
+including security-definer functions, and clears global and schema-scoped owner
+defaults for future functions. The owner retains execution; checking rejects
+routine ownership, outsider ACLs, execution grants and function-default drift.
 PostgreSQL 18 is the qualified privilege surface, including MAINTAIN. Ordinary
 provisioning and dependent runtime services retain the PostgreSQL fence startup
 condition. A skipped provisioning prerequisite cannot admit a dependent runtime
@@ -169,12 +182,18 @@ before changing publication permissions and during accepted-point inspection.
 This prevents a mutable external pathname from modifying an accepted artifact.
 Every stage requires a literal `{backup}` argument; restore, verify and cleanup
 also require `{workspace}`.
-Additional `executableFiles` require normalized immutable Nix store paths during
-evaluation. The backup manifest is constructed only after every declared file
-resolves to a regular file inside the immutable store; directories, missing files
+Version-2 command entrypoints and additional `executableFiles` require normalized
+immutable Nix store paths during evaluation. The backup manifest is constructed
+only after every command and declared file resolves to a regular file inside the
+immutable store; directories, missing files
 and mutable link targets fail realization before timer installation. Store-local
 links retain native/Python file-hashing compatibility. Evaluation does not realize
 adapter packages.
+Both runtimes repeat immutable-file admission before capture/inspection and before
+each command execution. Entrypoints must be executable; additional interpreter or
+adapter files may be non-executable. Mutable aliases to store executables reject,
+so worker replacement cannot race pathname reopening while restoring a previously
+hashed executable. Version-1 legacy capture compatibility remains unchanged.
 
 Transition `executableFiles` use the same evaluation and realization contract.
 Across all enabled provisioning projects, runtime OS accounts must be disjoint
@@ -188,19 +207,46 @@ Scheduled captures use systemd's loaded credentials; forced transition captures
 resolve the same declared sources directly. Both coordinators copy only the selected
 credentials into a private worker-owned directory with `0400` files, bounded to
 1 MiB each, and remove it when the attempt finishes. Runtime secret aliases such as
-agenix paths are resolved before opening a regular file. Credential contents are
+agenix paths are traversed through pinned directory and alias descriptors. Every
+source, alias and ancestor must be root-owned; regular files and directories
+must not be group- or other-writable. Untrusted aliases, writable ancestor paths,
+special files and oversized sources reject before attempt-state mutation. The
+opened source inode is retained through the private copy. Credential contents are
 never serialized into the policy or acceptance evidence.
+Relative aliases resolve from their pinned parent directory, including directory
+aliases and `..` targets; absolute aliases restart at the filesystem root. Runtime
+credential ownership always requires UID 0, independently of the testing-only
+ownership view used for immutable Nix input fixtures.
 
 Arguments equal to `{backup}` and `{workspace}` are substituted as single argv
 elements, without a shell. Capture creates a new directory and writes all artifacts,
 plus `capture.json` with exactly `version = 1`, `consistency` (`quiesced` or
-`shared_exported_mvcc_snapshot`) and `semantic_sha256`. The application chooses
+`shared_exported_mvcc_snapshot`) and `semantic_sha256`. This control file is a
+regular, non-redirected file limited to 4096 bytes before decoding, including
+sparse files or growth after opening. The application chooses
 the canonical complete-record representation whose hash identifies this snapshot.
 Restore targets only the newly allocated private workspace. Verify emits exactly
 `version = 1`, `status = "verified"` and the same `semantic_sha256` after executing
 complete schema/record/revision/sequence comparison. A row count alone is insufficient.
 Cleanup must be idempotent, stop and drain every process it started, and is invoked
 even after restoration fails. Failed cleanup preserves its private workspace.
+
+Version-2 capture first copies the inventoried artifact tree onto fresh protected
+root-owned inodes, grants the backup reader group read-only access, and rechecks
+the inventory before restoration. Restore, verification and cleanup receive this
+frozen tree; the same tree is accepted and published. Worker-owned staging and
+handles retained from capture cannot substitute the bytes exercised by the
+certifier, even if a competing process restores the original staging bytes before
+the final inventory check. Interrupted attempts retain the protected tree for the
+existing intent-bound retry policy. The root-owned intent journal records
+`cleanup_origin = partial` before capture and switches durably to `sealed` only
+after the protected copy, permissions, inventory comparison and file/directory
+flushes complete. Restore and cleanup use that recorded origin. A failed or
+interrupted copy may leave an incomplete seal; retry still drains the workspace
+against the partial capture argument. Once the journal selects the seal, retry
+requires its root-controlled ownership/mode and preserves the certified restore
+origin. Legacy attempts without an origin remain retryable only when no seal
+exists; an ambiguous legacy seal requires explicit operator cleanup.
 
 `harbor-db-postgres-drill --package POSTGRES restore|cleanup BACKUP WORKSPACE`
 supplies a reusable logical PostgreSQL restore adapter for `database.dump`.
@@ -243,6 +289,18 @@ are never overwritten. `inspect BACKUP` rechecks bytes, contracts and freshness.
 The private state directory and persistent `lock` inode must already exist. Its
 receipt binds the original acceptance hash, actual machine identity, executables
 and semantic identity. Execution on the original machine cannot claim independence.
+Machine identity admission uses kernel pidfd descriptors for the calling thread's
+user/mount/UTS namespaces, requiring the host initial user namespace and host-owned
+mount/UTS namespaces before reading the installed identity. Caller-controlled
+namespace views, including substituted procfs aliases, fail closed; Linux 6.13+
+pidfd namespace ioctls are required. Root-created systemd private mounts remain
+supported. Testing-only immutable machine fixtures are explicit test substitutions
+and are not available as production runtime overrides.
+Exported native lifecycle executables are statically linked and their smoke gate
+rejects any ELF interpreter or dynamic dependency. Machine admission, identity
+reads and receipt publication therefore execute outside a caller-controlled
+`LD_PRELOAD`/`LD_LIBRARY_PATH` loader. The Python peer remains test-only; both
+engines share namespace admission, cleanup-origin journals and receipt formats.
 If a caller loses the response after receipt publication, retry executes restore
 and all byte/tool/semantic checks again, then returns the matching retained receipt
 with its original `certified_at`, bytes and inode. Conflicting evidence or a
@@ -293,6 +351,14 @@ plus capture, restore, verify and cleanup) and 60 seconds of termination/IO slac
 Operator policy references must be immutable store files, including non-null
 PostgreSQL and custody manifests. Store-internal aliases retain their original
 contract spelling; mutable-location aliases are rejected before dispatch.
+Every operator transition worker entrypoint and coordinator command (`runuser`,
+`systemctl`, `busctl`) is an executable immutable store file; declared adapter
+files share the backup admission and realization rules.
+Certification checks the complete enrolled inode namespaces in both coordinator
+and directly callable worker. Coordinated children inspect private global roots
+while privileged, then permanently drop to the resource account before leasing
+or publishing. Direct service-account calls fail closed if global roots cannot
+be inspected, and reject bind aliases of another resource's corpus or state.
 Custody inventories reject regular files with external hard links in metadata
 and content checks. Database inventory queries supply paths and attributes;
 the policy's root index remains authoritative and query-supplied `root` fields
@@ -320,6 +386,14 @@ projects do not reserve units or namespaces.
 Writer release and abort validate every selected inhibition marker before updating
 `start-policy.json` or removing any marker. Rejection preserves the retained startup
 policy and all barriers; interrupted successful releases remain retryable.
+Independent restore evidence must be outside the complete application authority,
+corpus, backup and control namespaces. Import the authenticated independent
+receipt into a fresh root-owned inode in a root-controlled evidence directory;
+do not transfer ownership of an application-created inode. Both runtimes reject
+redirected, worker-owned, shared or group/other-writable files and ancestors
+before writer inhibition, and repeat admission when consuming evidence. Decode
+and hash the same opened regular inode, bounded to 16 MiB. Missing evidence still
+permits the journaled `awaiting-independent-restore` phase.
 The barrier must also be disjoint from source and target storage roots and the
 authority directory in both containment directions; it cannot be their ancestor.
 The selected backup root must also be disjoint from both source and target corpora
@@ -400,6 +474,10 @@ remain supported.
 Before writer enablement, `abort` requires the exact retained source generation
 selected with clients still inhibited and intact source semantic evidence. It
 restores old authority/custody using compare-and-swap, preserving target bytes.
+The journal-bound rollback capture may be older than `maximumAgeSeconds`; abort
+still verifies its complete artifacts, acceptance digest, executable/manifest
+identity and source semantics. Invalid or future capture timestamps reject.
+Forward admission and independent certification still require fresh evidence.
 After writer enablement, abort is forbidden even if no write has yet been observed:
 reversal requires a fresh reverse transition. Release and abort can resume after
 an interruption; neither rewrites foreign identity or startup policy.

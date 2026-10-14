@@ -364,6 +364,7 @@ fn retry_intent(proposed: &Value, content: &[u8], settings: &Value) -> Result<Va
         "writer_fence_token",
         "manifest_sha256",
         "record_contract_sha256",
+        "source_machine_sha256",
         "record_hashes",
         "backup_stop_lsn",
         "wal_segment_bytes",
@@ -548,7 +549,7 @@ pub fn finalize(
     let stop_text = format!("{:X}/{:X}", stop >> 32, stop & 0xFFFF_FFFF);
     let mut metadata = json!({"version":1,"capture_id":capture_id,"backup_id":backup_id,"pg_major":writer_fence::major(config)?.parse::<u32>().map_err(|_| invalid("invalid major"))?,
         "system_identifier":settings["system_identifier"],"epoch_id":token,"writer_fence_token":token,
-        "manifest_sha256":manifest_digest,"record_contract_sha256":recovery::contract(settings)?,
+        "manifest_sha256":manifest_digest,"record_contract_sha256":recovery::contract(settings)?,"source_machine_sha256":super::application_backup::machine()?,
         "record_hashes":records,"backup_stop_lsn":stop_text,"wal_segment_bytes":segment,"timeline":timeline,"completed_at":captured_at});
     let pin = strict(&local.join("pins").join(format!("{capture_id}.json")))?;
     let content = if let Some(content) = optional_bytes(&pin)? {
@@ -614,7 +615,7 @@ pub fn finalize(
     )?;
     let result = json!({"version":1,"backup_id":backup_id,"system_identifier":settings["system_identifier"],"major":writer_fence::major(config)?,
         "epoch_id":metadata["epoch_id"],"manifest_sha256":metadata["manifest_sha256"],"recovery_target_lsn":metadata["post_backup_lsn"],
-        "metadata_sha256":codec::digest(&content),"completed_at":metadata["completed_at"],"record_contract_sha256":metadata["record_contract_sha256"],
+        "metadata_sha256":codec::digest(&content),"completed_at":metadata["completed_at"],"record_contract_sha256":metadata["record_contract_sha256"],"source_machine_sha256":metadata["source_machine_sha256"],
         "records":metadata["record_hashes"],"writer_fence_token":token,"wal_inventory_sha256":codec::digest(&inventory_bytes)});
     publish_generation(&local, capture_id, &content, &result, || {
         let current = now()?;

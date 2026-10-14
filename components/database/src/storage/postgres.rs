@@ -9,6 +9,7 @@ use std::{
     collections::BTreeSet,
     fs,
     io::Write,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
     time::Duration,
@@ -202,6 +203,19 @@ pub fn upgrade_contract(config: &Value) -> Result<Value> {
             return Err(invalid("upgrade requires a consumer validation command"));
         }
         if let Some(executable) = argv.first() {
+            if settings["immutable_tools"] == true {
+                let resolved =
+                    durable::immutable_store_reference(Path::new(executable)).map_err(|error| {
+                        invalid(format!(
+                            "upgrade requires immutable store commands: {error}"
+                        ))
+                    })?;
+                if fs::metadata(resolved)?.mode() & 0o111 == 0 {
+                    return Err(invalid(
+                        "upgrade command requires an executable immutable store file",
+                    ));
+                }
+            }
             tools.insert(PathBuf::from(executable));
         }
         // Interpreter adapters can name additional executable/script files.
@@ -212,19 +226,46 @@ pub fn upgrade_contract(config: &Value) -> Result<Value> {
                 .filter(|p| p.is_file()),
         );
     }
+    tools.extend(
+        strings(settings.get("executable_files"))?
+            .into_iter()
+            .map(PathBuf::from),
+    );
     let mut executables = serde_json::Map::new();
     for tool in tools {
         if !tool.is_absolute() || !tool.is_file() {
             return Err(invalid("upgrade executable or adapter file is absent"));
         }
+        let resolved = if settings["immutable_tools"] == true {
+            durable::immutable_store_reference(&tool).map_err(|error| {
+                invalid(format!(
+                    "upgrade requires immutable store tools and adapters: {error}"
+                ))
+            })?
+        } else {
+            fs::canonicalize(&tool)?
+        };
         executables.insert(
             tool.to_str()
                 .ok_or_else(|| invalid("invalid upgrade executable path"))?
                 .into(),
-            json!(codec::file_digest(&fs::canonicalize(&tool)?)?),
+            json!(codec::file_digest(&resolved)?),
         );
     }
     Ok(json!({"config":config,"executables":executables}))
+}
+
+/// Operator upgrades require immutable commands; synthetic library fixtures
+/// retain their existing hash-bound mutable-tool contract.
+pub fn validate_operator_upgrade_policy(config: &Value) -> Result<()> {
+    let mut policy = config.clone();
+    policy
+        .get_mut("upgrade")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| invalid("upgrade policy must be an object"))?
+        .insert("immutable_tools".into(), json!(true));
+    upgrade_contract(&policy)?;
+    Ok(())
 }
 
 pub fn upgrade(config: &Value, retry_incomplete: bool) -> Result<()> {

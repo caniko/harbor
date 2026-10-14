@@ -4,6 +4,8 @@ use harbor_db::testing::{
     supervisor::{self, CaseSpec, Execution, RunSpec, Verdict},
 };
 use std::{collections::BTreeMap, fs};
+#[path = "fixtures/private_supervisor_root.rs"]
+mod private_root;
 
 #[test]
 fn nix_documents_require_one_bound_nonredirected_passing_export() {
@@ -76,6 +78,9 @@ fn nix_documents_require_one_bound_nonredirected_passing_export() {
 
 #[test]
 fn artifacts_reject_symlinks_malformed_xml_and_changed_sources() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let snapshot = tmp.path().join("snapshot");
     fs::create_dir(&snapshot).unwrap();
@@ -180,6 +185,9 @@ fn run_case(
 
 #[test]
 fn zero_exit_requires_fresh_nonempty_passing_case_evidence() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     for (id, document, artifacts) in [
         ("bare", None, false),
@@ -231,6 +239,9 @@ fn zero_exit_requires_fresh_nonempty_passing_case_evidence() {
 
 #[test]
 fn retained_evidence_results_spec_and_corpus_are_bound() {
+    if !private_root::enter() {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let passing = "<testsuite tests=\"1\"><testcase name=\"real\"/></testsuite>";
     let run = run_case(tmp.path(), "retained", Some(passing), true);

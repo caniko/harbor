@@ -200,12 +200,12 @@ in {
       cache.enable = false;
     };
     # Native workspace tests consume the DB check's existing immutable fixtures.
-    # Machine-ID substitution belongs only to sandboxed testing-feature checks;
-    # a native shell must retain the installed machine's custody identity.
+    # Namespace fixtures use this compile-time identity only with the testing
+    # feature. Production builds always retain installed machine custody.
     databaseTestEnvironment = nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (let
       databaseTest = self.checks.${system}.database-cargo-test;
     in {
-      inherit (databaseTest) HARBOR_DB_TEST_POSTGRES HARBOR_DB_TEST_POSTGRES_17 HARBOR_DB_TEST_CONFIG_FIXTURE;
+      inherit (databaseTest) HARBOR_DB_TEST_POSTGRES HARBOR_DB_TEST_POSTGRES_17 HARBOR_DB_TEST_CONFIG_FIXTURE HARBOR_DB_TEST_MACHINE_ID;
       HARBOR_DB_TEST_ROOT_UID = "0";
     });
     shell = pkgs.mkShell (databaseTestEnvironment

@@ -25,11 +25,7 @@ class ApplicationBackupTest(unittest.TestCase):
         # two-machine VM gate verifies actual independent-host execution.
         self.enterContext(
             mock.patch.object(
-                application_backup,
-                "digest",
-                side_effect=lambda path: real_digest(
-                    machine if str(path) == "/etc/machine-id" else path
-                ),
+                application_backup, "machine", side_effect=lambda: real_digest(machine)
             )
         )
         self.backups = self.root / "backups"

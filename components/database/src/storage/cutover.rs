@@ -1,6 +1,7 @@
 //! Mandatory read-only deployment admission and explicit independent custody certification.
 pub use super::custody::{
-    certify_filesystem, inventory, require_database_paths, root_identities,
+    CertificationContext, certify_filesystem, certify_filesystem_with_context,
+    certify_filesystem_with_contract, inventory, require_database_paths, root_identities,
     validate_git_repository, validate_path, writer_active,
 };
 use super::{
@@ -9,7 +10,7 @@ use super::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -112,7 +113,7 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
             }
         }
     }
-    let namespaces = namespace_roots(value)?;
+    let namespaces = namespace_roots(value, None)?;
     for (index, (root, _)) in namespaces.iter().enumerate() {
         if namespaces[index + 1..]
             .iter()
@@ -126,12 +127,92 @@ pub fn validate_manifest(value: &Value, host: &str) -> Result<Value> {
     Ok(value.clone())
 }
 
-fn namespace_roots(manifest: &Value) -> Result<Vec<(PathBuf, bool)>> {
-    let mut roots = Vec::new();
-    for entry in manifest["resources"]
+pub fn namespace_contracts_until(manifest: &Value, deadline: Instant) -> Result<Value> {
+    let mut contracts = serde_json::Map::new();
+    let mut encoded_bytes = 2; // Opening and closing object delimiters.
+    for (name, entry) in manifest["resources"]
         .as_object()
         .ok_or_else(|| invalid("invalid cutover resources"))?
-        .values()
+    {
+        if entry["kind"] == "filesystem" {
+            let contract = resource::contract_until(&entry["authority"], Some(deadline))?;
+            encoded_bytes += serde_json::to_vec(name)?.len()
+                + serde_json::to_vec(&contract)?.len()
+                + 1 // Key/value separator.
+                + usize::from(!contracts.is_empty());
+            if encoded_bytes > MAXIMUM_SNAPSHOT_BYTES {
+                return Err(invalid(
+                    "namespace consumer snapshot exceeds aggregate size limit",
+                ));
+            }
+            contracts.insert(name.clone(), contract);
+        }
+    }
+    let contracts = Value::Object(contracts);
+    validate_namespace_contracts(manifest, &contracts)?;
+    Ok(contracts)
+}
+
+fn validate_namespace_contracts(
+    manifest: &Value,
+    contracts: &Value,
+) -> Result<BTreeMap<String, BTreeSet<PathBuf>>> {
+    let mut roots = BTreeMap::new();
+    for (name, entry) in manifest["resources"]
+        .as_object()
+        .ok_or_else(|| invalid("invalid cutover resources"))?
+    {
+        if entry["kind"] != "filesystem" {
+            continue;
+        }
+        let authority = &entry["authority"];
+        let expected = contracts
+            .get(name)
+            .ok_or_else(|| invalid("namespace inspection is missing an authority contract"))?;
+        let directories = roots.entry(name.clone()).or_insert_with(BTreeSet::new);
+        directories.extend(custody::paths(expected, "directories")?);
+        let state = Path::new(string(authority, "state_dir")?);
+        if !state.join("identity.json").exists() {
+            continue;
+        }
+        let _lease = durable::lock(&state.join("lock"), true, false)?;
+        if let Some(selected) = prepared_transition(entry, "activate")? {
+            let (source, target) = super::transition_manifest::validate(&selected)?;
+            if target != *authority {
+                return Err(invalid(
+                    "namespace transition target differs from authority",
+                ));
+            }
+            let record = application_transition::status(&selected)?;
+            let current = durable::read_json(&state.join("identity.json"))?;
+            if current == record["target_authority"] {
+                resource::verify(authority, expected)?;
+            } else if current == record["source_authority"] {
+                resource::require_contract(expected, Some(&record["target_authority"]))?;
+                resource::verify(&source, &record["source_authority"])?;
+            } else {
+                return Err(invalid("namespace transition authority changed"));
+            }
+            // Retain both recorded namespaces under the validation lease. A
+            // later mutable identity read must never select the scan's roots.
+            directories.extend(custody::paths(&record["source_authority"], "directories")?);
+            directories.extend(custody::paths(&record["target_authority"], "directories")?);
+        } else {
+            resource::require_stable(authority)?;
+            resource::verify(authority, expected)?;
+        }
+    }
+    Ok(roots)
+}
+
+fn namespace_roots(manifest: &Value, contracts: Option<&Value>) -> Result<Vec<(PathBuf, bool)>> {
+    let mut roots = Vec::new();
+    let validated = contracts
+        .map(|contracts| validate_namespace_contracts(manifest, contracts))
+        .transpose()?;
+    for (name, entry) in manifest["resources"]
+        .as_object()
+        .ok_or_else(|| invalid("invalid cutover resources"))?
     {
         if entry["kind"] == "postgres" {
             let database = durable::read_config_json(Path::new(string(entry, "config")?))?;
@@ -149,15 +230,18 @@ fn namespace_roots(manifest: &Value) -> Result<Vec<(PathBuf, bool)>> {
                 roots.push((PathBuf::from(path), false));
             }
         } else {
+            let authority = &entry["authority"];
             roots.push((
                 PathBuf::from(string(&entry["authority"], "state_dir")?),
                 false,
             ));
-            roots.extend(
-                custody::paths(&entry["authority"], "directories")?
+            let directories = match &validated {
+                Some(validated) => validated[name].clone(),
+                None => custody::paths(authority, "directories")?
                     .into_iter()
-                    .map(|path| (path, false)),
-            );
+                    .collect(),
+            };
+            roots.extend(directories.into_iter().map(|path| (path, false)));
         }
     }
     Ok(roots)
@@ -176,10 +260,93 @@ pub fn validate_storage_namespaces(manifest: &Value) -> Result<()> {
                     .unwrap_or(900),
             ),
     )
+    .map(|_| ())
 }
-fn validate_storage_namespaces_until(manifest: &Value, deadline: Instant) -> Result<()> {
+pub fn validate_storage_namespaces_until(manifest: &Value, deadline: Instant) -> Result<Value> {
+    let contracts = namespace_contracts_until(manifest, deadline)?;
+    inspect_namespace_roots(namespace_roots(manifest, Some(&contracts))?, deadline)?;
+    Ok(contracts)
+}
+
+/// Check the complete declared contract even in a user-scoped certifying worker.
+pub fn validate_restore_roots(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
+    let deadline = Instant::now()
+        + Duration::from_secs(
+            manifest["activation_timeout_seconds"]
+                .as_u64()
+                .unwrap_or(900),
+        );
+    let contracts = namespace_contracts_until(manifest, deadline)?;
+    validate_restore_roots_with_contracts(manifest, restores, &contracts)
+}
+
+fn validate_restore_roots_with_contracts(
+    manifest: &Value,
+    restores: &[PathBuf],
+    contracts: &Value,
+) -> Result<()> {
+    let protected = namespace_roots(manifest, Some(contracts))?;
+    validate_restore_roots_against(restores, &protected)
+}
+
+fn validate_restore_roots_against(
+    restores: &[PathBuf],
+    protected: &[(PathBuf, bool)],
+) -> Result<()> {
+    for restore in restores {
+        validate_path(&restore.to_string_lossy())?;
+        if protected
+            .iter()
+            .any(|(root, _)| restore.starts_with(root) || root.starts_with(restore))
+        {
+            return Err(invalid(
+                "restore roots must be independent of every enrolled storage namespace",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Both coordinator and certifying child reject complete global inode aliases.
+pub fn validate_restore_namespaces(manifest: &Value, restores: &[PathBuf]) -> Result<()> {
+    validate_restore_namespaces_with_contracts(
+        manifest,
+        restores,
+        None,
+        Instant::now()
+            + Duration::from_secs(
+                manifest["activation_timeout_seconds"]
+                    .as_u64()
+                    .unwrap_or(900),
+            ),
+    )
+    .map(|_| ())
+}
+
+pub fn validate_restore_namespaces_with_contracts(
+    manifest: &Value,
+    restores: &[PathBuf],
+    contracts: Option<&Value>,
+    deadline: Instant,
+) -> Result<Value> {
+    let contracts = match contracts {
+        Some(contracts) if contracts.is_object() => contracts.clone(),
+        Some(_) => return Err(invalid("invalid namespace consumer contracts")),
+        None => namespace_contracts_until(manifest, deadline)?,
+    };
+    let mut roots = namespace_roots(manifest, Some(&contracts))?;
+    validate_restore_roots_against(restores, &roots)?;
+    roots.extend(restores.iter().cloned().map(|root| (root, false)));
+    inspect_namespace_roots(roots, deadline)?;
+    Ok(contracts)
+}
+
+fn inspect_namespace_roots(roots: Vec<(PathBuf, bool)>, deadline: Instant) -> Result<()> {
     let mut protected = BTreeSet::new();
-    for (root, primary) in namespace_roots(manifest)? {
+    for (root, primary) in roots {
+        if Instant::now() >= deadline {
+            return Err(invalid("cutover inspection budget exhausted"));
+        }
         match fs::symlink_metadata(&root) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -196,6 +363,30 @@ fn validate_storage_namespaces_until(manifest: &Value, deadline: Instant) -> Res
             ));
         }
         protected.extend(identities);
+    }
+    Ok(())
+}
+
+/// Certifying children inspect private namespaces while privileged, then publish
+/// exclusively as the declared service account. Direct user calls do the same
+/// global check and fail closed when another enrolled namespace is unreadable.
+pub fn enter_certification_user(config: &Value) -> Result<()> {
+    let account = process::account(string(config, "user")?)?;
+    let uid = unsafe { libc::geteuid() };
+    if uid == account.uid {
+        return Ok(());
+    }
+    if uid != 0 {
+        return Err(invalid(
+            "certification requires the declared resource service user",
+        ));
+    }
+    if unsafe {
+        libc::setgroups(account.groups.len(), account.groups.as_ptr()) != 0
+            || libc::setgid(account.gid) != 0
+            || libc::setuid(account.uid) != 0
+    } {
+        return Err(std::io::Error::last_os_error().into());
     }
     Ok(())
 }
@@ -227,12 +418,43 @@ pub fn check_resource(
     at: Option<i64>,
     candidate: Option<&str>,
 ) -> Result<Value> {
+    check_resource_with_contract(config, phase, at, candidate, None)
+}
+
+pub fn check_resource_with_contract(
+    config: &Value,
+    phase: &str,
+    at: Option<i64>,
+    candidate: Option<&str>,
+    pinned: Option<&Value>,
+) -> Result<Value> {
+    check_resource_until(config, phase, at, candidate, pinned, None)
+}
+pub fn check_resource_until(
+    config: &Value,
+    phase: &str,
+    at: Option<i64>,
+    candidate: Option<&str>,
+    pinned: Option<&Value>,
+    deadline: Option<Instant>,
+) -> Result<Value> {
     if !matches!(phase, "preflight" | "activate" | "startup" | "certify") {
         return Err(invalid("unsupported cutover phase"));
     }
     let now = at.unwrap_or_else(custody::now);
     if config["kind"] == "filesystem" {
         if let Some(selected) = prepared_transition(config, phase)? {
+            if pinned.is_some() {
+                let mut prepared = durable::read_json(&application_transition::journal_path(
+                    &selected,
+                )?)?["target_authority"]
+                    .clone();
+                prepared
+                    .as_object_mut()
+                    .ok_or_else(|| invalid("missing prepared target authority"))?
+                    .remove("identity");
+                resource::require_contract(&prepared, pinned)?;
+            }
             if selected["custody_manifest"].is_null() {
                 return Err(invalid(
                     "cutover transition admission requires target corpus custody publication",
@@ -245,13 +467,25 @@ pub fn check_resource(
                 candidate,
             );
         }
-        let metadata = if phase != "startup" {
+        let authority = &config["authority"];
+        let metadata = if phase != "startup"
+            && authority["consumer_command"]
+                .as_array()
+                .is_none_or(|argv| argv.is_empty())
+        {
             Some(inventory(config, false)?)
         } else {
             None
         };
+        let (_lease, adopted) = resource::inspection_until(authority, pinned, deadline)?;
+        let expanded = custody::expanded_config(config, &adopted);
+        let config = &expanded;
         let authority = &config["authority"];
-        let (_lease, adopted) = resource::inspection(authority)?;
+        let metadata = if metadata.is_none() && phase != "startup" {
+            Some(inventory(config, false)?)
+        } else {
+            metadata
+        };
         let receipt = durable::read_json(&recovery::absolute(Path::new(string(
             config,
             "custody_file",
@@ -403,6 +637,56 @@ pub struct WorkerOptions<'a> {
     pub extra: &'a [String],
     pub command_name: &'a str,
     pub as_root: bool,
+    pub input: Option<&'a Value>,
+}
+
+pub const MAXIMUM_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
+pub fn read_snapshot(deadline: Instant) -> Result<Value> {
+    let mut bytes = Vec::new();
+    loop {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or_else(|| invalid("cutover inspection budget exhausted"))?;
+        let mut fd = libc::pollfd {
+            fd: 0,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: poll and read operate on the worker's live stdin and local buffer.
+        let ready = unsafe {
+            libc::poll(
+                &mut fd,
+                1,
+                remaining.as_millis().clamp(1, i32::MAX as u128) as i32,
+            )
+        };
+        if ready < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error.into());
+        }
+        if ready == 0 {
+            continue;
+        }
+        let mut buffer = [0u8; 65536];
+        let count = unsafe { libc::read(0, buffer.as_mut_ptr().cast(), buffer.len()) };
+        if count < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        if count == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&buffer[..count as usize]);
+        if bytes.len() > MAXIMUM_SNAPSHOT_BYTES {
+            return Err(invalid("namespace snapshot exceeds its size limit"));
+        }
+    }
+    codec::decode_str(
+        std::str::from_utf8(&bytes).map_err(|_| invalid("namespace snapshot is not UTF-8"))?,
+    )
 }
 
 pub fn execute_worker(
@@ -417,6 +701,7 @@ pub fn execute_worker(
         extra,
         command_name,
         as_root,
+        input,
     } = options;
     let account = process::account(string(config, "user")?)?;
     let uid = unsafe { libc::geteuid() };
@@ -443,6 +728,13 @@ pub fn execute_worker(
     ];
     argv.extend_from_slice(extra);
     let mut spec = process::CommandSpec::new(argv);
+    if let Some(input) = input {
+        let bytes = serde_json::to_vec(input)?;
+        if bytes.len() > MAXIMUM_SNAPSHOT_BYTES {
+            return Err(invalid("namespace snapshot exceeds its size limit"));
+        }
+        spec.input = Some(bytes);
+    }
     spec.timeout = timeout;
     if uid == 0 {
         spec.identity = Some(if as_root {
@@ -471,7 +763,7 @@ pub fn check_manifest(
     .as_u64()
     .unwrap_or(if phase == "preflight" { 30 } else { 900 });
     let deadline = Instant::now() + Duration::from_secs(seconds);
-    validate_storage_namespaces_until(manifest, deadline)?;
+    let contracts = validate_storage_namespaces_until(manifest, deadline)?;
     let mut results = serde_json::Map::new();
     let mut failures = vec![];
     let resources = manifest["resources"]
@@ -484,9 +776,12 @@ pub fn check_manifest(
                 .filter(|d| !d.is_zero())
                 .ok_or_else(|| invalid("cutover inspection budget exhausted"))?;
             let as_root = prepared_transition(config, phase)?.is_some();
-            let extra = candidate
+            let mut extra = candidate
                 .map(|c| vec!["--candidate".into(), c.into()])
                 .unwrap_or_default();
+            if contracts.get(name).is_some() {
+                extra.push("--authority-contract-stdin".into());
+            }
             execute_worker(
                 path,
                 name,
@@ -497,6 +792,7 @@ pub fn check_manifest(
                     extra: &extra,
                     command_name: "check",
                     as_root,
+                    input: contracts.get(name),
                 },
             )
         })();

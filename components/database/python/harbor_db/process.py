@@ -30,6 +30,7 @@ def execute(
     leases=(),
     cwd=None,
     maximum_output=1024 * 1024,
+    failure_context=None,
     **identity,
 ):
     process = subprocess.Popen(
@@ -44,6 +45,7 @@ def execute(
         **identity,
     )
     output = bytearray()
+    diagnostics = bytearray()
     deadline = time.monotonic() + timeout
     try:
         with selectors.DefaultSelector() as selector:
@@ -63,6 +65,12 @@ def execute(
                             raise ValueError(
                                 "storage worker receipt exceeded its size limit"
                             )
+                    elif failure_context is not None:
+                        diagnostics.extend(chunk)
+                        if len(diagnostics) > maximum_output:
+                            raise ValueError(
+                                "storage worker receipt exceeded its size limit"
+                            )
             # Preserve the leader's PID until group cleanup, including after EOF.
             # A silent descendant may still own explicitly inherited leases.
             while (
@@ -78,6 +86,10 @@ def execute(
                 pass
             result = process.wait(timeout=5)
         if result:
+            if failure_context is not None:
+                raise ValueError(
+                    f"{failure_context}: {diagnostics.decode('utf-8').strip()}"
+                )
             raise ValueError("storage worker failed; diagnostics suppressed")
         return bytes(output)
     except BaseException:

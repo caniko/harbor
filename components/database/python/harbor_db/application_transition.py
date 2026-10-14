@@ -3,7 +3,6 @@
 import argparse
 import contextlib
 import json
-import os
 import re
 import secrets
 import sys
@@ -12,7 +11,7 @@ import pwd
 from pathlib import Path
 
 from . import application_backup, resource
-from .durable import lock, read_json, sync_directory, write_json
+from .durable import immutable_store_reference, lock, read_json, sync_directory
 from .transition_manifest import (
     candidate_path,
     custody_entry,
@@ -20,11 +19,13 @@ from .transition_manifest import (
     generation,
     inspect_barriers,
     install_barriers,
+    independent_receipt,
     intent,
     release_barriers,
     require_root,
     stop_units,
     validate,
+    validate_operator_policy,
     worker,
     write_owned,
 )
@@ -199,10 +200,11 @@ def capture_source(config, record, leases):
     return backup, result
 
 
-def source_bytes(config, record):
-    result = application_backup.inspect(
-        read_json(config["backup_manifest"]), Path(record["backup"])
+def source_bytes(config, record, *, retained=False):
+    inspect = (
+        application_backup.inspect_retained if retained else application_backup.inspect
     )
+    result = inspect(read_json(config["backup_manifest"]), Path(record["backup"]))
     if (
         application_backup.digest(Path(record["backup"]) / "acceptance.json")
         != record["source_acceptance_sha256"]
@@ -247,7 +249,7 @@ def semantic(receipt, expected):
 
 def evidence(config, record):
     source = source_bytes(config, record)
-    receipt = read_json(config["independent_receipt"])
+    receipt, current = independent_receipt(config)
     if (
         receipt["version"] != 1
         or receipt["status"] != "verified"
@@ -265,7 +267,6 @@ def evidence(config, record):
     age = int(time.time()) - receipt["certified_at"]
     if not 0 <= age <= read_json(config["backup_manifest"])["maximum_age_seconds"]:
         raise ValueError("independent restoration is stale or from the future")
-    current = application_backup.digest(config["independent_receipt"])
     if (
         record.get("independent_sha256") is not None
         and record["independent_sha256"] != current
@@ -322,6 +323,14 @@ def target_custody(config, record, target, leases):
         return None
     from . import cutover
 
+    expected = target
+    if target.get("consumer_command"):
+        prepared = record.get("target_authority")
+        if not isinstance(prepared, dict):
+            raise ValueError("consumer custody requires a prepared target authority")
+        expected = {key: value for key, value in prepared.items() if key != "identity"}
+    entry = cutover.expanded_config(entry, expected)
+    authority = entry["authority"]
     requirement = []
     checks = entry.get("database_inventory_checks", [])
     if checks and config["postgres_manifest"] is None:
@@ -353,15 +362,15 @@ def target_custody(config, record, target, leases):
     cutover.require_database_paths(
         contents,
         requirement,
-        roots=target["directories"],
+        roots=authority["directories"],
         git_executable=entry.get("git_executable"),
     )
     return {
         "version": 1,
         "resource": target["resource"],
         "identity": record["source_authority"]["identity"],
-        "binding": target["binding"],
-        "directories": target["directories"],
+        "binding": authority["binding"],
+        "directories": authority["directories"],
         "root_identities": cutover.root_identities(entry),
         "inventory": contents,
         "metadata": cutover.inventory(entry, contents=False),
@@ -660,7 +669,7 @@ def abort(config):
             )
         with fence(config, record, leases) as pinned:
             if "backup" in record:
-                source_bytes(config, record)
+                source_bytes(config, record, retained=True)
                 semantic(
                     run_action(config, "verify-source", record, pinned),
                     record["semantic_sha256"],
@@ -738,17 +747,8 @@ def main():
     args = parser.parse_args()
     try:
         config = read_json(args.config)
-        policy_keys = ("source_manifest", "target_manifest", "backup_manifest") + tuple(
-            key
-            for key in ("postgres_manifest", "custody_manifest")
-            if config.get(key) is not None
-        )
-        if not str(args.config).startswith("/nix/store/") or any(
-            not str(config[key]).startswith("/nix/store/") for key in policy_keys
-        ):
-            raise ValueError(
-                "operator transition manifests must be immutable store files"
-            )
+        immutable_store_reference(args.config)
+        validate_operator_policy(config)
         if args.command == "plan":
             result = plan(config, args.candidate, args.writer_fence_token)
         elif args.command == "bind-candidate":

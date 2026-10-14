@@ -10,11 +10,40 @@ import subprocess
 from pathlib import Path
 
 from . import application_backup, process, resource, startup_inhibition
-from .durable import atomic_write, lock, read_json, sync_directory, write_json
+from .durable import (
+    atomic_write,
+    immutable_store_reference,
+    lock,
+    read_json,
+    sync_directory,
+    write_json,
+)
 
 
 def require_root():
     startup_inhibition.require_root()
+
+
+def validate_operator_policy(config):
+    for key in (
+        "source_manifest",
+        "target_manifest",
+        "backup_manifest",
+        "postgres_manifest",
+        "custody_manifest",
+    ):
+        if key in ("postgres_manifest", "custody_manifest") and config.get(key) is None:
+            continue
+        selected = immutable_store_reference(config[key])
+        if key in ("source_manifest", "target_manifest"):
+            resource.consumer_policy(read_json(selected))
+    for command in config.get("commands", {}).values():
+        immutable_store_reference(command["argv"][0], executable=True)
+    for key in ("runuser", "systemctl", "busctl"):
+        if key in config:
+            immutable_store_reference(config[key], executable=True)
+    for path in config.get("executable_files", []):
+        immutable_store_reference(path)
 
 
 def candidate_path(candidate, config):
@@ -118,10 +147,7 @@ def validate(config):
 
     cutover.validate_path(config["independent_receipt"])
     receipt = recovery.absolute(config["independent_receipt"])
-    controls = [barrier, Path(config["drop_in_root"])] + [
-        authority / name
-        for name in ("identity.json", "transition.json", "lock", "custody.json")
-    ]
+    controls = [barrier, Path(config["drop_in_root"]), authority]
     entry = custody_entry(config, target)
     if entry is not None:
         controls.append(Path(entry["custody_file"]))
@@ -231,6 +257,9 @@ def validate(config):
             )
         pwd.getpwnam(command["user"])
     custody_entry(config, target)
+    startup_inhibition.owned_ancestors(receipt)
+    if receipt.exists():
+        independent_receipt(config)
     return source, target
 
 
@@ -266,6 +295,34 @@ def tools(config):
     if any(not Path(path).is_absolute() or not Path(path).is_file() for path in files):
         raise ValueError("transition executable is absent")
     return {path: application_backup.digest(path) for path in sorted(set(files))}
+
+
+def independent_receipt(config):
+    """Decode and hash one admitted inode in the root CLI's protected storage."""
+    import hashlib
+    import stat
+    from .recovery import absolute
+
+    path = absolute(config["independent_receipt"])
+    startup_inhibition.owned_ancestors(path)
+    descriptor = os.open(
+        path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+    )
+    with os.fdopen(descriptor, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or info.st_mode & 0o022
+            or info.st_nlink != 1
+        ):
+            raise ValueError(
+                "independent receipt requires protected coordinator-owned storage"
+            )
+        data = stream.read(16 * 1024 * 1024 + 1)
+        if len(data) > 16 * 1024 * 1024:
+            raise ValueError("independent receipt exceeds the evidence byte limit")
+    return json.loads(data), hashlib.sha256(data).hexdigest()
 
 
 def intent(config):

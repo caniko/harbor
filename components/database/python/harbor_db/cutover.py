@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from . import postgres, recovery, resource
-from .durable import read_json, write_json
+from .durable import immutable_store_reference, read_json, write_json
 
 
 def validate_manifest(value, host):
@@ -97,9 +97,87 @@ def validate_manifest(value, host):
     return value
 
 
-def namespace_roots(manifest):
+def namespace_contracts_until(manifest, deadline):
+    contracts = {}
+    encoded_bytes = 2
+    for name, entry in manifest["resources"].items():
+        if entry["kind"] != "filesystem":
+            continue
+        contract = resource.contract(entry["authority"], deadline=deadline)
+        encoded_bytes += (
+            len(json.dumps(name).encode())
+            + len(json.dumps(contract).encode())
+            + 2
+            + 2 * bool(contracts)
+        )
+        if encoded_bytes > MAXIMUM_SNAPSHOT_BYTES:
+            raise ValueError("namespace consumer snapshot exceeds aggregate size limit")
+        contracts[name] = contract
+    validate_namespace_contracts(manifest, contracts)
+    return contracts
+
+
+def validate_namespace_contracts(manifest, contracts):
+    roots = {}
+    for name, entry in manifest["resources"].items():
+        if entry["kind"] != "filesystem":
+            continue
+        authority = entry["authority"]
+        expected = contracts.get(name)
+        if not isinstance(expected, dict):
+            raise ValueError("namespace inspection is missing a consumer contract")
+        directories = roots[name] = set(expected["directories"])
+        state = Path(authority["state_dir"])
+        if not (state / "identity.json").exists():
+            continue
+        with resource.lock(state / "lock", shared=True):
+            selected = (
+                read_json(entry["transition_manifest"])
+                if entry.get("transition_manifest")
+                else None
+            )
+            from . import application_transition, transition_manifest
+
+            journal = (
+                application_transition.journal_path(selected) if selected else None
+            )
+            if (
+                journal
+                and journal.exists()
+                and read_json(journal)["phase"]
+                in ("prepared", "committing", "committed")
+            ):
+                source, target = transition_manifest.validate(selected)
+                if target != authority:
+                    raise ValueError(
+                        "namespace transition target differs from authority"
+                    )
+                record = application_transition.status(selected)
+                current = read_json(state / "identity.json")
+                if current == record["target_authority"]:
+                    resource.verify(authority, expected)
+                elif current == record["source_authority"]:
+                    resource.require_contract(expected, record["target_authority"])
+                    resource.verify(source, record["source_authority"])
+                else:
+                    raise ValueError("namespace transition authority changed")
+                # Capture the complete transition union while the lease is held.
+                directories.update(record["source_authority"]["directories"])
+                directories.update(record["target_authority"]["directories"])
+            else:
+                resource.require_stable(authority)
+                resource.verify(authority, expected)
+    return roots
+
+
+def namespace_roots(manifest, *, contracts=None):
     roots = []
-    for entry in manifest["resources"].values():
+    validated = (
+        validate_namespace_contracts(manifest, contracts)
+        if contracts is not None
+        else None
+    )
+    for name, entry in manifest["resources"].items():
         if entry["kind"] == "postgres":
             database = read_json(entry["config"])
             for key, primary in (("data_dir", True), ("state_dir", False)):
@@ -112,22 +190,70 @@ def namespace_roots(manifest):
                 validate_path(startup.get("state_dir"))
                 roots.append((Path(startup["state_dir"]), False))
         else:
+            authority = entry["authority"]
+            directories = (
+                validated[name]
+                if validated is not None
+                else set(authority["directories"])
+            )
             roots.extend(
                 (Path(path), False)
-                for path in [
-                    entry["authority"]["state_dir"],
-                    *entry["authority"]["directories"],
-                ]
+                for path in [authority["state_dir"], *sorted(directories)]
             )
     return roots
 
 
 def validate_storage_namespaces(manifest, *, deadline=None):
     """Inspect all private roots in the coordinator before user-scoped workers."""
-    protected = set()
     if deadline is None:
         deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
-    for root, primary in namespace_roots(manifest):
+    contracts = namespace_contracts_until(manifest, deadline)
+    inspect_namespace_roots(namespace_roots(manifest, contracts=contracts), deadline)
+    return contracts
+
+
+def validate_restore_roots(manifest, restores, *, contracts=None, deadline=None):
+    if deadline is None:
+        deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
+    if contracts is None:
+        contracts = namespace_contracts_until(manifest, deadline)
+    protected = namespace_roots(manifest, contracts=contracts)
+    validate_restore_roots_against(restores, protected)
+
+
+def validate_restore_roots_against(restores, protected):
+    for restore in restores:
+        validate_path(str(restore))
+        restore = Path(restore)
+        if any(
+            restore.is_relative_to(root) or root.is_relative_to(restore)
+            for root, _ in protected
+        ):
+            raise ValueError(
+                "restore roots must be independent of every enrolled storage namespace"
+            )
+
+
+def validate_restore_namespaces(manifest, restores, *, contracts=None, deadline=None):
+    if deadline is None:
+        deadline = time.monotonic() + manifest.get("activation_timeout_seconds", 900)
+    if contracts is None:
+        contracts = namespace_contracts_until(manifest, deadline)
+    if not isinstance(contracts, dict):
+        raise ValueError("invalid namespace consumer contracts")
+    roots = namespace_roots(manifest, contracts=contracts)
+    validate_restore_roots_against(restores, roots)
+    inspect_namespace_roots(
+        roots + [(Path(root), False) for root in restores], deadline
+    )
+    return contracts
+
+
+def inspect_namespace_roots(roots, deadline):
+    protected = set()
+    for root, primary in roots:
+        if time.monotonic() >= deadline:
+            raise ValueError("cutover inspection budget exhausted")
         try:
             root.lstat()
         except FileNotFoundError:
@@ -190,6 +316,19 @@ def root_identities(config):
         }
         for path in config["authority"]["directories"]
     ]
+
+
+def expanded_config(config, contract):
+    if not config["authority"].get("consumer_command"):
+        return config
+    return {
+        **config,
+        "authority": {
+            **config["authority"],
+            "directories": contract["directories"],
+            "binding": contract["binding"],
+        },
+    }
 
 
 def inventory(config, *, contents):
@@ -330,55 +469,7 @@ def require_database_paths(inventories, requirements, *, roots=(), git_executabl
 
 def immutable_git_executable(executable):
     validate_path(executable)
-    store = Path("/nix/store")
-
-    def reference(path, depth=0):
-        if not path.is_relative_to(store) or depth > 64:
-            raise ValueError("Git integrity requires an immutable store executable")
-        for selected in (path, *path.parents):
-            if selected == store:
-                break
-            info = selected.lstat()
-            if info.st_uid != 0:
-                raise ValueError(
-                    "Git integrity requires root-owned immutable store paths"
-                )
-            if stat.S_ISLNK(info.st_mode):
-                target = selected.readlink()
-                reference(
-                    target
-                    if target.is_absolute()
-                    else selected.parent.resolve(strict=True) / target,
-                    depth + 1,
-                )
-            elif info.st_mode & 0o222:
-                raise ValueError(
-                    "Git integrity requires read-only immutable store paths"
-                )
-
-    path = Path(executable)
-    reference(path)
-    resolved = path.resolve(strict=True)
-    if not re.fullmatch(
-        r"/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9+._?=-]+(?:/[^/]+)*",
-        str(resolved),
-    ):
-        raise ValueError("Git integrity requires an immutable store executable")
-    for parent in resolved.parents:
-        if parent == store:
-            break
-        info = parent.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222:
-            raise ValueError("Git integrity requires immutable store ancestors")
-    info = resolved.lstat()
-    if (
-        not stat.S_ISREG(info.st_mode)
-        or info.st_uid != 0
-        or info.st_mode & 0o222
-        or not info.st_mode & 0o111
-    ):
-        raise ValueError("Git integrity requires an executable immutable store file")
-    return str(resolved)
+    return str(immutable_store_reference(executable, executable=True))
 
 
 def validate_git_repository(path, requirement, executable):
@@ -454,13 +545,17 @@ def certify_filesystem(
     now=None,
     database_snapshot=None,
     database_requirements=(),
+    pinned=None,
+    deadline=None,
 ):
     """Writers must already be stopped; this command never stops or restores them."""
     receipt = custody_receipt_path(config)
     now = int(time.time()) if now is None else now
     authority = config["authority"]
-    resource.contract(authority)
-    roots = list(map(Path, authority["directories"]))
+    expected = resource.contract(authority, deadline=deadline)
+    resource.require_contract(expected, pinned)
+    config = expanded_config(config, expected)
+    roots = list(map(Path, config["authority"]["directories"]))
     restores = list(map(Path, restored_roots))
     state = resource.state_directory(authority)
     if (
@@ -489,7 +584,9 @@ def certify_filesystem(
         raise ValueError(
             "filesystem certification needs matching database recovery evidence"
         )
-    with resource.adoption(authority, identifier) as publish:
+    with resource.adoption(
+        authority, identifier, expected=expected, deadline=deadline
+    ) as publish:
         if any(writer_active(unit) for unit in config["runtime_units"]):
             raise ValueError(
                 "source writer is active; establish the declared consistency window"
@@ -503,7 +600,8 @@ def certify_filesystem(
             git_executable=config.get("git_executable"),
         )
         restored = inventory(
-            {"authority": {**authority, "directories": restored_roots}}, contents=True
+            {"authority": {**config["authority"], "directories": restored_roots}},
+            contents=True,
         )
         if any(
             stat.S_IMODE(source.stat().st_mode) != stat.S_IMODE(restore.stat().st_mode)
@@ -544,15 +642,22 @@ def certify_filesystem(
             raise ValueError(
                 "source writer or storage identity changed during custody certification"
             )
+        resource.require_contract(
+            resource.contract(authority, deadline=deadline), expected
+        )
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ValueError("cutover inspection budget exhausted")
         publish()
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ValueError("cutover inspection budget exhausted")
         write_json(
             recovery.absolute(receipt),
             {
                 "version": 1,
                 "resource": authority["resource"],
                 "identity": identifier,
-                "binding": authority["binding"],
-                "directories": authority["directories"],
+                "binding": config["authority"]["binding"],
+                "directories": config["authority"]["directories"],
                 "completed_at": now,
                 "database_snapshot_sha256": database_snapshot,
                 "database_requirements": database_requirements,
@@ -563,7 +668,9 @@ def certify_filesystem(
         )
 
 
-def check_resource(config, *, phase, now=None, candidate=None):
+def check_resource(
+    config, *, phase, now=None, candidate=None, pinned=None, deadline=None
+):
     if phase not in ("preflight", "activate", "startup", "certify"):
         raise ValueError("unsupported cutover phase")
     now = int(time.time()) if now is None else now
@@ -579,6 +686,18 @@ def check_resource(config, *, phase, now=None, candidate=None):
                 "committing",
                 "committed",
             ):
+                if pinned is not None:
+                    prepared = read_json(journal).get("target_authority")
+                    if not isinstance(prepared, dict):
+                        raise ValueError("missing prepared target authority")
+                    resource.require_contract(
+                        {
+                            key: value
+                            for key, value in prepared.items()
+                            if key != "identity"
+                        },
+                        pinned,
+                    )
                 if selected["custody_manifest"] is None:
                     raise ValueError(
                         "cutover transition admission requires target corpus custody publication"
@@ -589,9 +708,19 @@ def check_resource(config, *, phase, now=None, candidate=None):
         # Startup validates adopted roots/identity under the writer lease. A
         # corpus walk would race ordinary file turnover and block SSH commands.
         # Deployment still rejects missing/empty or changed contents up front.
-        metadata = inventory(config, contents=False) if phase != "startup" else None
         authority = config["authority"]
-        with resource.inspection(authority) as adopted:
+        metadata = (
+            inventory(config, contents=False)
+            if phase != "startup" and not authority.get("consumer_command")
+            else None
+        )
+        with resource.inspection(
+            authority, pinned=pinned, deadline=deadline
+        ) as adopted:
+            config = expanded_config(config, adopted)
+            authority = config["authority"]
+            if metadata is None and phase != "startup":
+                metadata = inventory(config, contents=False)
             receipt = read_json(recovery.absolute(config["custody_file"]))
             if (
                 receipt.get("version") != 1
@@ -698,8 +827,39 @@ def check_resource(config, *, phase, now=None, candidate=None):
             }
 
 
+MAXIMUM_SNAPSHOT_BYTES = 64 * 1024 * 1024
+
+
+def read_snapshot(deadline):
+    import select
+
+    data = bytearray()
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("cutover inspection budget exhausted")
+        if not select.select([sys.stdin.fileno()], [], [], remaining)[0]:
+            continue
+        chunk = os.read(sys.stdin.fileno(), 65536)
+        if not chunk:
+            break
+        data.extend(chunk)
+        if len(data) > MAXIMUM_SNAPSHOT_BYTES:
+            raise ValueError("namespace snapshot exceeds its size limit")
+    return json.loads(data)
+
+
 def execute_worker(
-    path, name, config, phase, timeout, extra=(), *, command_name="check", as_root=False
+    path,
+    name,
+    config,
+    phase,
+    timeout,
+    extra=(),
+    *,
+    command_name="check",
+    as_root=False,
+    snapshot=None,
 ):
     account = pwd.getpwnam(config["user"])
     kwargs = {}
@@ -735,8 +895,12 @@ def execute_worker(
         name,
         *extra,
     ]
+    data = None if snapshot is None else json.dumps(snapshot)
+    if data is not None and len(data.encode()) > MAXIMUM_SNAPSHOT_BYTES:
+        raise ValueError("namespace snapshot exceeds its size limit")
     process = subprocess.Popen(
         command,
+        stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -744,7 +908,7 @@ def execute_worker(
         **kwargs,
     )
     try:
-        output, error = process.communicate(timeout=timeout)
+        output, error = process.communicate(input=data, timeout=timeout)
     except BaseException:
         os.killpg(process.pid, signal.SIGKILL)
         process.communicate()
@@ -781,6 +945,12 @@ def main():
         default="preflight",
     )
     checking.add_argument("--worker", help=argparse.SUPPRESS)
+    checking.add_argument(
+        "--authority-contract", type=json.loads, help=argparse.SUPPRESS
+    )
+    checking.add_argument(
+        "--authority-contract-stdin", action="store_true", help=argparse.SUPPRESS
+    )
     certification_worker.add_argument("--phase", choices=("certify",), required=True)
     certification_worker.add_argument("--worker", required=True)
     certification_worker.add_argument("--certify-roots", nargs="+", required=True)
@@ -788,6 +958,12 @@ def main():
     certification_worker.add_argument("--database-snapshot")
     certification_worker.add_argument(
         "--database-requirements", type=json.loads, default=[]
+    )
+    certification_worker.add_argument(
+        "--namespace-contracts", type=json.loads, help=argparse.SUPPRESS
+    )
+    certification_worker.add_argument(
+        "--namespace-contracts-stdin", action="store_true", help=argparse.SUPPRESS
     )
     certifying.add_argument("--resource", required=True)
     certifying.add_argument("--restore-root", action="append", required=True)
@@ -806,7 +982,19 @@ def main():
                 inspect=lambda: check_resource(config, phase="startup"),
             )
         elif args.command == "certify":
-            validate_storage_namespaces(manifest)
+            deadline = time.monotonic() + manifest.get(
+                "activation_timeout_seconds", 900
+            )
+            contracts = validate_restore_namespaces(
+                manifest, args.restore_root, deadline=deadline
+            )
+
+            def remaining():
+                seconds = deadline - time.monotonic()
+                if seconds <= 0:
+                    raise ValueError("cutover inspection budget exhausted")
+                return seconds
+
             config = manifest["resources"][args.resource]
             dependency = config.get("database_resource")
             database = None
@@ -817,13 +1005,14 @@ def main():
                     dependency,
                     manifest["resources"][dependency],
                     "certify",
-                    manifest.get("activation_timeout_seconds", 900),
+                    remaining(),
                 )
                 database = result["database_snapshot_sha256"]
                 requirements = result.get("corpus_requirements", {}).get(
                     args.resource, []
                 )
             extra = [
+                "--namespace-contracts-stdin",
                 "--certify-identity",
                 args.identity,
                 "--certify-roots",
@@ -842,26 +1031,63 @@ def main():
                 args.resource,
                 config,
                 "certify",
-                manifest.get("activation_timeout_seconds", 900),
+                remaining(),
                 extra,
                 command_name="certify-worker",
+                as_root=os.geteuid() == 0,
+                snapshot=contracts,
             )
         elif args.command == "certify-worker":
+            deadline = time.monotonic() + manifest.get(
+                "activation_timeout_seconds", 900
+            )
+            pinned = (
+                read_snapshot(deadline)
+                if args.namespace_contracts_stdin
+                else args.namespace_contracts
+            )
+            contracts = validate_restore_namespaces(
+                manifest, args.certify_roots, contracts=pinned, deadline=deadline
+            )
+            account = pwd.getpwnam(manifest["resources"][args.worker]["user"])
+            if os.geteuid() != account.pw_uid:
+                if os.geteuid() != 0:
+                    raise ValueError(
+                        "certification requires the declared resource service user"
+                    )
+                os.setgroups(os.getgrouplist(account.pw_name, account.pw_gid))
+                os.setgid(account.pw_gid)
+                os.setuid(account.pw_uid)
             certify_filesystem(
                 manifest["resources"][args.worker],
                 args.certify_roots,
                 args.certify_identity,
                 database_snapshot=args.database_snapshot,
                 database_requirements=args.database_requirements,
+                pinned=contracts.get(args.worker),
+                deadline=deadline,
             )
             print("{}")
         elif args.worker:
+            deadline = time.monotonic() + manifest.get(
+                "timeout_seconds"
+                if args.phase == "preflight"
+                else "activation_timeout_seconds",
+                30 if args.phase == "preflight" else 900,
+            )
+            pinned = (
+                read_snapshot(deadline)
+                if args.authority_contract_stdin
+                else args.authority_contract
+            )
             print(
                 json.dumps(
                     check_resource(
                         manifest["resources"][args.worker],
                         phase=args.phase,
                         candidate=args.candidate,
+                        pinned=pinned,
+                        deadline=deadline,
                     )
                 )
             )
@@ -874,7 +1100,7 @@ def main():
                 else "activation_timeout_seconds",
                 30 if args.phase == "preflight" else 900,
             )
-            validate_storage_namespaces(manifest, deadline=deadline)
+            contracts = validate_storage_namespaces(manifest, deadline=deadline)
             for name, config in manifest["resources"].items():
                 try:
                     remaining = deadline - time.monotonic()
@@ -896,10 +1122,12 @@ def main():
                             "committed",
                         )
                     extra = (
-                        ()
+                        []
                         if args.candidate is None
-                        else ("--candidate", args.candidate)
+                        else ["--candidate", args.candidate]
                     )
+                    if name in contracts:
+                        extra.append("--authority-contract-stdin")
                     results[name] = execute_worker(
                         args.contract,
                         name,
@@ -908,6 +1136,7 @@ def main():
                         remaining,
                         extra,
                         as_root=as_root,
+                        snapshot=contracts.get(name),
                     )
                 except (ValueError, OSError, subprocess.TimeoutExpired) as error:
                     failures.append({"resource": name, "reason": str(error)})
@@ -953,6 +1182,18 @@ def main():
         TypeError,
         subprocess.SubprocessError,
     ) as error:
+        if args.command == "check" and not args.worker:
+            print(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "host": args.host,
+                        "phase": args.phase,
+                        "status": "blocked",
+                        "failures": [{"resource": "namespaces", "reason": str(error)}],
+                    }
+                )
+            )
         print(f"harbor-db-cutover: {error}", file=sys.stderr)
         return 1
     return 0

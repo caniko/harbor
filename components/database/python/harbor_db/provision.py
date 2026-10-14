@@ -167,12 +167,14 @@ def unexpected_runtime_grants(policy):
         "(d.classid='pg_class'::regclass AND EXISTS (SELECT 1 FROM pg_class c "
         "JOIN pg_namespace n ON n.oid=c.relnamespace "
         f"WHERE c.oid=d.objid AND n.nspname='{schema}' AND c.relkind IN ('r','p','v','m','f','S'))) "
+        "OR (d.classid='pg_proc'::regclass AND EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace "
+        f"WHERE f.oid=d.objid AND n.nspname='{schema}')) "
         "OR (d.classid='pg_namespace'::regclass "
         f"AND d.objid=COALESCE((SELECT oid FROM pg_namespace WHERE nspname='{schema}'),0)) "
         "OR (d.classid='pg_default_acl'::regclass AND EXISTS (SELECT 1 FROM pg_default_acl a "
         f"WHERE a.oid=d.objid AND a.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{owner}') "
         f"AND a.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{schema}')) "
-        "AND a.defaclobjtype IN ('r','S'))))))"
+        "AND a.defaclobjtype IN ('r','S','f'))))))"
     )
 
 
@@ -188,7 +190,9 @@ def unexpected_runtime_access(policy):
         f"WHERE runtime.rolname='{runtime}' AND {outside} AND c.relkind IN ('r','p','v','m','f','S') "
         "AND CASE WHEN c.relkind='S' THEN has_sequence_privilege(runtime.oid,c.oid,'USAGE,SELECT,UPDATE') "
         "ELSE has_table_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') "
-        "OR has_any_column_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') END)"
+        "OR has_any_column_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') END) "
+        "OR EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace,pg_roles runtime "
+        f"WHERE runtime.rolname='{runtime}' AND {outside} AND has_function_privilege(runtime.oid,f.oid,'EXECUTE'))"
     )
 
 
@@ -241,7 +245,15 @@ def _apply(config, endpoint, *, require_tables):
         f"AND pg_get_userbyid(c.relowner)<>'{policy['owner_role']}') "
         "OR EXISTS (SELECT 1 FROM pg_namespace "
         f"WHERE nspname='{policy['schema']}' AND pg_get_userbyid(nspowner)<>'{policy['owner_role']}' "
-        "AND NOT (nspname='public' AND pg_get_userbyid(nspowner)='pg_database_owner'));"
+        "AND NOT (nspname='public' AND pg_get_userbyid(nspowner)='pg_database_owner')) "
+        "OR EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace "
+        f"WHERE n.nspname='{policy['schema']}' AND (pg_get_userbyid(f.proowner)<>'{policy['owner_role']}' "
+        "OR EXISTS (SELECT 1 FROM aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) acl "
+        f"WHERE acl.grantee<>0 AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{policy['owner_role']}','{policy['runtime_role']}'))))) "
+        "OR EXISTS (SELECT 1 FROM pg_default_acl d,LATERAL aclexplode(d.defaclacl) acl "
+        f"WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{policy['owner_role']}') "
+        f"AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{policy['schema']}')) AND d.defaclobjtype='f' "
+        f"AND acl.grantee<>0 AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{policy['owner_role']}','{policy['runtime_role']}')));"
     )
     if exists and query(endpoint, policy["database"], unsafe_objects_sql) == "t":
         raise ValueError(
@@ -310,6 +322,9 @@ def _apply(config, endpoint, *, require_tables):
         f"GRANT USAGE ON SCHEMA {schema} TO {runtime};",
         f"REVOKE ALL ON ALL TABLES IN SCHEMA {schema} FROM PUBLIC, {runtime};",
         f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA {schema} FROM PUBLIC, {runtime};",
+        f"REVOKE ALL ON ALL ROUTINES IN SCHEMA {schema} FROM PUBLIC, {runtime};",
+        f"ALTER DEFAULT PRIVILEGES FOR ROLE {owner} REVOKE ALL ON FUNCTIONS FROM PUBLIC, {runtime};",
+        f"ALTER DEFAULT PRIVILEGES FOR ROLE {owner} IN SCHEMA {schema} REVOKE ALL ON FUNCTIONS FROM PUBLIC, {runtime};",
         # Table-level revocation does not remove older column-level grants.
         "SELECT format('REVOKE ALL (%I) ON TABLE %I.%I FROM PUBLIC, %I',a.attname,n.nspname,c.relname,"
         f"'{policy['runtime_role']}') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid "
@@ -363,6 +378,11 @@ def _check(config, endpoint, *, require_tables):
     ]
     checks = [
         f"NOT ({unexpected_runtime_grants(policy)})",
+        "NOT EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace "
+        f"WHERE n.nspname='{schema}' AND (pg_get_userbyid(f.proowner)<>'{owner}' OR has_function_privilege('{runtime}',f.oid,'EXECUTE') "
+        "OR EXISTS (SELECT 1 FROM aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) acl "
+        f"WHERE acl.grantee<>(SELECT oid FROM pg_roles WHERE rolname='{owner}'))))",
+        f"EXISTS (SELECT 1 FROM pg_default_acl WHERE defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{owner}') AND defaclnamespace=0 AND defaclobjtype='f')",
         f"NOT ({unexpected_runtime_access(policy)})",
         "NOT EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND deptype='o' "
         f"AND refobjid=(SELECT oid FROM pg_roles WHERE rolname='{runtime}'))",
@@ -397,7 +417,7 @@ def _check(config, endpoint, *, require_tables):
             "NOT EXISTS (SELECT 1 FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) acl "
             f"WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{owner}') "
             f"AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{schema}')) "
-            "AND d.defaclobjtype IN ('r','S') "
+            "AND d.defaclobjtype IN ('r','S','f') "
             f"AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{owner}','{runtime}')))",
         ]
     )
@@ -446,7 +466,7 @@ def _check(config, endpoint, *, require_tables):
             "FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) acl "
             f"WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{owner}') "
             f"AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{schema}')) "
-            "AND d.defaclobjtype IN ('r','S') "
+            "AND d.defaclobjtype IN ('r','S','f') "
             f"AND acl.grantee IN (0,(SELECT oid FROM pg_roles WHERE rolname='{runtime}')); COMMIT;",
         )
     )

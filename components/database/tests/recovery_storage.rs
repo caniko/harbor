@@ -12,6 +12,134 @@ use std::{
 // test's just-closed descriptors before CLOEXEC runs.
 static WORKERS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[test]
+fn recovery_machine_bindings_reject_hostname_only_remote_evidence_in_both_engines() {
+    let f = Fixture::new();
+    f.accepted();
+    let source = f.source();
+    let original = f.receipt();
+    let binding = json!({"recovery_target_lsn":"0/200"});
+    for machine in [
+        source["source_machine_sha256"].clone(),
+        json!(null),
+        json!(""),
+        json!("A".repeat(64)),
+        json!(17),
+    ] {
+        let mut receipt = original.clone();
+        receipt["executor_host"] = json!("hostname-only-remote");
+        receipt["executor_machine_sha256"] = machine;
+        assert!(
+            recovery::validate_receipt(
+                &f.config,
+                &f.config["recovery"],
+                &source,
+                &binding,
+                &receipt,
+                "off-host restore acceptance"
+            )
+            .is_err()
+        );
+        let script = "import json,sys; from harbor_db import recovery\nc,s,b,r=map(json.loads,sys.argv[1:])\ntry: recovery.validate_receipt(c,c['recovery'],s,b,r,'off-host restore acceptance')\nexcept ValueError as e: assert 'independent machine' in str(e)\nelse: raise AssertionError('hostname-only independence admitted')";
+        let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            script.into(),
+            f.config.to_string(),
+            source.to_string(),
+            binding.to_string(),
+            receipt.to_string(),
+        ]);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        harbor_db::storage::process::execute(&spec).unwrap();
+    }
+    let mut remote = original;
+    remote["executor_host"] = json!("independent-host");
+    remote["executor_machine_sha256"] = json!("0".repeat(64));
+    recovery::validate_receipt(
+        &f.config,
+        &f.config["recovery"],
+        &source,
+        &binding,
+        &remote,
+        "off-host restore acceptance",
+    )
+    .unwrap();
+    remote["source_machine_sha256"] = json!("1".repeat(64));
+    assert!(
+        recovery::validate_receipt(
+            &f.config,
+            &f.config["recovery"],
+            &source,
+            &binding,
+            &remote,
+            "off-host restore acceptance"
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn uts_hostname_change_cannot_certify_an_independent_machine_in_both_engines() {
+    const NAME: &str = "uts_hostname_change_cannot_certify_an_independent_machine_in_both_engines";
+    if std::env::var_os("HARBOR_RECOVERY_UTS_TEST_CHILD").is_none() {
+        let child = std::process::Command::new("unshare")
+            .args(["--user","--map-root-user","--uts","--","python3","-B","-c", "import os,socket,sys; socket.sethostname('hostname-only-remote'); os.execv(sys.argv[1],[sys.argv[1],'--exact',sys.argv[2],'--nocapture'])"])
+            .arg(std::env::current_exe().unwrap()).arg(NAME)
+            .env("HARBOR_RECOVERY_UTS_TEST_CHILD","1").output().unwrap();
+        assert!(
+            child.status.success()
+                && String::from_utf8_lossy(&child.stdout).contains("test result: ok. 1 passed;"),
+            "{}{}",
+            String::from_utf8_lossy(&child.stdout),
+            String::from_utf8_lossy(&child.stderr)
+        );
+        return;
+    }
+    let mut f = Fixture::new();
+    f.snapshot();
+    f.config["recovery"]["off_host_receipt_file"] = f.config["recovery"]["receipt_file"].clone();
+    let error = recovery::certify(
+        &f.config,
+        &f.p("restored"),
+        Path::new("/restore/socket"),
+        55432,
+        Some(f.now),
+        None,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("independent machine"), "{error}");
+    assert!(!f.p("backup/evidence/recovery.json").exists());
+    let script = "import json,socket,sys; from pathlib import Path; from harbor_db import recovery\nassert socket.gethostname()=='hostname-only-remote'\nif sys.argv[3]: recovery.application_backup.machine=lambda:recovery.application_backup.digest(sys.argv[3])\nc=json.loads(sys.argv[1])\ntry: recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,now=int(sys.argv[2]))\nexcept ValueError as e: assert 'independent machine' in str(e)\nelse: raise AssertionError('UTS name established off-host independence')";
+    let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        f.config.to_string(),
+        f.now.to_string(),
+        option_env!("HARBOR_DB_TEST_MACHINE_ID")
+            .unwrap_or("")
+            .into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    harbor_db::storage::process::execute(&spec).unwrap();
+    assert!(!f.p("backup/evidence/recovery.json").exists());
+}
+
 fn executable(path: &Path, script: &str) {
     fs::write(path, format!("#!/bin/sh\n{script}\n")).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
@@ -44,6 +172,7 @@ fn local_acceptance_cannot_reuse_an_independent_host_receipt_in_both_engines() {
         );
     }
     receipt["executor_host"] = json!("independent-host");
+    receipt["executor_machine_sha256"] = json!("0".repeat(64));
     recovery::validate_receipt(
         &f.config,
         &f.config["recovery"],
@@ -62,7 +191,7 @@ for executor in ('independent-host',None,''):
     try: recovery.validate_receipt(c,c['recovery'],source,binding,receipt|{'executor_host':executor},'restore acceptance')
     except ValueError: pass
     else: raise AssertionError('local evidence reused a remote receipt')
-recovery.validate_receipt(c,c['recovery'],source,binding,receipt|{'executor_host':'primary-host'},'restore acceptance')
+recovery.validate_receipt(c,c['recovery'],source,binding,receipt|{'executor_host':'primary-host','executor_machine_sha256':source['source_machine_sha256']},'restore acceptance')
 recovery.validate_receipt(c,c['recovery'],source,binding,receipt,'off-host restore acceptance')
 "#;
     let mut spec = harbor_db::storage::process::CommandSpec::new(vec![
@@ -123,7 +252,7 @@ fn local_and_off_host_receipt_paths_cannot_alias_in_admission() {
         .is_err()
     );
     assert!(!f.p("backup/evidence/recovery.json").exists());
-    let remote = recovery::certify(
+    let spoofed = recovery::certify(
         &f.config,
         &f.p("restored"),
         Path::new("/restore/socket"),
@@ -131,8 +260,15 @@ fn local_and_off_host_receipt_paths_cannot_alias_in_admission() {
         Some(f.now),
         Some("independent-host"),
     )
-    .unwrap();
-    assert_eq!(remote["executor_host"], "independent-host");
+    .unwrap_err();
+    assert!(spoofed.to_string().contains("independent machine"));
+    assert!(!f.p("backup/evidence/recovery.json").exists());
+    f.config["recovery"]["off_host_receipt_file"] = json!(null);
+    let mut remote = f.certify();
+    f.config["recovery"]["off_host_receipt_file"] = f.config["recovery"]["receipt_file"].clone();
+    remote["executor_host"] = json!("independent-host");
+    remote["executor_machine_sha256"] = json!("0".repeat(64));
+    durable::write_json(&f.p("backup/evidence/recovery.json"), &remote).unwrap();
     assert!(recovery::check(&f.config, Some(f.now)).is_err());
     // Shared output selection belongs only to certification. Admission still
     // requires independent and local executions retained under separate paths.
@@ -457,7 +593,12 @@ fn recovery_evidence_cannot_replace_postgres_storage_in_both_engines() {
         .collect();
     let original = f.config.clone();
     for protocol in [None, Some("legacy"), Some("source-local-v1")] {
-        for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+        for key in [
+            "backup_root",
+            "snapshot_file",
+            "receipt_file",
+            "off_host_receipt_file",
+        ] {
             for target in [
                 "data",
                 "data/PG_VERSION",
@@ -526,7 +667,12 @@ for operation in (lambda: recovery.policy(config), lambda: recovery.snapshot(con
         }
     }
     f.config = original;
-    for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+    for key in [
+        "backup_root",
+        "snapshot_file",
+        "receipt_file",
+        "off_host_receipt_file",
+    ] {
         let mut independent = f.config.clone();
         independent["recovery"][key] = json!(f.p("data-sibling/receipt.json"));
         recovery::policy(&independent).unwrap();
@@ -554,7 +700,7 @@ fn primary_configuration_links_are_protected_without_admitting_restore_redirects
         Path::new("/socket"),
         55432,
         Some(f.now),
-        Some("independent-host"),
+        Some("primary-host"),
     )
     .unwrap();
     fs::hard_link(&configuration, f.p("restored/shared-config")).unwrap();
@@ -565,7 +711,7 @@ fn primary_configuration_links_are_protected_without_admitting_restore_redirects
             Path::new("/socket"),
             55432,
             Some(f.now),
-            Some("independent-host")
+            Some("primary-host")
         )
         .unwrap_err()
         .to_string()
@@ -580,7 +726,7 @@ fn primary_configuration_links_are_protected_without_admitting_restore_redirects
             Path::new("/socket"),
             55432,
             Some(f.now),
-            Some("independent-host")
+            Some("primary-host")
         )
         .unwrap_err()
         .to_string()
@@ -627,6 +773,7 @@ fn python_recovery(f: &Fixture, action: &str, preparation: &Value) -> Value {
 from pathlib import Path
 from harbor_db import recovery
 config,action,preparation,now=json.loads(sys.argv[1]),sys.argv[2],json.loads(sys.argv[3]),int(sys.argv[4])
+if sys.argv[5]: recovery.application_backup.machine=lambda:recovery.application_backup.digest(sys.argv[5])
 try:
     if action == 'snapshot': result=recovery.snapshot(config,'/run/postgresql',5432,now=now)
     elif action == 'certify': result=recovery.certify(config,Path(config['data_dir']).parent/'restored','/restore/socket',55432,now=now,hostname='primary-host')
@@ -647,6 +794,9 @@ print(json.dumps(result))
         action.into(),
         preparation.to_string(),
         f.now.to_string(),
+        option_env!("HARBOR_DB_TEST_MACHINE_ID")
+            .unwrap_or("")
+            .into(),
     ]);
     command.environment = Some(std::collections::BTreeMap::from([
         (
@@ -915,6 +1065,7 @@ fn managed_preparation_retains_local_evidence_across_missing_off_host_retry() {
     );
     let mut remote = f.receipt();
     remote["executor_host"] = json!("independent-host");
+    remote["executor_machine_sha256"] = json!("0".repeat(64));
     durable::write_json(&f.p("backup/evidence/off-host.json"), &remote).unwrap();
     assert_eq!(
         recovery::prepare_at(
@@ -1056,7 +1207,7 @@ fn disposable_restore_must_be_distinct_read_only_primary_at_recovery_point() {
                 Path::new("/restore/socket"),
                 55432,
                 Some(f.now),
-                Some("host")
+                Some("primary-host")
             )
             .is_err(),
             "{key}"
@@ -1070,7 +1221,7 @@ fn disposable_restore_must_be_distinct_read_only_primary_at_recovery_point() {
             Path::new("/restore/socket"),
             55432,
             Some(f.now),
-            Some("host")
+            Some("primary-host")
         )
         .is_err()
     );
@@ -1092,7 +1243,7 @@ fn restored_clusters_cannot_share_primary_or_selected_backup_inodes_in_both_engi
             let before = fs::read(&source).unwrap();
             let result = if python {
                 let mut spec=harbor_db::storage::process::CommandSpec::new(vec!["python3".into(),"-B".into(),"-c".into(),
-                    "import json,sys\nfrom pathlib import Path\nfrom harbor_db import recovery\nc=json.loads(sys.argv[1])\ntry: recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,now=int(sys.argv[2]),hostname='primary-host')\nexcept ValueError as e: print(json.dumps({'error':str(e)}))\nelse: print(json.dumps({'accepted':True}))".into(),f.config.to_string(),f.now.to_string()]);
+                    "import json,sys\nfrom pathlib import Path\nfrom harbor_db import recovery\nif sys.argv[3]: recovery.application_backup.machine=lambda:recovery.application_backup.digest(sys.argv[3])\nc=json.loads(sys.argv[1])\ntry: recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,now=int(sys.argv[2]),hostname='primary-host')\nexcept ValueError as e: print(json.dumps({'error':str(e)}))\nelse: print(json.dumps({'accepted':True}))".into(),f.config.to_string(),f.now.to_string(),option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("").into()]);
                 spec.environment = Some(std::collections::BTreeMap::from([
                     (
                         "PYTHONPATH".into(),
@@ -1160,7 +1311,7 @@ fn primary_and_selected_backup_cannot_share_inodes_even_with_an_independent_rest
             let rejected = if python || mounted {
                 fs::write(f.p("config.json"), f.config.to_string()).unwrap();
                 let mut argv = if python {
-                    vec!["python3".into(),"-B".into(),"-c".into(),"import json,sys;from pathlib import Path;from harbor_db import recovery;c=json.loads(sys.argv[1]);recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,hostname='primary-host')".into(),f.config.to_string()]
+                    vec!["python3".into(),"-B".into(),"-c".into(),"import json,sys;from pathlib import Path;from harbor_db import recovery\nif sys.argv[2]: recovery.application_backup.machine=lambda:recovery.application_backup.digest(sys.argv[2])\nc=json.loads(sys.argv[1]);recovery.certify(c,Path(c['data_dir']).parent/'restored','/restore/socket',55432,hostname='primary-host')".into(),f.config.to_string(),option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("").into()]
                 } else {
                     vec![
                         env!("CARGO_BIN_EXE_harbor-db-postgres").into(),
@@ -1326,6 +1477,7 @@ fn off_host_import_requires_independent_executor_and_exact_source_binding() {
     }
     let mut receipt = good.clone();
     receipt["executor_host"] = json!("independent-host");
+    receipt["executor_machine_sha256"] = json!("0".repeat(64));
     durable::write_json(&incoming, &receipt).unwrap();
     recovery::import_off_host(&f.config, &incoming, Some(f.now)).unwrap();
     assert_eq!(
@@ -1672,6 +1824,7 @@ fn preparation_export_runs_after_local_acceptance_before_off_host_abort() {
     );
     let mut receipt = f.receipt();
     receipt["executor_host"] = json!("independent-host");
+    receipt["executor_machine_sha256"] = json!("0".repeat(64));
     durable::write_json(&f.p("backup/evidence/off-host.json"), &receipt).unwrap();
     assert_eq!(f.prepare(&prep).unwrap()["off_host"], "independent-host");
 }
@@ -1795,6 +1948,7 @@ fn managed_credentials_import_rejects_local_and_unbound_receipts_then_accepts_in
     }
     let mut independent = receipt;
     independent["executor_host"] = json!("independent-host");
+    independent["executor_machine_sha256"] = json!("0".repeat(64));
     durable::write_json(&f.p("credentials/recovery-off-host"), &independent).unwrap();
     assert!(preparation_driver(&f, &prep).wait().unwrap().success());
     let result = durable::read_json(&f.p("driver-result.json")).unwrap();

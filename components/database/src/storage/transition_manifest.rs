@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     os::{
         fd::RawFd,
         unix::fs::{DirBuilderExt, MetadataExt},
@@ -25,6 +26,20 @@ pub fn require_root() -> Result<()> {
 }
 /// Operator admission is stricter than the mutable library fixtures.
 pub fn validate_operator_policy(config: &Value) -> Result<()> {
+    let executable = |path: &str| -> Result<()> {
+        custody::validate_path(path)?;
+        let file = durable::immutable_store_reference(Path::new(path)).map_err(|error| {
+            invalid(format!(
+                "operator transition commands require immutable store executables: {error}"
+            ))
+        })?;
+        if fs::metadata(file)?.mode() & 0o111 == 0 {
+            return Err(invalid(
+                "operator transition commands require executable immutable store files",
+            ));
+        }
+        Ok(())
+    };
     for key in [
         "source_manifest",
         "target_manifest",
@@ -42,6 +57,32 @@ pub fn validate_operator_policy(config: &Value) -> Result<()> {
                 "operator transition manifests must be immutable store files ({key}): {error}"
             ))
         })?;
+        if matches!(key, "source_manifest" | "target_manifest") {
+            resource::consumer_policy(&durable::read_config_json(Path::new(path))?)?;
+        }
+    }
+    if let Some(commands) = config.get("commands").and_then(Value::as_object) {
+        for command in commands.values() {
+            let argv = array(command, "argv")?;
+            let path = argv
+                .first()
+                .and_then(Value::as_str)
+                .ok_or_else(|| invalid("empty transition command"))?;
+            executable(path)?;
+        }
+    }
+    for key in ["runuser", "systemctl", "busctl"] {
+        if config.get(key).is_some() {
+            executable(string(config, key)?)?;
+        }
+    }
+    if let Some(files) = config.get("executable_files").and_then(Value::as_array) {
+        for file in files {
+            durable::immutable_store_reference(Path::new(
+                file.as_str()
+                    .ok_or_else(|| invalid("invalid adapter file"))?,
+            ))?;
+        }
     }
     Ok(())
 }
@@ -159,8 +200,25 @@ pub fn owned_ancestors(path: &Path) -> Result<()> {
 pub fn validate(config: &Value) -> Result<(Value, Value)> {
     let (source, target) = validate_bindings(config)?;
     validate_barrier_paths(config, &source, &target)?;
-    let source_roots = paths(&source, "directories")?;
-    let target_roots = paths(&target, "directories")?;
+    let (source_roots, target_roots) = validate_corpus_roots(&source, &target)?;
+    validate_backup_namespace(config, &source, &source_roots, &target_roots)?;
+    validate_workers(config)?;
+    custody_entry(config, &target)?;
+    let receipt = Path::new(string(config, "independent_receipt")?);
+    owned_ancestors(receipt)?;
+    if receipt.exists() {
+        independent_receipt(config)?;
+    }
+    Ok((source, target))
+}
+
+fn overlaps(first: &Path, second: &Path) -> bool {
+    first.starts_with(second) || second.starts_with(first)
+}
+
+fn validate_corpus_roots(source: &Value, target: &Value) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+    let source_roots = paths(source, "directories")?;
+    let target_roots = paths(target, "directories")?;
     for path in source_roots.iter().chain(&target_roots) {
         custody::validate_path(
             path.to_str()
@@ -168,52 +226,85 @@ pub fn validate(config: &Value) -> Result<(Value, Value)> {
         )?;
         super::recovery::absolute(path)?;
     }
-    if source_roots.iter().any(|source| {
-        target_roots
-            .iter()
-            .any(|target| source.starts_with(target) || target.starts_with(source))
-    }) {
+    if source_roots
+        .iter()
+        .any(|source| target_roots.iter().any(|target| overlaps(source, target)))
+    {
         return Err(invalid("source and target corpus roots must be disjoint"));
     }
+    Ok((source_roots, target_roots))
+}
+
+fn validate_backup_namespace(
+    config: &Value,
+    source: &Value,
+    source_roots: &[PathBuf],
+    target_roots: &[PathBuf],
+) -> Result<()> {
     let backup = durable::read_config_json(Path::new(string(config, "backup_manifest")?))?;
     let backup_root = Path::new(string(&backup, "root")?);
     custody::validate_path(string(&backup, "root")?)?;
     super::recovery::absolute(backup_root)?;
     let barrier = Path::new(string(config, "barrier_dir")?);
-    if backup_root.starts_with(barrier) || barrier.starts_with(backup_root) {
+    if overlaps(backup_root, barrier) {
         return Err(invalid(
             "backup and transition barrier roots must be disjoint",
         ));
     }
-    let authority = Path::new(string(&source, "state_dir")?);
-    if backup_root.starts_with(authority) || authority.starts_with(backup_root) {
+    let authority = Path::new(string(source, "state_dir")?);
+    if overlaps(backup_root, authority) {
         return Err(invalid("backup and authority roots must be disjoint"));
     }
     if source_roots
         .iter()
-        .chain(&target_roots)
-        .any(|corpus| backup_root.starts_with(corpus) || corpus.starts_with(backup_root))
+        .chain(target_roots)
+        .any(|corpus| overlaps(backup_root, corpus))
     {
         return Err(invalid("backup and corpus roots must be disjoint"));
     }
     let receipt = Path::new(string(config, "independent_receipt")?);
-    if receipt.starts_with(backup_root) || backup_root.starts_with(receipt) {
+    if overlaps(receipt, backup_root) {
         return Err(invalid(
             "independent receipt and backup publication storage must be disjoint",
         ));
     }
     if source_roots
         .iter()
-        .chain(&target_roots)
-        .any(|corpus| receipt.starts_with(corpus) || corpus.starts_with(receipt))
+        .chain(target_roots)
+        .any(|corpus| overlaps(receipt, corpus))
     {
         return Err(invalid(
             "independent receipt and corpus roots must be disjoint",
         ));
     }
-    validate_workers(config)?;
-    custody_entry(config, &target)?;
-    Ok((source, target))
+    Ok(())
+}
+
+/// Root CLI evidence is imported into root-controlled storage, outside the
+/// application namespaces. Hash and decode the same admitted regular inode.
+pub fn independent_receipt(config: &Value) -> Result<(Value, String)> {
+    let path = Path::new(string(config, "independent_receipt")?);
+    super::recovery::absolute(path)?;
+    owned_ancestors(path)?;
+    let file = durable::open_regular(path, false)?;
+    let metadata = file.metadata()?;
+    if metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o022 != 0
+        || metadata.nlink() != 1
+    {
+        return Err(invalid(
+            "independent receipt requires protected coordinator-owned storage",
+        ));
+    }
+    const LIMIT: u64 = 16 * 1024 * 1024;
+    let mut bytes = Vec::new();
+    file.take(LIMIT + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(invalid(
+            "independent receipt exceeds the evidence byte limit",
+        ));
+    }
+    Ok((codec::decode(&bytes)?, codec::digest(&bytes)))
 }
 
 pub fn custody_entry(config: &Value, target: &Value) -> Result<Option<Value>> {
@@ -332,19 +423,11 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
     let receipt = Path::new(string(config, "independent_receipt")?);
     custody::validate_path(string(config, "independent_receipt")?)?;
     super::recovery::absolute(receipt)?;
-    let mut controls = vec![barrier.to_owned(), drop_in.to_owned()];
-    controls.extend(
-        ["identity.json", "transition.json", "lock", "custody.json"]
-            .iter()
-            .map(|name| authority.join(name)),
-    );
+    let mut controls = vec![barrier.to_owned(), drop_in.to_owned(), authority.to_owned()];
     if let Some(entry) = custody_entry(config, target)? {
         controls.push(PathBuf::from(string(&entry, "custody_file")?));
     }
-    if controls
-        .iter()
-        .any(|control| receipt.starts_with(control) || control.starts_with(receipt))
-    {
+    if controls.iter().any(|control| overlaps(receipt, control)) {
         return Err(invalid(
             "independent receipt and transition control storage must be disjoint",
         ));
@@ -356,7 +439,7 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
     if barrier.exists() {
         owned(barrier, true)?;
     }
-    if barrier.starts_with(authority) || authority.starts_with(barrier) {
+    if overlaps(barrier, authority) {
         return Err(invalid(
             "root startup barriers must be outside application-owned authority",
         ));
@@ -365,7 +448,7 @@ fn validate_barrier_paths(config: &Value, source: &Value, target: &Value) -> Res
         .iter()
         .chain(paths(target, "directories")?.iter())
     {
-        if barrier.starts_with(p) || p.starts_with(barrier) {
+        if overlaps(barrier, p) {
             return Err(invalid(
                 "startup barriers must be outside the guarded storage",
             ));

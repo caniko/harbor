@@ -32,6 +32,16 @@ if operation=='capture':
     if (base/'symlink').exists(): (backup/'redirect').symlink_to('/etc/passwd')
     if (base/'self_accept').exists(): (backup/'acceptance.json').write_text('{}')
     if (base/'incomplete_semantic').exists(): (backup/'capture.json').write_text('{}')
+    if (base/'oversized_receipt').exists():
+        with (backup/'capture.json').open('r+b') as control:
+            control.seek(0,2)
+            control.write(b' ' * 4096)
+    if (base/'receipt_size').exists():
+        size=int((base/'receipt_size').read_text())
+        with (backup/'capture.json').open('r+b') as control:
+            length=control.seek(0,2)
+            if size <= 4096: control.write(b' ' * (size-length))
+            else: control.truncate(size)
     if (base/'non_utf8').exists():
         for suffix in (b'\xff', b'\xfe'):
             with open(os.fsencode(backup) + b'/artifact-' + suffix, 'wb') as artifact: artifact.write(suffix)
@@ -94,7 +104,7 @@ from harbor_db import application_backup
 fixture = sys.argv.pop(1)
 if fixture:
     original_digest = application_backup.digest
-    patch.object(application_backup, 'digest', side_effect=lambda path: original_digest(fixture if str(path) == '/etc/machine-id' else path)).start()
+    patch.object(application_backup, 'machine', side_effect=lambda: original_digest(fixture)).start()
 raise SystemExit(application_backup.main())
 "#,
         option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or(""),
@@ -104,6 +114,141 @@ raise SystemExit(application_backup.main())
         format!("{}/python", env!("CARGO_MANIFEST_DIR")),
     );
     command
+}
+
+#[test]
+fn oversized_capture_control_rejects_before_restore_and_preserves_success_in_both_engines() {
+    for python in [false, true] {
+        let (t, c) = backup_fixture();
+        let capture = |attempt: &str| {
+            if python {
+                backup_peer(&c, "capture", attempt, false)
+            } else {
+                application_backup::capture(&c, attempt, false)
+            }
+        };
+        capture("before-control-attack").unwrap();
+        let before = fs::read(t.path().join("backups/LAST_SUCCESS")).unwrap();
+        fs::write(t.path().join("oversized_receipt"), "").unwrap();
+        // A valid, small JSON object followed by whitespace must be rejected by
+        // the read limit, rather than eventually failing schema validation.
+        let error = capture("oversized-control").unwrap_err().to_string();
+        assert!(error.contains("capture receipt exceeds"), "{error}");
+        assert!(!t.path().join("backups/oversized-control").exists());
+        assert!(
+            !t.path()
+                .join("backups/.oversized-control.restore/restored.json")
+                .exists()
+        );
+        assert_eq!(
+            before,
+            fs::read(t.path().join("backups/LAST_SUCCESS")).unwrap()
+        );
+        fs::remove_file(t.path().join("oversized_receipt")).unwrap();
+        for size in [4097_u64, 1 << 40] {
+            fs::write(t.path().join("receipt_size"), size.to_string()).unwrap();
+            let attempt = format!("sparse-control-{size}");
+            let error = capture(&attempt).unwrap_err().to_string();
+            assert!(error.contains("capture receipt exceeds"), "{error}");
+            assert!(!t.path().join(format!("backups/{attempt}")).exists());
+            assert_eq!(
+                before,
+                fs::read(t.path().join("backups/LAST_SUCCESS")).unwrap()
+            );
+        }
+        fs::write(t.path().join("receipt_size"), "4096").unwrap();
+        capture("exact-control-limit").unwrap();
+    }
+}
+
+#[test]
+fn protected_backup_admits_only_immutable_command_and_adapter_files_in_both_engines() {
+    use std::os::unix::fs::{MetadataExt, symlink};
+    let (t, mut config) = backup_fixture();
+    config["version"] = json!(2);
+    config["worker_user"] = json!("nobody");
+    let executable = fs::canonicalize(config["commands"]["capture"][0].as_str().unwrap()).unwrap();
+    config["executable_files"] = json!([]);
+    for stage in ["capture", "restore", "verify", "cleanup"] {
+        config["commands"][stage] = json!([executable, "{backup}", "{workspace}"]);
+    }
+    let mutable = t.path().join("worker-adapter");
+    fs::write(&mutable, b"#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(&mutable, fs::Permissions::from_mode(0o755)).unwrap();
+    let alias = t.path().join("store-alias");
+    symlink(&executable, &alias).unwrap();
+    let anchor = t.path().join("backups/lock");
+    let original = fs::metadata(&anchor).unwrap();
+    let mut rejected = Vec::new();
+    for stage in ["capture", "restore", "verify", "cleanup"] {
+        for path in [&mutable, &alias, t.path(), &t.path().join("absent")] {
+            let mut selected = config.clone();
+            selected["commands"][stage][0] = json!(path);
+            rejected.push(selected);
+        }
+        if let Some(file) = option_env!("HARBOR_DB_TEST_MACHINE_ID") {
+            let mut selected = config.clone();
+            selected["commands"][stage][0] = json!(file);
+            rejected.push(selected);
+        }
+    }
+    let mut selected = config.clone();
+    selected["executable_files"] = json!([mutable]);
+    rejected.push(selected);
+    for selected in &rejected {
+        let result = application_backup::validate(selected, true);
+        assert!(
+            result.is_err(),
+            "protected worker-controlled file admitted: {selected}"
+        );
+    }
+    if let Some(file) = option_env!("HARBOR_DB_TEST_MACHINE_ID") {
+        config["executable_files"] = json!([file]);
+    }
+    application_backup::validate(&config, true).unwrap();
+    let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db import application_backup
+config,rejected=json.loads(sys.argv[1]),json.loads(sys.argv[2]);uid=int(sys.argv[3])
+if uid:
+    original=Path.lstat
+    def mapped(path):
+        info=original(path)
+        if info.st_uid!=uid: return info
+        fields=list(info);fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped).start()
+for selected in rejected:
+    try: application_backup.validate(selected)
+    except (OSError,ValueError): pass
+    else: raise AssertionError('protected worker-controlled file admitted')
+application_backup.validate(config)
+"#;
+    let mut spec = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        serde_json::to_string(&rejected).unwrap(),
+        option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
+    ]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&spec).unwrap();
+    let retained = fs::metadata(&anchor).unwrap();
+    assert_eq!(
+        (original.dev(), original.ino()),
+        (retained.dev(), retained.ino())
+    );
+    assert_eq!(fs::read(&mutable).unwrap(), b"#!/bin/sh\nexit 0\n");
+    assert_eq!(fs::read_dir(t.path().join("backups")).unwrap().count(), 1);
 }
 
 #[test]
@@ -372,7 +517,7 @@ from unittest.mock import patch
 from harbor_db import application_backup
 if sys.argv[5]:
     original_digest=application_backup.digest
-    patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[5] if str(path)=='/etc/machine-id' else path)).start()
+    patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[5])).start()
 c=json.loads(sys.argv[1])
 try:
     if sys.argv[2]=='capture': result=application_backup.capture(c,sys.argv[3],retry_incomplete=sys.argv[4]=='true')
@@ -527,7 +672,7 @@ fn hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chm
         durable::write_json(&config_file, &c).unwrap();
         let invoke = |operation: &str, argument: &str| {
             if python {
-                let script = "import json,sys\nfrom pathlib import Path\nfrom harbor_db import application_backup\nfrom unittest.mock import patch\nif sys.argv[4]:\n original_digest=application_backup.digest\n patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[4] if str(path)=='/etc/machine-id' else path)).start()\nc=json.loads(Path(sys.argv[1]).read_text())\ntry:\n if sys.argv[2]=='capture': application_backup.capture(c,sys.argv[3])\n else: application_backup.inspect(c,Path(sys.argv[3]))\n outcome={'ok':True}\nexcept ValueError as error: outcome={'error':str(error)}\nprint(json.dumps(outcome))";
+                let script = "import json,sys\nfrom pathlib import Path\nfrom harbor_db import application_backup\nfrom unittest.mock import patch\nif sys.argv[4]:\n original_digest=application_backup.digest\n patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[4])).start()\nc=json.loads(Path(sys.argv[1]).read_text())\ntry:\n if sys.argv[2]=='capture': application_backup.capture(c,sys.argv[3])\n else: application_backup.inspect(c,Path(sys.argv[3]))\n outcome={'ok':True}\nexcept ValueError as error: outcome={'error':str(error)}\nprint(json.dumps(outcome))";
                 let mut spec = process::CommandSpec::new(vec![
                     "python3".into(),
                     "-B".into(),
@@ -679,14 +824,21 @@ int fsync(int fd) {
                 command
             } else {
                 let mut command = Command::new("python3");
-                command.args(["-B", "-c", r#"import json,sys
+                command.args([
+                    "-B",
+                    "-c",
+                    r#"import json,sys
 from harbor_db import application_backup
 from unittest.mock import patch
 if sys.argv[3]:
     original=application_backup.digest
-    patch.object(application_backup,'digest',side_effect=lambda path: original(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
+    patch.object(application_backup,'machine',side_effect=lambda: original(sys.argv[3])).start()
 print(json.dumps(application_backup.capture(json.load(open(sys.argv[1])),sys.argv[2])))
-"#, config_path.to_str().unwrap(), attempt, option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("")]);
+"#,
+                    config_path.to_str().unwrap(),
+                    attempt,
+                    option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or(""),
+                ]);
                 command
             };
             command
@@ -750,7 +902,7 @@ from harbor_db import application_backup
 from unittest.mock import patch
 if sys.argv[3]:
     original_digest=application_backup.digest
-    patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
+    patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[3])).start()
 config,action=json.loads(sys.argv[1]),sys.argv[2]
 if action == 'inspect': result=application_backup.inspect(config,Path(config['root'])/'mixed')
 else: result=application_backup.capture(config,'mixed',retry_incomplete=action=='retry')
@@ -1205,7 +1357,7 @@ from unittest.mock import patch
 from harbor_db import application_backup
 if sys.argv[4]:
     original_digest=application_backup.digest
-    patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[4] if str(path)=='/etc/machine-id' else path)).start()
+    patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[4])).start()
 try: print(json.dumps({'ok':application_backup.certify(json.loads(sys.argv[1]),sys.argv[2],sys.argv[3])}))
 except ValueError as error: print(json.dumps({'error':str(error)}))
 "#;
@@ -1333,7 +1485,13 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         );
         spec.environment = Some(env);
         spec.identity = identity;
-        spec.timeout = Duration::from_secs(120);
+        // QEMU user-mode runs every real PostgreSQL client/server executable;
+        // retain a finite platform-specific budget for the full convergence run.
+        spec.timeout = Duration::from_secs(if cfg!(target_arch = "aarch64") {
+            900
+        } else {
+            120
+        });
         let output = process::run(&spec).unwrap();
         assert!(
             output.status.success(),
@@ -1473,13 +1631,34 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         "false"
     );
     success(
-        "CREATE TABLE documents(id int);CREATE TABLE history(id int);CREATE TABLE immutable(id int);CREATE SEQUENCE cursor;",
+        "CREATE TABLE documents(id int);CREATE TABLE history(id int);CREATE TABLE immutable(id int);CREATE SEQUENCE cursor;CREATE FUNCTION hidden_write() RETURNS int LANGUAGE sql SECURITY DEFINER AS 'INSERT INTO immutable VALUES(86) RETURNING id';CREATE PROCEDURE hidden_procedure() LANGUAGE sql AS 'SELECT 1';",
         "demo_owner",
         "demo",
     );
     provision::reconcile(&policy, &endpoint).unwrap();
     assert!(provision::check(&policy, &endpoint).unwrap());
     assert!(python_provision(&policy, "reconcile").status.success());
+    for statement in ["SELECT hidden_write()", "CALL hidden_procedure()"] {
+        assert!(
+            !sql(statement, "demo_runtime", "demo").status.success(),
+            "runtime executed undeclared routine: {statement}"
+        );
+    }
+    assert_eq!(
+        success("SELECT count(*) FROM immutable", "control", "demo"),
+        "0"
+    );
+    assert_eq!(success("SELECT hidden_write()", "demo_owner", "demo"), "86");
+    success(
+        "CREATE FUNCTION future_function() RETURNS int LANGUAGE sql AS 'SELECT 87'",
+        "demo_owner",
+        "demo",
+    );
+    assert!(
+        !sql("SELECT future_function()", "demo_runtime", "demo")
+            .status
+            .success()
+    );
     let mut missing = policy.clone();
     missing["tables"]["missing_history"] = json!(["SELECT", "INSERT"]);
     let grants = success(
@@ -1532,6 +1711,11 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
             .success()
     );
     for statement in [
+        "GRANT EXECUTE ON FUNCTION hidden_write() TO PUBLIC",
+        "GRANT EXECUTE ON FUNCTION hidden_write() TO demo_runtime",
+        "GRANT EXECUTE ON PROCEDURE hidden_procedure() TO PUBLIC",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner GRANT EXECUTE ON FUNCTIONS TO PUBLIC",
+        "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO demo_runtime",
         "GRANT UPDATE ON history TO demo_runtime",
         "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public GRANT UPDATE ON TABLES TO demo_runtime",
         "GRANT UPDATE(id) ON history TO demo_runtime",
@@ -1550,9 +1734,23 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         );
         provision::apply(&policy, &endpoint).unwrap();
         assert!(provision::check(&policy, &endpoint).unwrap());
+        assert_eq!(
+            process::text(&python_provision(&policy, "check").stdout)
+                .unwrap()
+                .trim(),
+            "true"
+        );
     }
     success("CREATE ROLE acl_outsider LOGIN", "control", "postgres");
     for (grant, revoke) in [
+        (
+            "GRANT EXECUTE ON FUNCTION hidden_write() TO acl_outsider",
+            "REVOKE EXECUTE ON FUNCTION hidden_write() FROM acl_outsider",
+        ),
+        (
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO acl_outsider",
+            "ALTER DEFAULT PRIVILEGES FOR ROLE demo_owner IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM acl_outsider",
+        ),
         (
             "GRANT SELECT ON documents TO acl_outsider",
             "REVOKE SELECT ON documents FROM acl_outsider",
@@ -1630,12 +1828,16 @@ fn provisioning_native_privilege_convergence_and_read_only_drift() {
         "demo",
     );
     success(
-        "CREATE TABLE unmanaged.records(id int); CREATE SEQUENCE unmanaged.cursor; CREATE FUNCTION unmanaged.read_record() RETURNS int LANGUAGE sql AS 'SELECT 1'; CREATE TYPE unmanaged.record_kind AS ENUM ('one')",
+        "CREATE TABLE unmanaged.records(id int); CREATE SEQUENCE unmanaged.cursor; CREATE FUNCTION unmanaged.read_record() RETURNS int LANGUAGE sql AS 'SELECT 1'; REVOKE ALL ON FUNCTION unmanaged.read_record() FROM PUBLIC; CREATE TYPE unmanaged.record_kind AS ENUM ('one')",
         "control",
         "demo",
     );
     let mut grant_outcomes = Vec::new();
     for (grant, revoke) in [
+        (
+            "GRANT EXECUTE ON FUNCTION unmanaged.read_record() TO PUBLIC",
+            "REVOKE EXECUTE ON FUNCTION unmanaged.read_record() FROM PUBLIC",
+        ),
         (
             "GRANT USAGE ON SCHEMA unmanaged TO demo_runtime",
             "REVOKE USAGE ON SCHEMA unmanaged FROM demo_runtime",

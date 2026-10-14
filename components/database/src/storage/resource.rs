@@ -3,7 +3,9 @@ use super::{Result, durable, invalid, process, string};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 pub fn valid_name(s: &str) -> bool {
     !s.is_empty()
@@ -66,44 +68,128 @@ fn counter(v: &Value) -> Result<String> {
     }
     Ok(s)
 }
+/// Validate nested consumer policy before a privileged coordinator can dispatch it.
+pub(super) fn consumer_policy(
+    c: &Value,
+) -> Result<Option<(Vec<String>, String, process::Identity)>> {
+    let argv = strings(c.get("consumer_command"))?;
+    if argv.is_empty() {
+        return Ok(None);
+    }
+    consumer_timeout(c)?;
+    let executable = durable::immutable_store_reference(Path::new(&argv[0]))?;
+    if std::fs::metadata(&executable)?.mode() & 0o111 == 0 {
+        return Err(invalid(
+            "consumer validator requires an immutable executable",
+        ));
+    }
+    let uid = unsafe { libc::geteuid() };
+    let user = match c.get("user") {
+        Some(value) => value
+            .as_str()
+            .ok_or_else(|| invalid("invalid resource user"))?
+            .to_owned(),
+        None if uid != 0 => process::current_username()?,
+        None => {
+            return Err(invalid(
+                "root consumer validation requires the declared resource user",
+            ));
+        }
+    };
+    let identity = process::account(&user)?;
+    if identity.uid == 0
+        || (uid != 0 && (uid != identity.uid || unsafe { libc::getuid() } != identity.uid))
+    {
+        return Err(invalid(
+            "consumer validator requires the unprivileged resource user",
+        ));
+    }
+    Ok(Some((argv, user, identity)))
+}
+
+fn consumer_timeout(c: &Value) -> Result<Duration> {
+    let seconds = c
+        .get("consumer_timeout_seconds")
+        .unwrap_or(&json!(30))
+        .as_u64()
+        .filter(|seconds| (1..=300).contains(seconds))
+        .ok_or_else(|| invalid("invalid consumer execution budget"))?;
+    Ok(Duration::from_secs(seconds))
+}
+
 pub fn contract(c: &Value) -> Result<Value> {
+    contract_until(c, None)
+}
+
+pub fn contract_until(c: &Value, deadline: Option<Instant>) -> Result<Value> {
+    let remaining = || {
+        deadline
+            .map(|deadline| {
+                deadline
+                    .checked_duration_since(Instant::now())
+                    .filter(|remaining| !remaining.is_zero())
+                    .ok_or_else(|| invalid("cutover inspection budget exhausted"))
+            })
+            .transpose()
+    };
+    remaining()?;
     let state = state_directory(c)?;
     let name = string(c, "resource")?;
     if !valid_name(name) {
         return Err(invalid("invalid resource name"));
     }
     let mut consumer = json!({});
-    if let Some(cmd) = c.get("consumer_command") {
-        let argv = strings(Some(cmd))?;
-        if !argv.is_empty() {
-            let mut command = std::process::Command::new(&argv[0]);
-            command.args(&argv[1..]);
-            let output = process::output(&mut command)?;
-            if !output.status.success() {
-                return Err(invalid(format!(
-                    "consumer storage validation failed: {}",
-                    process::text(&output.stderr)?.trim()
-                )));
-            }
-            consumer = super::codec::decode_str(&process::text(&output.stdout)?)?;
-            let m = consumer
-                .as_object()
-                .ok_or_else(|| invalid("invalid consumer storage contract"))?;
-            if m.keys().any(|k| {
-                ![
-                    "binding",
-                    "directories",
-                    "required_files",
-                    "minimum_counters",
-                ]
-                .contains(&k.as_str())
-            }) || ["binding", "directories", "required_files"]
-                .iter()
-                .any(|k| !m.contains_key(*k))
-                || !consumer["binding"].is_object()
-            {
-                return Err(invalid("invalid consumer storage contract"));
-            }
+    if let Some((argv, user, identity)) = consumer_policy(c)? {
+        let mut spec = process::CommandSpec::new(argv.clone());
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PATH".into(),
+                Path::new(&argv[0])
+                    .parent()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ("HOME".into(), "/".into()),
+            ("LANG".into(), "C.UTF-8".into()),
+            ("USER".into(), user.clone()),
+            ("LOGNAME".into(), user),
+        ]));
+        spec.cwd = Some(PathBuf::from("/"));
+        spec.timeout = consumer_timeout(c)?;
+        spec.maximum_output = 1024 * 1024;
+        spec.capture_stderr = true;
+        if unsafe { libc::geteuid() } == 0 {
+            spec.identity = Some(identity);
+        }
+        if let Some(remaining) = remaining()? {
+            spec.timeout = spec.timeout.min(remaining);
+        }
+        let output = process::run(&spec)?;
+        if !output.status.success() {
+            return Err(invalid(format!(
+                "consumer storage validation failed: {}",
+                process::text(&output.stderr)?.trim()
+            )));
+        }
+        consumer = super::codec::decode_str(&process::text(&output.stdout)?)?;
+        let m = consumer
+            .as_object()
+            .ok_or_else(|| invalid("invalid consumer storage contract"))?;
+        if m.keys().any(|k| {
+            ![
+                "binding",
+                "directories",
+                "required_files",
+                "minimum_counters",
+            ]
+            .contains(&k.as_str())
+        }) || ["binding", "directories", "required_files"]
+            .iter()
+            .any(|k| !m.contains_key(*k))
+            || !consumer["binding"].is_object()
+        {
+            return Err(invalid("invalid consumer storage contract"));
         }
     }
     let dirs: BTreeSet<_> = strings(c.get("directories"))?
@@ -205,6 +291,20 @@ pub fn require_stable(c: &Value) -> Result<()> {
     Ok(())
 }
 pub fn inspection(c: &Value) -> Result<(durable::Lease, Value)> {
+    inspection_with_contract(c, None)
+}
+
+pub fn inspection_with_contract(
+    c: &Value,
+    pinned: Option<&Value>,
+) -> Result<(durable::Lease, Value)> {
+    inspection_until(c, pinned, None)
+}
+pub fn inspection_until(
+    c: &Value,
+    pinned: Option<&Value>,
+    deadline: Option<Instant>,
+) -> Result<(durable::Lease, Value)> {
     let s = state_directory(c)?;
     if !s.join("identity.json").exists() {
         return Err(invalid(
@@ -213,8 +313,49 @@ pub fn inspection(c: &Value) -> Result<(durable::Lease, Value)> {
     }
     let l = durable::lock(&s.join("lock"), true, false)?;
     require_stable(c)?;
-    let r = verify(c, &contract(c)?)?;
+    let expected = contract_until(c, deadline)?;
+    require_contract(&expected, pinned)?;
+    let r = verify(c, &expected)?;
     Ok((l, r))
+}
+
+pub fn require_contract(observed: &Value, pinned: Option<&Value>) -> Result<()> {
+    let Some(pinned) = pinned else {
+        return Ok(());
+    };
+    if ["version", "resource", "binding", "directories"]
+        .iter()
+        .any(|key| observed.get(key) != pinned.get(key))
+    {
+        return Err(invalid(
+            "consumer authority differs from the namespace inspection contract",
+        ));
+    }
+    let files = strings(observed.get("required_files"))?;
+    let retained = strings(pinned.get("required_files"))?;
+    if retained.iter().any(|file| !files.contains(file)) {
+        return Err(invalid(
+            "consumer evidence regressed since namespace inspection",
+        ));
+    }
+    require_files(&retained)?;
+    if let Some(counters) = pinned.get("minimum_counters") {
+        for (key, floor) in counters
+            .as_object()
+            .ok_or_else(|| invalid("invalid pinned counters"))?
+        {
+            let floor = counter(floor)?;
+            let current = counter(observed["minimum_counters"].get(key).ok_or_else(|| {
+                invalid("consumer evidence regressed since namespace inspection")
+            })?)?;
+            if (current.len(), &current) < (floor.len(), &floor) {
+                return Err(invalid(
+                    "consumer evidence regressed since namespace inspection",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 pub fn check(c: &Value) -> Result<()> {
     let _guard = inspection(c)?;

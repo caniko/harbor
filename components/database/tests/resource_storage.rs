@@ -3,6 +3,67 @@ use harbor_db::storage::resource;
 use serde_json::Value;
 use serde_json::json;
 use std::{fs, path::Path};
+
+#[path = "fixtures/python_store.rs"]
+mod python_store;
+
+#[test]
+fn consumer_snapshot_allows_advancing_evidence_but_rejects_namespace_changes_and_regressions_in_both_engines()
+ {
+    let (t, c) = fixture();
+    let old = t.path().join("state/old");
+    let new = t.path().join("state/new");
+    fs::write(&old, b"retained").unwrap();
+    fs::write(&new, b"new").unwrap();
+    let pinned = json!({"version":1,"resource":"archive","binding":{},"directories":c["directories"],"required_files":[old],"minimum_counters":{"saved":2}});
+    let mut advanced = pinned.clone();
+    advanced["required_files"] = json!([old, new]);
+    advanced["minimum_counters"]["saved"] = json!(3);
+    resource::require_contract(&advanced, Some(&pinned)).unwrap();
+    for field in [
+        "binding",
+        "directories",
+        "required_files",
+        "minimum_counters",
+    ] {
+        let mut regressed = advanced.clone();
+        regressed[field] = match field {
+            "binding" => json!({"changed":true}),
+            "directories" => json!([]),
+            "required_files" => json!([new]),
+            _ => json!({"saved":1}),
+        };
+        assert!(resource::require_contract(&regressed, Some(&pinned)).is_err());
+    }
+    let script = r#"import json,sys
+from harbor_db import resource
+pinned,advanced=map(json.loads,sys.argv[1:])
+resource.require_contract(advanced,pinned)
+for field,value in [('binding',{'changed':True}),('directories',[]),('required_files',advanced['required_files'][1:]),('minimum_counters',{'saved':1})]:
+    try: resource.require_contract(dict(advanced,**{field:value}),pinned)
+    except ValueError: pass
+    else: raise AssertionError('regressed snapshot admitted')
+"#;
+    let result = std::process::Command::new("python3")
+        .args([
+            "-B",
+            "-c",
+            script,
+            &pinned.to_string(),
+            &advanced.to_string(),
+        ])
+        .env(
+            "PYTHONPATH",
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        )
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
 fn fixture() -> (tempfile::TempDir, Value) {
     let t = tempfile::tempdir().unwrap();
     for d in ["authority", "data", "state"] {
@@ -15,7 +76,13 @@ fn consumer(t: &Path, c: &mut Value) -> Value {
     fs::write(t.join("state/review.toml"), "[sessions]\n").unwrap();
     let v = json!({"binding":{"dataset":"one","config_sha256":"verified"},"directories":[t.join("data")],"required_files":[t.join("state/review.toml")],"minimum_counters":{"revision":42,"review:one":1}});
     fs::write(t.join("consumer.json"), v.to_string()).unwrap();
-    c["consumer_command"] = json!(["cat", t.join("consumer.json")]);
+    c["consumer_command"] = json!([
+        std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("cat"))
+            .find(|path| path.is_file())
+            .unwrap(),
+        t.join("consumer.json")
+    ]);
     v
 }
 
@@ -145,7 +212,7 @@ fn consumer_binding_floors_and_files_are_retained() {
 fn consumer_failure_preserves_diagnostics_and_does_not_publish() {
     let (t, mut c) = fixture();
     c["consumer_command"] = json!([
-        "/bin/sh",
+        fs::canonicalize("/bin/sh").unwrap(),
         "-c",
         "printf 'contract rejected\r\n' >&2; exit 1"
     ]);
@@ -154,6 +221,47 @@ fn consumer_failure_preserves_diagnostics_and_does_not_publish() {
         "consumer storage validation failed: contract rejected"
     );
     assert!(!t.path().join("authority/identity.json").exists());
+}
+
+#[test]
+fn consumer_validators_reject_mutable_executables_before_dispatch_in_both_engines() {
+    use harbor_db::storage::process;
+    use std::os::unix::fs::PermissionsExt;
+    let (t, mut c) = fixture();
+    let executable = t.path().join("validator");
+    let marker = t.path().join("dispatched");
+    fs::write(
+        &executable,
+        format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    c["consumer_command"] = json!([executable]);
+    for program in [executable.clone(), std::path::PathBuf::from("sh")] {
+        c["consumer_command"][0] = json!(program);
+        assert!(
+            resource::contract(&c).is_err(),
+            "mutable consumer dispatched"
+        );
+        let script = "import json,sys; from harbor_db import resource; c=json.loads(sys.argv[1]);\ntry: resource.contract(c)\nexcept (OSError,ValueError): pass\nelse: raise AssertionError('mutable consumer dispatched')";
+        let mut spec = process::CommandSpec::new(vec![
+            "python3".into(),
+            "-B".into(),
+            "-c".into(),
+            python_store::script(script),
+            c.to_string(),
+        ]);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        process::execute(&spec).unwrap();
+        assert!(!marker.exists());
+        assert!(!t.path().join("authority/identity.json").exists());
+    }
 }
 #[test]
 fn transition_barriers_and_redirects_are_rejected() {
@@ -179,6 +287,62 @@ fn transition_barriers_and_redirects_are_rejected() {
     assert!(resource::contract(&c).is_err());
     c["directories"] = json!([t.path()]);
     assert!(resource::contract(&c).is_err());
+}
+
+#[test]
+fn consumer_limits_reject_large_output_and_deadlines_and_release_authority_in_both_engines() {
+    use harbor_db::storage::process;
+    let python = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|directory| directory.join("python3"))
+        .find(|path| path.is_file())
+        .unwrap();
+    for (code, expected) in [
+        (
+            "import sys; sys.stdout.write(' ' * (1024*1024+1)); print('{\"binding\":{},\"directories\":[],\"required_files\":[]}')",
+            "size limit",
+        ),
+        (
+            "import sys; sys.stderr.write('x' * (1024*1024+1)); print('{\"binding\":{},\"directories\":[],\"required_files\":[]}')",
+            "size limit",
+        ),
+        (
+            "import time; time.sleep(2); print('{\"binding\":{},\"directories\":[],\"required_files\":[]}')",
+            "execution limit",
+        ),
+    ] {
+        let (t, mut c) = fixture();
+        resource::adopt(&c, "archive").unwrap();
+        c["consumer_command"] = json!([python, "-B", "-c", code]);
+        c["consumer_timeout_seconds"] = json!(1);
+        let before = fs::read(t.path().join("authority/identity.json")).unwrap();
+        let error = resource::inspection(&c)
+            .err()
+            .expect("unbounded validator accepted")
+            .to_string();
+        assert!(error.contains(expected), "{error}");
+        let script = "import json,sys; from harbor_db import resource; c=json.loads(sys.argv[1]);\ntry:\n with resource.inspection(c): pass\nexcept ValueError as error:\n assert sys.argv[2] in str(error), str(error)\nelse: raise AssertionError('unbounded validator accepted')";
+        let mut spec = process::CommandSpec::new(vec![
+            python.to_string_lossy().into_owned(),
+            "-B".into(),
+            "-c".into(),
+            python_store::script(script),
+            c.to_string(),
+            expected.into(),
+        ]);
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PYTHONPATH".into(),
+                format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+            ),
+            ("PATH".into(), std::env::var("PATH").unwrap()),
+        ]));
+        process::execute(&spec).unwrap();
+        durable::lock(&t.path().join("authority/lock"), false, false).unwrap();
+        assert_eq!(
+            fs::read(t.path().join("authority/identity.json")).unwrap(),
+            before
+        );
+    }
 }
 #[test]
 fn consumer_exec_retains_authority_fd_until_exit() {

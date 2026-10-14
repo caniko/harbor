@@ -15,8 +15,8 @@ import socket
 import time
 from pathlib import Path
 
-from . import postgres, writer_fence, recovery_repository
-from .durable import lock, read_json, write_json
+from . import postgres, writer_fence, recovery_repository, application_backup
+from .durable import lock, read_json, write_json, sync_directory
 
 
 def absolute(path):
@@ -100,7 +100,14 @@ def validate_evidence_paths(config, settings, source_local):
         ):
             raise ValueError("invalid PostgreSQL storage startup-inhibition path")
         protected.append(absolute(startup["state_dir"]))
-    for key in ("snapshot_file", "receipt_file", "off_host_receipt_file"):
+    for key in (
+        "backup_root",
+        "snapshot_file",
+        "receipt_file",
+        "off_host_receipt_file",
+    ):
+        if key == "backup_root" and root is None:
+            continue
         if key == "off_host_receipt_file" and settings.get(key) is None:
             continue
         evidence = absolute(settings[key])
@@ -111,7 +118,7 @@ def validate_evidence_paths(config, settings, source_local):
             raise ValueError(
                 "recovery evidence must stay outside PostgreSQL storage and policy trees"
             )
-        if any(
+        if key != "backup_root" and any(
             evidence.is_relative_to(control) or control.is_relative_to(evidence)
             for control in controls
         ):
@@ -120,7 +127,7 @@ def validate_evidence_paths(config, settings, source_local):
             )
 
 
-def _policy(config, *, certifier_host=None):
+def _policy(config, *, certifier=False):
     settings = config["recovery"]
     validate_evidence_paths(
         config, settings, recovery_repository.source_local(settings)
@@ -130,16 +137,11 @@ def _policy(config, *, certifier_host=None):
     paths = [settings["snapshot_file"], settings["receipt_file"]]
     if settings.get("off_host_receipt_file"):
         paths.append(settings["off_host_receipt_file"])
-    # Independent certification may select its off-host output directly;
-    # local capture, import and recovery admission require two receipt paths.
-    independent = (
-        bool(certifier_host)
-        and bool(settings.get("source_hostname"))
-        and certifier_host != settings["source_hostname"]
-    )
+    # A certifier must prove machine independence against the pinned snapshot
+    # before queries/publication. Capture/import/admission need distinct paths.
     if (
         settings.get("off_host_receipt_file") == settings["receipt_file"]
-        and not independent
+        and not certifier
     ):
         raise ValueError("local and off-host recovery receipts must be distinct")
     if settings["snapshot_file"] in paths[1:]:
@@ -266,8 +268,10 @@ def query_argv(
     database = database.replace("\\", "\\\\").replace("'", "\\'")
     options = (
         "-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex "
-        "-c standard_conforming_strings=on -c default_transaction_read_only=on"
+        "-c standard_conforming_strings=on"
     )
+    # Keep the endpoint default observable; only the validation transaction is
+    # forced read-only. PREPARE does not execute the selected statement.
     if statement_timeout_seconds is not None:
         options += f" -c statement_timeout={statement_timeout_seconds}s"
     # \bind forces a single-statement extended-protocol Parse. PREPARE accepts
@@ -337,6 +341,13 @@ def validate_capture_source(config, settings, source, now):
         if source.get("completed_at") != selected.metadata["completed_at"]:
             raise ValueError(
                 "source-local snapshot completion differs from its immutable capture"
+            )
+        if (
+            source.get("source_machine_sha256")
+            != selected.metadata["source_machine_sha256"]
+        ):
+            raise ValueError(
+                "source-local snapshot machine differs from its immutable capture"
             )
 
 
@@ -442,11 +453,19 @@ def snapshot(config, socket_dir, port, *, now=None):
             **binding,
             "completed_at": now,
             "record_contract_sha256": contract(settings),
+            "source_machine_sha256": application_backup.machine(),
             "records": records(config, settings, socket_dir, port),
         }
         if fence is not None:
             result["writer_fence_token"] = fence["token"]
         if selected is not None:
+            if (
+                selected.metadata["source_machine_sha256"]
+                != result["source_machine_sha256"]
+            ):
+                raise ValueError(
+                    "source-local snapshot machine differs from its immutable capture"
+                )
             selected.validate_snapshot(
                 result.get("writer_fence_token"), result["records"]
             )
@@ -534,7 +553,8 @@ def isolated_restore(restored, authoritative, backup):
 
 def certify(config, data_dir, socket_dir, port, *, now=None, hostname=None):
     executor = socket.gethostname() if hostname is None else hostname
-    settings = _policy(config, certifier_host=executor)
+    settings = _policy(config, certifier=True)
+    executor_machine = application_backup.machine()
     now = int(time.time()) if now is None else now
     restored = absolute(data_dir)
     if restored == absolute(config["data_dir"]):
@@ -547,6 +567,12 @@ def certify(config, data_dir, socket_dir, port, *, now=None, hostname=None):
         isolated_restore(restored, absolute(config["data_dir"]), directory)
         source = snapshot_evidence(config, settings, binding, now)
         source_fence(settings, source)
+        machine_acceptance(
+            source,
+            executor_machine,
+            executor != settings.get("source_hostname")
+            or settings["receipt_file"] == settings.get("off_host_receipt_file"),
+        )
         verify_backup(config, directory)
         observed = inspect_restored(config, socket_dir, port)
         expected = {
@@ -576,6 +602,8 @@ def certify(config, data_dir, socket_dir, port, *, now=None, hostname=None):
             "records": actual,
             "snapshot_sha256": digest(source_snapshot_path(config, settings)),
             "executor_host": executor,
+            "executor_machine_sha256": executor_machine,
+            "source_machine_sha256": source.get("source_machine_sha256"),
             "restored_data_dir": str(restored),
             "replay_lsn": observed["replay_lsn"],
         }
@@ -671,6 +699,24 @@ def check_evidence(
     return result
 
 
+def machine_acceptance(source, executor, off_host):
+    if "source_machine_sha256" not in source and not off_host:
+        return
+    origin = source.get("source_machine_sha256")
+    if (
+        not isinstance(origin, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", origin)
+        or not isinstance(executor, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", executor)
+        or (origin == executor) == off_host
+    ):
+        if off_host:
+            raise ValueError(
+                "off-host recovery must execute on an independent machine with a bound source machine identity"
+            )
+        raise ValueError("local recovery must execute on the captured source machine")
+
+
 def validate_receipt(config, settings, source, binding, receipt, label):
     if (
         receipt.get("status") != "ready"
@@ -693,6 +739,52 @@ def validate_receipt(config, settings, source, binding, receipt, label):
         or receipt.get("executor_host") != settings["source_hostname"]
     ):
         raise ValueError("local recovery must execute on the declared source host")
+    machine_acceptance(
+        source, receipt.get("executor_machine_sha256"), label.startswith("off-host")
+    )
+    if (
+        "source_machine_sha256" in source
+        and receipt.get("source_machine_sha256") != source["source_machine_sha256"]
+    ):
+        raise ValueError("recovery receipt differs from the source machine identity")
+
+
+def stage_off_host_import(incoming, destination):
+    """Root pins a trusted receipt into a fresh private systemd import source."""
+    from .application_publication import credential_source
+    import stat
+
+    destination = Path(destination)
+    if os.geteuid() != 0:
+        raise ValueError("off-host receipt staging requires root")
+    if not destination.is_absolute():
+        raise ValueError("off-host staging destination must be absolute")
+    parent = destination.parent
+    for ancestor in (parent, *parent.parents):
+        info = ancestor.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError("untrusted off-host staging ancestor")
+    if parent.stat().st_mode & 0o077:
+        raise ValueError("off-host staging parent must be private")
+    with credential_source(incoming) as source:
+        info = os.fstat(source.fileno())
+        if info.st_nlink != 1 or info.st_size > 16 << 20:
+            raise ValueError(
+                "off-host import receipt must be a bounded single-link regular file"
+            )
+        data = source.read((16 << 20) + 1)
+    if len(data) > 16 << 20:
+        raise ValueError("off-host import receipt exceeds the byte limit")
+    descriptor = os.open(
+        destination,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o400,
+    )
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(data)
+        output.flush()
+        os.fsync(output.fileno())
+    sync_directory(parent)
 
 
 def import_off_host(config, path, *, now=None):

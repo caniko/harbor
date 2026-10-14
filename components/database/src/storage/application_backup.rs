@@ -7,9 +7,10 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     os::{
-        fd::RawFd,
-        unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt},
+        fd::{AsRawFd, FromRawFd, RawFd},
+        unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -75,9 +76,30 @@ pub fn validate(c: &Value, check_root: bool) -> Result<PathBuf> {
                 "commands require an absolute executable and explicit artifact/workspace arguments",
             ));
         }
+        if protected {
+            immutable_file(&argv[0], true)?;
+        }
     }
-    argv(&c["executable_files"])?;
+    for path in argv(&c["executable_files"])? {
+        if protected {
+            immutable_file(&path, false)?;
+        }
+    }
     Ok(root)
+}
+fn immutable_file(path: &str, executable: bool) -> Result<PathBuf> {
+    super::cutover::validate_path(path)?;
+    let resolved = durable::immutable_store_reference(Path::new(path)).map_err(|error| {
+        invalid(format!(
+            "protected backup requires immutable store files: {error}"
+        ))
+    })?;
+    if executable && fs::metadata(&resolved)?.mode() & 0o111 == 0 {
+        return Err(invalid(
+            "protected backup command requires an executable store file",
+        ));
+    }
+    Ok(resolved)
 }
 fn argv(v: &Value) -> Result<Vec<String>> {
     v.as_array()
@@ -110,7 +132,12 @@ fn executables(c: &Value) -> Result<Value> {
         if !p.is_absolute() || !p.is_file() {
             return Err(invalid("backup executable or adapter file is absent"));
         }
-        let digest = codec::file_digest(&fs::canonicalize(p)?)?;
+        let resolved = if c["version"] == 2 {
+            immutable_file(&s, false)?
+        } else {
+            fs::canonicalize(p)?
+        };
+        let digest = codec::file_digest(&resolved)?;
         result.insert(s, json!(digest));
     }
     Ok(Value::Object(result))
@@ -168,7 +195,14 @@ fn execute(
     lease: RawFd,
     worker: Option<&publication::Worker>,
 ) -> Result<Vec<u8>> {
-    let args = argv(&c["commands"][stage])?
+    let command = argv(&c["commands"][stage])?;
+    if c["version"] == 2 {
+        immutable_file(
+            command.first().ok_or_else(|| invalid("empty command"))?,
+            true,
+        )?;
+    }
+    let args = command
         .into_iter()
         .map(|s| match s.as_str() {
             "{backup}" => backup.to_string_lossy().into_owned(),
@@ -251,15 +285,86 @@ fn hostname() -> Result<String> {
         .ok_or_else(|| invalid("hostname too long"))?;
     String::from_utf8(buf[..end].to_vec()).map_err(|_| invalid("hostname is not UTF-8"))
 }
-fn machine() -> Result<String> {
+pub(super) fn machine() -> Result<String> {
     // Sandboxed Cargo qualification supplies an immutable fixture at compile
     // time. Runtime environment cannot replace machine custody, and lifecycle
     // packages built without `testing` always require the installed identity.
     #[cfg(feature = "testing")]
-    let path = option_env!("HARBOR_DB_TEST_MACHINE_ID").unwrap_or("/etc/machine-id");
-    #[cfg(not(feature = "testing"))]
-    let path = "/etc/machine-id";
-    codec::file_digest(&fs::canonicalize(path)?)
+    if let Some(path) = option_env!("HARBOR_DB_TEST_MACHINE_ID") {
+        return codec::file_digest(&fs::canonicalize(path)?);
+    }
+    trusted_host_namespaces()?;
+    codec::file_digest(&fs::canonicalize("/etc/machine-id")?)
+}
+fn trusted_host_namespaces() -> Result<()> {
+    // Linux UAPI: pidfd.h and nsfs.h. Unlike /proc/self/ns or uid_map,
+    // these descriptors refer directly to this kernel task and cannot be
+    // substituted by caller-controlled bind mounts or a fresh PID/proc view.
+    const USER_NS_INIT_INO: u64 = 0xEFFFFFFD;
+    const NS_GET_USERNS: libc::c_ulong = 0xB701;
+    const NS_GET_NSTYPE: libc::c_ulong = 0xB703;
+    let namespace = |fd: RawFd, request: libc::c_ulong| -> Result<fs::File> {
+        let descriptor = unsafe { libc::ioctl(fd, request, 0) };
+        if descriptor < 0 {
+            return Err(invalid(format!(
+                "machine identity requires Linux 6.13+ pidfd namespace support: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
+        Ok(unsafe { fs::File::from_raw_fd(descriptor) })
+    };
+    // Bind the calling thread, not a thread-group leader that could be in a
+    // different namespace. PIDFD_THREAD is O_EXCL in the Linux pidfd UAPI.
+    let descriptor = unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_open,
+            libc::syscall(libc::SYS_gettid),
+            libc::O_EXCL,
+        )
+    };
+    if descriptor < 0 {
+        return Err(invalid(format!(
+            "machine identity requires a kernel-bound calling-thread pidfd: {}",
+            std::io::Error::last_os_error()
+        )));
+    }
+    let task = unsafe { fs::File::from_raw_fd(descriptor as RawFd) };
+    for (request, own_user_namespace) in [(0xFF09, true), (0xFF03, false), (0xFF0A, false)] {
+        let selected = namespace(task.as_raw_fd(), request)?;
+        let owner = if own_user_namespace {
+            selected
+        } else {
+            namespace(selected.as_raw_fd(), NS_GET_USERNS)?
+        };
+        if unsafe { libc::ioctl(owner.as_raw_fd(), NS_GET_NSTYPE, 0) } != libc::CLONE_NEWUSER
+            || owner.metadata()?.ino() != USER_NS_INIT_INO
+        {
+            return Err(invalid(
+                "machine identity rejects caller-controlled namespaces",
+            ));
+        }
+    }
+    Ok(())
+}
+fn capture_receipt(backup: &Path) -> Result<Value> {
+    const LIMIT: u64 = 4096;
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(backup.join("capture.json"))?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(invalid("capture receipt must be a regular file"));
+    }
+    if metadata.len() > LIMIT {
+        return Err(invalid("capture receipt exceeds the 4096-byte limit"));
+    }
+    let mut bytes = Vec::new();
+    (&mut file).take(LIMIT + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(invalid("capture receipt exceeds the 4096-byte limit"));
+    }
+    codec::decode(&bytes)
 }
 fn now() -> Result<i64> {
     Ok(SystemTime::now()
@@ -287,7 +392,7 @@ fn certification(
 ) -> Result<Value> {
     execute(c, "restore", b, w, l, worker)?;
     let receipt = super::codec::decode(&execute(c, "verify", b, w, l, worker)?)?;
-    let captured = durable::read_json(&b.join("capture.json"))?;
+    let captured = capture_receipt(b)?;
     let semantic = captured
         .get("semantic_sha256")
         .and_then(Value::as_str)
@@ -343,6 +448,54 @@ fn permissions(path: &Path) -> Result<()> {
 fn exists(p: &Path) -> bool {
     fs::symlink_metadata(p).is_ok()
 }
+fn capture_cleanup_tree<'a>(
+    intent: &Path,
+    expected: &Value,
+    partial: &'a Path,
+    sealed: &'a Path,
+    protected: bool,
+) -> Result<&'a Path> {
+    // The journal, rather than seal existence, owns the durable cleanup origin.
+    let mut retained = durable::read_json(intent)?;
+    let origin = if protected {
+        retained
+            .as_object_mut()
+            .ok_or_else(|| invalid("backup attempt immutable intent changed"))?
+            .remove("cleanup_origin")
+    } else {
+        None
+    };
+    if &retained != expected {
+        return Err(invalid("backup attempt immutable intent changed"));
+    }
+    if !protected {
+        return Ok(partial);
+    }
+    let metadata = fs::symlink_metadata(intent)?;
+    if !metadata.is_file()
+        || metadata.uid() != 0
+        || metadata.mode() & 0o077 != 0
+        || metadata.nlink() != 1
+    {
+        return Err(invalid("capture cleanup journal is not root-controlled"));
+    }
+    match origin.as_ref().and_then(Value::as_str) {
+        None if origin.is_none() && !exists(sealed) => Ok(partial),
+        Some("partial") => Ok(partial),
+        Some("sealed") => {
+            let metadata = fs::symlink_metadata(sealed)?;
+            if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
+                return Err(invalid(
+                    "retained certification tree is not root-controlled",
+                ));
+            }
+            Ok(sealed)
+        }
+        _ => Err(invalid(
+            "protected capture lacks an unambiguous cleanup origin",
+        )),
+    }
+}
 pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value> {
     let root = validate(c, true)?;
     if !super::resource::valid_name(attempt) || matches!(attempt, "LAST_SUCCESS" | "lock") {
@@ -351,6 +504,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     let protected = c["version"] == 2;
     if protected {
         publication::require_namespace(&root)?;
+        publication::check_credential_sources(c.get("credentials"))?;
     }
     let lease = durable::lock(&root.join("lock"), false, false)?;
     let staging = root.join(format!("{attempt}.partial"));
@@ -378,11 +532,13 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
         || exists(&workspace)
         || (protected && (exists(&sealed) || exists(&credentials)))
     {
-        if !retry_incomplete || durable::read_json(&intent)? != attempt_intent {
+        if !retry_incomplete {
             return Err(invalid(
                 "backup attempt already exists or its immutable intent changed",
             ));
         }
+        let cleanup_tree =
+            capture_cleanup_tree(&intent, &attempt_intent, &partial, &sealed, protected)?;
         if exists(&workspace) {
             if !fs::symlink_metadata(&workspace)?.is_dir() {
                 return Err(invalid("incomplete restore workspace is redirected"));
@@ -399,7 +555,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
             execute(
                 c,
                 "cleanup",
-                &partial,
+                cleanup_tree,
                 &workspace,
                 lease.fd(),
                 worker.as_ref(),
@@ -429,7 +585,11 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
         durable::sync_directory(&abandoned)?;
         durable::sync_directory(&root)?;
     }
-    durable::write_json(&intent, &attempt_intent)?;
+    let mut journal = attempt_intent.clone();
+    if protected {
+        journal["cleanup_origin"] = json!("partial");
+    }
+    durable::write_json(&intent, &journal)?;
     let worker = if protected {
         Some(publication::Worker::new(
             string(c, "worker_user")?,
@@ -446,6 +606,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     } else {
         private_dir(&workspace)?;
     }
+    let mut certification_tree = &partial;
     let result = (|| {
         execute(
             c,
@@ -455,15 +616,29 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
             lease.fd(),
             worker.as_ref(),
         )?;
+        capture_receipt(&partial)?;
         let artifacts = inventory(&partial)?;
         if artifacts.get("acceptance.json").is_some() {
             return Err(invalid(
                 "application capture must not supply its own acceptance envelope",
             ));
         }
+        if protected {
+            publication::copy_tree(&partial, &sealed)?;
+            publication::reader_permissions(&sealed, fs::metadata(&root)?.gid())?;
+            if inventory(&sealed)? != artifacts {
+                return Err(invalid(
+                    "backup artifact changed before protected certification",
+                ));
+            }
+            durable::sync_tree(&sealed)?;
+            journal["cleanup_origin"] = json!("sealed");
+            durable::write_json(&intent, &journal)?;
+            certification_tree = &sealed;
+        }
         let receipt = certification(
             c,
-            &partial,
+            certification_tree,
             &workspace,
             lease.fd(),
             &artifacts,
@@ -474,7 +649,7 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     execute(
         c,
         "cleanup",
-        &partial,
+        capture_cleanup_tree(&intent, &attempt_intent, &partial, &sealed, protected)?,
         &workspace,
         lease.fd(),
         worker.as_ref(),
@@ -482,24 +657,14 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     fs::remove_dir_all(&workspace)?;
     durable::sync_directory(&root)?;
     let (artifacts, mut receipt): (Value, Value) = result?;
-    if inventory(&partial)? != artifacts {
+    if inventory(certification_tree)? != artifacts {
         return Err(invalid("backup artifact hash changed during cleanup"));
     }
     if executables(c)? != tools {
         return Err(invalid("backup executable identity changed during capture"));
     }
     for (k,v) in json!({"resource":c["resource"],"attempt":attempt,"captured_at":captured_at,"manifest_sha256":identity(c)?,"executables":tools}).as_object().unwrap() { receipt[k]=v.clone(); }
-    let published = if protected {
-        publication::copy_tree(&partial, &sealed)?;
-        if inventory(&sealed)? != artifacts {
-            return Err(invalid(
-                "backup artifact hash changed during protected copy",
-            ));
-        }
-        &sealed
-    } else {
-        &partial
-    };
+    let published = certification_tree;
     durable::write_json(&published.join("acceptance.json"), &receipt)?;
     if protected {
         publication::reader_permissions(published, fs::metadata(&root)?.gid())?;
@@ -520,6 +685,12 @@ pub fn capture(c: &Value, attempt: &str, retry_incomplete: bool) -> Result<Value
     Ok(receipt)
 }
 pub fn verify_bytes(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
+    let receipt = verify_integrity(c, b)?;
+    fresh(c, &receipt["captured_at"], time.unwrap_or(now()?))?;
+    Ok(receipt)
+}
+
+fn verify_integrity(c: &Value, b: &Path) -> Result<Value> {
     let receipt = durable::read_json(&b.join("acceptance.json"))?;
     if receipt["status"] != "verified"
         || receipt["manifest_sha256"] != identity(c)?
@@ -535,7 +706,6 @@ pub fn verify_bytes(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
     if artifacts != receipt["artifacts"] {
         return Err(invalid("backup artifact hash does not match acceptance"));
     }
-    fresh(c, &receipt["captured_at"], time.unwrap_or(now()?))?;
     Ok(receipt)
 }
 
@@ -562,7 +732,24 @@ pub fn inspect(c: &Value, b: &Path, time: Option<i64>) -> Result<Value> {
     let _lease = durable::lock(&root.join("lock"), true, false)?;
     verify_bytes(c, b, time)
 }
+/// Retained rollback captures do not expire; their bytes, tools and contract do.
+pub fn inspect_retained(c: &Value, b: &Path) -> Result<Value> {
+    let root = validate(c, true)?;
+    let _lease = durable::lock(&root.join("lock"), true, false)?;
+    let receipt = verify_integrity(c, b)?;
+    let now = now()?;
+    if !receipt["captured_at"]
+        .as_i64()
+        .is_some_and(|at| at >= 0 && at <= now)
+    {
+        return Err(invalid(
+            "retained backup capture time is invalid or from the future",
+        ));
+    }
+    Ok(receipt)
+}
 pub fn certify(c: &Value, b: &Path, state: &Path) -> Result<Value> {
+    let executor_machine = machine()?;
     validate(c, false)?;
     if c["version"] == 2 && unsafe { libc::geteuid() } == 0 {
         return Err(invalid(
@@ -584,7 +771,7 @@ pub fn certify(c: &Value, b: &Path, state: &Path) -> Result<Value> {
     }
     let lease = durable::lock(&state.join("lock"), false, false)?;
     let source = verify_bytes(c, b, None)?;
-    if source["executor_machine_sha256"] == machine()? || source["executor"] == hostname()? {
+    if source["executor_machine_sha256"] == executor_machine || source["executor"] == hostname()? {
         return Err(invalid(
             "independent restoration must execute on a different machine",
         ));

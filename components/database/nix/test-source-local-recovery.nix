@@ -6,11 +6,13 @@
   inherit (pkgs) lib;
   postgres = pkgs.postgresql_18;
   legacyPackage = import ./test-python-package.nix {inherit pkgs;};
+  identityPreload = import ./test-identity-preload.nix {inherit pkgs;};
   bridge = import ./test-native-bridge.nix {inherit pkgs;};
-  tools = [pkgs.bash pkgs.coreutils pkgs.diffutils pkgs.util-linux pkgs.systemd pkgs.findutils pkgs.gnugrep pkgs.gnutar postgres nativePackage];
+  tools = [pkgs.bash pkgs.coreutils pkgs.diffutils pkgs.util-linux pkgs.inetutils pkgs.systemd pkgs.findutils pkgs.gnugrep pkgs.gnutar pkgs.python3 postgres nativePackage];
   fixtureConfig = {
     native_package = toString nativePackage;
     legacy_package = toString legacyPackage;
+    identity_preload = "${identityPreload}/lib/identity.so";
     postgres_package = toString postgres;
     coreutils_package = toString pkgs.coreutils;
     shell = "${pkgs.bash}/bin/bash";
@@ -28,7 +30,7 @@ in
       };
       services.timesyncd.enable = lib.mkForce false;
       environment.systemPackages = tools;
-      system.extraDependencies = [legacyPackage];
+      system.extraDependencies = [legacyPackage identityPreload];
       users.users.postgres.shell = pkgs.bash;
     };
     nodes.primary = {

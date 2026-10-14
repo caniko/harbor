@@ -74,7 +74,7 @@ if root_uid:
         return os.stat_result(fields)
     patch.object(Path,'lstat',mapped_lstat).start()
 try: transition_manifest.validate(json.loads(sys.argv[1]))
-except ValueError as error: print(str(error))
+except (ValueError,RuntimeError,OSError) as error: print(str(error))
 else: print('ACCEPTED')
 "#;
     let mut spec = process::CommandSpec::new(vec![
@@ -134,6 +134,37 @@ fn external_backup_manifest_cannot_share_a_transition_barrier_in_both_engines() 
 }
 
 #[test]
+fn independent_receipts_require_protected_regular_inodes_and_ancestors_in_both_engines() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    let path = f.temp.path().join("independent.json");
+    durable::write_json(&path, &json!({"status":"verified"})).unwrap();
+    let accepted = transition_manifest::independent_receipt(&f.config).unwrap();
+    assert_eq!(
+        accepted.1,
+        harbor_db::storage::codec::file_digest(&path).unwrap()
+    );
+    for (selected, mode) in [(path.as_path(), 0o620), (f.temp.path(), 0o770)] {
+        let previous = fs::metadata(selected).unwrap().permissions();
+        fs::set_permissions(selected, fs::Permissions::from_mode(mode)).unwrap();
+        assert!(transition_manifest::independent_receipt(&f.config).is_err());
+        assert!(python_transition_validation(&f.config).contains("storage"));
+        fs::set_permissions(selected, previous).unwrap();
+    }
+    let alias = f.temp.path().join("receipt-alias");
+    fs::hard_link(&path, &alias).unwrap();
+    assert!(transition_manifest::independent_receipt(&f.config).is_err());
+    assert!(python_transition_validation(&f.config).contains("protected coordinator-owned"));
+    fs::remove_file(&alias).unwrap();
+    fs::rename(&path, &alias).unwrap();
+    symlink(&alias, &path).unwrap();
+    assert!(transition_manifest::independent_receipt(&f.config).is_err());
+    assert!(python_transition_validation(&f.config).contains("redirected"));
+    assert!(!f.temp.path().join("authority/transition.json").exists());
+    assert!(!f.temp.path().join("barrier/lock").exists());
+}
+
+#[test]
 fn independent_receipts_cannot_alias_transition_control_storage_in_both_engines() {
     let mut f = Fixture::new();
     for suffix in [
@@ -141,6 +172,8 @@ fn independent_receipts_cannot_alias_transition_control_storage_in_both_engines(
         "authority/transition.json",
         "authority/lock",
         "authority/custody.json",
+        "authority/independent.json",
+        "authority/receipts/independent.json",
         "barrier/inhibited.json",
         "barrier/retired/inhibited.json",
         "barrier/lock",
@@ -178,8 +211,8 @@ fn independent_receipts_cannot_alias_transition_control_storage_in_both_engines(
     );
     assert!(python_transition_validation(&f.config).contains("receipt and transition control"));
     f.config["independent_receipt"] = json!(f.temp.path().join("authority/independent.json"));
-    transition_manifest::validate(&f.config).unwrap();
-    assert_eq!(python_transition_validation(&f.config).trim(), "ACCEPTED");
+    assert!(transition_manifest::validate(&f.config).is_err());
+    assert!(python_transition_validation(&f.config).contains("receipt and transition control"));
 }
 
 #[test]
@@ -535,7 +568,7 @@ if root_uid:
         return os.stat_result(fields)
     patch.object(Path,'lstat',mapped_lstat).start()
 original_digest=application_backup.digest
-if sys.argv[3]: patch.object(application_backup,'digest',side_effect=lambda path: original_digest(sys.argv[3] if str(path)=='/etc/machine-id' else path)).start()
+if sys.argv[3]: patch.object(application_backup,'machine',side_effect=lambda: original_digest(sys.argv[3])).start()
 backup,receipt=application_transition.capture_source(json.loads(sys.argv[1]),json.loads(sys.argv[2]),())
 assert receipt['consistency']=='quiesced' and (backup/'acceptance.json').is_file()
 print(json.dumps({'backup':str(backup),'receipt':receipt}))
@@ -692,6 +725,104 @@ for key in ('postgres_manifest','custody_manifest'):
         config.to_string(),
         mutable.to_str().unwrap().into(),
         stored_alias.to_str().unwrap().into(),
+    ]);
+    command.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!("{}/python", env!("CARGO_MANIFEST_DIR")),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    process::execute(&command).unwrap();
+}
+
+#[test]
+fn operator_transition_entrypoints_reject_mutable_files_and_aliases_in_both_engines() {
+    let f = Fixture::new();
+    let mut config = f.config.clone();
+    let fixture =
+        std::path::Path::new(env!("HARBOR_DB_TEST_CONFIG_FIXTURE")).join("postgresql.json");
+    for key in ["source_manifest", "target_manifest", "backup_manifest"] {
+        config[key] = json!(fixture);
+    }
+    config["postgres_manifest"] = serde_json::Value::Null;
+    config["custody_manifest"] = serde_json::Value::Null;
+    let executable = fs::canonicalize(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("python3"))
+            .find(|path| path.is_file())
+            .unwrap(),
+    )
+    .unwrap();
+    for stage in ["import", "verify-target", "verify-source", "health"] {
+        config["commands"][stage]["argv"][0] = json!(executable);
+    }
+    config["executable_files"] = json!([]);
+    for key in ["runuser", "systemctl", "busctl"] {
+        config[key] = json!(executable);
+    }
+    let mutable = f.temp.path().join("worker-command");
+    fs::write(&mutable, b"#!/bin/sh\nexit 0\n").unwrap();
+    let alias = f.temp.path().join("worker-alias");
+    symlink(&executable, &alias).unwrap();
+    for stage in ["import", "verify-target", "verify-source", "health"] {
+        for path in [&mutable, &alias, &fixture] {
+            let mut selected = config.clone();
+            selected["commands"][stage]["argv"][0] = json!(path);
+            assert!(
+                transition_manifest::validate_operator_policy(&selected).is_err(),
+                "mutable/nonexecutable transition entrypoint admitted: {stage}"
+            );
+        }
+    }
+    transition_manifest::validate_operator_policy(&config).unwrap();
+    for key in ["runuser", "systemctl", "busctl"] {
+        for path in [&mutable, &alias, &fixture] {
+            let mut selected = config.clone();
+            selected[key] = json!(path);
+            assert!(
+                transition_manifest::validate_operator_policy(&selected).is_err(),
+                "mutable/nonexecutable coordinator admitted: {key}"
+            );
+        }
+    }
+    let script = r#"import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from harbor_db.transition_manifest import validate_operator_policy
+config=json.loads(sys.argv[1]);mutable,alias,fixture=sys.argv[2:5];uid=int(sys.argv[5])
+if uid:
+    original=Path.lstat
+    def mapped(path):
+        info=original(path)
+        if info.st_uid!=uid: return info
+        fields=list(info);fields[4]=0
+        return os.stat_result(fields)
+    patch.object(Path,'lstat',mapped).start()
+validate_operator_policy(config)
+for stage in ('import','verify-target','verify-source','health'):
+    for path in (mutable,alias,fixture):
+        selected=json.loads(json.dumps(config));selected['commands'][stage]['argv'][0]=path
+        try: validate_operator_policy(selected)
+        except (ValueError,OSError): pass
+        else: raise AssertionError('mutable/nonexecutable transition worker admitted')
+for key in ('runuser','systemctl','busctl'):
+    for path in (mutable,alias,fixture):
+        selected=json.loads(json.dumps(config));selected[key]=path
+        try: validate_operator_policy(selected)
+        except (ValueError,OSError): pass
+        else: raise AssertionError('mutable/nonexecutable transition coordinator admitted')
+"#;
+    let mut command = process::CommandSpec::new(vec![
+        "python3".into(),
+        "-B".into(),
+        "-c".into(),
+        script.into(),
+        config.to_string(),
+        mutable.display().to_string(),
+        alias.display().to_string(),
+        fixture.display().to_string(),
+        option_env!("HARBOR_DB_TEST_ROOT_UID").unwrap_or("0").into(),
     ]);
     command.environment = Some(std::collections::BTreeMap::from([
         (
@@ -1306,6 +1437,113 @@ fn captured_source(f: &Fixture) -> (serde_json::Value, serde_json::Value) {
     (source, record)
 }
 #[test]
+fn stale_capture_can_abort_but_changed_bytes_or_evidence_keep_barriers() {
+    use harbor_db::storage::{application_backup, custody};
+    let f = Fixture::new();
+    let (mut receipt, record) = captured_source(&f);
+    let backup = std::path::Path::new(record["backup"].as_str().unwrap());
+    receipt["captured_at"] = json!(custody::now() - 7200);
+    durable::write_json(&backup.join("acceptance.json"), &receipt).unwrap();
+    let config = durable::read_json(&f.temp.path().join("backup.json")).unwrap();
+    assert!(application_backup::inspect(&config, backup, None).is_err());
+    assert_eq!(
+        application_backup::inspect_retained(&config, backup).unwrap(),
+        receipt
+    );
+    fs::write(backup.join("history"), b"changed bytes").unwrap();
+    assert!(application_backup::inspect_retained(&config, backup).is_err());
+    fs::write(backup.join("history"), b"retained source state").unwrap();
+    for at in [json!(-1), json!(true), json!(custody::now() + 3600)] {
+        receipt["captured_at"] = at;
+        durable::write_json(&backup.join("acceptance.json"), &receipt).unwrap();
+        assert!(application_backup::inspect_retained(&config, backup).is_err());
+    }
+    let script = r#"
+from test_application_transition import ApplicationTransitionTest
+from harbor_db import application_transition as transition, application_backup, resource
+from harbor_db.durable import read_json, write_json
+from harbor_db.application_backup import digest
+from pathlib import Path
+import sys, time
+f = ApplicationTransitionTest()
+f.setUp()
+try:
+    f.evidence_patch.stop()
+    backup = f.backup / 'capture'
+    backup.mkdir()
+    artifact = backup / 'history'
+    artifact.write_bytes(b'retained source')
+    tool = str(Path(sys.executable).resolve())
+    config = {'version': 1, 'resource': 'demo', 'root': str(f.backup),
+              'commands': {stage: [tool, '{backup}', '{workspace}'] for stage in ('capture', 'restore', 'verify', 'cleanup')},
+              'executable_files': [], 'timeout_seconds': 10, 'maximum_age_seconds': 3600}
+    write_json(Path(f.config['backup_manifest']), config)
+    receipt = {**f.snapshot, 'manifest_sha256': application_backup.identity(config),
+               'executables': application_backup.executables(config),
+               'captured_at': int(time.time()) - 7200,
+               'artifacts': {'history': digest(artifact)}}
+    receipt_path = backup / 'acceptance.json'
+    write_json(receipt_path, receipt)
+    f.custody(); transition.plan(f.config, f.candidate, None)
+    record = transition.status(f.config)
+    record['backup'] = str(backup)
+    record['semantic_sha256'] = receipt['semantic_sha256']
+    record['source_acceptance_sha256'] = digest(receipt_path)
+    transition.install_barriers(f.config, record)
+    transition.save(f.config, record, 'preparing')
+    barrier = f.barrier / 'inhibited.json'
+    before = barrier.read_bytes()
+    try: application_backup.inspect(read_json(f.config['backup_manifest']), backup)
+    except ValueError as error: assert 'stale' in str(error)
+    else: raise AssertionError('fresh admission accepted stale capture')
+    retained_receipt = receipt_path.read_bytes()
+    write_json(receipt_path, {**receipt, 'changed': True})
+    try: transition.abort(f.config)
+    except ValueError as error: assert 'source backup evidence changed' in str(error)
+    else: raise AssertionError('changed receipt released writers')
+    assert barrier.read_bytes() == before
+    receipt_path.write_bytes(retained_receipt)
+    artifact = next(backup / name for name in receipt['artifacts'] if name != 'capture.json')
+    original = artifact.read_bytes()
+    artifact.write_bytes(b'changed backup')
+    try: transition.abort(f.config)
+    except ValueError as error: assert 'hash' in str(error)
+    else: raise AssertionError('changed bytes released writers')
+    assert barrier.read_bytes() == before
+    artifact.write_bytes(original)
+    result = transition.abort(f.config)
+    assert result['phase'] == 'aborted'
+    assert not barrier.exists()
+    assert receipt_path.read_bytes() == retained_receipt
+    resource.verify(f.source, resource.contract(f.source))
+finally: f.doCleanups()
+"#;
+    let diagnostic = format!(
+        "import sys,traceback\ntry:\n exec({})\nexcept BaseException:\n traceback.print_exc(file=sys.stdout)\n raise\n",
+        json!(script)
+    );
+    let mut spec =
+        process::CommandSpec::new(vec!["python3".into(), "-B".into(), "-c".into(), diagnostic]);
+    spec.environment = Some(std::collections::BTreeMap::from([
+        (
+            "PYTHONPATH".into(),
+            format!(
+                "{}/python:{}/tests",
+                env!("CARGO_MANIFEST_DIR"),
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        ),
+        ("PATH".into(), std::env::var("PATH").unwrap()),
+    ]));
+    let output = process::run(&spec).unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
 fn independent_restore_evidence_binds_bytes_tools_semantics_machine_and_resume() {
     use harbor_db::storage::{codec, custody};
     let f = Fixture::new();
@@ -1796,9 +2034,13 @@ from pathlib import Path
 sys.stderr=sys.stdout
 root=Path(sys.argv[1]);source=Path(sys.argv[2]);binary=sys.argv[3]
 # Namespace continuation must also retain executables from an external target.
-for path in (Path('/nix'),Path('/proc'),Path('/dev'),source,Path(binary).parent):
+paths=[Path('/nix'),Path('/proc'),Path('/dev'),source,Path(binary).parent]
+# Registrations without F resolve the interpreter again inside this chroot.
+if Path('/run/binfmt').is_dir(): paths.append(Path('/run/binfmt'))
+for path in paths:
     target=root/path.relative_to('/');target.mkdir(parents=True,exist_ok=True)
     subprocess.run(['mount','--rbind',str(path),str(target)],check=True,stderr=subprocess.STDOUT)
+    subprocess.run(['mountpoint','-q',str(target)],check=True,stderr=subprocess.STDOUT)
 (root/'tmp').mkdir(mode=0o1777)
 (root/'etc').mkdir()
 (root/'etc/passwd').write_text('root:x:0:0:fixture:/tmp:/bin/sh\n')

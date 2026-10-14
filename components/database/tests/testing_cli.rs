@@ -1,4 +1,6 @@
 #![cfg(feature = "testing")]
+#[path = "fixtures/private_supervisor_root.rs"]
+mod private_supervisor_root;
 use harbor_db::testing::{
     catalog::Profile,
     executor::ExecutorSpec,
@@ -153,6 +155,9 @@ fn executor_dispatch_uses_real_cargo_and_rejects_zero_ignored_and_failure() {
 
 #[test]
 fn catalog_native_executor_binds_retained_binary_and_spec() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     let temp = tempfile::tempdir().unwrap();
     let source = rust_fixture(temp.path());
     let catalog = argv_suite(
@@ -181,11 +186,21 @@ fn catalog_native_executor_binds_retained_binary_and_spec() {
         "native",
         "--foreground",
     ]);
+    let diagnostics = || {
+        fs::read_dir(base.join("native"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".stderr.log"))
+            .map(|entry| fs::read_to_string(entry.path()).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     assert!(
         output.status.success(),
-        "{}\n{}",
+        "{}\n{}\n{}",
         String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&output.stderr),
+        diagnostics()
     );
     let directory = base.join("native");
     let spec: supervisor::RunSpec =
@@ -255,6 +270,9 @@ fn unregistered_native_shapes_fail_closed() {
 
 #[test]
 fn prerequisite_executor_validates_inventory_and_major() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     use std::os::unix::fs::PermissionsExt;
     let temp = tempfile::tempdir().unwrap();
     let package = temp.path().join("package");
@@ -352,6 +370,9 @@ fn prerequisite_executor_validates_inventory_and_major() {
 
 #[test]
 fn exit_zero_cannot_qualify_and_worker_observe_dispatch_are_real() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     let temp = tempfile::tempdir().unwrap();
     let (spec, base) = explicit(temp.path(), "exit 0");
     let created = cli(&[
@@ -386,6 +407,9 @@ fn exit_zero_cannot_qualify_and_worker_observe_dispatch_are_real() {
 
 #[test]
 fn actual_unittest_result_passes_but_missing_coverage_never_does() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     let temp = tempfile::tempdir().unwrap();
     let source = repo(temp.path());
     fs::create_dir(source.join("tests")).unwrap();
@@ -444,6 +468,9 @@ fn actual_unittest_result_passes_but_missing_coverage_never_does() {
 
 #[test]
 fn covered_unittest_foreground_run_qualifies_and_retains_inputs() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     let temp = tempfile::tempdir().unwrap();
     let source = repo(temp.path());
     fs::create_dir(source.join("tests")).unwrap();
@@ -480,6 +507,9 @@ fn covered_unittest_foreground_run_qualifies_and_retains_inputs() {
 
 #[test]
 fn skipped_and_failed_tests_are_never_semantic_success() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     let temp = tempfile::tempdir().unwrap();
     let source = repo(temp.path());
     fs::create_dir(source.join("tests")).unwrap();
@@ -513,6 +543,9 @@ fn skipped_and_failed_tests_are_never_semantic_success() {
 
 #[test]
 fn identities_are_safe_and_dependency_order_survives_selection() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     assert_ne!(runner::safe_identity("a.b"), runner::safe_identity("a-b"));
     let temp = tempfile::tempdir().unwrap();
     let source = repo(temp.path());
@@ -561,6 +594,9 @@ fn identities_are_safe_and_dependency_order_survives_selection() {
 
 #[test]
 fn watch_disconnect_and_time_limit_do_not_cancel_work() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     let temp = tempfile::tempdir().unwrap();
     let (spec, base) = explicit(temp.path(), "sleep 1");
     assert!(
@@ -600,6 +636,9 @@ fn watch_disconnect_and_time_limit_do_not_cancel_work() {
 
 #[test]
 fn cancellation_is_a_durable_request_consumed_by_worker() {
+    if !private_supervisor_root::enter() {
+        return;
+    }
     let temp = tempfile::tempdir().unwrap();
     let (spec, base) = explicit(temp.path(), "exit 0");
     assert!(

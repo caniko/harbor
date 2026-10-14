@@ -440,12 +440,24 @@ in {
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires receiveWal.enable for continuous post-target WAL coverage.";
           }
           {
+            assertion = !sourceRole || cfg.source.port == config.services.postgresql.settings.port;
+            message = "services.harbor-db.pgBackup source port must match the effective local PostgreSQL primary port.";
+          }
+          {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || cfg.targetSettings.baseBackup.enable;
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires baseBackup.enable for fresh verified recovery base backups.";
           }
           {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || (cfg.sourceSettings.maxReplicationSlots >= 2 && cfg.sourceSettings.maxWalSenders >= 3 && config.services.postgresql.settings.max_replication_slots >= 2 && config.services.postgresql.settings.max_wal_senders >= 3);
             message = "services.harbor-db.pgBackup sourceLocalRecovery requires at least two replication slots and three WAL senders, including effective PostgreSQL settings.";
+          }
+          {
+            assertion = !sourceRole || (config.services.postgresql.settings.max_replication_slots >= 1 && config.services.postgresql.settings.max_wal_senders >= 1);
+            message = "services.harbor-db.pgBackup source roles require nonzero effective replication capacity for WAL senders and slots.";
+          }
+          {
+            assertion = !sourceRole || lib.elem config.services.postgresql.settings.wal_level ["replica" "logical"];
+            message = "services.harbor-db.pgBackup source roles require effective wal_level=replica or logical for streaming replication and physical recovery.";
           }
           {
             assertion = !cfg.targetSettings.sourceLocalRecovery.enable || !(config.services.harbor-db.postgresql.enable or false) || lib.elem "replicator" config.services.harbor-db.postgresql.writerFence.replicationRoles;

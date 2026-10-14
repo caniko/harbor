@@ -14,7 +14,14 @@ import tempfile
 import time
 from pathlib import Path
 
-from .durable import lock, read_json, sync_directory, sync_tree, write_json
+from .durable import (
+    immutable_store_reference,
+    lock,
+    read_json,
+    sync_directory,
+    sync_tree,
+    write_json,
+)
 from . import process
 from . import application_publication as publication
 
@@ -28,6 +35,60 @@ def identity(value):
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def machine():
+    # Linux pidfd/nsfs UAPI binds the actual calling thread. Proc namespace
+    # aliases and uid_map files are caller-mountable and are not trust anchors.
+    import fcntl
+    import threading
+
+    descriptors = []
+    try:
+        task = os.pidfd_open(threading.get_native_id(), os.O_EXCL)
+        descriptors.append(task)
+        for request, own_user_namespace in (
+            (0xFF09, True),
+            (0xFF03, False),
+            (0xFF0A, False),
+        ):
+            selected = fcntl.ioctl(task, request)
+            descriptors.append(selected)
+            owner = selected if own_user_namespace else fcntl.ioctl(selected, 0xB701)
+            if not own_user_namespace:
+                descriptors.append(owner)
+            if (
+                fcntl.ioctl(owner, 0xB703) != 0x10000000
+                or os.fstat(owner).st_ino != 0xEFFFFFFD
+            ):
+                raise ValueError(
+                    "machine identity rejects caller-controlled namespaces"
+                )
+    except OSError as error:
+        raise ValueError(
+            "machine identity requires Linux 6.13+ calling-thread pidfd namespace support"
+        ) from error
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+    return digest("/etc/machine-id")
+
+
+def capture_receipt(backup):
+    fd = os.open(
+        backup / "capture.json",
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+    )
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("capture receipt must be a regular file")
+        if info.st_size > 4096:
+            raise ValueError("capture receipt exceeds the 4096-byte limit")
+        data = stream.read(4097)
+        if len(data) > 4096:
+            raise ValueError("capture receipt exceeds the 4096-byte limit")
+        return json.loads(data)
 
 
 def validate(config, *, check_root=True):
@@ -78,6 +139,11 @@ def validate(config, *, check_root=True):
             raise ValueError(
                 "commands require an absolute executable and explicit artifact/workspace arguments"
             )
+        if protected:
+            immutable_store_reference(argv[0], executable=True)
+    if protected:
+        for path in config["executable_files"]:
+            immutable_store_reference(path)
     return root
 
 
@@ -87,7 +153,12 @@ def executables(config):
     )
     if any(not Path(path).is_absolute() or not Path(path).is_file() for path in paths):
         raise ValueError("backup executable or adapter file is absent")
-    return {path: digest(path) for path in sorted(paths)}
+    return {
+        path: digest(
+            immutable_store_reference(path) if config["version"] == 2 else path
+        )
+        for path in sorted(paths)
+    }
 
 
 def inventory(path):
@@ -118,6 +189,8 @@ def inventory(path):
 
 
 def execute(config, stage, backup, workspace, lease, worker=None):
+    if config["version"] == 2:
+        immutable_store_reference(config["commands"][stage][0], executable=True)
     substitutions = {"{backup}": str(backup), "{workspace}": str(workspace)}
     argv = [substitutions.get(arg, arg) for arg in config["commands"][stage]]
     allowed = {
@@ -168,7 +241,7 @@ def execute(config, stage, backup, workspace, lease, worker=None):
 def certification(config, backup, workspace, lease, artifacts, worker=None):
     execute(config, "restore", backup, workspace, lease, worker)
     receipt = json.loads(execute(config, "verify", backup, workspace, lease, worker))
-    captured = read_json(backup / "capture.json")
+    captured = capture_receipt(backup)
     if (
         set(captured) != {"version", "consistency", "semantic_sha256"}
         or captured["version"] != 1
@@ -193,7 +266,7 @@ def certification(config, backup, workspace, lease, artifacts, worker=None):
         "version": 1,
         "status": "verified",
         "executor": socket.gethostname(),
-        "executor_machine_sha256": digest("/etc/machine-id"),
+        "executor_machine_sha256": machine(),
         "semantic_sha256": captured["semantic_sha256"],
         "artifacts": artifacts,
         "consistency": captured["consistency"],
@@ -210,6 +283,7 @@ def capture(config, attempt, *, retry_incomplete=False):
     protected = config["version"] == 2
     if protected:
         publication.require_namespace(root)
+        publication.check_credential_sources(config.get("credentials"))
     with lock(root / "lock") as lease:
         staging, destination = root / f"{attempt}.partial", root / attempt
         partial = staging / "artifacts" if protected else staging
@@ -234,10 +308,13 @@ def capture(config, attempt, *, retry_incomplete=False):
                 *([sealed, credentials] if protected else []),
             )
         ):
-            if not retry_incomplete or read_json(intent_file) != attempt_intent:
+            if not retry_incomplete:
                 raise ValueError(
                     "backup attempt already exists or its immutable intent changed"
                 )
+            cleanup_tree = capture_cleanup_tree(
+                intent_file, attempt_intent, partial, sealed, protected
+            )
             if workspace.exists():
                 if workspace.is_symlink() or not workspace.is_dir():
                     raise ValueError("incomplete restore workspace is redirected")
@@ -251,7 +328,9 @@ def capture(config, attempt, *, retry_incomplete=False):
                     else None
                 )
                 try:
-                    execute(config, "cleanup", partial, workspace, lease, retry_worker)
+                    execute(
+                        config, "cleanup", cleanup_tree, workspace, lease, retry_worker
+                    )
                 finally:
                     if retry_worker is not None:
                         retry_worker.close()
@@ -269,7 +348,10 @@ def capture(config, attempt, *, retry_incomplete=False):
                     entry.rename(abandoned / entry.name)
             sync_directory(abandoned)
             sync_directory(root)
-        write_json(intent_file, attempt_intent)
+        write_json(
+            intent_file,
+            attempt_intent | ({"cleanup_origin": "partial"} if protected else {}),
+        )
         worker = (
             publication.Worker(
                 config["worker_user"], credentials, config.get("credentials")
@@ -296,6 +378,37 @@ def capture(config, attempt, *, retry_incomplete=False):
                 worker.close()
 
 
+def capture_cleanup_tree(intent, expected, partial, sealed, protected):
+    """The journal, rather than seal existence, owns the durable cleanup origin."""
+    retained = read_json(intent)
+    if not isinstance(retained, dict):
+        raise ValueError("backup attempt immutable intent changed")
+    has_origin = "cleanup_origin" in retained
+    origin = retained.pop("cleanup_origin", None) if protected else None
+    if retained != expected:
+        raise ValueError("backup attempt immutable intent changed")
+    if not protected:
+        return partial
+    info = intent.lstat()
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != 0
+        or info.st_mode & 0o077
+        or info.st_nlink != 1
+    ):
+        raise ValueError("capture cleanup journal is not root-controlled")
+    if not has_origin and not os.path.lexists(sealed):
+        return partial  # A legacy attempt that never created a seal is unambiguous.
+    if origin == "partial":
+        return partial
+    if origin != "sealed":
+        raise ValueError("protected capture lacks an unambiguous cleanup origin")
+    info = sealed.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+        raise ValueError("retained certification tree is not root-controlled")
+    return sealed
+
+
 def capture_attempt(
     config,
     attempt,
@@ -315,19 +428,38 @@ def capture_attempt(
         publication.worker_directory(workspace, worker.account)
     else:
         workspace.mkdir(mode=0o700)
+    intent = root / f"{attempt}.intent.json"
+    expected = {"manifest_sha256": identity(config), "executables": tools}
+    certification_tree = partial
     try:
         execute(config, "capture", partial, workspace, lease, worker)
+        capture_receipt(partial)
         artifacts = inventory(partial)
         if "acceptance.json" in artifacts:
             raise ValueError(
                 "application capture must not supply its own acceptance envelope"
             )
-        receipt = certification(config, partial, workspace, lease, artifacts, worker)
+        if worker is not None:
+            publication.copy_tree(partial, sealed)
+            publication.reader_permissions(sealed, root.stat().st_gid)
+            if inventory(sealed) != artifacts:
+                raise ValueError(
+                    "backup artifact changed before protected certification"
+                )
+            sync_tree(sealed)
+            write_json(intent, expected | {"cleanup_origin": "sealed"})
+            certification_tree = sealed
+        receipt = certification(
+            config, certification_tree, workspace, lease, artifacts, worker
+        )
     finally:
-        execute(config, "cleanup", partial, workspace, lease, worker)
+        cleanup_tree = capture_cleanup_tree(
+            intent, expected, partial, sealed, worker is not None
+        )
+        execute(config, "cleanup", cleanup_tree, workspace, lease, worker)
         shutil.rmtree(workspace)
         sync_directory(root)
-    if inventory(partial) != artifacts:
+    if inventory(certification_tree) != artifacts:
         raise ValueError("backup artifact hash changed during cleanup")
     if executables(config) != tools:
         raise ValueError("backup executable identity changed during capture")
@@ -340,12 +472,7 @@ def capture_attempt(
             "executables": tools,
         }
     )
-    published = partial
-    if worker is not None:
-        publication.copy_tree(partial, sealed)
-        if inventory(sealed) != artifacts:
-            raise ValueError("backup artifact hash changed during protected copy")
-        published = sealed
+    published = certification_tree
     write_json(published / "acceptance.json", receipt)
     for entry in published.rglob("*"):
         metadata = entry.lstat()
@@ -383,6 +510,12 @@ def inspect(config, backup, *, now=None):
 
 
 def verify_bytes(config, backup, *, now=None):
+    receipt = verify_integrity(config, backup)
+    fresh(config, receipt["captured_at"], int(time.time()) if now is None else now)
+    return receipt
+
+
+def verify_integrity(config, backup):
     receipt = read_json(backup / "acceptance.json")
     if (
         receipt["status"] != "verified"
@@ -395,8 +528,21 @@ def verify_bytes(config, backup, *, now=None):
     artifacts.pop("acceptance.json")
     if artifacts != receipt["artifacts"]:
         raise ValueError("backup artifact hash does not match acceptance")
-    fresh(config, receipt["captured_at"], int(time.time()) if now is None else now)
     return receipt
+
+
+def inspect_retained(config, backup):
+    """Retained rollback captures do not expire; their bytes, tools and contract do."""
+    validate(config)
+    with lock(Path(config["root"]) / "lock", shared=True):
+        receipt = verify_integrity(config, Path(backup))
+        if type(receipt["captured_at"]) is not int or not 0 <= receipt[
+            "captured_at"
+        ] <= int(time.time()):
+            raise ValueError(
+                "retained backup capture time is invalid or from the future"
+            )
+        return receipt
 
 
 def fresh(config, captured_at, now):
@@ -407,6 +553,7 @@ def fresh(config, captured_at, now):
 
 def certify(config, backup, state):
     """Execute restoration of a copied point on an independent machine."""
+    executor_machine = machine()
     validate(config, check_root=False)
     if config["version"] == 2 and os.geteuid() == 0:
         raise ValueError(
@@ -427,7 +574,7 @@ def certify(config, backup, state):
     with lock(state / "lock") as lease:
         source = verify_bytes(config, backup)
         if (
-            source["executor_machine_sha256"] == digest("/etc/machine-id")
+            source["executor_machine_sha256"] == executor_machine
             or source["executor"] == socket.gethostname()
         ):
             raise ValueError(

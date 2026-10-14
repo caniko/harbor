@@ -161,8 +161,13 @@ Observer restarts retain that property; the copied unwrapped binary therefore
 keeps the packaged wrapper or development shell's Nix tool lookup.
 
 Library `runner::create` without an executor retains its existing Python behavior;
-native/prerequisite argv cases then require explicit artifact producers. Other
-unregistered argv commands also need real semantic/JUnit evidence. A zero exit status with zero
+native/prerequisite argv cases then require explicit artifact producers.
+Retained source inventory always selects the requested checkout. The inventory
+Git subprocess clears inherited `GIT_*` repository, worktree, index and injected
+configuration selectors; foreign repositories or indexes cannot silently alter
+the retained edited, tracked or untracked source set.
+
+Other unregistered argv commands also need real semantic/JUnit evidence. A zero exit status with zero
 selected tests, missing required evidence, malformed evidence, a skipped required
 case, or a lost worker is not equivalent to accepted execution. Retained artifact
 hashes bind bytes that actually existed; optional expected hashes are not
@@ -387,6 +392,10 @@ original receipt and stop only observer units successfully created for that run.
 
 For catalog runs, `--base` must be an absolute private storage path outside the
 checkout, and `--id` must be a new ASCII alphanumeric/hyphen/underscore identity.
+Existing bases must belong to the caller and prohibit group/world writes. Every
+ancestor must be caller- or root-owned and prohibit untrusted writes, except
+trusted sticky temporary parents. Admission preserves rejected storage modes and
+existing lease inodes rather than repairing them in place.
 The runner retains tracked and nonignored untracked regular sources, including
 local edits, under `BASE/ID-candidate/source`. It excludes `.git`, `.direnv`,
 `.envrc`, build targets, `.nix-results` output/GC-root state, Python bytecode, and
@@ -394,6 +403,8 @@ the root `.pre-commit-config.yaml` generated development-shell link. Other
 symlinks/special sources, including dangling links, are rejected.
 The retained inventory covers the entire snapshot, not just selected test files.
 Candidate and run identity reuse is rejected.
+Regular sources up to 1 GiB are retained and SHA-256-bound with streaming I/O;
+the separate 16 MiB acceptance-document limit does not constrain source fixtures.
 
 `BASE/ID-artifacts` retains the catalog bytes, `unittest-v1.py`, per-case
 workspaces, and `runner-binding.json`. The binding records profile, original-to-safe
@@ -484,7 +495,10 @@ fixture, available only with the `testing` feature, and use the builder's
 The Python compatibility helper reads the same fixture. This qualifies receipt
 hashing and same-machine rejection; independent physical-host certification
 requires VM evidence. Production lifecycle packages omit `testing`, require
-`/etc/machine-id`, and accept no runtime machine-identity override.
+`/etc/machine-id`, and accept no runtime machine-identity override. PostgreSQL
+source snapshots/capture metadata and recovery receipts use the same identity
+contract. Both engines reject same-machine certification after an actual UTS
+hostname change; the physical two-node VM qualifies distinct-machine acceptance.
 Nix maps root-owned configuration input inodes to an unmapped UID in the Cargo
 sandbox. Its build hook binds the declared fixture's observed UID as compile-time
 `HARBOR_DB_TEST_ROOT_UID`, also available only with `testing`. Both the production
@@ -504,3 +518,36 @@ exact paths. The runner records the actual and modeled UIDs in
 Both the 174-method frozen corpus and the expanded catalog execute their original
 Git-custody assertions against the real pinned Git binary. Production Python
 sources and frozen oracle files retain their bytes and enforce UID 0 directly.
+
+Runtime credential sources always require real UID 0. A private user/mount/chroot
+fixture tests both credential readers against root-controlled relative aliases
+and retained inodes after pathname replacement.
+
+Cargo checks first require a working private user/mount namespace. On AArch64
+under QEMU user emulation, `unshare` returns `EINVAL`; only namespace and mount
+operations then use pinned x86_64 kernel-native util-linux tools. The lifecycle
+executables remain AArch64, and real bind-mount rejection assertions still run.
+The namespace probe must pass with the selected substrate before testing; an
+unavailable substrate fails qualification.
+The private root-source fixture recursively binds sandbox mounts, retaining
+nested locked mounts rather than attempting an invalid plain bind. It asserts
+the actual store and Python mountpoints before running the lifecycle readers.
+Where NixOS declares binfmt interpreters below `/run/binfmt`, the fixture also
+binds and checks that directory inside its private root. A binfmt registration
+without the `F` flag resolves the interpreter pathname again after `chroot`;
+the AArch64 test ELF must therefore see the same declared QEMU substrate there.
+The SQL-custody and rejected-barrier chroots apply the same interpreter binding
+and assert every recursive mount before re-executing the original test binary.
+
+Nix user namespaces can expose the outer filesystem root with overflow UID 65534
+while the builder runs as UID 1000. Supervisor fixtures that need trusted output
+ancestry re-execute their exact test in a private root owned by namespace root.
+They bind and check the store, original source/executable paths and declared binfmt
+substrate, then use a private temporary directory inside that root. Each parent
+requires one passing child test. Ordinary trusted-root runs retain their existing
+unprivileged path; forced private-root runs exercise the fixture explicitly.
+The testing CLI's supervisor cases use the same fixture, including a private
+default `/tmp` and a namespace-root passwd entry for actual Cargo compilation
+under intentionally retained minimal executor environments.
+Supervisor owner, write-mode, redirect and pre-publication rejection checks remain
+mandatory in both execution paths.

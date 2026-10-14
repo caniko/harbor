@@ -5,8 +5,11 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::Read,
-    os::{fd::RawFd, unix::fs::MetadataExt},
+    io::{Read, Write},
+    os::{
+        fd::RawFd,
+        unix::fs::{MetadataExt, OpenOptionsExt},
+    },
     path::{Path, PathBuf},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -71,7 +74,7 @@ pub fn fresh(timestamp: &Value, now: i64, max_age: i64) -> Result<()> {
     Ok(())
 }
 pub fn policy(config: &Value) -> Result<&Value> {
-    policy_for_executor(config, None)
+    policy_for_executor(config, false)
 }
 
 fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool) -> Result<()> {
@@ -136,7 +139,15 @@ fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool)
     {
         protected.push(absolute(&path(startup, "state_dir")?)?);
     }
-    for key in ["snapshot_file", "receipt_file", "off_host_receipt_file"] {
+    for key in [
+        "backup_root",
+        "snapshot_file",
+        "receipt_file",
+        "off_host_receipt_file",
+    ] {
+        if key == "backup_root" && settings.get(key).is_none() && !source_local {
+            continue;
+        }
         if key == "off_host_receipt_file" && settings[key].is_null() {
             continue;
         }
@@ -149,9 +160,10 @@ fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool)
                 "recovery evidence must stay outside PostgreSQL storage and policy trees",
             ));
         }
-        if controls
-            .iter()
-            .any(|control| evidence.starts_with(control) || control.starts_with(&evidence))
+        if key != "backup_root"
+            && controls
+                .iter()
+                .any(|control| evidence.starts_with(control) || control.starts_with(&evidence))
         {
             return Err(invalid(
                 "recovery evidence must stay outside repository control paths",
@@ -161,7 +173,7 @@ fn validate_evidence_paths(config: &Value, settings: &Value, source_local: bool)
     Ok(())
 }
 
-fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> Result<&'a Value> {
+fn policy_for_executor(config: &Value, certifier: bool) -> Result<&Value> {
     let settings = config
         .get("recovery")
         .filter(|v| v.is_object())
@@ -177,17 +189,12 @@ fn policy_for_executor<'a>(config: &'a Value, certifier_host: Option<&str>) -> R
         ));
     }
     let snapshot = string(settings, "snapshot_file")?;
-    // Only an independently identified certifier may select its off-host output
-    // directly. Local capture, import and recovery admission require two paths.
-    let independent = certifier_host.is_some_and(|host| {
-        !host.is_empty()
-            && settings["source_hostname"]
-                .as_str()
-                .is_some_and(|source| !source.is_empty() && source != host)
-    });
+    // Certification may select its off-host output directly. It must prove
+    // machine independence against the pinned source before querying a restore
+    // or publishing anything. Capture/import/admission require distinct paths.
     if settings["off_host_receipt_file"]
         .as_str()
-        .is_some_and(|remote| settings["receipt_file"].as_str() == Some(remote) && !independent)
+        .is_some_and(|remote| settings["receipt_file"].as_str() == Some(remote) && !certifier)
     {
         return Err(invalid(
             "local and off-host recovery receipts must be distinct",
@@ -415,7 +422,9 @@ pub(super) fn query_argv(
     // The explicit connection string carries only the escaped database name and
     // fixed session settings; inherited libpq routing/options remain scrubbed.
     let database = database.replace('\\', "\\\\").replace('\'', "\\'");
-    let mut options = "-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex -c standard_conforming_strings=on -c default_transaction_read_only=on".to_owned();
+    // Preserve the endpoint's transaction default for recovery admission.
+    // PREPARE only parses the selected statement; EXECUTE remains READ ONLY.
+    let mut options = "-c TimeZone=UTC -c DateStyle=ISO,YMD -c bytea_output=hex -c standard_conforming_strings=on".to_owned();
     if let Some(seconds) = statement_timeout_seconds {
         options.push_str(&format!(" -c statement_timeout={seconds}s"));
     }
@@ -569,7 +578,9 @@ fn validate_capture_source(
             return Err(invalid("record snapshot is for a different backup"));
         }
         selected.validate_snapshot(source["writer_fence_token"].as_str(), &source["records"])?;
-        if source["completed_at"] != selected.metadata()["completed_at"] {
+        if source["completed_at"] != selected.metadata()["completed_at"]
+            || source["source_machine_sha256"] != selected.metadata()["source_machine_sha256"]
+        {
             return Err(invalid(
                 "source-local snapshot completion differs from its immutable capture",
             ));
@@ -695,11 +706,17 @@ pub fn snapshot_leased(
     let mut result = result(&binding)?;
     result["completed_at"] = json!(now);
     result["record_contract_sha256"] = json!(contract(settings)?);
+    result["source_machine_sha256"] = json!(super::application_backup::machine()?);
     result["records"] = records(config, settings, socket, port, &leases)?;
     if let Some(binding) = &fence.binding {
         result["writer_fence_token"] = binding["token"].clone();
     }
     if let Some(selected) = selected {
+        if selected.metadata()["source_machine_sha256"] != result["source_machine_sha256"] {
+            return Err(invalid(
+                "source-local snapshot machine differs from its immutable capture",
+            ));
+        }
         selected.validate_snapshot(result["writer_fence_token"].as_str(), &result["records"])?;
         return snapshot_evidence(config, settings, &binding, now);
     }
@@ -816,7 +833,8 @@ pub fn certify(
         Some(host) => host.to_owned(),
         None => hostname()?,
     };
-    let settings = policy_for_executor(config, Some(&executor))?;
+    let settings = policy_for_executor(config, true)?;
+    let executor_machine = super::application_backup::machine()?;
     let now = clock(now)?;
     let restored = absolute(data)?;
     if restored == absolute(&path(config, "data_dir")?)? {
@@ -834,14 +852,52 @@ pub fn certify(
     )?;
     let source = snapshot_evidence(config, settings, &binding, now)?;
     source_fence(settings, &source)?;
+    machine_acceptance(
+        &source,
+        &json!(executor_machine),
+        settings["source_hostname"].as_str() != Some(executor.as_str())
+            || settings["receipt_file"] == settings["off_host_receipt_file"],
+    )?;
     verify_backup(config, &directory, &leases)?;
+    let observed =
+        verify_restored_endpoint(config, settings, &binding, &restored, socket, port, &leases)?;
+    let actual = records(config, settings, socket, port, &leases)?;
+    if actual != source["records"] {
+        return Err(invalid(
+            "restored application records differ from the source snapshot",
+        ));
+    }
+    let mut result = result(&binding)?;
+    result["status"] = json!("ready");
+    result["completed_at"] = json!(now);
+    result["record_contract_sha256"] = json!(contract(settings)?);
+    result["records"] = actual;
+    result["snapshot_sha256"] = json!(digest(&source_snapshot_path(config, settings)?)?);
+    result["executor_host"] = json!(executor);
+    result["executor_machine_sha256"] = json!(executor_machine);
+    result["source_machine_sha256"] = source["source_machine_sha256"].clone();
+    result["restored_data_dir"] = json!(restored);
+    result["replay_lsn"] = observed["replay_lsn"].clone();
+    durable::write_json(&absolute(&path(settings, "receipt_file")?)?, &result)?;
+    Ok(result)
+}
+
+fn verify_restored_endpoint(
+    config: &Value,
+    settings: &Value,
+    binding: &Value,
+    restored: &Path,
+    socket: &Path,
+    port: u16,
+    leases: &[RawFd],
+) -> Result<Value> {
     let observed = super::codec::decode_str(&query_leased(
         config,
         socket,
         port,
         "postgres",
         "SELECT json_build_object('data_dir', current_setting('data_directory'), 'major', (current_setting('server_version_num')::int / 10000)::text, 'system_identifier', system_identifier::text, 'read_only', current_setting('default_transaction_read_only'), 'in_recovery', pg_is_in_recovery(), 'replay_lsn', pg_last_wal_replay_lsn()::text) FROM pg_control_system()",
-        &leases,
+        leases,
     )?)?;
     let expected = json!({"data_dir":restored,"major":major(config)?,"system_identifier":settings["system_identifier"],"read_only":"on","in_recovery":false});
     if expected
@@ -859,23 +915,30 @@ pub fn certify(
             "restored endpoint did not reach the recovery point",
         ));
     }
-    let actual = records(config, settings, socket, port, &leases)?;
-    if actual != source["records"] {
-        return Err(invalid(
-            "restored application records differ from the source snapshot",
-        ));
+    Ok(observed)
+}
+fn machine_acceptance(source: &Value, executor: &Value, off_host: bool) -> Result<()> {
+    // Old legacy snapshots can still establish local recovery; they cannot
+    // establish a distinct failure domain without a fresh source capture.
+    if source.get("source_machine_sha256").is_none() && !off_host {
+        return Ok(());
     }
-    let mut result = result(&binding)?;
-    result["status"] = json!("ready");
-    result["completed_at"] = json!(now);
-    result["record_contract_sha256"] = json!(contract(settings)?);
-    result["records"] = actual;
-    result["snapshot_sha256"] = json!(digest(&source_snapshot_path(config, settings)?)?);
-    result["executor_host"] = json!(executor);
-    result["restored_data_dir"] = json!(restored);
-    result["replay_lsn"] = observed["replay_lsn"].clone();
-    durable::write_json(&absolute(&path(settings, "receipt_file")?)?, &result)?;
-    Ok(result)
+    let valid = |v: &Value| {
+        v.as_str().is_some_and(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
+    };
+    let source_machine = &source["source_machine_sha256"];
+    if !valid(source_machine) || !valid(executor) || (source_machine == executor) == off_host {
+        return Err(invalid(if off_host {
+            "off-host recovery must execute on an independent machine with a bound source machine identity"
+        } else {
+            "local recovery must execute on the captured source machine"
+        }));
+    }
+    Ok(())
 }
 pub fn validate_receipt(
     config: &Value,
@@ -921,6 +984,18 @@ pub fn validate_receipt(
     {
         return Err(invalid(
             "local recovery must execute on the declared source host",
+        ));
+    }
+    machine_acceptance(
+        source,
+        &receipt["executor_machine_sha256"],
+        label.starts_with("off-host"),
+    )?;
+    if source.get("source_machine_sha256").is_some()
+        && receipt["source_machine_sha256"] != source["source_machine_sha256"]
+    {
+        return Err(invalid(
+            "recovery receipt differs from the source machine identity",
         ));
     }
     Ok(())
@@ -1078,6 +1153,53 @@ pub fn live_check(config: &Value, socket: &Path, port: u16, now: Option<i64>) ->
     result["snapshot_sha256"] = json!(digest(&source_snapshot_path(config, settings)?)?);
     Ok(result)
 }
+/// Root pins a trusted transported receipt before systemd snapshots it. The
+/// destination is a fresh private root-controlled file, never a worker pathname.
+pub fn stage_off_host_import(incoming: &Path, destination: &Path) -> Result<()> {
+    if unsafe { libc::geteuid() } != 0 {
+        return Err(invalid("off-host receipt staging requires root"));
+    }
+    let parent = destination
+        .parent()
+        .ok_or_else(|| invalid("missing off-host staging parent"))?;
+    if !destination.is_absolute() {
+        return Err(invalid("off-host staging destination must be absolute"));
+    }
+    for ancestor in parent.ancestors() {
+        let info = fs::symlink_metadata(ancestor)?;
+        if !info.is_dir() || info.uid() != 0 || info.mode() & 0o022 != 0 {
+            return Err(invalid("untrusted off-host staging ancestor"));
+        }
+    }
+    if fs::symlink_metadata(parent)?.mode() & 0o077 != 0 {
+        return Err(invalid("off-host staging parent must be private"));
+    }
+    let mut source = super::application_publication::credential_source(incoming)?;
+    let info = source.metadata()?;
+    if info.nlink() != 1 || info.len() > 16 << 20 {
+        return Err(invalid(
+            "off-host import receipt must be a bounded single-link regular file",
+        ));
+    }
+    let mut bytes = Vec::new();
+    Read::by_ref(&mut source)
+        .take((16 << 20) + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 16 << 20 {
+        return Err(invalid("off-host import receipt exceeds the byte limit"));
+    }
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o400)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(destination)?;
+    output.write_all(&bytes)?;
+    output.sync_all()?;
+    durable::sync_directory(parent)?;
+    Ok(())
+}
+
 pub fn import_off_host(config: &Value, incoming: &Path, now: Option<i64>) -> Result<Value> {
     import_off_host_leased(config, incoming, now, &[])
 }
@@ -1261,6 +1383,46 @@ fn accept_prepared_restore(
     Ok(())
 }
 
+// Only bootstrap a missing snapshot. The backup lease spans journal binding and
+// capture, while the caller's preparation and writer leases remain held.
+fn capture_prepared_snapshot(
+    config: &Value,
+    settings: &Value,
+    backup_command: &[String],
+    journal: &Path,
+    endpoint: (&Path, u16),
+    now: Option<i64>,
+    outer: &[RawFd],
+) -> Result<()> {
+    if !exists(journal) {
+        for key in ["receipt_file", "off_host_receipt_file"] {
+            if let Some(receipt) = settings[key].as_str()
+                && exists(Path::new(receipt))
+            {
+                return Err(invalid(
+                    "recovery receipts exist without their bound source snapshot",
+                ));
+            }
+        }
+        preparation_command(backup_command, outer)?;
+    }
+    let backup_lease = backup_lease(settings)?;
+    let mut held = outer.to_vec();
+    held.push(backup_lease.fd());
+    let (_, binding) = backup(config, settings, clock(now)?, &held)?;
+    if exists(journal) {
+        if durable::read_json(&absolute(journal)?)? != binding {
+            return Err(invalid(
+                "managed preparation backup changed before snapshot; refusing replacement",
+            ));
+        }
+    } else {
+        durable::write_json(journal, &binding)?;
+    }
+    snapshot_leased(config, endpoint.0, endpoint.1, now, &held)?;
+    Ok(())
+}
+
 pub fn prepare(config: &Value, preparation: &Value, socket: &Path, port: u16) -> Result<Value> {
     prepare_at(config, preparation, socket, port, None)
 }
@@ -1308,33 +1470,15 @@ pub fn prepare_at(
         ));
     }
     if !exists(&source_snapshot) {
-        let journal = anchor.with_file_name("preparation.json");
-        if !exists(&journal) {
-            for key in ["receipt_file", "off_host_receipt_file"] {
-                if let Some(receipt) = settings[key].as_str()
-                    && exists(Path::new(receipt))
-                {
-                    return Err(invalid(
-                        "recovery receipts exist without their bound source snapshot",
-                    ));
-                }
-            }
-            preparation_command(&commands.backup, &leases)?;
-        }
-        let backup_lease = backup_lease(settings)?;
-        let mut held = leases.clone();
-        held.push(backup_lease.fd());
-        let (_, binding) = backup(config, settings, clock(now)?, &held)?;
-        if exists(&journal) {
-            if durable::read_json(&absolute(&journal)?)? != binding {
-                return Err(invalid(
-                    "managed preparation backup changed before snapshot; refusing replacement",
-                ));
-            }
-        } else {
-            durable::write_json(&journal, &binding)?;
-        }
-        snapshot_leased(config, socket, port, now, &held)?;
+        capture_prepared_snapshot(
+            config,
+            settings,
+            &commands.backup,
+            &anchor.with_file_name("preparation.json"),
+            (socket, port),
+            now,
+            &leases,
+        )?;
     } else {
         verify_prepared_snapshot(config, settings, now, &fence, &leases)?;
     }

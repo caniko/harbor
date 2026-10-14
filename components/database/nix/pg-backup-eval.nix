@@ -167,6 +167,116 @@ in
     '';
     assertions = [
       {
+        name = "source-roles-require-effective-replication-capacity";
+        message = "Every local source needs nonzero effective WAL sender and slot capacity; source-local minima and target-only independence are retained.";
+        assertion = let
+          accepted = role: local: slots: senders: let
+            selected =
+              (localEval.extendModules {
+                modules = [
+                  {
+                    services.harbor-db.pgBackup = {
+                      role = lib.mkForce role;
+                      targetSettings.sourceLocalRecovery.enable = lib.mkForce local;
+                    };
+                    services.postgresql.settings = {
+                      max_replication_slots = lib.mkForce slots;
+                      max_wal_senders = lib.mkForce senders;
+                    };
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "source roles require nonzero effective replication capacity" a.message) selected.assertions;
+        in
+          lib.all (role:
+            lib.all (local:
+              accepted role local 2 3
+              && !accepted role local 0 3
+              && !accepted role local 2 0
+              && !accepted role local 0 0
+              && !accepted role local (-1) 3
+              && !accepted role local 2 (-1))
+            (
+              if role == "both"
+              then [false true]
+              else [false]
+            )
+            && accepted role false 1 1) ["source" "both"]
+          && accepted "target" false 0 0;
+      }
+      {
+        name = "source-roles-require-effective-replication-wal-level";
+        message = "Every local replication source requires effective replica or logical WAL; target-only hosts retain independent remote source settings.";
+        assertion = let
+          accepted = role: enabled: declared: effective: let
+            selected =
+              (localEval.extendModules {
+                modules = [
+                  {
+                    services.harbor-db.pgBackup = {
+                      role = lib.mkForce role;
+                      sourceSettings.walLevel = lib.mkForce declared;
+                      targetSettings.sourceLocalRecovery.enable = lib.mkForce enabled;
+                    };
+                    services.postgresql.settings = effective;
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "source roles require effective wal_level" a.message) selected.assertions;
+        in
+          lib.all (role:
+            lib.all (local:
+              accepted role local "replica" {}
+              && accepted role local "logical" {}
+              && !accepted role local "minimal" {}
+              && !accepted role local "replica" {wal_level = lib.mkForce "minimal";}
+              && !accepted role local "logical" {wal_level = lib.mkForce "minimal";}
+              && accepted role local "minimal" {wal_level = lib.mkForce "replica";}
+              && accepted role local "minimal" {wal_level = lib.mkForce "logical";})
+            (
+              if role == "both"
+              then [false true]
+              else [false]
+            )) ["source" "both"]
+          && accepted "target" false "minimal" {wal_level = lib.mkForce "minimal";};
+      }
+      {
+        name = "source-role-port-matches-effective-primary";
+        message = "Every locally configured replication source matches the primary listener and firewall port; remote targets retain distinct ports.";
+        assertion = let
+          accepted = role: local: primary: source: let
+            selected =
+              (localEval.extendModules {
+                modules = [
+                  {
+                    services.postgresql.settings.port = lib.mkForce primary;
+                    services.harbor-db.pgBackup = {
+                      role = lib.mkForce role;
+                      source.port = lib.mkForce source;
+                      targetSettings.sourceLocalRecovery.enable = lib.mkForce local;
+                    };
+                  }
+                ];
+              }).config;
+          in
+            lib.all (a: a.assertion || !lib.hasInfix "source port" a.message) selected.assertions;
+        in
+          lib.all (role:
+            lib.all (local:
+              accepted role local 5432 5432
+              && accepted role local 55486 55486
+              && !accepted role local 55486 5432
+              && !accepted role local 5432 55486)
+            (
+              if role == "both"
+              then [false true]
+              else [false]
+            )) ["source" "both"]
+          && accepted "target" false 55486 5432;
+      }
+      {
         name = "replication-slot-names-reject-before-producer-services";
         message = "Enabled receiver/base-backup slots require 1-63 lowercase ASCII letters, digits or underscores; disabled operations retain inert settings.";
         assertion = let

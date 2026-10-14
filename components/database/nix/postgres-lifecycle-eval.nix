@@ -7,7 +7,7 @@
   inherit (import ./eval-checks.nix {inherit pkgs;}) mkEvalCheck;
   # Preserve the input path during cold read-only flake qualification.
   eval = import (pkgs.path + "/nixos/lib/eval-config.nix") {
-    system = "x86_64-linux";
+    system = pkgs.stdenv.hostPlatform.system;
     modules = [
       lifecycleModule
       # Multiple consumers import the default module; its options must appear
@@ -42,7 +42,7 @@
           upgrade = {
             oldPackage = pkgs.postgresql_17;
             oldDataDir = "/srv/postgres/17";
-            validateCommand = ["/bin/validate-upgrade"];
+            validateCommand = ["${pkgs.writeShellScript "validate-upgrade" "exit 0"}"];
           };
         };
         systemd.services.fixture-client = {
@@ -113,6 +113,25 @@ in
     '';
     assertions = [
       {
+        name = "lifecycle-configuration-matches-check-platform";
+        message = "Lifecycle configuration and preparation dependencies must use the check's native platform.";
+        assertion = eval.pkgs.stdenv.hostPlatform.system == pkgs.stdenv.hostPlatform.system;
+      }
+      {
+        name = "upgrade-requires-immutable-validator";
+        message = "Worker-writable validator entrypoints cannot authorize staged upgrade publication.";
+        assertion = let
+          accepted = command:
+            lib.all (a: a.assertion || !lib.hasPrefix "Staged PostgreSQL upgrades require consumer validation" a.message)
+            (eval.extendModules {modules = [{services.harbor-db.postgresql.upgrade.validateCommand = lib.mkForce command;}];}).config.assertions;
+        in
+          accepted ["${pkgs.writeShellScript "immutable-upgrade-validator" "exit 0"}"]
+          && !accepted ["/run/worker-validator"]
+          && !accepted ["/srv/postgres/validator"]
+          && !accepted ["/nix/store/invalid-validator"]
+          && !accepted [];
+      }
+      {
         name = "recovery-evidence-excludes-postgres-primary-and-policy-trees";
         message = "Snapshot/local/off-host outputs cannot replace PostgreSQL cluster, lifecycle authority, or startup-inhibition files under legacy or source-local policy.";
         assertion = let
@@ -135,7 +154,7 @@ in
             lib.all (key:
               accepted protocol key "/srv/postgres/18-sibling/receipt.json"
               && lib.all (path: !accepted protocol key path) ["/srv/postgres/18" "/srv/postgres/18/PG_VERSION" "/srv/postgres/18/global/pg_control" "/srv/postgres/authority" "/srv/postgres/authority/identity.json" "/var/lib/harbor-db/postgresql-startup" "/var/lib/harbor-db/postgresql-startup/policy.json" "/srv/postgres"])
-            ["snapshotFile" "receiptFile" "offHostReceiptFile"]) ["legacy" "source-local-v1"];
+            ["backupRoot" "snapshotFile" "receiptFile" "offHostReceiptFile"]) ["legacy" "source-local-v1"];
       }
       {
         name = "writer-fence-setup-units-are-unique-and-not-the-primary";
@@ -184,7 +203,7 @@ in
           in
             lib.all (entry: entry.assertion || !(lib.hasPrefix "Staged PostgreSQL upgrades require" entry.message)) selected.assertions;
         in
-          accepted ["/fixture/validator" "literal argument"]
+          accepted ["${pkgs.writeShellScript "validator" "exit 0"}" "literal argument"]
           && lib.all (command: !accepted command) [[] [""] ["validator"] ["relative/validator"] ["./validator"]];
       }
       {

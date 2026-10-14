@@ -217,8 +217,23 @@ pub fn capture_source(
     Ok((backup, result))
 }
 pub fn source_bytes(config: &Value, record: &Value, leases: &[RawFd]) -> Result<Value> {
+    bound_source_bytes(config, record, leases, false)
+}
+fn bound_source_bytes(
+    config: &Value,
+    record: &Value,
+    leases: &[RawFd],
+    retained: bool,
+) -> Result<Value> {
     let backup = Path::new(string(record, "backup")?);
-    let result = backup_worker(config, backup, leases)?;
+    let result = if retained {
+        application_backup::inspect_retained(
+            &durable::read_config_json(Path::new(string(config, "backup_manifest")?))?,
+            backup,
+        )?
+    } else {
+        backup_worker(config, backup, leases)?
+    };
     if record["source_acceptance_sha256"] != codec::file_digest(&backup.join("acceptance.json"))? {
         return Err(invalid("source backup evidence changed"));
     }
@@ -263,7 +278,7 @@ pub fn semantic(receipt: &Value, expected: &str) -> Result<()> {
 }
 pub fn evidence(config: &Value, record: &Value, leases: &[RawFd]) -> Result<(Value, String)> {
     let source = source_bytes(config, record, leases)?;
-    let receipt = durable::read_json(Path::new(string(config, "independent_receipt")?))?;
+    let (receipt, hash) = manifest::independent_receipt(config)?;
     if receipt["version"] != 1
         || receipt["status"] != "verified"
         || receipt["resource"] != config["resource"]
@@ -296,7 +311,6 @@ pub fn evidence(config: &Value, record: &Value, leases: &[RawFd]) -> Result<(Val
             "independent restoration is stale or from the future",
         ));
     }
-    let hash = codec::file_digest(Path::new(string(config, "independent_receipt")?))?;
     if !record["independent_sha256"].is_null() && record["independent_sha256"] != hash {
         return Err(invalid(
             "independent restore evidence changed during resume",
@@ -347,6 +361,21 @@ pub fn target_custody(
     let Some(entry) = manifest::custody_entry(config, target)? else {
         return Ok(Value::Null);
     };
+    let expected = if target["consumer_command"]
+        .as_array()
+        .is_some_and(|argv| !argv.is_empty())
+    {
+        let mut prepared = record["target_authority"].clone();
+        prepared
+            .as_object_mut()
+            .ok_or_else(|| invalid("consumer custody requires a prepared target authority"))?
+            .remove("identity");
+        prepared
+    } else {
+        target.clone()
+    };
+    let entry = custody::expanded_config(&entry, &expected);
+    let authority = &entry["authority"];
     let mut requirements = vec![];
     let empty = vec![];
     let checks = match entry.get("database_inventory_checks") {
@@ -388,11 +417,11 @@ pub fn target_custody(
     custody::require_database_paths(
         &contents,
         &requirements,
-        &paths(target, "directories")?,
+        &paths(authority, "directories")?,
         entry["git_executable"].as_str(),
     )?;
     Ok(
-        json!({"version":1,"resource":target["resource"],"identity":record["source_authority"]["identity"],"binding":target["binding"],"directories":target["directories"],"root_identities":custody::root_identities(&entry)?,"inventory":contents,"metadata":custody::inventory(&entry,false)?,"completed_at":custody::now(),"database_snapshot_sha256":record["primary_snapshot_sha256"],"database_requirements":requirements,"transition_source_acceptance_sha256":record["source_acceptance_sha256"],"independent_restore_sha256":record["independent_sha256"],"semantic_sha256":record["semantic_sha256"]}),
+        json!({"version":1,"resource":target["resource"],"identity":record["source_authority"]["identity"],"binding":authority["binding"],"directories":authority["directories"],"root_identities":custody::root_identities(&entry)?,"inventory":contents,"metadata":custody::inventory(&entry,false)?,"completed_at":custody::now(),"database_snapshot_sha256":record["primary_snapshot_sha256"],"database_requirements":requirements,"transition_source_acceptance_sha256":record["source_acceptance_sha256"],"independent_restore_sha256":record["independent_sha256"],"semantic_sha256":record["semantic_sha256"]}),
     )
 }
 fn custody_equal(observed: &Value, expected: &Value) -> bool {
@@ -731,7 +760,7 @@ pub fn abort(config: &Value) -> Result<Value> {
     }
     let fence = manifest::fence(config, &mut tx.record, &tx.fds)?;
     if tx.record.get("backup").is_some() {
-        source_bytes(config, &tx.record, &fence.fds)?;
+        bound_source_bytes(config, &tx.record, &fence.fds, true)?;
         semantic(
             &run_action(config, "verify-source", &tx.record, &fence.fds)?,
             string(&tx.record, "semantic_sha256")?,

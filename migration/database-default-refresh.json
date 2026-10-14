@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "status": "source-reconciled-pending-exact-producer-qualification",
+  "canonicalPrefix": "components/database",
+  "integrationBaseline": "637c5f1938a01e8d32f11d99be6278480204a5cb",
+  "originalSource": {
+    "repository": "https://github.com/caniko/harbor-db.git",
+    "revision": "00ae675dd785fde667656361198b6793367ec054",
+    "deltaBase": "784f80a62adedcaf04c796cc6e4866955e09d5bc",
+    "localRef": "refs/migration-retained/predecessor-harbor-db-00ae675-20261014",
+    "archiveTag": "retained-ref/20261014/harbor-db/heads/trunk"
+  },
+  "historicalReconciliation": "migration/database-source-reconciliation.json",
+  "contracts": {
+    "frozenPr14Baseline": "tests/pr14-baseline.toml",
+    "frozenOracle": "tests/oracles/pr14",
+    "runtimeExtensions": "tests/runtime-extensions.toml",
+    "catalog": "tests/suite.toml",
+    "integratedSelectors": 573,
+    "originalSelectorCounts": {
+      "04bb467215967f2b88bf28fb975c37dab8949a39": 415,
+      "784f80a62adedcaf04c796cc6e4866955e09d5bc": 538,
+      "00ae675dd785fde667656361198b6793367ec054": 563
+    },
+    "removedOriginalSelectors": [],
+    "productionLinkage": "static",
+    "faultInjectionTestLinkage": "dynamic",
+    "rootInputAndWorkspaceOwnership": "monorepo",
+    "enrollmentAndRuntimeFenceSchemas": "separate"
+  },
+  "integrationAdaptations": [
+    "shared formatter with refreshed runtime-extension hashes",
+    "original native-tip enrollment helpers and selector union",
+    "path-preserving Nix imports for read-only qualification",
+    "external Cargo-target mounts alongside declared binfmt mounts",
+    "immutable Git fixture and catalog-bound Python runner alongside declared store-root fixture",
+    "backup CLI helper binds the upstream machine function to the declared test machine-id fixture"
+  ],
+  "evidenceDirectory": "/data/scratch/tmp/opencode/harbor-default-reconcile-20261014-ses-ee39",
+  "qualified": false,
+  "consumerCutoverAccepted": false,
+  "predecessorRetirementAccepted": false
+}

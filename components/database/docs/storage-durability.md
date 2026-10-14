@@ -67,8 +67,14 @@ change the owner or mode of the root-owned inhibition namespace.
 ## Offline major upgrades
 
 Set `upgrade.oldPackage`, `oldDataDir`, `initdbArgs`, optional `extraConfig`, and
-`validateCommand`, whose first argument must be an absolute executable path;
-empty or relative validators fail Nix evaluation. The validation argv receives the staging directory as its
+`validateCommand`, whose first argument must name an immutable store executable;
+empty, relative or runtime-mutable validators fail Nix evaluation. Declare
+additional interpreter/adapter files through `upgrade.executableFiles`; they must
+also be immutable store files. Both operator CLIs validate the executable, alias
+hops, PostgreSQL tools, copy command and adapter files before authority mutation.
+This prevents a worker from swapping in a successful validator and restoring the
+original bytes around journal contract checks.
+The validation argv receives the staging directory as its
 last argument. It must verify the application's actual recovered records, stop
 any server it started and return nonzero on any mismatch.
 Validation is read-only: it must never accept application saves or call a
@@ -159,6 +165,22 @@ does not retire these recovery pins.
 
 ## Recovery SQL checks
 
+Managed preparation may import a transported independent receipt through
+`recoveryPreparation.offHostReceiptImportFile`. Its runtime source, every ancestor
+and every alias must be root-controlled with no group/other write permission. The
+root hook uses `stage-off-host-receipt` to read a pinned, single-link regular inode
+under a 16 MiB limit into a fresh private root-owned `0400` file. Only that private
+copy is passed to systemd's `LoadCredential`; a rejected source never starts the
+preparation worker. The private staging directory is cleaned after success,
+failure or interruption after the worker has stopped. If stopping fails because
+the transient unit was never created or has already been collected, cleanup also
+accepts a successful systemd readback of `ActiveState=inactive` or `failed`. Active,
+transitioning, empty or unavailable readback preserves the staged copy for a
+potentially surviving worker. Cleanup preserves the original dispatch, worker or
+interruption failure status, including with shell `errexit` enabled. Missing
+evidence retains the existing
+independent-restore readiness boundary.
+
 Configured recovery record, compatibility and transition custody inventory checks
 share one command builder and execute as one prepared SQL
 statement inside an explicit read-only transaction. `psql`'s zero-parameter
@@ -167,8 +189,12 @@ before executing any part of the input. The SQL `PREPARE` grammar also excludes
 transaction control, `CALL`, `DO` and client meta-commands. Modifying queries are
 rejected by the read-only transaction. Quoted semicolons, comments and escaped
 strings are parsed by PostgreSQL itself. A fixed, explicitly escaped connection
-string pins timezone, date/bytea formatting, standard string quoting and a read-only
-session default before parsing, so typed SQL literals have consistent semantics; inherited
+string pins timezone, date/bytea formatting and standard string quoting before
+parsing, so typed SQL literals have consistent semantics. It preserves the
+endpoint's `default_transaction_read_only` setting for certification admission;
+only the explicit validation transaction is forced read-only. A disposable
+endpoint whose unmodified session default is writable rejects certification
+before receipt publication. Inherited
 libpq routing/options stay scrubbed. Checks require `psql` 16 or newer; older
 clients fail admission rather than falling back to simple-query execution.
 Custody queries retain the existing `postgres` worker identity, scrubbed worker
@@ -196,7 +222,26 @@ establish content freshness for a manually restored backup with the same identit
 that requires the consumer's record/revision checks.
 
 An optional `consumer_command` argv runs a read-only application validator under
-the authority lock. It returns JSON with `binding`, `directories`,
+the authority lock. Its executable and every alias hop must be immutable Nix
+store files. The authority's `user` selects the unprivileged resource account;
+root-run inspection drops UID, GID and supplementary groups before executing the
+validator. Missing or root identities fail closed. Already-unprivileged callers
+must match the selected account; older manifests without `user` may use only the
+caller's own unprivileged account. Nix cutover authorities default `user` to the
+resource's service user. Hand-written transition authority manifests with a
+validator must add that account explicitly before root-run planning.
+
+Validator execution uses the bounded storage worker: a 30-second default deadline
+(`consumer_timeout_seconds`, from 1 to 300 seconds), a separate 1 MiB limit on
+stdout and stderr, and process-group cleanup on completion or rejection. Timeout
+and oversized output release the inspection lease without publishing authority.
+
+Validators receive a clean environment containing only `USER`, `LOGNAME`,
+`LANG=C.UTF-8`, `HOME=/`, and a `PATH` limited to the immutable executable's
+directory. Their working directory is `/`; pass configuration and data paths
+explicitly in the immutable argv rather than relying on operator environment or
+relative paths. Executable aliases retain their original argv spelling for
+multi-call binaries. The validator returns JSON with `binding`, `directories`,
 `required_files`, and optional `minimum_counters` (nonnegative integer witnesses).
 The binding and directory identities must match adoption. All files established
 at adoption remain mandatory; later files may be added. Every adopted counter
@@ -205,10 +250,24 @@ monotonic witnesses mean, such as dataset revisions or permanent saved-review
 identities. These floors protect adoption-time evidence, not freshness against
 every subsequent save or arbitrary cross-file restores.
 
+Custody certification and runtime namespace admission include the validator's
+additional directories and binding. Restore roots must cover the complete sorted
+directory union for consumer-backed authorities; every root participates in byte
+verification, inode isolation, metadata checks and custody publication. Consumer
+contract changes during certification reject publication. Existing receipts for
+static authorities retain their declared directory ordering.
+
+Transition target custody uses the expanded `target_authority` already retained
+in the preparation journal, excluding only its adoption identity field. It does
+not invoke the validator again to select a different corpus. Preparation,
+commit and writer release therefore retain custody for the same authority that
+will be published; live authority verification still checks the consumer output
+against that adopted contract.
+
 `serve -- /absolute/path/to/consumer ...` repeats validation and execs the consumer
 with a shared authority lease inherited for its lifetime. Offline adoption cannot
 race that writer. The validator, adoption operation, and runtime must use the
-same bind mounts, permissions, and configuration environment.
+same bind mounts, resource permissions, and explicit configuration paths.
 
 ## Backup publication
 

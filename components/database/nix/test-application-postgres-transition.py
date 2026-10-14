@@ -93,7 +93,10 @@ encoded = certifier.succeed(
     f"base64 -w0 /var/lib/demo-certifier/{proof['source_acceptance_sha256']}.json"
 ).strip()
 primary.succeed(
-    f"printf '%s' '{encoded}' | base64 -d > /var/lib/demo-authority/independent.json"
+    f"install -d -m 0700 /var/lib/demo-evidence; umask 077; printf '%s' '{encoded}' | base64 -d > /var/lib/demo-evidence/independent.json"
+)
+primary.fail(
+    "runuser -u demo -- sh -c 'printf forged > /var/lib/demo-evidence/independent.json'"
 )
 align(primary, certifier)
 

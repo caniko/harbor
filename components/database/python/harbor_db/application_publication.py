@@ -5,6 +5,7 @@ import pwd
 import re
 import shutil
 import stat
+from collections import deque
 from pathlib import Path
 
 
@@ -53,39 +54,118 @@ def validate_credentials(sources):
             )
 
 
+def credential_source(path):
+    """Open one exact trusted inode after descriptor-relative alias admission."""
+    path = Path(path)
+    if not path.is_absolute():
+        raise ValueError("credential source must be absolute")
+    current = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    pending = deque(path.parts[1:])
+    links = 0
+    try:
+        while pending:
+            parent = os.fstat(current)
+            if (
+                not stat.S_ISDIR(parent.st_mode)
+                or parent.st_uid != 0
+                or parent.st_mode & 0o022
+            ):
+                raise ValueError("untrusted credential source ancestor")
+            selected = os.open(
+                pending.popleft(),
+                os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC,
+                dir_fd=current,
+            )
+            try:
+                info = os.fstat(selected)
+                if info.st_uid != 0 or (
+                    not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o022
+                ):
+                    raise ValueError(
+                        "untrusted credential source ownership or permissions"
+                    )
+                if stat.S_ISLNK(info.st_mode):
+                    links += 1
+                    if links > 40:
+                        raise ValueError("credential source has too many alias hops")
+                    target = Path(os.readlink("", dir_fd=selected))
+                    if target.is_absolute():
+                        replacement = os.open(
+                            "/",
+                            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                        )
+                        os.close(current)
+                        current = replacement
+                    # A relative target keeps current at the admitted parent;
+                    # selected is only the pinned symlink for readlink.
+                    pending.extendleft(
+                        reversed(
+                            target.parts[1:] if target.is_absolute() else target.parts
+                        )
+                    )
+                else:
+                    os.close(current)
+                    current, selected = selected, None
+            finally:
+                if selected is not None:
+                    os.close(selected)
+        info = os.fstat(current)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError("credential source must be a trusted regular file")
+        descriptor = os.open(
+            f"/proc/self/fd/{current}", os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC
+        )
+        return os.fdopen(descriptor, "rb")
+    finally:
+        os.close(current)
+
+
+def credential_inputs(sources):
+    inherited = os.environ.get("CREDENTIALS_DIRECTORY")
+    if sources is not None:
+        validate_credentials(sources)
+        inputs = [
+            (name, Path(inherited) / name if inherited else Path(path))
+            for name, path in sources.items()
+        ]
+    else:
+        inputs = (
+            [(path.name, path) for path in Path(inherited).iterdir()]
+            if inherited
+            else []
+        )
+    opened = []
+    try:
+        for name, path in inputs:
+            stream = credential_source(path)
+            opened.append((name, stream))
+            if os.fstat(stream.fileno()).st_size > 1 << 20:
+                raise ValueError("backup credential exceeds the byte limit")
+        return opened
+    except BaseException:
+        for _, stream in opened:
+            stream.close()
+        raise
+
+
+def check_credential_sources(sources):
+    for _, stream in credential_inputs(sources):
+        stream.close()
+
+
 class Worker:
     def __init__(self, user, credentials, sources=None):
         self.account = pwd.getpwnam(user)
         if self.account.pw_uid == 0:
             raise ValueError("backup adapters require an unprivileged worker account")
         self.credentials = None
-        inherited = os.environ.get("CREDENTIALS_DIRECTORY")
-        if sources is not None:
-            validate_credentials(sources)
-            inputs = [
-                (
-                    name,
-                    Path(inherited) / name
-                    if inherited
-                    else Path(path).resolve(strict=True),
-                )
-                for name, path in sources.items()
-            ]
-        else:
-            inputs = (
-                [(path.name, path) for path in Path(inherited).iterdir()]
-                if inherited
-                else []
-            )
-        if inputs:
-            credentials.mkdir(mode=0o700)
-            self.credentials = credentials
+        opened = credential_inputs(sources)
+        if opened:
             try:
-                for name, path in inputs:
-                    descriptor = os.open(
-                        path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
-                    )
-                    with os.fdopen(descriptor, "rb") as input_file:
+                credentials.mkdir(mode=0o700)
+                self.credentials = credentials
+                for name, input_file in opened:
+                    with input_file:
                         if not stat.S_ISREG(os.fstat(input_file.fileno()).st_mode):
                             raise ValueError("credential source is not regular")
                         with (credentials / name).open("xb") as output:
@@ -105,6 +185,9 @@ class Worker:
             except BaseException:
                 self.close()
                 raise
+            finally:
+                for _, stream in opened:
+                    stream.close()
 
     def close(self):
         if self.credentials is not None:

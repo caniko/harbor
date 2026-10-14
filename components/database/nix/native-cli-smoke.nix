@@ -28,7 +28,7 @@
     "harbor-db-cutover-shell"
   ];
 in
-  pkgs.runCommand "harbor-db-native-cli-smoke" {nativeBuildInputs = [pkgs.python3];} ''
+  pkgs.runCommand "harbor-db-native-cli-smoke" {nativeBuildInputs = [pkgs.python3 pkgs.binutils];} ''
     test ! -e ${package}/bin/harbor-db-test
     test ! -e ${package}/lib/harbor_db
     test ! -e ${package}/bin/harbor-db-native-supervisor-fixture
@@ -48,6 +48,15 @@ in
     test "$(find ${package}/bin -maxdepth 1 -type f | wc -l)" -eq ${toString (builtins.length binaries + 1)}
     ${pkgs.lib.concatMapStringsSep "\n" (binary: ''
         test -x ${package}/bin/${binary}
+      '')
+      binaries}
+    # No interpreter or dynamic dependencies can interpose custody, namespace
+    # admission, filesystem verification or receipt publication.
+    ${pkgs.lib.concatMapStringsSep "\n" (binary: ''
+        readelf --program-headers ${package}/bin/${binary} > ${binary}.elf
+        if grep -q INTERP ${binary}.elf; then exit 1; fi
+        readelf --dynamic ${package}/bin/${binary} > ${binary}.dynamic
+        if grep -q NEEDED ${binary}.dynamic; then exit 1; fi
       '')
       binaries}
     # The login shell forwards its argv to the declared shell, including

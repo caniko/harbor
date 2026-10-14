@@ -32,5 +32,6 @@ pkgs.runCommand "harbor-db-${checkName}" {
     --tests ${testSource} --output "$out" \
     --immutable-git-fixture ${pkgs.gitMinimal}/bin/git \
     --case-id nix.${pkgs.system}.${checkName} \
+    --store-root-fixture ${pkgs.writeText "harbor-db-python-store-root-fixture" "root ownership view\n"} \
     ${pkgs.lib.optionalString (oracleRoot == null) "--catalog ${../tests/suite.toml}"}
 ''

@@ -165,7 +165,7 @@ fn unexpected_runtime_grants(p: &Value) -> Result<String> {
     let s = string(p, "schema")?;
     let db_oid = format!("COALESCE((SELECT oid FROM pg_database WHERE datname='{db}'),0)");
     Ok(format!(
-        "EXISTS (SELECT 1 FROM pg_shdepend d WHERE d.refclassid='pg_authid'::regclass AND d.refobjid=(SELECT oid FROM pg_roles WHERE rolname='{r}') AND d.deptype IN ('a','i') AND NOT (d.dbid=0 AND d.classid='pg_database'::regclass AND d.objid={db_oid}) AND NOT (d.dbid={db_oid} AND ((d.classid='pg_class'::regclass AND EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid=d.objid AND n.nspname='{s}' AND c.relkind IN ('r','p','v','m','f','S'))) OR (d.classid='pg_namespace'::regclass AND d.objid=COALESCE((SELECT oid FROM pg_namespace WHERE nspname='{s}'),0)) OR (d.classid='pg_default_acl'::regclass AND EXISTS (SELECT 1 FROM pg_default_acl a WHERE a.oid=d.objid AND a.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND a.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND a.defaclobjtype IN ('r','S'))))))"
+        "EXISTS (SELECT 1 FROM pg_shdepend d WHERE d.refclassid='pg_authid'::regclass AND d.refobjid=(SELECT oid FROM pg_roles WHERE rolname='{r}') AND d.deptype IN ('a','i') AND NOT (d.dbid=0 AND d.classid='pg_database'::regclass AND d.objid={db_oid}) AND NOT (d.dbid={db_oid} AND ((d.classid='pg_class'::regclass AND EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid=d.objid AND n.nspname='{s}' AND c.relkind IN ('r','p','v','m','f','S'))) OR (d.classid='pg_proc'::regclass AND EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace WHERE f.oid=d.objid AND n.nspname='{s}')) OR (d.classid='pg_namespace'::regclass AND d.objid=COALESCE((SELECT oid FROM pg_namespace WHERE nspname='{s}'),0)) OR (d.classid='pg_default_acl'::regclass AND EXISTS (SELECT 1 FROM pg_default_acl a WHERE a.oid=d.objid AND a.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND a.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND a.defaclobjtype IN ('r','S','f'))))))"
     ))
 }
 
@@ -178,6 +178,8 @@ fn unexpected_runtime_access(p: &Value) -> Result<String> {
         format!("n.nspname<>'{s}' AND n.nspname !~ '^pg_' AND n.nspname<>'information_schema'");
     Ok(format!(
         "EXISTS (SELECT 1 FROM pg_namespace n,pg_roles runtime WHERE runtime.rolname='{r}' AND {outside} AND has_schema_privilege(runtime.oid,n.oid,'USAGE,CREATE')) OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,pg_roles runtime WHERE runtime.rolname='{r}' AND {outside} AND c.relkind IN ('r','p','v','m','f','S') AND CASE WHEN c.relkind='S' THEN has_sequence_privilege(runtime.oid,c.oid,'USAGE,SELECT,UPDATE') ELSE has_table_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') OR has_any_column_privilege(runtime.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') END)"
+    ) + &format!(
+        " OR EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace,pg_roles runtime WHERE runtime.rolname='{r}' AND {outside} AND has_function_privilege(runtime.oid,f.oid,'EXECUTE'))"
     ))
 }
 
@@ -220,6 +222,10 @@ fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
     let unsafe_objects = format!(
         "SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='{s}' AND c.relkind IN ('r','p','v','m','f','S') AND pg_get_userbyid(c.relowner)<>'{o}') OR EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='{s}' AND pg_get_userbyid(nspowner)<>'{o}' AND NOT (nspname='public' AND pg_get_userbyid(nspowner)='pg_database_owner'));"
     );
+    let unsafe_objects = unsafe_objects.trim_end_matches(';').to_owned()
+        + &format!(
+            " OR EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace WHERE n.nspname='{s}' AND (pg_get_userbyid(f.proowner)<>'{o}' OR EXISTS (SELECT 1 FROM aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) acl WHERE acl.grantee<>0 AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}'))))) OR EXISTS (SELECT 1 FROM pg_default_acl d,LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND d.defaclobjtype='f' AND acl.grantee<>0 AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}')));"
+        );
     if exists && query(e, db, &unsafe_objects)? == "t" {
         return Err(invalid(
             "conflicting application object ownership; explicit adoption is required",
@@ -280,6 +286,13 @@ fn apply_phase(c: &Value, e: &Value, require_tables: bool) -> Result<()> {
         format!("GRANT USAGE ON SCHEMA {schema} TO {runtime};"),
         format!("REVOKE ALL ON ALL TABLES IN SCHEMA {schema} FROM PUBLIC, {runtime};"),
         format!("REVOKE ALL ON ALL SEQUENCES IN SCHEMA {schema} FROM PUBLIC, {runtime};"),
+        format!("REVOKE ALL ON ALL ROUTINES IN SCHEMA {schema} FROM PUBLIC, {runtime};"),
+        format!(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {owner} REVOKE ALL ON FUNCTIONS FROM PUBLIC, {runtime};"
+        ),
+        format!(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {owner} IN SCHEMA {schema} REVOKE ALL ON FUNCTIONS FROM PUBLIC, {runtime};"
+        ),
         format!(
             "SELECT format('REVOKE ALL (%I) ON TABLE %I.%I FROM PUBLIC, %I',a.attname,n.nspname,c.relname,'{r}') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='{s}' AND c.relkind IN ('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped\\gexec"
         ),
@@ -343,6 +356,12 @@ fn check_phase(c: &Value, e: &Value, require_tables: bool) -> Result<bool> {
         return Ok(false);
     }
     let mut checks = vec![
+        format!(
+            "NOT EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace WHERE n.nspname='{s}' AND (pg_get_userbyid(f.proowner)<>'{o}' OR has_function_privilege('{r}',f.oid,'EXECUTE') OR EXISTS (SELECT 1 FROM aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) acl WHERE acl.grantee<>(SELECT oid FROM pg_roles WHERE rolname='{o}'))))"
+        ),
+        format!(
+            "EXISTS (SELECT 1 FROM pg_default_acl WHERE defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND defaclnamespace=0 AND defaclobjtype='f')"
+        ),
         format!("NOT ({})", unexpected_runtime_grants(&p)?),
         format!("NOT ({})", unexpected_runtime_access(&p)?),
         format!(
@@ -374,7 +393,7 @@ fn check_phase(c: &Value, e: &Value, require_tables: bool) -> Result<bool> {
             "NOT EXISTS (SELECT 1 FROM pg_namespace n, LATERAL aclexplode(n.nspacl) acl WHERE n.nspname='{s}' AND (acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}')) OR (acl.grantee=(SELECT oid FROM pg_roles WHERE rolname='{r}') AND acl.is_grantable)))"
         ),
         format!(
-            "NOT EXISTS (SELECT 1 FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND d.defaclobjtype IN ('r','S') AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}')))"
+            "NOT EXISTS (SELECT 1 FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND d.defaclobjtype IN ('r','S','f') AND acl.grantee NOT IN (SELECT oid FROM pg_roles WHERE rolname IN ('{o}','{r}')))"
         ),
     ];
     let grants = privileges(&p["table_privileges"], TABLE)?;
@@ -419,7 +438,7 @@ fn check_phase(c: &Value, e: &Value, require_tables: bool) -> Result<bool> {
         e,
         db,
         &format!(
-            "BEGIN READ ONLY; SELECT COALESCE(json_agg(json_build_array(d.defaclobjtype,d.defaclnamespace=0,acl.privilege_type,acl.is_grantable,acl.grantee=0)), '[]') FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND d.defaclobjtype IN ('r','S') AND acl.grantee IN (0,(SELECT oid FROM pg_roles WHERE rolname='{r}')); COMMIT;"
+            "BEGIN READ ONLY; SELECT COALESCE(json_agg(json_build_array(d.defaclobjtype,d.defaclnamespace=0,acl.privilege_type,acl.is_grantable,acl.grantee=0)), '[]') FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) acl WHERE d.defaclrole=(SELECT oid FROM pg_roles WHERE rolname='{o}') AND d.defaclnamespace IN (0,(SELECT oid FROM pg_namespace WHERE nspname='{s}')) AND d.defaclobjtype IN ('r','S','f') AND acl.grantee IN (0,(SELECT oid FROM pg_roles WHERE rolname='{r}')); COMMIT;"
         ),
     )?)?;
     let mut actual: Vec<String> = defaults

@@ -61,7 +61,18 @@ dispatching user-scoped inspection or certification workers, the coordinator als
 compares complete inode inventories across these namespaces, including directory
 roots and mounted descendants. Hard links, root bind mounts and nested empty
 directory aliases cannot give shared storage separate resource leases. Traversal
-uses the coordinator's bounded inspection budget. Worker/serve processes retain
+uses the coordinator's bounded inspection budget, including every consumer
+validator expansion. Each validator receives only the remaining total budget.
+Every enrolled filesystem snapshot is verified against its adopted authority,
+including resources not selected for certification. Prepared transitions verify
+their recorded source/target authorities and protect both live and target roots.
+The coordinator passes expanded snapshots through bounded worker stdin (64 MiB
+aggregate limit), avoiding per-argument limits for large consumer contracts.
+Workers require exact namespace and binding fields; required files may be added
+and counters may advance, while missing files and regressed witnesses reject.
+Direct certification workers share one activation deadline through snapshot
+input, namespace expansion, consumer revalidation and final publication checks.
+Worker/serve processes retain
 their own authority lease and startup guard without requiring read access to
 other applications' private corpora.
 
@@ -103,7 +114,9 @@ publishes its receipt. Equal record counts or equal file sizes do not establish
 custody.
 
 Restored roots, files and directories must have inodes independent of the union
-of every authoritative root's inventory. A bind mount of another source root or
+of every enrolled corpus, authority, PostgreSQL primary, lifecycle and startup
+namespace's inventory. The coordinator rejects lexical containment and complete
+inode overlap before dispatching a certifying worker. A bind mount of another source root or
 one of its entries cannot certify a restore, even with identical inventories,
 disjoint path spelling and a regular-file link count of one.
 

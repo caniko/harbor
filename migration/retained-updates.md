@@ -2,7 +2,8 @@
 
 This record supplements `retained-work.md`, whose 112-commit coverage is bound
 to the initial `imported-ref` namespace. These later tips are preserved under
-`refs/tags/retained-ref/20261012/` and `refs/tags/retained-ref/20261013/`.
+`refs/tags/retained-ref/20261012/`, `refs/tags/retained-ref/20261013/`, and
+`refs/tags/retained-ref/20261014/`.
 The dispositions below describe the active
 source reconciled after `14ef53b1aec5a398e802514cdd1197d54e1c54d0`; producer
 qualification and consumer acceptance remain separate gates.
@@ -56,7 +57,7 @@ file inventory, both-tip dispositions, and selector execution contracts.
 The writer-fence tip includes the native-default rollout and subsequent fixes
 for custody namespaces, backup publication, restored-object admission, writer
 authority, transition startup/shutdown, producer slots, and bounded recovery.
-The integration retains 48 writer-fence Rust runtime files byte-for-byte,
+The initial database integration retained 48 writer-fence Rust runtime files byte-for-byte,
 11 original writer-fence Python methods with identical ASTs, and all 31 frozen
 PR14 files without formatting changes. The 548-selector suite preserves all
 415 selectors from the native tip and all 538 from the writer-fence tip.
@@ -72,6 +73,28 @@ selections. The current advanced-default reconciliation requires its own exact
 source and hosted qualification. The archived tips and earlier receipts retain
 their original scopes; predecessor retirement still requires accepted integrated
 source and verified consumer migration.
+
+### Advanced original DB default
+
+The refreshed original checkout is clean at
+`00ae675dd785fde667656361198b6793367ec054`. Its complete history is retained at
+`refs/migration-retained/predecessor-harbor-db-00ae675-20261014`. The later delta
+from retained writer-fence tip `784f80a` adds bounded capture-control admission,
+stable machine identity, protected independent evidence, immutable validators,
+credential inode/alias checks, service-account execution, namespace fixtures and
+storage/supervisor refactoring.
+
+The active component reconciles that delta while preserving monorepo input and
+Cargo ownership, earlier native-tip enrollment helpers, the frozen PR14 oracle,
+and the union of original selectors. The production package retains the upstream
+static-link contract; fault-injection test packages remain separate. Existing
+external-target mounts and the strict immutable-Git fixture coexist with the
+new declared kernel/binfmt and store-ownership fixtures. Runtime-extension hashes
+bind the formatted active source, with the original baseline hashes unchanged.
+
+`database-source-reconciliation.json` remains the historical two-tip receipt.
+The advanced-default delta requires fresh complete native, Nix, production and
+hosted qualification before producer admission or consumer cutover.
 
 ## Command-scoped core runtimes
 

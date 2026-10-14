@@ -77,6 +77,19 @@ pub fn receipt_path(config: &Value) -> Result<PathBuf> {
     }
     Ok(receipt.to_owned())
 }
+/// Snapshot the complete validated authority for every corpus operation.
+/// Retain static ordering for contracts without a consumer (legacy receipts).
+pub(super) fn expanded_config(config: &Value, contract: &Value) -> Value {
+    let mut expanded = config.clone();
+    if config["authority"]["consumer_command"]
+        .as_array()
+        .is_some_and(|argv| !argv.is_empty())
+    {
+        expanded["authority"]["directories"] = contract["directories"].clone();
+        expanded["authority"]["binding"] = contract["binding"].clone();
+    }
+    expanded
+}
 pub fn root_identities(config: &Value) -> Result<Value> {
     Ok(Value::Array(
         paths(&config["authority"], "directories")?
@@ -383,10 +396,72 @@ pub fn certify_filesystem(
     database_snapshot: Option<&str>,
     requirements: &Value,
 ) -> Result<()> {
+    certify_filesystem_with_contract(
+        config,
+        restored_roots,
+        identifier,
+        at,
+        database_snapshot,
+        requirements,
+        None,
+    )
+}
+
+pub fn certify_filesystem_with_contract(
+    config: &Value,
+    restored_roots: &[PathBuf],
+    identifier: &str,
+    at: Option<i64>,
+    database_snapshot: Option<&str>,
+    requirements: &Value,
+    pinned: Option<&Value>,
+) -> Result<()> {
+    certify_filesystem_with_context(
+        config,
+        restored_roots,
+        identifier,
+        at,
+        database_snapshot,
+        requirements,
+        CertificationContext {
+            pinned,
+            deadline: None,
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+pub struct CertificationContext<'a> {
+    pub pinned: Option<&'a Value>,
+    pub deadline: Option<std::time::Instant>,
+}
+impl CertificationContext<'_> {
+    fn require_time(self) -> Result<()> {
+        if self
+            .deadline
+            .is_some_and(|deadline| std::time::Instant::now() >= deadline)
+        {
+            return Err(invalid("cutover inspection budget exhausted"));
+        }
+        Ok(())
+    }
+}
+pub fn certify_filesystem_with_context(
+    config: &Value,
+    restored_roots: &[PathBuf],
+    identifier: &str,
+    at: Option<i64>,
+    database_snapshot: Option<&str>,
+    requirements: &Value,
+    context: CertificationContext<'_>,
+) -> Result<()> {
     let receipt = receipt_path(config)?;
     let authority = &config["authority"];
-    resource::contract(authority)?;
-    let roots = paths(authority, "directories")?;
+    let expected = resource::contract_until(authority, context.deadline)?;
+    resource::require_contract(&expected, context.pinned)?;
+    let expanded = expanded_config(config, &expected);
+    let config = &expanded;
+    let roots = paths(&config["authority"], "directories")?;
     let state = Path::new(string(authority, "state_dir")?);
     if identifier.is_empty() || identifier.chars().count() > 128 {
         return Err(invalid(
@@ -500,7 +575,11 @@ pub fn certify_filesystem(
         ));
     }
     // Publish under the already held exclusive inode lease; never reacquire it.
-    let expected = resource::contract(authority)?;
+    resource::require_contract(
+        &resource::contract_until(authority, context.deadline)?,
+        Some(&expected),
+    )?;
+    context.require_time()?;
     let identity_path = state.join("identity.json");
     let marker = json!({"resource":authority["resource"],"identity":identifier});
     if identity_path.exists() {
@@ -518,6 +597,7 @@ pub fn certify_filesystem(
             }
         }
         for root in paths(&expected, "directories")? {
+            context.require_time()?;
             durable::write_json(
                 &root.join(format!(
                     ".harbor-db-{}-identity.json",
@@ -526,12 +606,14 @@ pub fn certify_filesystem(
                 &marker,
             )?;
         }
-        let mut record = expected;
+        let mut record = expected.clone();
         record["identity"] = json!(identifier);
+        context.require_time()?;
         durable::write_json(&identity_path, &record)?;
     }
+    context.require_time()?;
     durable::write_json(
         &receipt,
-        &json!({"version":1,"resource":authority["resource"],"identity":identifier,"binding":authority["binding"],"directories":authority["directories"],"completed_at":at.unwrap_or_else(now),"database_snapshot_sha256":database_snapshot,"database_requirements":requirements,"inventory":source,"metadata":metadata,"root_identities":identities}),
+        &json!({"version":1,"resource":authority["resource"],"identity":identifier,"binding":config["authority"]["binding"],"directories":config["authority"]["directories"],"completed_at":at.unwrap_or_else(now),"database_snapshot_sha256":database_snapshot,"database_requirements":requirements,"inventory":source,"metadata":metadata,"root_identities":identities}),
     )
 }

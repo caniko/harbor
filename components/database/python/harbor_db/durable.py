@@ -5,6 +5,7 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import stat
 import tempfile
 import sys
@@ -44,6 +45,60 @@ def read_json(path):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(fd) as stream:
         return json.load(stream)
+
+
+def immutable_store_reference(path, *, executable=False):
+    """Resolve a regular immutable file without accepting mutable alias hops."""
+    spelling = str(path)
+    if (
+        not spelling.startswith("/")
+        or "//" in spelling
+        or spelling.endswith("/")
+        or any(part in (".", "..") for part in spelling.split("/"))
+    ):
+        raise ValueError("immutable store paths require normalized absolute spelling")
+    store = Path("/nix/store")
+
+    def reference(selected, depth=0):
+        if not selected.is_relative_to(store) or depth > 64:
+            raise ValueError("reference requires an immutable store file")
+        for entry in (selected, *selected.parents):
+            if entry == store:
+                break
+            info = entry.lstat()
+            if info.st_uid != 0:
+                raise ValueError("reference requires root-owned immutable store paths")
+            if stat.S_ISLNK(info.st_mode):
+                target = entry.readlink()
+                reference(
+                    target
+                    if target.is_absolute()
+                    else entry.parent.resolve(strict=True) / target,
+                    depth + 1,
+                )
+            elif info.st_mode & 0o222:
+                raise ValueError("reference requires read-only immutable store paths")
+
+    selected = Path(spelling)
+    reference(selected)
+    resolved = selected.resolve(strict=True)
+    if not re.fullmatch(
+        r"/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9+._?=-]+(?:/[^/]+)*",
+        str(resolved),
+    ):
+        raise ValueError("reference requires an immutable store file")
+    for parent in resolved.parents:
+        if parent == store:
+            break
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222:
+            raise ValueError("reference requires immutable store ancestors")
+    info = resolved.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222:
+        raise ValueError("reference requires a regular immutable store file")
+    if executable and not info.st_mode & 0o111:
+        raise ValueError("reference requires an executable immutable store file")
+    return resolved
 
 
 def sync_tree(path):

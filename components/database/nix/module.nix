@@ -17,128 +17,100 @@
     lib.mapAttrsToList (name: path: "${name}:${path}") credentials;
 
   migrationType = types.submodule ({name, ...}: {
-    options = {
-      enable = mkEnableOption "harbor-db database operation ${name}";
+    options =
+      commonOperationOptions
+      // {
+        enable = mkEnableOption "harbor-db database operation ${name}";
 
-      kind = mkOption {
-        type = types.enum ["generic" "database" "credential"];
-        default = "generic";
-        description = "Broad kind of lifecycle operation.";
-      };
+        description = mkOption {
+          type = types.str;
+          default = "${name} database operation";
+          description = "Human-readable description for the database-operation unit.";
+        };
 
-      lifecycle = mkOption {
-        type = types.enum ["ensure" "reconcile" "restore"];
-        default = "ensure";
-        description = "Idempotent lifecycle contract for this operation.";
-      };
+        command = mkOption {
+          type = types.str;
+          description = "Full command that applies this database operation idempotently.";
+        };
 
-      description = mkOption {
-        type = types.str;
-        default = "${name} database operation";
-        description = "Human-readable description for the database-operation unit.";
-      };
+        checkCommand = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Optional read-only command that reports pending or incompatible database state.";
+        };
 
-      command = mkOption {
-        type = types.str;
-        description = "Full command that applies this database operation idempotently.";
-      };
+        restoreCommand = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Optional on-demand restore command that repairs pending operations and verifies.";
+        };
 
-      checkCommand = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional read-only command that reports pending or incompatible database state.";
-      };
+        user = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "User to run the database operation as.";
+        };
 
-      restoreCommand = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional on-demand restore command that repairs pending operations and verifies.";
-      };
+        group = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Group to run the database operation as.";
+        };
 
-      user = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "User to run the database operation as.";
-      };
+        environment = mkOption {
+          type = types.attrsOf types.str;
+          default = {};
+          description = "Environment variables for database-operation units.";
+        };
 
-      group = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Group to run the database operation as.";
-      };
+        path = mkOption {
+          type = types.listOf types.package;
+          default = [];
+          description = "Packages added to PATH for database-operation units.";
+        };
 
-      environment = mkOption {
-        type = types.attrsOf types.str;
-        default = {};
-        description = "Environment variables for database-operation units.";
-      };
+        loadCredentials = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "systemd LoadCredential entries for database-operation units.";
+        };
 
-      path = mkOption {
-        type = types.listOf types.package;
-        default = [];
-        description = "Packages added to PATH for database-operation units.";
-      };
+        after = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Units this database-operation unit should start after.";
+        };
 
-      loadCredentials = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "systemd LoadCredential entries for database-operation units.";
-      };
+        requires = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Units required by this database-operation unit.";
+        };
 
-      credentials = mkOption {
-        type = types.attrsOf types.path;
-        default = {};
-        description = "Credential name to source-file mapping; contents stay outside the plan and process environment.";
-      };
+        wants = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Units wanted by this database-operation unit.";
+        };
 
-      stateDirectory = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional systemd StateDirectory for this operation.";
-      };
+        beforeUnits = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Application units ordered after this database-operation unit.";
+        };
 
-      runtimeDirectory = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional systemd RuntimeDirectory for this operation.";
-      };
+        requiredByUnits = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Application units that require this database-operation unit.";
+        };
 
-      after = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Units this database-operation unit should start after.";
+        serviceConfig = mkOption {
+          type = types.attrs;
+          default = {};
+          description = "Additional or overriding systemd serviceConfig for database-operation units.";
+        };
       };
-
-      requires = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Units required by this database-operation unit.";
-      };
-
-      wants = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Units wanted by this database-operation unit.";
-      };
-
-      beforeUnits = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Application units ordered after this database-operation unit.";
-      };
-
-      requiredByUnits = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Application units that require this database-operation unit.";
-      };
-
-      serviceConfig = mkOption {
-        type = types.attrs;
-        default = {};
-        description = "Additional or overriding systemd serviceConfig for database-operation units.";
-      };
-    };
   });
 
   runnerType = types.submodule {
@@ -195,118 +167,122 @@
   };
 
   operationType = types.submodule ({name, ...}: {
-    options = {
-      enable = mkEnableOption "harbor-db lifecycle operation ${name}";
+    options =
+      commonOperationOptions
+      // {
+        enable = mkEnableOption "harbor-db lifecycle operation ${name}";
 
-      kind = mkOption {
-        type = types.enum ["generic" "database" "credential"];
-        default = "generic";
-        description = "Broad kind of lifecycle operation.";
-      };
+        backend = mkOption {
+          type = types.enum ["generic" "postgres" "clickhouse" "typedb"];
+          default = "generic";
+          description = "Database family owned by this operation.";
+        };
 
-      lifecycle = mkOption {
-        type = types.enum ["ensure" "reconcile" "restore"];
-        default = "ensure";
-        description = "Idempotent lifecycle contract for this operation.";
-      };
+        phase = mkOption {
+          type = types.enum ["schema" "backfill" "operational"];
+          default = "schema";
+          description = "Lifecycle phase used for reporting and deployment policy.";
+        };
 
-      backend = mkOption {
-        type = types.enum ["generic" "postgres" "clickhouse" "typedb"];
-        default = "generic";
-        description = "Database family owned by this operation.";
-      };
+        safety = mkOption {
+          type = types.enum ["automatic" "operator_confirmed"];
+          default = "automatic";
+          description = "Whether apply runs this operation during normal activation.";
+        };
 
-      phase = mkOption {
-        type = types.enum ["schema" "backfill" "operational"];
-        default = "schema";
-        description = "Lifecycle phase used for reporting and deployment policy.";
-      };
+        runner = mkOption {
+          type = runnerType;
+          default = {};
+          description = "Structured apply/check command for this operation.";
+        };
 
-      safety = mkOption {
-        type = types.enum ["automatic" "operator_confirmed"];
-        default = "automatic";
-        description = "Whether apply runs this operation during normal activation.";
-      };
+        dependsOn = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Operation identifiers that must run first.";
+        };
 
-      runner = mkOption {
-        type = runnerType;
-        default = {};
-        description = "Structured apply/check command for this operation.";
-      };
+        loadCredentials = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Legacy systemd LoadCredential entries for this operation.";
+        };
 
-      dependsOn = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Operation identifiers that must run first.";
-      };
+        after = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Units this lifecycle operation should start after.";
+        };
 
-      credentials = mkOption {
-        type = types.attrsOf types.path;
-        default = {};
-        description = "Credential name to source-file mapping; contents stay outside the plan and process environment.";
-      };
+        requires = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Units required by this lifecycle operation.";
+        };
 
-      loadCredentials = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Legacy systemd LoadCredential entries for this operation.";
-      };
+        wants = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Units wanted by this lifecycle operation.";
+        };
 
-      stateDirectory = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional systemd StateDirectory for this operation.";
-      };
+        runtimeUnits = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Runtime units gated on this lifecycle operation.";
+        };
 
-      runtimeDirectory = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Optional systemd RuntimeDirectory for this operation.";
-      };
+        beforeUnits = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Units ordered after this lifecycle operation.";
+        };
 
-      after = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Units this lifecycle operation should start after.";
-      };
+        requiredByUnits = mkOption {
+          type = types.listOf types.str;
+          default = [];
+          description = "Units that require this lifecycle operation.";
+        };
 
-      requires = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Units required by this lifecycle operation.";
+        serviceConfig = mkOption {
+          type = types.attrs;
+          default = {};
+          description = "Additional systemd serviceConfig for this operation.";
+        };
       };
-
-      wants = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Units wanted by this lifecycle operation.";
-      };
-
-      runtimeUnits = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Runtime units gated on this lifecycle operation.";
-      };
-
-      beforeUnits = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Units ordered after this lifecycle operation.";
-      };
-
-      requiredByUnits = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        description = "Units that require this lifecycle operation.";
-      };
-
-      serviceConfig = mkOption {
-        type = types.attrs;
-        default = {};
-        description = "Additional systemd serviceConfig for this operation.";
-      };
-    };
   });
+
+  commonOperationOptions = {
+    kind = mkOption {
+      type = types.enum ["generic" "database" "credential"];
+      default = "generic";
+      description = "Broad kind of lifecycle operation.";
+    };
+
+    lifecycle = mkOption {
+      type = types.enum ["ensure" "reconcile" "restore"];
+      default = "ensure";
+      description = "Idempotent lifecycle contract for this operation.";
+    };
+
+    credentials = mkOption {
+      type = types.attrsOf types.path;
+      default = {};
+      description = "Credential name to source-file mapping; contents stay outside the plan and process environment.";
+    };
+
+    stateDirectory = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Optional systemd StateDirectory for this operation.";
+    };
+
+    runtimeDirectory = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Optional systemd RuntimeDirectory for this operation.";
+    };
+  };
 
   grantType = types.submodule {
     options = {

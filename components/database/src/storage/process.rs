@@ -70,15 +70,6 @@ pub fn exec(command: &mut Command, leases: &[RawFd]) -> Result<()> {
     Err(restoration_error.unwrap_or(error).into())
 }
 
-/// Preserve a legacy diagnostic-bearing command contract while coordinating its
-/// fork with persistent authority leases. Waiting does not hold the spawn gate.
-pub(crate) fn output(command: &mut Command) -> Result<Output> {
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    Ok(spawn(command)?.wait_with_output()?)
-}
 use std::{
     collections::BTreeMap,
     io::{Read, Write},
@@ -107,6 +98,7 @@ pub struct CommandSpec {
     pub identity: Option<Identity>,
     pub timeout: Duration,
     pub maximum_output: usize,
+    pub capture_stderr: bool,
     pub input: Option<Vec<u8>>,
 }
 
@@ -120,6 +112,7 @@ impl CommandSpec {
             identity: None,
             timeout: Duration::from_secs(60),
             maximum_output: 1024 * 1024,
+            capture_stderr: false,
             input: None,
         }
     }
@@ -311,6 +304,7 @@ pub fn run(spec: &CommandSpec) -> Result<Output> {
         }
         let mut written = 0;
         let mut output = Vec::new();
+        let mut diagnostics = Vec::new();
         let mut stdout_done = false;
         let mut stderr_done = false;
         let start = Instant::now();
@@ -338,7 +332,11 @@ pub fn run(spec: &CommandSpec) -> Result<Output> {
                 stdout_done = pump(&mut stdout, Some(&mut output), spec.maximum_output)?;
             }
             if !stderr_done {
-                stderr_done = pump(&mut stderr, None, 0)?;
+                stderr_done = pump(
+                    &mut stderr,
+                    spec.capture_stderr.then_some(&mut diagnostics),
+                    spec.maximum_output,
+                )?;
             }
             // Leave an exited leader unreaped until its pipes close. Its PID then
             // cannot be recycled while cancellation targets its process group.
@@ -365,7 +363,7 @@ pub fn run(spec: &CommandSpec) -> Result<Output> {
                 return Ok(Output {
                     status: child.wait()?,
                     stdout: output,
-                    stderr: Vec::new(),
+                    stderr: diagnostics,
                 });
             }
             std::thread::sleep(Duration::from_millis(5));

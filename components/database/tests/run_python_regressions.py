@@ -102,6 +102,37 @@ class Recorded(unittest.TextTestResult):
         super().addSuccess(test)
 
 
+@contextlib.contextmanager
+def store_ownership(fixture):
+    """Model Nix's numeric root view without changing production admission."""
+    if fixture is None:
+        yield
+        return
+    store = pathlib.Path("/nix/store")
+    info = fixture.lstat()
+    assert fixture.is_relative_to(store) and stat.S_ISREG(info.st_mode)
+    assert not info.st_mode & 0o222, "store root fixture must be immutable"
+    root_uid = info.st_uid
+    if root_uid == 0:
+        yield
+        return
+    assert root_uid != os.geteuid(), "builder-owned files cannot model store root"
+    original = pathlib.Path.lstat
+
+    def mapped(path):
+        info = original(path)
+        if not path.is_relative_to(store) or info.st_uid != root_uid:
+            return info
+        fields = list(info)
+        fields[4] = 0
+        return os.stat_result(fields)
+
+    # Only the explicit immutable store owner's numeric view is translated.
+    # Mutable paths, builder ownership and every mode/alias check remain real.
+    with patch.object(pathlib.Path, "lstat", mapped):
+        yield
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tests", type=pathlib.Path, required=True)
@@ -109,6 +140,7 @@ def main():
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--catalog", type=pathlib.Path)
     parser.add_argument("--immutable-git-fixture", type=pathlib.Path)
+    parser.add_argument("--store-root-fixture", type=pathlib.Path)
     args = parser.parse_args()
     suite = unittest.defaultTestLoader.discover(str(args.tests), pattern="test_*.py")
 
@@ -136,7 +168,10 @@ def main():
         assert len(discovered) == 174
     assert len(set(discovered)) == len(discovered), "duplicate Python test selectors"
     expected_count = len(discovered)
-    with immutable_git_fixture(args.immutable_git_fixture) as fixture:
+    with (
+        immutable_git_fixture(args.immutable_git_fixture) as fixture,
+        store_ownership(args.store_root_fixture),
+    ):
         result = unittest.TextTestRunner(verbosity=2, resultclass=Recorded).run(suite)
     if fixture is not None:
         (args.output / "python-regressions-fixtures.json").write_text(

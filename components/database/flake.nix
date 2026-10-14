@@ -11,6 +11,7 @@
   outputs = {
     self,
     harbor-rs,
+    harbor-meta,
     nixpkgs,
     harborFormatting,
     harborRoot,
@@ -100,6 +101,7 @@
     lib.applicationBackup = 2;
     lib.applicationBackendTransition = 1;
     lib.cutoverPreflight = 3;
+    lib.timezone = harbor-meta.lib.timezone;
     nixosModules.harbor-db = {
       lib,
       pkgs,
@@ -143,18 +145,24 @@
             mainProgram = "harbor-db";
           };
         };
-      cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+      # Receipt authority cannot execute through a caller-controlled loader.
+      # Test builds keep dynamic linkage for preload fault-injection fixtures.
+      productionArgs =
+        commonArgs
+        // {
+          CARGO_BUILD_TARGET = pkgs.stdenv.hostPlatform.rust.rustcTarget;
+          RUSTFLAGS = "-C target-feature=+crt-static -L native=${pkgs.glibc.static}/lib";
+        };
+      cargoArtifacts = craneLib.buildDepsOnly productionArgs;
       buildCache = harbor-rs.lib.mkBuildCachePolicy {
         inherit pkgs;
         sccachePackage = harbor-rs.packages.${pkgs.stdenv.hostPlatform.system}.sccache;
-        # The pinned wrapper needs an explicit disk transport when a hosted
-        # runner has no Redis socket. It still prefers the host Redis transport
-        # and admits only the versioned nixbld-owned, group-writable namespace.
-        cacheRoot = "/var/cache/sccache";
+        cacheRoot = null;
+        ephemeralFallback = true;
         namespaceScope = "canix-rust";
         namespaceGeneration = 5;
       };
-      harbor-db = craneLib.buildPackage (commonArgs
+      harbor-db = craneLib.buildPackage (productionArgs
         // {
           inherit cargoArtifacts;
           doCheck = false;
@@ -225,6 +233,19 @@
           '';
           preCheck = ''
             export HARBOR_DB_TEST_TMPDIR="$TMPDIR"
+            namespaceTools=${pkgs.util-linux}/bin
+            if ! "$namespaceTools/unshare" --user --map-root-user --mount -- true 2>namespace-probe.log; then
+              ${pkgs.lib.optionalString (pkgs.system == "aarch64-linux") ''
+              # Keep ARM lifecycle executables under test when QEMU's user
+              # emulation cannot perform namespace syscalls itself.
+              if grep -q 'unshare failed: Invalid argument' namespace-probe.log; then
+                namespaceTools=${nixpkgs.legacyPackages.x86_64-linux.util-linux}/bin
+              fi
+            ''}
+              "$namespaceTools/unshare" --user --map-root-user --mount -- true
+            fi
+            export PATH="$namespaceTools:$PATH"
+            echo "Harbor namespace substrate: $namespaceTools (lifecycle executables remain ${pkgs.system})"
           '';
         };
       inherit (commonArgs) src;
@@ -361,8 +382,8 @@
         pkgs.rustfmt
       ];
     in {
-      default = pkgs.mkShell {inherit packages;};
-      docs = pkgs.mkShell {inherit packages;};
+      default = harbor-meta.lib.devShell.mkShell {inherit pkgs packages;};
+      docs = harbor-meta.lib.devShell.mkShell {inherit pkgs packages;};
     });
   };
 }

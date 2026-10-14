@@ -31,6 +31,14 @@ senders: the continuous receiver holds one slot/sender while a streaming base
 backup uses the second slot and two concurrent connections. Evaluation checks
 both `sourceSettings` and the effective PostgreSQL settings, so an override
 cannot silently reduce this capacity.
+Every source-only or combined source role also requires at least one effective
+WAL sender and replication slot when source-local recovery is disabled. Target-only
+hosts retain independent source settings; effective zero/negative capacity on a
+local source is rejected before generating an unusable replication service.
+The effective `services.postgresql.settings.wal_level` must be `replica` or
+`logical`. `minimal` cannot produce streaming physical recovery and PostgreSQL
+will not start with nonzero WAL senders; source-role evaluation rejects it even
+when selected by an explicit PostgreSQL override.
 Every enabled WAL-receiver and base-backup slot name must contain 1–63 lowercase
 ASCII letters, digits or underscores. Names are validated before producer
 services are admitted, including for independent targets. The length bound
@@ -52,7 +60,7 @@ They cannot select `recovery/`, `base/`, `wal/`, `locks/`, `BACKUP_LOCK`,
 `preparation.json`. Nix and both runtime
 engines reject these aliases before publication, including off-host receipt
 imports. The dedicated `<backupRoot>/evidence/` subtree remains supported.
-Snapshot, local-receipt and off-host-receipt paths also exclude the declared
+The repository root, snapshot, local-receipt and off-host-receipt paths exclude the declared
 PostgreSQL data, lifecycle-state and startup-inhibition trees in both containment
 directions. Nix and both runtimes reject these paths before capture, preparation
 or receipt publication, including under the legacy protocol. Recovery evidence
@@ -128,6 +136,33 @@ manifest digest, primary identity, major, timeline and stop LSN. Its fenced reco
 hashes and durable target LSN cover acknowledged changes after backup completion.
 Publication preserves version-1 recovery binding fields and JSON/hash conventions.
 New capture bytes produce new evidence hashes; existing receipts are not rewritten.
+The immutable capture metadata and source snapshot also bind `source_machine_sha256`,
+the digest of the installed machine identity. Certification records and validates
+`executor_machine_sha256` against that source binding, in addition to descriptive
+hostnames. Off-host acceptance requires a distinct valid machine digest; a UTS
+namespace or renamed hostname on the source cannot establish independence.
+Capture retries preserve the machine binding. Captures predating this binding
+require a new capture identifier and fresh certification; legacy local snapshots
+remain locally admissible but cannot establish off-host recovery without a fresh
+machine-bound source snapshot. Independent machines must have distinct installed
+machine identities, including restored/cloned operating-system images.
+
+The exported native lifecycle package is statically linked: its smoke check
+rejects an ELF interpreter or dynamic dependency on every operator executable.
+An unprivileged certifier's `LD_PRELOAD` cannot interpose namespace admission,
+hostname/machine-id reads or receipt publication. Direct Cargo development builds
+and the Python cross-engine peer are not production packages.
+
+Installed machine identity admission requires Linux 6.13 or newer with pidfd
+namespace ioctls. Both engines obtain the actual calling thread's user, mount and
+UTS namespaces through its kernel pidfd; the user namespace and the mount/UTS
+owning user namespaces must be the initial host user namespace. Root-created
+systemd private mount namespaces remain admissible. Caller-created user/mount/UTS
+namespaces are rejected before hashing `/etc/machine-id`, even when that file,
+`/proc/self/uid_map`, or the entire PID/proc view has been substituted. Unsupported
+kernel interfaces fail closed. Namespace identifiers and ioctl numbers use the
+[Linux pidfd UAPI](https://github.com/torvalds/linux/blob/v6.18/include/uapi/linux/pidfd.h)
+and [nsfs UAPI](https://github.com/torvalds/linux/blob/v6.18/include/uapi/linux/nsfs.h).
 
 The source-local producer validates the live retained fence before capture. It
 serializes with backup publication, pruning and recovery inspection through the

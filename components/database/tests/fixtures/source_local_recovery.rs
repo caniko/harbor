@@ -31,6 +31,7 @@ struct Args {
 struct Config {
     native_package: String,
     legacy_package: String,
+    identity_preload: String,
     postgres_package: String,
     coreutils_package: String,
     shell: String,
@@ -418,9 +419,11 @@ fn run(args: Args) -> Result<()> {
         "read-slow-capture-source-policy",
     )?)?;
     slow["recovery"]["max_age_seconds"] = json!(2);
-    // Delay the same record projection inside one preparable read-only query.
+    // Record checks are one PostgreSQL-prepared statement. Delay once while
+    // retaining the exact ordered record columns used by the normal capture.
     slow["recovery"]["record_checks"][0]["sql"] = json!(format!(
-        "SELECT records.* FROM ({RECORDS}) AS records CROSS JOIN pg_sleep(4) ORDER BY records.id"
+        "SELECT records.* FROM pg_sleep(4), ({}) AS records ORDER BY records.id",
+        field(&slow["recovery"]["record_checks"][0], "sql")?
     ));
     g.shell("primary", format!("printf '%s\\n' {} > {slow_config}; chown postgres:postgres {slow_config}; touch {ROOT}/base/{}/backup_manifest", q(&slow.to_string()), q(&backup)), true, "bounded-slow-record-capture-config")?;
     let stale = g.shell("primary", format!("runuser -u postgres -- {}/bin/harbor-db-postgres --config {slow_config} capture-backup --backup-id {} --capture-id stale-slow --socket-dir /run/postgresql --port 5432 --wal-wait-seconds 30 2>&1", q(&c.native_package), q(&backup)), false, "slow-capture-expiry-rejects-selection")?;
@@ -451,6 +454,28 @@ fn run(args: Args) -> Result<()> {
         "actual-producer-metadata",
     )?)?;
     let target = field(&meta, "post_backup_lsn")?.to_owned();
+    let source_machine = g
+        .shell(
+            "primary",
+            "sha256sum /etc/machine-id | cut -d' ' -f1",
+            true,
+            "source-machine-identity-digest",
+        )?
+        .trim()
+        .to_owned();
+    let remote_machine = g
+        .shell(
+            "certifier",
+            "sha256sum /etc/machine-id | cut -d' ' -f1",
+            true,
+            "independent-machine-identity-digest",
+        )?
+        .trim()
+        .to_owned();
+    g.check(
+        meta["source_machine_sha256"] == source_machine && source_machine != remote_machine,
+        "capture-pins-source-machine-and-independent-host-is-distinct",
+    )?;
     let (hi, lo) = target.split_once('/').ok_or("invalid target LSN")?;
     let target_number = (u64::from_str_radix(hi, 16)? << 32) | u64::from_str_radix(lo, 16)?;
     let size = meta["wal_segment_bytes"]
@@ -545,9 +570,45 @@ fn run(args: Args) -> Result<()> {
     )?;
     g.shell("certifier", format!("test \"$({remote_sql} -c {})\" = t; sha256sum -c /run/restored-auto.sha256", q(&format!("SELECT pg_last_wal_replay_lsn() >= '{target}'::pg_lsn AND current_setting('default_transaction_read_only')='on'"))), true, "actual-replay-target-read-only-and-auto-config-preserved")?;
     g.align("certifier", "primary", "certifier-clock-aligned")?;
+    let writable_restore = restore
+        .replace("/srv/recovered", "/srv/writable-recovered")
+        .replace("/srv/recovery-socket", "/srv/writable-recovery-socket")
+        .replace("port = 55432", "port = 55433")
+        .replace(
+            "default_transaction_read_only = on",
+            "default_transaction_read_only = off",
+        );
+    g.shell("certifier", format!("install -d -m 0700 -o postgres -g postgres /srv/writable-recovered /srv/writable-recovery-socket; cp -a {ROOT}/base/{} /srv/writable-recovered/18; cp -p /srv/recovered/private-*.conf /srv/writable-recovered/; printf '%s' {} > /srv/writable-recovered/18/postgresql.conf; touch /srv/writable-recovered/18/recovery.signal; chown postgres:postgres /srv/writable-recovered/18/postgresql.conf /srv/writable-recovered/18/recovery.signal; runuser -u postgres -- {}/bin/pg_ctl -D /srv/writable-recovered/18 -l /srv/writable-recovered/server.log -t 60 -w start", q(&backup), q(&writable_restore), q(&c.postgres_package)), true, "disposable-writable-negative-replay-started")?;
+    g.wait("certifier", &format!("test \"$(runuser -u postgres -- {}/bin/psql -Xw -h /srv/writable-recovery-socket -p 55433 -Atq -d postgres -c {})\" = t", q(&c.postgres_package), q(&format!("SELECT NOT pg_is_in_recovery() AND pg_last_wal_replay_lsn() >= '{target}'::pg_lsn AND current_setting('default_transaction_read_only')='off'"))), "disposable-writable-negative-replay-complete")?;
+    for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
+        let rejected = g.shell("certifier", format!("runuser -u postgres -- {}/bin/harbor-db-postgres --config {CONFIG} certify-recovery --data-dir /srv/writable-recovered/18 --socket-dir /srv/writable-recovery-socket --port 55433 2>&1", q(package)), false, &format!("{engine}-writable-disposable-recovery-rejected"))?;
+        g.check(
+            rejected.contains("not the declared disposable read-only recovery"),
+            &format!("{engine}-unmodified-endpoint-default-observed"),
+        )?;
+        g.shell(
+            "certifier",
+            format!(
+                "test ! -e {ROOT}/evidence/receipt.json; test ! -e {ROOT}/evidence/off-host.json"
+            ),
+            true,
+            &format!("{engine}-writable-rejection-publishes-no-receipt"),
+        )?;
+    }
+    g.shell(
+        "certifier",
+        format!(
+            "runuser -u postgres -- {}/bin/pg_ctl -D /srv/writable-recovered/18 -w stop",
+            q(&c.postgres_package)
+        ),
+        true,
+        "disposable-writable-negative-endpoint-stopped",
+    )?;
     let receipt: Value = serde_json::from_str(&g.shell("certifier", format!("{pg} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432"), true, "native-independent-certification")?)?;
     g.check(
         receipt["executor_host"] == remote_host
+            && receipt["executor_machine_sha256"] == remote_machine
+            && receipt["source_machine_sha256"] == source_machine
             && receipt["records"] == finalized["records"]
             && receipt["metadata_sha256"] == finalized["metadata_sha256"]
             && receipt["wal_inventory_sha256"] == finalized["wal_inventory_sha256"]
@@ -563,6 +624,32 @@ fn run(args: Args) -> Result<()> {
         &host,
         "independent-receipt-returned-byte-identically",
     )?;
+    g.shell("primary", "chown root:root /run/independent-receipt.json; chmod 0600 /run/independent-receipt.json; install -d -m 0700 /run/trusted-receipt-import; install -d -m 0777 /run/untrusted-receipt-import; cp /run/independent-receipt.json /run/trusted-receipt-import/worker.json; chown postgres:postgres /run/trusted-receipt-import/worker.json; ln -s /run/independent-receipt.json /run/untrusted-receipt-import/redirect; sha256sum /run/independent-receipt.json > /run/receipt-import-source.sha256", true, "actual-independent-import-source-and-attacks-prepared")?;
+    for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
+        let stage = format!(
+            "{}/bin/harbor-db-postgres --config {CONFIG} stage-off-host-receipt",
+            q(package)
+        );
+        for (attack, source) in [
+            ("worker-owner", "/run/trusted-receipt-import/worker.json"),
+            (
+                "writable-ancestor-alias",
+                "/run/untrusted-receipt-import/redirect",
+            ),
+        ] {
+            g.shell(
+                "primary",
+                format!(
+                    "{stage} --source {source} --destination /run/trusted-receipt-import/rejected"
+                ),
+                false,
+                &format!("{engine}-{attack}-independent-import-source-rejected"),
+            )?;
+            g.shell("primary", "test ! -e /run/trusted-receipt-import/rejected; sha256sum -c /run/receipt-import-source.sha256", true, &format!("{engine}-{attack}-rejection-preserves-root-source-and-no-staging"))?;
+        }
+        g.shell("primary", format!("{stage} --source /run/independent-receipt.json --destination /run/trusted-receipt-import/{engine}; cmp /run/independent-receipt.json /run/trusted-receipt-import/{engine}; test \"$(stat -c '%u:%g:%a' /run/trusted-receipt-import/{engine})\" = 0:0:400"), true, &format!("{engine}-trusted-independent-receipt-pinned-into-private-root-storage"))?;
+        g.shell("primary", format!("runuser -u postgres -- {stage} --source /run/independent-receipt.json --destination /run/trusted-receipt-import/worker"), false, &format!("{engine}-unprivileged-import-staging-rejected"))?;
+    }
     g.shell("primary", format!("install -m 0600 -o postgres -g postgres /run/independent-receipt.json {ROOT}/evidence/receipt.json; install -m 0600 -o postgres -g postgres /run/independent-receipt.json {ROOT}/evidence/off-host.json; cmp {ROOT}/evidence/receipt.json {ROOT}/evidence/off-host.json"), true, "same-independent-receipt-negative-fixture-installed")?;
     g.align("primary", "certifier", "source-clock-aligned")?;
     let admission = format!("{pg} inspect-recovery --socket-dir /run/postgresql --port 5432");
@@ -589,9 +676,86 @@ fn run(args: Args) -> Result<()> {
         "source-host-replay-preserves-postbackup-changes-and-revisions",
     )?;
     g.shell("primary",format!("test \"$({remote_sql} -c {})\" = t; sha256sum -c /run/local-restored-auto.sha256",q(&format!("SELECT pg_last_wal_replay_lsn() >= '{target}'::pg_lsn AND current_setting('default_transaction_read_only')='on'"))),true,"source-host-replay-target-read-only-and-auto-config-preserved")?;
+    let mut namespace_config = config.clone();
+    namespace_config["recovery"]["receipt_file"] =
+        config["recovery"]["off_host_receipt_file"].clone();
+    g.publish(
+        "primary",
+        "/run/namespace-certifier.json",
+        &namespace_config,
+        "source-UTS-negative-certifier-policy",
+    )?;
+    for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
+        let command = format!(
+            "hostname hostname-only-remote; runuser -u postgres -- {}/bin/harbor-db-postgres --config /run/namespace-certifier.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432",
+            q(package)
+        );
+        let rejected = g.shell(
+            "primary",
+            format!("unshare --uts -- sh -ec {} 2>&1", q(&command)),
+            false,
+            &format!("{engine}-UTS-rename-cannot-certify-independent-recovery"),
+        )?;
+        g.check(
+            rejected.contains("independent machine"),
+            &format!("{engine}-UTS-rejection-binds-stable-machine-not-hostname"),
+        )?;
+    }
+    g.shell(
+        "primary",
+        "printf 'caller-chosen-machine-id\\n' > /run/namespace-fake-machine-id; printf '0 0 4294967295\\n' > /run/namespace-fake-uid-map; chmod 0644 /run/namespace-fake-machine-id /run/namespace-fake-uid-map",
+        true,
+        "namespace-spoof-inputs-do-not-change-installed-machine-id",
+    )?;
+    let preload = format!(
+        "LD_PRELOAD={} HARBOR_FAKE_MACHINE_ID=/run/namespace-fake-machine-id",
+        q(&c.identity_preload)
+    );
+    g.shell(
+        "primary",
+        format!("runuser -u postgres -- env {preload} python3 -c {}", q("import socket; assert socket.gethostname()=='loader-chosen-remote'; assert open('/etc/machine-id').read().strip()=='caller-chosen-machine-id'")),
+        true,
+        "loader-interposer-really-substitutes-hostname-and-machine-id",
+    )?;
+    let rejected = g.shell(
+        "primary",
+        format!("runuser -u postgres -- env {preload} {}/bin/harbor-db-postgres --config /run/namespace-certifier.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432 2>&1", q(&c.native_package)),
+        false,
+        "native-off-host-certifier-rejects-loader-controlled-identity",
+    )?;
+    g.check(
+        rejected.contains("independent machine"),
+        "static-certifier-retains-same-machine-custody-under-preload",
+    )?;
+    for (engine, package) in [("native", &c.native_package), ("python", &c.legacy_package)] {
+        for fresh_proc in [false, true] {
+            let command = format!(
+                "mount --bind /run/namespace-fake-machine-id /etc/machine-id; mount --bind /run/namespace-fake-uid-map /proc/self/uid_map; hostname caller-chosen-remote; exec {}/bin/harbor-db-postgres --config /run/namespace-certifier.json certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432",
+                q(package)
+            );
+            let rejected = g.shell(
+                "primary",
+                format!(
+                    "runuser -u postgres -- unshare --user --map-root-user --mount --uts {} -- sh -ec {} 2>&1",
+                    if fresh_proc { "--pid --fork --mount-proc" } else { "" },
+                    q(&command)
+                ),
+                false,
+                &format!("{engine}-namespace-machine-spoof-fresh-proc-{fresh_proc}-rejected"),
+            )?;
+            g.check(
+                rejected.contains("caller-controlled namespaces"),
+                &format!(
+                    "{engine}-kernel-pidfd-identity-rejects-mount-and-proc-spoof-{fresh_proc}"
+                ),
+            )?;
+        }
+    }
     let local_receipt:Value = serde_json::from_str(&g.shell("primary",format!("{pg} certify-recovery --data-dir /srv/recovered/18 --socket-dir /srv/recovery-socket --port 55432"),true,"native-source-host-disposable-restoration-certification")?)?;
     g.check(
         local_receipt["executor_host"] == source_host
+            && local_receipt["executor_machine_sha256"] == source_machine
+            && local_receipt["source_machine_sha256"] == source_machine
             && local_receipt["records"] == receipt["records"]
             && local_receipt["metadata_sha256"] == receipt["metadata_sha256"]
             && local_receipt["wal_inventory_sha256"] == receipt["wal_inventory_sha256"]
