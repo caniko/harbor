@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Musl cross packages explicitly select target C/C++ compilers and binutils for
+  vendored native dependencies, preventing host-glibc OpenSSL objects from
+  entering static musl binaries. A locked OpenSSL fixture realizes both musl
+  targets, validates their static ELF properties and executes the x86_64 binary.
 - Nix builds of `harbor-rs` and `harbor-ci` retain workspace README files used
   by dependency crates as compile-time documentation.
 - Direnv loads the Rust tools and OpenCode LSP configuration through one shell,

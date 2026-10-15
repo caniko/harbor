@@ -1,0 +1,60 @@
+name: Qualify musl vendored OpenSSL
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keep original runs alive: later pushes must not cancel their evidence.
+jobs:
+  rust-musl-openssl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      NIX_CONFIG: |
+        experimental-features = nix-command flakes
+        max-jobs = 1
+        cores = 2
+        keep-build-log = true
+      QUALIFICATION_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.35.2/install
+      - name: Configure public input transport
+        run: |
+          git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
+          git config --global --add url.https://github.com/.insteadOf git@github.com:
+          git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
+          git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+      - name: Retain exact candidate and baseline sources
+        id: prepare
+        run: bash components/rust/tests/qualify-musl-openssl.sh prepare
+      - name: Check focused Nix and fixture Rust formatting
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: bash components/rust/tests/qualify-musl-openssl.sh format
+      - name: RED — reproduce original x86_64 OpenSSL glibc contamination
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: bash components/rust/tests/qualify-musl-openssl.sh red
+      - name: GREEN — validate both static ELFs and execute x86_64 fixture
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: bash components/rust/tests/qualify-musl-openssl.sh green
+      - name: Seal evidence
+        if: ${{ always() }}
+        run: bash components/rust/tests/qualify-musl-openssl.sh seal
+      - name: Upload original-run evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: rust-musl-openssl-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rust-musl-openssl-evidence/
+          if-no-files-found: error
+          retention-days: 30

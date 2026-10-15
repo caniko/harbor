@@ -3241,6 +3241,10 @@ in
       assert !result.success;
         pkgs.runCommand "check-mkScoopManifest-rejects-bad-arch-key" {} "touch $out";
   }
+  // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+    # Realize both supported musl targets and execute a vendored C dependency.
+    mkCrossPackages-musl-openssl = import ./tests/musl-openssl.nix {inherit self pkgs system cross;};
+  }
   // pkgs.lib.optionalAttrs isLinux {
     # mkAppImage exposes the generated AppImage through the builder hierarchy.
     mkAppImage-shape = let

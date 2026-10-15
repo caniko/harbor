@@ -149,6 +149,7 @@ in
       targetPkgs,
     }: let
       cc = targetPkgs.stdenv.cc;
+      targetSuffix = lib.replaceStrings ["-"] ["_"] rustTarget;
       linkerVar = "CARGO_TARGET_${lib.toUpper (lib.replaceStrings ["-"] ["_"] rustTarget)}_LINKER";
       toolchainMusl = mkToolchain ({
           inherit pkgs;
@@ -164,6 +165,13 @@ in
           PKG_CONFIG_ALLOW_CROSS = "1";
           depsBuildBuild = [cc];
           ${linkerVar} = "${cc}/bin/${cc.targetPrefix}cc";
+          # Rust's linker does not select the tools used by cc/openssl-src.
+          # Qualify these by target so native build dependencies retain their
+          # build-host compiler while vendored C/C++ uses the target libc.
+          "CC_${targetSuffix}" = "${cc}/bin/${cc.targetPrefix}cc";
+          "CXX_${targetSuffix}" = "${cc}/bin/${cc.targetPrefix}c++";
+          "AR_${targetSuffix}" = "${cc.bintools}/bin/${cc.targetPrefix}ar";
+          "RANLIB_${targetSuffix}" = "${cc.bintools}/bin/${cc.targetPrefix}ranlib";
         }
         // extraFor attrName;
       cargoArtifacts = craneLibMusl.buildDepsOnly args;

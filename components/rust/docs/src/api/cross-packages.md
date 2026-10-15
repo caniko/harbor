@@ -79,6 +79,22 @@ outputs fall back to a `runCommand` that exits 1 at build time with a clear
 message, so the attribute still evaluates and the flake stays usable on hosts
 without an SDK.
 
+## Vendored native libraries on musl
+
+The `x86_64-linux-musl` and `aarch64-linux-musl` targets set the Rust linker and
+target-qualified `CC`, `CXX`, `AR` and `RANLIB` variables. Both dependency and
+package builds receive these tools. Native build dependencies keep their
+build-host compiler; target C/C++ dependencies use the selected musl toolchain.
+Per-target `targetArgs` are still merged last for deliberate tool overrides.
+
+For vendored OpenSSL, enable its Cargo `vendored` feature and include
+`pkgs.perl` in `commonArgs.nativeBuildInputs`. Setting only the Rust linker does
+not select the compiler used by `cc` or `openssl-src`: native-glibc objects can
+otherwise reach the final musl link. The
+`rust-mkCrossPackages-musl-openssl` root-flake check realizes both musl targets,
+checks ELF machine/static linkage and executes a TLS-context/SHA-256 fixture
+on x86_64 Linux.
+
 ## System C libraries on darwin
 
 Unlike the `windows` and `aarch64-linux` targets — where nixpkgs offers a ready
