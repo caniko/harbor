@@ -27,12 +27,13 @@
     targets = ["x86_64-linux-musl" "aarch64-linux-musl"];
   };
   validation = import ../lib/release-common.nix {inherit (pkgs) lib;};
-  validate = target: machine: validation.staticElfValidation {
-    readelf = "${pkgs.binutils}/bin/readelf";
-    grep = "${pkgs.gnugrep}/bin/grep";
-    path = "${packages.${target}}/bin/harbor-musl-openssl-fixture";
-    inherit machine;
-  };
+  validate = target: machine:
+    validation.staticElfValidation {
+      readelf = "${pkgs.binutils}/bin/readelf";
+      grep = "${pkgs.gnugrep}/bin/grep";
+      path = "${packages.${target}}/bin/harbor-musl-openssl-fixture";
+      inherit machine;
+    };
 in
   assert system == "x86_64-linux";
     pkgs.runCommand "check-mkCrossPackages-musl-openssl" {passthru = {inherit packages;};} ''
