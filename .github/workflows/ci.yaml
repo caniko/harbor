@@ -248,6 +248,15 @@ jobs:
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
     - name: Verify generated workflows
       run: nix develop --print-build-logs .#ci --command simit init ci --check
+    - name: protocol-test
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component llm --check protocol-test --nix-diagnostics
+      timeout-minutes: 10
+    - name: protocol-clippy
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component llm --check protocol-clippy --nix-diagnostics
+      timeout-minutes: 10
+    - name: protocol-generated
+      run: nix develop --print-build-logs .#ci --command simit monorepo check --component llm --check protocol-generated --nix-diagnostics
+      timeout-minutes: 10
     - name: nix
       run: nix develop --print-build-logs .#ci --command simit monorepo check --component llm --check nix --nix-diagnostics
       timeout-minutes: 30
