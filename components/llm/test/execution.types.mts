@@ -17,9 +17,12 @@ const invalid: Message = { schemaVersion: 2, requestId: "invalid", body: { kind:
 void invalid;
 
 declare const options: OpenCodeV2Options;
-const adapter = new OpenCodeV2(options);
+const adapter = new OpenCodeV2({ ...options, mode: "fresh" });
 void adapter.start({ model: { providerID: "synthetic", id: "fixture" }, permissions: [] });
 void adapter.submit({ id: "inb_fixture", text: "fixture", delivery: "queue", resume: false });
 // @ts-expect-error Recovery must never request engine resume.
 void adapter.submit({ id: "inb_fixture", text: "fixture", delivery: "queue", resume: true });
+void adapter.execute("inb_fixture");
+// @ts-expect-error Execution release is bound to an inbox ID, not another prompt.
+void adapter.execute({ id: "inb_fixture", text: "replacement" });
 void adapter.reconcile();

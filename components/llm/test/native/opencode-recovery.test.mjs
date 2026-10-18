@@ -12,7 +12,9 @@ import { artifact, standalone, waitFor } from "./standalone.mjs";
 
 // An explicit native gate: absence of the selected artifact is a failure, never a skip.
 // Counters and retained evidence are owned by this observer, outside engine roots.
-for (const phase of ["provider", "tool"]) test(`actual standalone reopens interrupted ${phase} state without replay`, { timeout: 90000 }, async t => {
+for (const phase of ["provider", "tool", "steer-input", "competing-input"]) test(phase === "steer-input"
+  ? "actual standalone rejects already-steering release without provider work"
+  : `actual standalone reopens interrupted ${phase} state without replay`, { timeout: 90000 }, async t => {
   const selected = await artifact();
   const evidenceRoot = process.env.HARBOR_NATIVE_EVIDENCE_ROOT;
   assert.ok(evidenceRoot && isAbsolute(evidenceRoot), "HARBOR_NATIVE_EVIDENCE_ROOT must select private retained evidence");
@@ -92,23 +94,65 @@ for (const phase of ["provider", "tool"]) test(`actual standalone reopens interr
   let running = await standalone(root, configuration);
   t.after(async () => { await running.stop(); });
   const sessionID = `ses_${randomBytes(16).toString("hex")}`;
-  await running.request("/api/session", "POST", {
-    id: sessionID, location: { directory: join(root, "work") },
+  const adapter = (mode = "observe") => new OpenCodeV2({
+    url: running.url, authorization: running.authorization, server: { pid: running.pid, version: running.version },
+    sessionID, directory: join(root, "work"), mode,
+    limits: { timeoutMs: 15000, inputBytes: 65536, outputBytes: 1024 * 1024, totalResponseBytes: 16 * 1024 * 1024, requests: 64, pages: 8, messages: 128 },
+  });
+  const fresh = adapter("fresh");
+  t.after(() => fresh.close());
+  await fresh.probe();
+  await fresh.start({
     model: { providerID: "fixture", id: "fixture" }, permissions: [
       { action: "*", resource: "*", effect: "deny" },
       ...(phase === "tool" ? [{ action: "shell", resource: "*", effect: "allow" }] : []),
     ],
   });
   const inboxID = `msg_${randomBytes(16).toString("hex")}`;
-  const prompt = { id: inboxID, text: `Synthetic ${phase} recovery fixture.`, delivery: "queue", resume: false };
-  await running.request(`/api/session/${sessionID}/prompt`, "POST", prompt);
+  const prompt = { id: inboxID, text: `Synthetic ${phase} recovery fixture.`, delivery: phase === "steer-input" ? "steer" : "queue", resume: false };
+  const admitted = await fresh.submit(prompt);
   await delay(250);
   assert.equal(count, 0, "admit-only prompt must not manufacture an executing recovery fixture");
-  // Release the existing inbox item; never repost the admitted prompt.
-  // This isolated fixture is its only writer. Recovery never sends this PATCH.
-  await running.request(`/api/session/${sessionID}/inbox/${inboxID}`, "PATCH", { delivery: "steer" });
+  if (phase === "steer-input") {
+    await assert.rejects(fresh.execute(inboxID), { code: "effect-unknown" });
+    await assert.rejects(fresh.execute(inboxID), { code: "effect-unknown" });
+    const snapshot = await fresh.reconcile();
+    assert.deepEqual(snapshot.inbox, [admitted]);
+    assert.equal(snapshot.messages.length, 0);
+    assert.equal(count + toolCalls, 0, "unsupported release must not create provider/tool work");
+    assert.equal(providerFailure, undefined);
+    await writeFile(join(evidence, "result.json"), JSON.stringify({
+      schemaVersion: 1, accepted: false, scope: "native-standalone-release-precondition", phase,
+      artifact: selected, sourceAttestation: "external-prerequisite", productionCustody: "unproven",
+      configurationDigest: createHash("sha256").update(JSON.stringify(configuration)).digest("hex"),
+      sessionID, inboxID, releaseResult: "rejected", providerCalls: count, toolCalls,
+    }, null, 2), { mode: 0o600 });
+    completed = true;
+    return;
+  }
+  let competingID;
+  const competingText = "UNRELATED-INPUT-NEGATIVE-CONTROL";
+  if (phase === "competing-input") {
+    const observed = await running.request(`/api/session/${sessionID}/inbox`);
+    assert.equal(observed.data.length, 1, "the preflight observes only the original input");
+    competingID = `msg_${randomBytes(16).toString("hex")}`;
+    await running.request(`/api/session/${sessionID}/prompt`, "POST", {
+      id: competingID, text: competingText, delivery: "steer", resume: false,
+    });
+    assert.equal(count, 0, "the competing admission alone must not wake execution");
+    // Deliberately unfenced control: an intervening writer invalidates the read.
+    // This targets the original ID yet wakes both items. Never a production path.
+    await running.request(`/api/session/${sessionID}/inbox/${inboxID}`, "PATCH", { delivery: "steer" });
+  } else {
+    // This isolated fixture is its only writer. Recovery never releases again.
+    await fresh.execute(inboxID);
+    await assert.rejects(fresh.execute(inboxID), { code: "effect-unknown" });
+  }
   await waitFor(() => count >= 1);
   if (phase === "tool") await waitFor(() => toolCalls >= 1);
+  const providerInput = JSON.stringify(requests[0].messages);
+  assert.equal(providerInput.split(prompt.text).length - 1, 1, "the original input must reach the provider exactly once");
+  assert.equal(providerInput.includes(competingText), phase === "competing-input", "a targeted PATCH is a whole-session wake, not a single-input fence");
   const database = new DatabaseSync(join(root, "engine.db"), { readOnly: true });
   t.after(() => database.close());
   const claim = () => database.prepare("SELECT time_suspended, resume_attempts FROM session_v2 WHERE id = ?").get(sessionID);
@@ -118,11 +162,6 @@ for (const phase of ["provider", "tool"]) test(`actual standalone reopens interr
   const providerCalls = count;
   const beforeToolCalls = toolCalls;
   assert.equal(readFileSync(counter, "utf8").trim().split("\n").length, providerCalls + toolCalls);
-  const adapter = () => new OpenCodeV2({
-    url: running.url, authorization: running.authorization, server: { pid: running.pid, version: running.version },
-    sessionID, directory: join(root, "work"),
-    limits: { timeoutMs: 15000, inputBytes: 65536, outputBytes: 1024 * 1024, totalResponseBytes: 16 * 1024 * 1024, requests: 64, pages: 8, messages: 128 },
-  });
   // Reattachment is independent from a server restart.
   let observer = adapter();
   await observer.probe(); await observer.reconcile(); observer.close();
@@ -145,7 +184,8 @@ for (const phase of ["provider", "tool"]) test(`actual standalone reopens interr
     schemaVersion: 1, accepted: false, scope: "native-standalone-feasibility", phase, artifact: selected, engineVersion: running.version,
     engineRevision: "047c74ec64ca6029f93be4bb4d1f5797c8838b9a", sourceAttestation: "external-prerequisite",
     configurationDigest: createHash("sha256").update(JSON.stringify(configuration)).digest("hex"),
-    sessionID, inboxID, claim: before, providerCalls, callsAfterReopen: count, toolCalls, observationMs,
+    sessionID, inboxID, ...(competingID ? { competingID } : {}), claim: before, providerCalls, callsAfterReopen: count, toolCalls, observationMs,
+    releasePath: competingID ? "unfenced-session-wide-negative-control" : "fresh-adapter-inbox-steer",
     providerRecovery: "passed", toolRecovery: phase === "tool" ? "passed" : "unproven", productionCustody: "unproven",
   }, null, 2), { mode: 0o600 });
   completed = true;

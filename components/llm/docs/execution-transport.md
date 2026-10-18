@@ -138,16 +138,35 @@ contract remains `047c74ec64ca6029f93be4bb4d1f5797c8838b9a`, specifically
 does not attest engine source. The launcher must bind executable/client/config
 identities and the private standalone endpoint. Construction does no I/O and
 never calls managed-service discovery/startup. Version/PID checks are readiness,
-not executable custody. Start, submit and interrupt are one-shot; submit and
-interrupt disable resume. The Rust admission holder must fsync each matching
-intent before dispatch; local JavaScript flags do not survive process replacement.
+not executable custody. Construction defaults to observation; only an explicit
+`mode: "fresh"` enables start/admission/release. That selection is not application
+authority and must never be reconstructed from persisted state. Start, submit,
+execute and interrupt are one-shot; submit and interrupt disable resume. The Rust
+admission holder must fsync each matching intent before dispatch; local JavaScript
+flags do not survive process replacement.
 
 At this exact engine revision, `Session.prompt` wakes execution only when
 `resume !== false`. Consequently `submit` is **inbox admission only**, not an
-executing model invocation. Initial execution needs a distinct, explicitly
-authorized and durably fenced release; observational recovery must never issue
-that release. Disabling managed-server restart continuity and disabling prompt
-wakeup are different controls.
+executing model invocation. `execute(inboxID)` releases the same admitted queued input
+through `session.inbox.update({delivery: "steer"})`, never another prompt POST.
+It requires the adapter's own successful admission, compares its private receipt
+snapshot with the only pending item, rejects prior transcript messages and checks
+model/agent/permission drift. A rejected, lost or uncertain release cannot be
+repeated. The caller must first reserve `Operation::Execute` with the observed
+submission's input digest. Observational recovery never issues that release.
+The selected delivery transition is queue → steer. Already-steering input is
+rejected before requests; the adapter never requeues, reposts or resumes it as a
+fallback.
+Disabling managed-server restart continuity and disabling prompt wakeup are
+different controls.
+
+**Release requires exclusive whole-session writer custody.** The engine wakes the
+session, not just the targeted inbox item. The preflight is a bounded observation,
+not an atomic single-input fence. The native competing-input control demonstrates
+that another steering item admitted after a singleton read is also executed by a
+PATCH targeting the original ID. The final custodian/dispatcher must exclude such
+writers throughout admission and release; mode flags and matching GETs cannot
+qualify that guarantee. A 204 release receipt is not semantic completion.
 
 Requests have no redirects or retries, one outstanding operation, per-body and
 aggregate byte/request budgets, page/message bounds and a whole-adapter deadline.

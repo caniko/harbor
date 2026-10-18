@@ -26,12 +26,20 @@ source/build provenance remains an external prerequisite.
 
 ## What the cases establish
 
-- An admit-only prompt (`resume: false`) produces no provider request. A one-time
-  PATCH steers that existing inbox item and reaches the independent provider observer.
+- An admit-only prompt (`resume: false`) produces no provider request. The fresh
+  adapter's one-time PATCH steers that existing inbox item and reaches the
+  independent provider observer. The selected transition requires queued input;
+  an already-steering admission is rejected with no provider/tool work, unchanged
+  pending input and no fallback. That negative case is not interrupted recovery.
   This positive control prevents an idle session from masquerading as interrupted
   execution without reposting the prompt. The isolated fixture is its only writer;
   the engine wakes the whole session, so an inbox read is not a writer lock.
   Production recovery never sends that wake.
+- A deliberately unfenced competing-input control admits unrelated steering input
+  after a singleton read. The PATCH still targets the original inbox ID, but both
+  inputs reach the provider. This demonstrates why private, exclusive writer
+  custody is a release prerequisite; the negative control is never a production
+  dispatch or UNKNOWN-recovery path.
 - One case stalls a provider response. The other returns a synthetic shell-tool
   call that reaches a second, independently recorded endpoint and remains active.
   The tool uses an absolute Node executable and has its own finite deadline.

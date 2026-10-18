@@ -23,6 +23,8 @@ function object(value) { return value !== null && typeof value === "object" && !
  * reopening have no network/process/provider effect; never uses Service.ensure.
  * The original Rust controller must fsync each effect intent before invoking its
  * matching method. Local one-shot guards supplement, never replace, that fence.
+ * Fresh mode requires exclusive whole-session writer custody throughout admission
+ * and release. Mode selection and inbox observations do not establish that custody.
  */
 export class OpenCodeV2 {
   #client;
@@ -45,8 +47,11 @@ export class OpenCodeV2 {
   #submitted = false;
   #interrupted = false;
   #created = false;
+  #fresh;
+  #admitted;
+  #executed = false;
 
-  constructor({ url, authorization, server, sessionID, directory, limits, signal }) {
+  constructor({ url, authorization, server, sessionID, directory, limits, signal, mode = "observe" }) {
     try {
       const endpoint = new URL(url);
       if (endpoint.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(endpoint.hostname)
@@ -54,10 +59,12 @@ export class OpenCodeV2 {
           || !id(sessionID) || !isAbsolute(directory) || directory.includes("\0")
           || typeof authorization !== "string" || !/^(Basic|Bearer) [\x21-\x7e]{1,8192}$/.test(authorization)
           || !Number.isSafeInteger(server.pid) || server.pid < 1 || !id(server.version)
-          || (signal !== undefined && !(signal instanceof AbortSignal))) reject("invalid-frame");
+          || (signal !== undefined && !(signal instanceof AbortSignal))
+          || !["fresh", "observe"].includes(mode)) reject("invalid-frame");
       this.#url = endpoint.origin;
       this.#server = { pid: server.pid, version: server.version };
       this.#sessionID = sessionID; this.#directory = directory;
+      this.#fresh = mode === "fresh";
       this.#limits = {
         timeoutMs: bound(limits.timeoutMs, ceilings.maxTimeoutMs),
         inputBytes: bound(limits.inputBytes, ceilings.maxInputBytes),
@@ -145,6 +152,7 @@ export class OpenCodeV2 {
   /** One create; caller preallocates and durably binds the session ID. */
   async start(configuration) {
     this.#requireReady();
+    if (!this.#fresh) reject("effect-unknown");
     const config = this.#copy(configuration);
     if (!object(config) || Object.keys(config).some(key => !["model", "agent", "permissions"].includes(key))
         || !id(config.model?.providerID) || !id(config.model?.id) || !Array.isArray(config.permissions)) reject("invalid-frame");
@@ -154,7 +162,7 @@ export class OpenCodeV2 {
       await this.#probe();
       const result = await this.#client.session.create({ ...config, id: this.#sessionID, location: { directory: this.#directory } });
       this.#validateSession(result);
-      this.#created = true;
+      this.#created = this.#copy(result);
       return result;
     }, true);
   }
@@ -180,7 +188,28 @@ export class OpenCodeV2 {
       const { id: inboxID, delivery, resume, ...payload } = prompt;
       if (result?.id !== inboxID || result?.sessionID !== this.#sessionID || result?.type !== "user"
           || result?.delivery !== delivery || !isDeepStrictEqual(result.payload, payload)) reject("custody-lost");
+      this.#admitted = this.#copy(result);
       return result;
+    }, true);
+  }
+
+  /** Release the original queued inbox input once, after the caller fsyncs Execute.
+   * The selected engine wakes the whole session. The caller must exclude every
+   * other writer; the bounded preflight is a drift check, not an atomic fence.
+   * A successful PATCH is only a release receipt, never semantic completion.
+   */
+  async execute(inboxID) {
+    this.#requireReady();
+    if (!this.#fresh || !this.#admitted || this.#admitted.delivery !== "queue" || this.#executed || this.#interrupted) reject("effect-unknown");
+    if (!id(inboxID) || inboxID !== this.#admitted.id) reject("invalid-frame");
+    this.#executed = true;
+    return this.#exclusive(async () => {
+      await this.#probe();
+      const snapshot = await this.#snapshot();
+      if (snapshot.messages.length !== 0 || snapshot.inbox.length !== 1
+          || !isDeepStrictEqual(snapshot.inbox[0], this.#admitted)
+          || ["model", "agent", "permissions"].some(key => !isDeepStrictEqual(snapshot.session[key], this.#created[key]))) reject("custody-lost");
+      await this.#client.session.inbox.update({ sessionID: this.#sessionID, inboxID, delivery: "steer" });
     }, true);
   }
 

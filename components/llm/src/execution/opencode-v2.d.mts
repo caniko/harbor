@@ -22,6 +22,8 @@ export interface OpenCodeV2Options {
   directory: string;
   limits: OpenCodeV2Limits;
   signal?: AbortSignal;
+  /** Defaults to observation. Fresh mode requires original admission and exclusive writer custody. */
+  mode?: "fresh" | "observe";
 }
 export class OpenCodeV2 {
   constructor(options: OpenCodeV2Options);
@@ -29,6 +31,8 @@ export class OpenCodeV2 {
   start(configuration: OpenCodeV2Configuration): ReturnType<Client["session"]["create"]>;
   /** Durable inbox admission only; resume:false does not start model execution. */
   submit(input: Omit<Parameters<Client["session"]["prompt"]>[0], "sessionID" | "resume"> & { id: string; delivery: "steer" | "queue"; resume?: false }): ReturnType<Client["session"]["prompt"]>;
+  /** One release of the original queued input, after its durable Execute reservation. */
+  execute(inboxID: string): ReturnType<Client["session"]["inbox"]["update"]>;
   interrupt(): ReturnType<Client["session"]["interrupt"]>;
   reconcile(): Promise<{
     session: Awaited<ReturnType<Client["session"]["get"]>>;
