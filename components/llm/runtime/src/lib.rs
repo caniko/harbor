@@ -8,6 +8,9 @@
 compile_error!("harbor-llm-runtime requires Unix private files and kernel locks");
 
 use fs2::FileExt;
+use harbor_llm_protocol::commands::{
+    self, CommandBody, Effect, EffectReceipt, EffectState, TransferPurpose,
+};
 use harbor_llm_protocol::{Binding, Body, ErrorCode, Message, OutputReceipt, encode};
 use rustix::fs::{Mode, OFlags, open};
 use serde::{Deserialize, Serialize};
@@ -431,6 +434,85 @@ impl Controller {
             self.poisoned = true;
         }
         result
+    }
+
+    /// Reserve and fsync one initial command before invoking its exchange exactly
+    /// once. The callback must use the original private authenticated bridge and
+    /// independently enforce its I/O deadline and process custody. This method
+    /// neither launches nor reconnects anything. A lost, rejected or mismatched
+    /// reply leaves UNKNOWN; reopening cannot dispatch an absent initial operation.
+    /// Handles are the registered execution ID. Submit/execute bind the identical
+    /// canonical `(handle, inbox ID, input-byte digest)` tuple, not correlation IDs.
+    /// Cancellation/revocation/closure need separate current-authority integration.
+    pub fn dispatch_initial(
+        &mut self,
+        command: &commands::Command,
+        exchange: impl FnOnce(
+            &commands::Command,
+        ) -> std::result::Result<
+            commands::Command,
+            harbor_llm_protocol::ProtocolError,
+        >,
+    ) -> Result<EffectReceipt> {
+        self.check()?;
+        commands::encode(command).map_err(|error| Error { code: error.code })?;
+        if command.binding != self.journal.registration.binding {
+            return Err(Error {
+                code: ErrorCode::AuthorityDenied,
+            });
+        }
+        let target_digest = |handle: &str, inbox: &str, input: &str| -> Result<String> {
+            if handle != command.binding.execution_id {
+                return Err(Error {
+                    code: ErrorCode::AuthorityDenied,
+                });
+            }
+            Ok(digest(
+                &serde_json::to_vec(&(handle, inbox, input)).map_err(|_| lost())?,
+            ))
+        };
+        let (operation, effect, input_digest) = match &command.body {
+            CommandBody::Create(create)
+                if create.configuration.purpose == TransferPurpose::Configuration =>
+            {
+                (
+                    Operation::Start,
+                    Effect::Create,
+                    create.configuration.digest.clone(),
+                )
+            }
+            CommandBody::Submit(submit) if submit.input.purpose == TransferPurpose::Input => (
+                Operation::Submit,
+                Effect::Submit,
+                target_digest(&submit.handle, &submit.inbox_id, &submit.input.digest)?,
+            ),
+            CommandBody::Execute(execute) => (
+                Operation::Execute,
+                Effect::Execute,
+                target_digest(&execute.handle, &execute.inbox_id, &execute.input_digest)?,
+            ),
+            _ => {
+                return Err(Error {
+                    code: ErrorCode::UnsupportedCapability,
+                });
+            }
+        };
+        self.reserve(operation, &input_digest)?;
+        let reply = exchange(command).map_err(|_| unknown())?;
+        if commands::encode(&reply).is_err()
+            || reply.request_id != command.request_id
+            || reply.binding != command.binding
+        {
+            return Err(unknown());
+        }
+        let CommandBody::Receipt(receipt) = reply.body else {
+            return Err(unknown());
+        };
+        if receipt.operation != effect || receipt.state != EffectState::Observed {
+            return Err(unknown());
+        }
+        self.observe(operation, &receipt.receipt_digest)?;
+        Ok(receipt)
     }
 
     /// Commit UNKNOWN and fsync file/directory before the caller may release the

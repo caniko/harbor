@@ -21,6 +21,17 @@ missing or replaced state. Reopen only reads existing state. A failed write
 poisons the in-memory handle. Interrupted initialization and orphaned output
 remain evidence and are not silently removed or recreated.
 
+`dispatch_initial` connects this fence to one caller-supplied authenticated
+exchange for a v2 create, submit or execute command. It checks the original
+registration/binding and target, then reserves UNKNOWN before calling the
+exchange once. Only a matching observed receipt can be retained. Missing, lost,
+rejected or mismatched replies never permit a repeat. Handles equal the
+preallocated execution ID; submission and release bind the same canonical
+`(handle, inbox ID, input-byte digest)` tuple. Request IDs are correlations only.
+This helper does not reconnect, launch or supervise a bridge. The exchange must
+enforce its deadline and private executable/channel custody; current-authority
+cancellation, revocation and closure are deliberately unsupported on this path.
+
 `retain` accepts complete application-validated output and durably binds its
 bytes, digest and execution binding before `deliver` can return identical bytes.
 Applications must authenticate the current delivery generation themselves.
@@ -39,6 +50,20 @@ Run the native fault tests from the Harbor root:
 ```sh
 cargo test --locked -p harbor-llm-runtime --jobs 2
 ```
+
+The explicit initial-dispatch conformance example accepts the absolute path to a
+JavaScript dispatcher module, including one in a realized production package:
+
+```sh
+cargo run --locked -p harbor-llm-runtime --example initial_dispatch -- /absolute/path/to/src/execution/dispatcher.mjs
+```
+
+It uses fresh private IPC credentials, the actual dispatcher and pinned generated
+client, a synthetic HTTP observer, and disposable controller stores. The observer
+checks the on-disk UNKNOWN reservation before each mutation. Normal release, lost
+HTTP/IPC replies and bridge exit all exercise no-replay recovery. This is local
+cross-language conformance, not the final supervisor, native engine recovery or
+privileged custody acceptance.
 
 Rust registry publication depends on first publishing the qualified
 `harbor-llm-protocol` release. Both crates are developed in this Cargo workspace;

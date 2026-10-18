@@ -9,6 +9,10 @@
     "directory": "components/llm"
   },
   "exports": {
+    "./execution-dispatcher": {
+      "types": "./src/execution/dispatcher.d.mts",
+      "import": "./src/execution/dispatcher.mjs"
+    },
     "./execution-commands": {
       "types": "./src/execution/commands.d.mts",
       "import": "./src/execution/commands.mjs"

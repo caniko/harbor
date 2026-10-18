@@ -4,16 +4,18 @@ Harbor's LLM component owns provider-independent execution wire contracts and
 transport mechanics. The Rust package is `harbor-llm-protocol`; JavaScript and
 TypeScript exports are part of `harbor-llm`:
 
-| Export                          | Responsibility                                                       |
-| ------------------------------- | -------------------------------------------------------------------- |
-| `harbor-llm/execution-protocol` | Canonical JSON validation and exact-implementation discovery         |
-| `harbor-llm/execution-framing`  | Bounded, incremental length-prefixed message framing                 |
-| `harbor-llm/execution-channel`  | Directional authenticated records and replay rejection               |
-| `harbor-llm/transport`          | One bounded JSON subprocess operation with cancellation              |
-| `harbor-llm/opencode-v2`        | Pinned generated-client transport and bounded observational recovery |
+| Export                            | Responsibility                                                             |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| `harbor-llm/execution-protocol`   | Canonical JSON validation and exact-implementation discovery               |
+| `harbor-llm/execution-framing`    | Bounded, incremental length-prefixed message framing                       |
+| `harbor-llm/execution-channel`    | Directional authenticated records and replay rejection                     |
+| `harbor-llm/execution-commands`   | Separate v2 command codec, authenticated records and bounded transfers     |
+| `harbor-llm/execution-dispatcher` | Initial create/admit/release endpoint for an authenticated private channel |
+| `harbor-llm/transport`            | One bounded JSON subprocess operation with cancellation                    |
+| `harbor-llm/opencode-v2`          | Pinned generated-client transport and bounded observational recovery       |
 
-These exports work without Canix, OpenCode, a provider, or installed npm
-dependencies, except `opencode-v2`, which uses the published
+The pure codec/transport exports work without Canix, OpenCode, a provider, or
+installed npm dependencies. `opencode-v2` and `execution-dispatcher` use the published
 `@opencode/client@2.0.22` dependency. The packed-package test exercises the
 dependency-free exports. Rust tests
 exchange authenticated records with the actual JavaScript implementation in
@@ -70,6 +72,45 @@ the channel after failure. Truncated streams never produce partial messages.
 
 Successful structural negotiation grants no execution authority and is not
 evidence that an advertised implementation provides its claimed capabilities.
+
+### Separate command wire
+
+`protocol/commands.json` defines v2 commands without changing the v1 schema or
+its compatibility paths. Code generation imports the digest-pinned v1 identity
+types and emits command-local Rust/TypeScript types and immutable metadata.
+Each command includes its own schema digest, request ID and full execution
+binding. Decoding a command never releases an operation or grants authority.
+
+Command records reuse the bounded directional authentication machinery with a
+distinct domain and the command-schema digest in key derivation. V1 records
+cannot authenticate as commands, or conversely. Every codec failure closes the
+channel; transport correlation and sequence numbers never mint application
+admission. Callers still supply fresh private channel credentials and custody.
+
+Transfers use explicit purpose, identity, byte count and SHA-256, contiguous
+offsets and at most 4096 nonempty chunks of 16 KiB. Receivers bound bytes and
+elapsed time and return nothing until a matching end and content digest. Empty
+content requires no chunks. Any failure or second consumption is terminal.
+Input is capped at 64 MiB; configuration, observation and output at 16 MiB.
+These are per-transfer primitives: the dispatcher must additionally bound live
+buffers, cumulative bytes, record/transfer counts and whole-channel lifetime,
+bind purposes and contents to the exact command, and reserve effects durably.
+
+`InitialDispatcher` connects that wire to the pinned adapter. Construction is
+effect-free and defaults to observation; only original Rust admission may select
+fresh mode. It checks the configured binding and execution-ID handle, accepts one
+configuration and one input transfer, consumes complete references once, and
+requires the original inbox ID and input digest on release. Cumulative input,
+record count and the whole endpoint deadline are bounded; the deadline also
+aborts stalled HTTP. Other commands, including current-authority interruption,
+revocation and cleanup, are unsupported before their effects.
+
+`Controller::dispatch_initial` fsyncs its matching reservation before invoking the
+authenticated exchange once. A callback never runs when reservation/custody
+checks fail. Lost or mismatched replies retain UNKNOWN. This connects journal
+fencing to the actual dispatcher/adapter through the explicit conformance example
+in the [runtime README](../runtime/README.md). The exchange/launcher must still
+establish private channel and executable custody and supervise all descendants.
 
 ## Authenticated records
 
@@ -138,7 +179,10 @@ contract remains `047c74ec64ca6029f93be4bb4d1f5797c8838b9a`, specifically
 does not attest engine source. The launcher must bind executable/client/config
 identities and the private standalone endpoint. Construction does no I/O and
 never calls managed-service discovery/startup. Version/PID checks are readiness,
-not executable custody. Construction defaults to observation; only an explicit
+not executable custody. Create receipts must match requested model, agent and
+permissions. The pinned `core/src/session/info.ts` materializes an omitted model
+variant as `"default"`; that exact default is compared without allowing explicit
+variant drift. Construction defaults to observation; only an explicit
 `mode: "fresh"` enables start/admission/release. That selection is not application
 authority and must never be reconstructed from persisted state. Start, submit,
 execute and interrupt are one-shot; submit and interrupt disable resume. The Rust
@@ -192,7 +236,8 @@ roots. It is not part of the default provider-free test glob and fails rather
 than skips when its artifact inputs are missing. These are bounded native
 feasibility fixtures, not source attestation or production custody acceptance.
 
-The supervised IPC dispatcher, exact standalone launcher, privileged custodian,
+The initial authenticated dispatcher and journal exchange have local conformance.
+The final supervised IPC launcher, exact standalone launch custody, privileged custodian,
 final-supervisor zero-effect reopen proof, live observation and production admission remain
 unfinished. These local tests do not establish those capabilities, native
 ARM64/macOS worker acceptance or actual same-job retained-output recovery.

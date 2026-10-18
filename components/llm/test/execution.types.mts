@@ -3,6 +3,8 @@ import { AuthenticatedChannel } from "harbor-llm/execution-channel";
 import { FrameDecoder, frame } from "harbor-llm/execution-framing";
 import { runJson, type TransportLimits } from "harbor-llm/transport";
 import { OpenCodeV2, type OpenCodeV2Options } from "harbor-llm/opencode-v2";
+import { AuthenticatedChannel as CommandChannel, encode as encodeCommand, type Command } from "harbor-llm/execution-commands";
+import { InitialDispatcher, type InitialDispatcherOptions } from "harbor-llm/execution-dispatcher";
 
 const message: Message = { schemaVersion: 1, requestId: "typed", body: { kind: "error", code: "effect-unknown" } };
 const channel = new AuthenticatedChannel({ key: new Uint8Array(32), nonce: new Uint8Array(32), binding: new Uint8Array(32), role: "controller" });
@@ -26,3 +28,13 @@ void adapter.execute("inb_fixture");
 // @ts-expect-error Execution release is bound to an inbox ID, not another prompt.
 void adapter.execute({ id: "inb_fixture", text: "replacement" });
 void adapter.reconcile();
+
+declare const command: Command;
+const commands = new CommandChannel({ key: new Uint8Array(32), nonce: new Uint8Array(32), binding: new Uint8Array(32), role: "controller" });
+void commands.seal(command);
+// @ts-expect-error The observation wire cannot stand in for command dispatch.
+void commands.seal(message);
+// @ts-expect-error Commands are separately versioned.
+void encodeCommand({ ...command, schemaVersion: 1 });
+declare const dispatcherOptions: InitialDispatcherOptions;
+void new InitialDispatcher(dispatcherOptions).handle(new Uint8Array());
