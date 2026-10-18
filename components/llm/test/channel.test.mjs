@@ -6,6 +6,10 @@ const key = Buffer.alloc(32, 1), nonce = Buffer.alloc(32, 2), binding = Buffer.a
 const message = { schemaVersion: 1, requestId: "request-🧪", body: { kind: "error", code: "effect-unknown" } };
 const peer = (role, options = {}) => new AuthenticatedChannel({ key, nonce, binding, role, ...options });
 
+test("the predecessor v1 authenticated record bytes remain identical", () => {
+  assert.equal(peer("controller").seal(message).toString("hex"), "00000000000000010000005e7b22626f6479223a7b22636f6465223a226566666563742d756e6b6e6f776e222c226b696e64223a226572726f72227d2c22726571756573744964223a22726571756573742df09fa7aa222c22736368656d6156657273696f6e223a317d36f580b3b6ab6f65ab98598d60ee00ddfcb3077db0d0b763a3dae4ee061ae51b");
+});
+
 test("authenticated channel binds both directions and successive sequence numbers", () => {
   const controller = peer("controller"), bridge = peer("bridge");
   for (let n = 0; n < 3; n++) {
@@ -44,6 +48,7 @@ test("key material is copied privately and disposal is terminal", () => {
   assert.deepEqual(peer("bridge").open(controller.seal(message)), message);
   controller.close(); controller.close();
   assert.throws(() => controller.seal(message), { code: "transport-failed" });
+  assert.throws(() => controller.seal(null), { code: "transport-failed" });
   assert.throws(() => controller.open(Buffer.alloc(0)), { code: "transport-failed" });
   assert.equal(JSON.stringify(controller), "{}");
   for (const changes of [{ role: "worker" }, { nonce: Buffer.alloc(0) }, { key: "secret" }, { binding: Buffer.alloc(31) }]) {

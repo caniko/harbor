@@ -15,8 +15,12 @@ include = [
   "/LICENSE",
   "/tests/**",
   "/src/execution/channel.mjs",
+  "/src/execution/commands.mjs",
+  "/src/execution/command-schema.mjs",
+  "/src/execution/records.mjs",
   "/src/execution/protocol.mjs",
   "/src/execution/schema.mjs",
+  "/src/json.mjs",
   "/docs/execution-transport.md",
 ]
 

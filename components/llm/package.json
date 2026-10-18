@@ -9,6 +9,10 @@
     "directory": "components/llm"
   },
   "exports": {
+    "./execution-commands": {
+      "types": "./src/execution/commands.d.mts",
+      "import": "./src/execution/commands.mjs"
+    },
     "./opencode-v2": {
       "types": "./src/execution/opencode-v2.d.mts",
       "import": "./src/execution/opencode-v2.mjs"

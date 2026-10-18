@@ -15,5 +15,5 @@
   };
   # Imported templates and byte-sensitive test data retain their source policy.
   # Simit owns workflow serialization; it verifies those files independently.
-  settings.excludes = ["components/database/tests/oracles/**" "migration/legacy/**" "**/templates/**" "**/tests/fixtures/**" "**/checks/fixtures/**" "components/llm/test/*.json" "components/llm/protocol/execution.json" "components/llm/protocol/conformance.json" "components/llm/src/execution/types.d.ts" ".github/workflows/*.yaml" "nix/packages/*/package-lock.json"];
+  settings.excludes = ["components/database/tests/oracles/**" "migration/legacy/**" "**/templates/**" "**/tests/fixtures/**" "**/checks/fixtures/**" "components/llm/test/*.json" "components/llm/protocol/execution.json" "components/llm/protocol/conformance.json" "components/llm/protocol/commands.json" "components/llm/src/execution/types.d.ts" "components/llm/src/execution/command-types.d.ts" ".github/workflows/*.yaml" "nix/packages/*/package-lock.json"];
 }

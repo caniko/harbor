@@ -7,6 +7,7 @@ mod types;
 pub use types::*;
 
 pub mod channel;
+pub mod commands;
 pub mod framing;
 
 use serde_json::Value;
@@ -56,25 +57,25 @@ fn canonical(value: &Value) -> Value {
     }
 }
 
-fn canonical_numbers(value: &Value) -> bool {
+fn canonical_numbers(value: &Value, owner: &Value) -> bool {
     match value {
         Value::Number(number) => number
             .as_u64()
-            .is_some_and(|n| n <= schema()["maxJsonInteger"].as_u64().unwrap()),
-        Value::Object(fields) => fields.values().all(canonical_numbers),
-        Value::Array(items) => items.iter().all(canonical_numbers),
+            .is_some_and(|n| n <= owner["maxJsonInteger"].as_u64().unwrap()),
+        Value::Object(fields) => fields.values().all(|value| canonical_numbers(value, owner)),
+        Value::Array(items) => items.iter().all(|value| canonical_numbers(value, owner)),
         _ => true,
     }
 }
 
-fn matches(value: &Value, definition: &Value) -> bool {
+fn matches(value: &Value, definition: &Value, owner: &Value) -> bool {
     if let Some(name) = definition.as_str() {
         return if name == "bool" {
             value.is_boolean()
         } else {
-            schema()["definitions"]
+            owner["definitions"]
                 .get(name)
-                .is_some_and(|definition| matches(value, definition))
+                .is_some_and(|definition| matches(value, definition, owner))
         };
     }
     if let Some(constant) = definition.get("const") {
@@ -103,6 +104,14 @@ fn matches(value: &Value, definition: &Value) -> bool {
                 Some("uint64") | Some("generation") => text.parse::<u64>().is_ok_and(|n| {
                     n.to_string() == text && (definition["format"] != "generation" || n > 0)
                 }),
+                Some("hex") => {
+                    !text.is_empty()
+                        && text.len() % 2 == 0
+                        && text.len() <= definition["maxBytes"].as_u64().unwrap() as usize
+                        && text
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                }
                 _ => false,
             });
     }
@@ -113,7 +122,9 @@ fn matches(value: &Value, definition: &Value) -> bool {
         return value.as_object().is_some_and(|object| {
             object.len() == fields.len()
                 && fields.iter().all(|(name, field)| {
-                    object.get(name).is_some_and(|value| matches(value, field))
+                    object
+                        .get(name)
+                        .is_some_and(|value| matches(value, field, owner))
                 })
         });
     }
@@ -130,12 +141,12 @@ fn matches(value: &Value, definition: &Value) -> bool {
         return kind
             .as_str()
             .and_then(|kind| variants.get(kind))
-            .is_some_and(|variant| matches(&Value::Object(fields), variant));
+            .is_some_and(|variant| matches(&Value::Object(fields), variant, owner));
     }
     if let Some(item) = definition.get("items") {
         return value.as_array().is_some_and(|items| {
             items.len() <= definition["maxItems"].as_u64().unwrap() as usize
-                && items.iter().all(|value| matches(value, item))
+                && items.iter().all(|value| matches(value, item, owner))
                 && (definition["unique"] != true
                     || items
                         .iter()
@@ -146,11 +157,11 @@ fn matches(value: &Value, definition: &Value) -> bool {
     false
 }
 
-fn validate(value: &Value) -> Result<(), ProtocolError> {
-    if value.get("schemaVersion") != Some(&schema()["version"]) {
+fn validate(value: &Value, owner: &Value) -> Result<(), ProtocolError> {
+    if value.get("schemaVersion") != Some(&owner["version"]) {
         return Err(rejected(ErrorCode::IncompatibleVersion));
     }
-    if !matches(value, &schema()["root"]) {
+    if !matches(value, &owner["root"], owner) {
         return Err(rejected(ErrorCode::InvalidFrame));
     }
     Ok(())
@@ -158,28 +169,37 @@ fn validate(value: &Value) -> Result<(), ProtocolError> {
 
 /// Decode canonical bounded JSON. Transport must bound reads before allocating.
 pub fn decode(bytes: &[u8]) -> Result<Message, ProtocolError> {
-    if bytes.len() > schema()["maxFrameBytes"].as_u64().unwrap() as usize {
+    serde_json::from_value(decode_value(bytes, schema())?)
+        .map_err(|_| rejected(ErrorCode::InvalidFrame))
+}
+
+fn decode_value(bytes: &[u8], owner: &Value) -> Result<Value, ProtocolError> {
+    if bytes.len() > owner["maxFrameBytes"].as_u64().unwrap() as usize {
         return Err(rejected(ErrorCode::InvalidFrame));
     }
     let value: Value =
         serde_json::from_slice(bytes).map_err(|_| rejected(ErrorCode::InvalidFrame))?;
-    if !canonical_numbers(&value)
+    if !canonical_numbers(&value, owner)
         || serde_json::to_vec(&canonical(&value)).map_err(|_| rejected(ErrorCode::InvalidFrame))?
             != bytes
     {
         return Err(rejected(ErrorCode::InvalidFrame));
     }
-    validate(&value)?;
-    serde_json::from_value(value).map_err(|_| rejected(ErrorCode::InvalidFrame))
+    validate(&value, owner)?;
+    Ok(value)
 }
 
 /// Validate and encode a canonical bounded message.
 pub fn encode(message: &Message) -> Result<Vec<u8>, ProtocolError> {
     let value = serde_json::to_value(message).map_err(|_| rejected(ErrorCode::InvalidFrame))?;
-    validate(&value)?;
+    encode_value(&value, schema())
+}
+
+fn encode_value(value: &Value, owner: &Value) -> Result<Vec<u8>, ProtocolError> {
+    validate(value, owner)?;
     let bytes =
-        serde_json::to_vec(&canonical(&value)).map_err(|_| rejected(ErrorCode::InvalidFrame))?;
-    if bytes.len() > schema()["maxFrameBytes"].as_u64().unwrap() as usize {
+        serde_json::to_vec(&canonical(value)).map_err(|_| rejected(ErrorCode::InvalidFrame))?;
+    if bytes.len() > owner["maxFrameBytes"].as_u64().unwrap() as usize {
         return Err(rejected(ErrorCode::InvalidFrame));
     }
     Ok(bytes)
