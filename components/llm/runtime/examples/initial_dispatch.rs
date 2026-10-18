@@ -7,12 +7,14 @@ use harbor_llm_protocol::{
         self, AuthenticatedChannel, Command, CommandBody, TransferPurpose, TransferReference,
     },
 };
-use harbor_llm_runtime::{Controller, Operation, State};
+use harbor_llm_runtime::{
+    Controller, Operation, State,
+    ipc::{Exchange, Limits},
+};
 use sha2::{Digest as _, Sha256};
 use std::{
     fs,
-    io::{Read, Write},
-    net::Shutdown,
+    io::Write,
     os::{
         fd::OwnedFd,
         unix::{fs::PermissionsExt, net::UnixStream},
@@ -40,28 +42,6 @@ fn write_frame(stream: &mut UnixStream, bytes: &[u8]) -> Result<(), ProtocolErro
         .map_err(io_error)?;
     stream.write_all(bytes).map_err(io_error)
 }
-fn send(
-    stream: &mut UnixStream,
-    channel: &mut AuthenticatedChannel,
-    request: &Command,
-    reply: bool,
-) -> Result<Option<Command>, ProtocolError> {
-    write_frame(stream, &channel.seal(request)?)?;
-    if !reply {
-        return Ok(None);
-    }
-    let mut header = [0; 4];
-    stream.read_exact(&mut header).map_err(io_error)?;
-    let length = u32::from_be_bytes(header) as usize;
-    if !(45..=65580).contains(&length) {
-        return Err(ProtocolError {
-            code: ErrorCode::InvalidFrame,
-        });
-    }
-    let mut bytes = vec![0; length];
-    stream.read_exact(&mut bytes).map_err(io_error)?;
-    channel.open(&bytes).map(Some)
-}
 fn command(binding: &Binding, body: CommandBody) -> Command {
     Command {
         schema_version: 2,
@@ -72,8 +52,7 @@ fn command(binding: &Binding, body: CommandBody) -> Command {
     }
 }
 fn transfer(
-    stream: &mut UnixStream,
-    channel: &mut AuthenticatedChannel,
+    exchange: &mut Exchange,
     binding: &Binding,
     purpose: TransferPurpose,
     bytes: &[u8],
@@ -103,7 +82,7 @@ fn transfer(
             transfer_id: reference.transfer_id.clone(),
         }),
     ] {
-        send(stream, channel, &command(binding, body), false).unwrap();
+        exchange.send_transfer(&command(binding, body)).unwrap();
     }
     reference
 }
@@ -158,11 +137,20 @@ fn main() {
         getrandom::fill(&mut nonce).unwrap();
         let binding_digest: [u8; 32] = Sha256::digest(serde_json::to_vec(&binding).unwrap()).into();
         write_frame(&mut stream, &serde_json::to_vec(&serde_json::json!({ "binding": binding, "key": key, "nonce": nonce, "digest": binding_digest })).unwrap()).unwrap();
-        let mut channel =
-            AuthenticatedChannel::new(&key, &nonce, &binding_digest, Role::Controller);
+        let channel = AuthenticatedChannel::new(&key, &nonce, &binding_digest, Role::Controller);
+        let mut exchange = Exchange::new(
+            stream,
+            channel,
+            binding.clone(),
+            Limits {
+                timeout: Duration::from_secs(3),
+                records: 64,
+                bytes: 1024 * 1024,
+            },
+        )
+        .unwrap();
         let config = transfer(
-            &mut stream,
-            &mut channel,
+            &mut exchange,
             &binding,
             TransferPurpose::Configuration,
             br#"{"model":{"providerID":"synthetic","id":"fixture"},"permissions":[]}"#,
@@ -175,12 +163,11 @@ fn main() {
                         configuration: config,
                     }),
                 ),
-                |request| send(&mut stream, &mut channel, request, true).map(Option::unwrap),
+                |request| exchange.request(request),
             )
             .unwrap();
         let input = transfer(
-            &mut stream,
-            &mut channel,
+            &mut exchange,
             &binding,
             TransferPurpose::Input,
             br#"{"text":"exact original input"}"#,
@@ -195,7 +182,7 @@ fn main() {
                         input: input.clone(),
                     }),
                 ),
-                |request| send(&mut stream, &mut channel, request, true).map(Option::unwrap),
+                |request| exchange.request(request),
             )
             .unwrap();
         let release = command(
@@ -206,9 +193,7 @@ fn main() {
                 input_digest: input.digest,
             }),
         );
-        let result = controller.dispatch_initial(&release, |request| {
-            send(&mut stream, &mut channel, request, true).map(Option::unwrap)
-        });
+        let result = controller.dispatch_initial(&release, |request| exchange.request(request));
         if fault == "none" {
             result.unwrap();
         } else {
@@ -229,7 +214,7 @@ fn main() {
                 .code,
             ErrorCode::EffectUnknown
         );
-        stream.shutdown(Shutdown::Both).unwrap();
+        exchange.close();
         let effects = fs::read_to_string(journal.with_extension("requests")).unwrap();
         assert_eq!(
             effects,

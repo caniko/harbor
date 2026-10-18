@@ -10,6 +10,9 @@ use zeroize::Zeroizing;
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// Fixed authenticated-record layout and domain, independent of command data.
+pub const SCHEMA: &str = include_str!("../protocol/channel.json");
+
 /// Local endpoint direction. Directional keys prevent reflected replies.
 #[derive(Clone, Copy)]
 pub enum Role {
@@ -183,8 +186,7 @@ impl AuthenticatedChannel {
     /// Derive fixed v1 directional keys; callers own nonce freshness and custody.
     pub fn new(key: &[u8; 32], nonce: &[u8; 32], binding: &[u8; 32], role: Role) -> Self {
         let contract: serde_json::Value =
-            serde_json::from_str(include_str!("../protocol/channel.json"))
-                .expect("checked-in channel contract");
+            serde_json::from_str(SCHEMA).expect("checked-in channel contract");
         Self {
             records: Records::new(
                 key,

@@ -248,3 +248,48 @@ fn journal_failure_and_unsupported_cancellation_never_invoke_callback() {
         ErrorCode::CustodyLost
     );
 }
+
+#[test]
+fn abrupt_exit_inside_the_exchange_keeps_the_execution_reservation_unknown() {
+    const CHILD_ROOT: &str = "HARBOR_INITIAL_DISPATCH_CRASH_ROOT";
+    if let Some(path) = std::env::var_os(CHILD_ROOT) {
+        let path = std::path::Path::new(&path);
+        let mut controller = Controller::register(path, &binding(), 4096).unwrap();
+        fs::write(
+            path.join("registration.json"),
+            serde_json::to_vec(controller.registration()).unwrap(),
+        )
+        .unwrap();
+        let requests = initial();
+        for request in &requests[..2] {
+            controller
+                .dispatch_initial(request, |request| Ok(reply(request)))
+                .unwrap();
+        }
+        controller
+            .dispatch_initial(&requests[2], |_| std::process::exit(0))
+            .unwrap();
+        panic!("exchange must exit abruptly");
+    }
+    let root = root();
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "abrupt_exit_inside_the_exchange_keeps_the_execution_reservation_unknown",
+        ])
+        .env(CHILD_ROOT, root.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let registration =
+        serde_json::from_slice(&fs::read(root.path().join("registration.json")).unwrap()).unwrap();
+    let mut reopened = Controller::reopen(root.path(), &registration, &binding()).unwrap();
+    assert_eq!(reopened.state(Operation::Execute), Some(State::Unknown));
+    assert_eq!(
+        reopened
+            .dispatch_initial(&initial()[2], |_| panic!("crashed dispatch cannot replay"))
+            .unwrap_err()
+            .code,
+        ErrorCode::EffectUnknown
+    );
+}

@@ -111,6 +111,10 @@ checks fail. Lost or mismatched replies retain UNKNOWN. This connects journal
 fencing to the actual dispatcher/adapter through the explicit conformance example
 in the [runtime README](../runtime/README.md). The exchange/launcher must still
 establish private channel and executable custody and supervise all descendants.
+The runtime's `ipc::Exchange` supplies the bounded private Unix exchange used by
+that example: one owned socket/channel, whole-channel deadline and cumulative
+record/wire-byte limits, with checks before allocation/writes. It neither opens
+nor reconnects a socket; all failures terminally shut down the original channel.
 
 ## Authenticated records
 

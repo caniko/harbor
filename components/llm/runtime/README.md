@@ -32,6 +32,17 @@ This helper does not reconnect, launch or supervise a bridge. The exchange must
 enforce its deadline and private executable/channel custody; current-authority
 cancellation, revocation and closure are deliberately unsupported on this path.
 
+`ipc::Exchange` owns the supervisor-supplied private Unix socket and authenticated
+command channel. Required limits cover whole-channel elapsed time, records and
+wire bytes in both directions. Each partial read/write uses the remaining
+deadline; slow peer progress never resets it. Length checks and cumulative
+budgets precede allocation or the next write. Effects use exactly one matched
+reply exchange inside `dispatch_initial`; transfers have no response. Any
+failure closes the original socket and zeroizes channel keys, without connecting
+or retrying. The launcher must provide original peer/executable and descriptor
+custody and dispose of its initial key buffers; an owned socket is not a process
+container or exclusive engine-writer boundary.
+
 `retain` accepts complete application-validated output and durably binds its
 bytes, digest and execution binding before `deliver` can return identical bytes.
 Applications must authenticate the current delivery generation themselves.
@@ -58,7 +69,7 @@ JavaScript dispatcher module, including one in a realized production package:
 cargo run --locked -p harbor-llm-runtime --example initial_dispatch -- /absolute/path/to/src/execution/dispatcher.mjs
 ```
 
-It uses fresh private IPC credentials, the actual dispatcher and pinned generated
+It uses the runtime's `ipc::Exchange`, fresh private IPC credentials, the actual dispatcher and pinned generated
 client, a synthetic HTTP observer, and disposable controller stores. The observer
 checks the on-disk UNKNOWN reservation before each mutation. Normal release, lost
 HTTP/IPC replies and bridge exit all exercise no-replay recovery. This is local

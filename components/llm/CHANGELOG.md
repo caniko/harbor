@@ -11,6 +11,9 @@
 - Connect initial authenticated create/admit/release dispatch to fsynced journal
   reservations, with cumulative budgets and local lost-HTTP/IPC/bridge-exit
   conformance. Final supervision and privileged custody remain separate gates.
+- Supply a single-owner Unix IPC exchange with whole-channel byte/record/time
+  limits, terminal shutdown and no reconnect/retry. Partial progress cannot reset
+  its deadline; the installed-dispatcher fixture uses this runtime path.
 - Add an integrity-pinned OpenCode V2 adapter for admission, one-shot initial
   release and observational reconciliation. Construction defaults to observation;
   fresh release requires the distinct journal reservation and exclusive session
