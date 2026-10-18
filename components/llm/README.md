@@ -1,5 +1,11 @@
 # harbor-llm
 
+## Shared execution contracts
+
+The execution protocol, authenticated channel codecs and bounded native JSON
+transport live in this component. See [execution transport](docs/execution-transport.md)
+for APIs, wire compatibility, resource limits and consumer adoption requirements.
+
 Generic harness integrations, starting with session/project-scoped dev-shell
 switching in OpenCode. Language Harbors own compilers and their dev shells;
 `harbor-meta` owns generic shell composition. Consumers supply project roots,

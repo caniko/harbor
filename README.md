@@ -15,7 +15,7 @@ catalog, platform support, Blender/OpenPencil MCP and CAD runtime contracts.
 The root `flake.nix` and `flake.lock` own the input graph. Component output
 adapters are imported with those inputs and a component-local `self`; their
 former input declarations and lockfiles do not participate in root evaluation.
-The root Cargo workspace has nine members, with one lockfile and package-scoped
+The root Cargo workspace has twelve members, with one lockfile and package-scoped
 Nix builds. Templates and test fixtures keep their independent project manifests.
 
 | Component                                               | Nix library namespace             |

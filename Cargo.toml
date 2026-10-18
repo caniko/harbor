@@ -2,6 +2,9 @@
 resolver = "3"
 members = [
   "components/core/crates/harbor-evidence",
+  "components/llm",
+  "components/llm/runtime",
+  "components/llm/tools/codegen",
   "components/rust/cli",
   "components/rust/crates/harbor-cache",
   "components/rust/crates/harbor-sdk",

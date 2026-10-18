@@ -18,10 +18,24 @@ test("packed MCP exports work without OpenCode or installed dependencies", async
   const result = execFileSync(process.execPath, ["--input-type=module", "-e", `
     import assert from "node:assert/strict";
     import { bindMcpServersToRun, requireMcpRunBinding } from "harbor-llm/mcp-admission";
+    import { AuthenticatedChannel } from "harbor-llm/execution-channel";
+    import { frame, FrameDecoder } from "harbor-llm/execution-framing";
+    import { runJson } from "harbor-llm/transport";
     import vectors from "harbor-llm/contracts/mcp-admission-conformance.v1.json" with { type: "json" };
     const [server] = bindMcpServersToRun({servers: [vectors.server], policy: vectors.policy,
       runId: "packed-run", executionHostId: "host-a"});
     assert.equal(requireMcpRunBinding(server.runBinding, server.runBinding).runId, "packed-run");
+    const options = { key: Buffer.alloc(32, 1), nonce: Buffer.alloc(32, 2), binding: Buffer.alloc(32, 3) };
+    const controller = new AuthenticatedChannel({...options, role: "controller"});
+    const bridge = new AuthenticatedChannel({...options, role: "bridge"});
+    const message = { schemaVersion: 1, requestId: "standalone", body: { kind: "error", code: "effect-unknown" } };
+    assert.deepEqual(bridge.open(controller.seal(message)), message);
+    const decoder = new FrameDecoder();
+    assert.deepEqual(decoder.push(frame(message)), [message]);
+    decoder.end(); controller.close(); bridge.close();
+    assert.deepEqual(await runJson(process.execPath, ["-e", "process.stdout.write('{}')"], {
+      limits: { timeoutMs: 5000, inputBytes: 1024, outputBytes: 1024, stderrBytes: 1024 },
+    }), {});
     console.log("isolated MCP package accepted");
   `], { cwd: root, encoding: "utf8" });
   assert.match(result, /isolated MCP package accepted/);

@@ -9,6 +9,26 @@
     "directory": "components/llm"
   },
   "exports": {
+    "./opencode-v2": {
+      "types": "./src/execution/opencode-v2.d.mts",
+      "import": "./src/execution/opencode-v2.mjs"
+    },
+    "./execution-channel": {
+      "types": "./src/execution/channel.d.mts",
+      "import": "./src/execution/channel.mjs"
+    },
+    "./execution-protocol": {
+      "types": "./src/execution/protocol.d.mts",
+      "import": "./src/execution/protocol.mjs"
+    },
+    "./execution-framing": {
+      "types": "./src/execution/framing.d.mts",
+      "import": "./src/execution/framing.mjs"
+    },
+    "./transport": {
+      "types": "./src/transport.d.mts",
+      "import": "./src/transport.mjs"
+    },
     "./mcp-admission": {
       "types": "./src/mcp-admission.d.mts",
       "import": "./src/mcp-admission.mjs"
@@ -25,14 +45,16 @@
   "files": [
     "src",
     "plugins",
-    "contracts"
+    "contracts",
+    "protocol"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit --strict --module NodeNext --target ES2023 test/mcp-admission.types.mts",
+    "typecheck": "tsc --noEmit --strict --module NodeNext --target ES2023 --lib ES2023,ESNext.Disposable,DOM test/mcp-admission.types.mts test/execution.types.mts",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.18.30"
+    "@opencode-ai/plugin": "1.18.30",
+    "@opencode/client": "2.0.22"
   },
   "devDependencies": {
     "typescript": "7.0.2"
