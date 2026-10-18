@@ -49,10 +49,11 @@
           filter = path: type:
             craneLib.filterCargoSources path type
             || pkgs.lib.hasPrefix "${toString ./.}/protocol/" path
-            || path == "${toString ./.}/rust/README.md";
+            || path == "${toString ./.}/rust/README.md"
+            || builtins.elem path ["${toString ./.}/runtime/src/standalone.mjs" "${toString ./.}/runtime/src/native_observer.mjs"];
         };
         strictDeps = true;
-        cargoExtraArgs = "--locked -p harbor-llm-runtime --bin harbor-llm-custodian";
+        cargoExtraArgs = "--locked -p harbor-llm-runtime --bin harbor-llm-custodian --bin harbor-llm-standalone";
         # Receipt/admission authority must not run through a caller-owned loader.
         CARGO_BUILD_TARGET = pkgs.stdenv.hostPlatform.rust.rustcTarget;
         RUSTFLAGS = "-C target-feature=+crt-static -L native=${pkgs.glibc.static}/lib";
@@ -63,7 +64,7 @@
           cargoArtifacts = craneLib.buildDepsOnly custodianArgs;
           doCheck = false;
           meta = {
-            description = "Preparation-only Linux custodian for Harbor LLM execution";
+            description = "Harbor LLM preparation custodian and experimental Linux namespace setup";
             license = pkgs.lib.licenses.mit;
             mainProgram = "harbor-llm-custodian";
             platforms = pkgs.lib.platforms.linux;

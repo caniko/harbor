@@ -10,7 +10,7 @@ TypeScript exports are part of `harbor-llm`:
 | `harbor-llm/execution-framing`    | Bounded, incremental length-prefixed message framing                       |
 | `harbor-llm/execution-channel`    | Directional authenticated records and replay rejection                     |
 | `harbor-llm/execution-commands`   | Separate v2 command codec, authenticated records and bounded transfers     |
-| `harbor-llm/execution-dispatcher` | Initial create/admit/release endpoint for an authenticated private channel |
+| `harbor-llm/execution-dispatcher` | Initial dispatch, observational recovery and separately authorized interruption |
 | `harbor-llm/transport`            | One bounded JSON subprocess operation with cancellation                    |
 | `harbor-llm/opencode-v2`          | Pinned generated-client transport and bounded observational recovery       |
 
@@ -102,8 +102,10 @@ fresh mode. It checks the configured binding and execution-ID handle, accepts on
 configuration and one input transfer, consumes complete references once, and
 requires the original inbox ID and input digest on release. Cumulative input,
 record count and the whole endpoint deadline are bounded; the deadline also
-aborts stalled HTTP. Other commands, including current-authority interruption,
-revocation and cleanup, are unsupported before their effects.
+aborts stalled HTTP. Reopen/reconcile send only bounded observation transfers
+with correlated content-bound receipts. Interruption requires an independently
+supplied current-authority digest and is one-shot even when its reply is lost.
+Revocation and cleanup belong to the supervisor.
 
 `Controller::dispatch_initial` fsyncs its matching reservation before invoking the
 authenticated exchange once. A callback never runs when reservation/custody
@@ -115,6 +117,8 @@ The runtime's `ipc::Exchange` supplies the bounded private Unix exchange used by
 that example: one owned socket/channel, whole-channel deadline and cumulative
 record/wire-byte limits, with checks before allocation/writes. It neither opens
 nor reconnects a socket; all failures terminally shut down the original channel.
+Its observational receiver validates purpose, correlation, the full binding,
+length/digest and the final output receipt before returning any bytes.
 
 On Linux, `artifact::Snapshot` supplies a sealed exact-byte image for the
 custodian's launch handoff. Capture rejects nonregular/empty sources, bounds
@@ -134,6 +138,16 @@ reopen is observational and never recaptures an artifact. The
 [preparation contract](../runtime/README.md#disabled-preparation-custodian)
 documents the bounded per-connection service and the remaining worker/supervisor
 integration. This private control envelope does not change either execution wire.
+
+The separate experimental [managed-host standalone supervisor](../runtime/README.md#experimental-managed-host-standalone-supervisor)
+owns a systemd user unit, sealed-image handoff, private authenticated bridge,
+bounded namespaces/resources and revoke-before-whole-cgroup cleanup. It trusts
+same-UID host writers and engine/tool code. Its integrated native gate drives the
+preparation fixture, journal, installed dispatcher and selected engine through
+interruption, process-container crashes, lost release receipts and retained
+completion. Closed state is content-bound before a single observational restart;
+independent provider/tool counters must remain unchanged. This profile does not
+extend the root preparation endpoint or qualify specialist worker custody.
 
 ## Authenticated records
 
@@ -259,11 +273,13 @@ roots. It is not part of the default provider-free test glob and fails rather
 than skips when its artifact inputs are missing. These are bounded native
 feasibility fixtures, not source attestation or production custody acceptance.
 
-The initial authenticated dispatcher and journal exchange have local conformance.
-The final supervised IPC launcher, exact standalone launch custody, privileged custodian,
-final-supervisor zero-effect reopen proof, live observation and production admission remain
-unfinished. These local tests do not establish those capabilities, native
-ARM64/macOS worker acceptance or actual same-job retained-output recovery.
+The initial dispatcher and the experimental trusted managed-host supervisor have
+local conformance, including exact-engine observational restart and synthetic
+same-job retained redelivery. Root-service launch integration, distinct-writer
+worker custody, source attestation, actual consumer completion/delivery semantics,
+copied-state migration/rollback and production admission remain unfinished.
+These local tests do not establish native ARM64/macOS worker acceptance or a
+qualified consumer release.
 
 Before replacing Toolbelt, Paperclip or Chaosbox implementations, publish and
 verify qualified Rust and JavaScript registry artifacts and the exact bridge

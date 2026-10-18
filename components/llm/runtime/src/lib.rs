@@ -15,6 +15,9 @@ pub mod artifact;
 #[cfg(target_os = "linux")]
 pub mod custodian;
 
+#[cfg(target_os = "linux")]
+pub mod standalone;
+
 use fs2::FileExt;
 use harbor_llm_protocol::commands::{
     self, CommandBody, Effect, EffectReceipt, EffectState, TransferPurpose,

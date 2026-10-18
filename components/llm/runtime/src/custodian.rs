@@ -509,3 +509,7 @@ fn serve_owned(config: Config, stream: UnixStream, owner: u32) -> Result<()> {
 #[cfg(test)]
 #[path = "custodian_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "native-conformance"))]
+#[path = "native_tests.rs"]
+mod native_tests;

@@ -1,6 +1,7 @@
 # harbor-llm-runtime
 
-Controller-side, provider-free execution accounting for Harbor LLM bridges.
+Controller-side execution accounting and an experimental Linux standalone supervisor
+for Harbor LLM bridges.
 
 The application authenticates original admission and supplies a private,
 pre-existing store protected from backend and daemon writers. Register once and
@@ -29,8 +30,10 @@ rejected or mismatched replies never permit a repeat. Handles equal the
 preallocated execution ID; submission and release bind the same canonical
 `(handle, inbox ID, input-byte digest)` tuple. Request IDs are correlations only.
 This helper does not reconnect, launch or supervise a bridge. The exchange must
-enforce its deadline and private executable/channel custody; current-authority
-cancellation, revocation and closure are deliberately unsupported on this path.
+enforce its deadline and private executable/channel custody. `dispatch_interrupt`
+separately validates a supplied current-authority digest and the original target,
+then fsyncs its own one-shot interrupt reservation, including after journal reopen.
+Revocation and closure belong to the supervisor.
 
 `ipc::Exchange` owns the supervisor-supplied private Unix socket and authenticated
 command channel. Required limits cover whole-channel elapsed time, records and
@@ -62,6 +65,84 @@ identity and durable evidence. Sealing one image does not pin shared libraries o
 JavaScript imports, establish private session writers, authenticate a process or
 provide admission or a sandbox. macOS keeps its separate existing managed-host
 snapshot boundary until a qualified implementation is integrated.
+
+### Experimental managed-host standalone supervisor
+
+`standalone::Session` is a Linux-only, non-root, trusted managed-host profile.
+It trusts same-UID host writers and the selected engine/tool code. It does not
+implement the specialist untrusted-worker custody boundary or a Paperclip,
+Roborev or Chaosbox application adapter. The root preparation service below
+continues to report launch unavailable.
+
+The application supplies an exact `Plan`, original controller registration,
+sealed engine image and a synchronous broker revoker. The complete plan and
+engine digest must match the independently admitted implementation digest.
+Dependencies, dispatcher imports and the tools-only PATH must be immutable
+canonical Nix-store paths. No operator environment or provider credential store
+is supplied to the engine. The selected provider talks through a private Unix
+broker; the application owns destination/model, authorization, token/spend and
+revocation policy. The revoker must return within 250 ms without panicking;
+this is a trusted application obligation, not enforced callback preemption.
+
+`start` reserves UNKNOWN before launch. One nondelegated systemd user unit owns
+Bubblewrap, the embedded Node bridge, the exact engine and all tool descendants.
+The unit enforces wall time, memory with swap disabled, aggregate CPU and task
+limits. Bubblewrap isolates network/PID/mount/IPC/UTS/user/cgroup namespaces,
+mounts the immutable dependencies read-only and exposes one private tmpfs.
+The setup helper bounds its bytes/inodes, disables further user namespaces and
+permanently drops capabilities before starting the bridge.
+
+Systemd `OpenFile=` transports the original sealed descriptors across the
+manager boundary. Bubblewrap copies their bytes into read-only executable mounts;
+the controller independently hashes the running Node executable and the mounted
+engine/helper before sending bootstrap credentials. The kernel peer UID, original
+unit/cgroup and enforced resource settings are checked first. The shared wire
+retains its bootstrap deadline and cumulative bidirectional record/byte counts
+when it becomes the authenticated command exchange.
+
+`submit` transfers exact original input only inside its fsynced reservation;
+`execute` releases only the original queued inbox item. `interrupt` requires a
+separately validated current cancellation grant. `reconcile` reads a bounded,
+correlated observation transfer with a content-bound receipt. It never resumes
+work, and a gap-bearing snapshot is not application completion.
+
+`close` revokes first, rechecks the original systemd invocation, stops the whole
+unit and verifies the original descriptor-pinned cgroup empty. Failed revocation,
+changed identity or unverifiable cleanup returns no restart handoff. Successful
+cleanup binds the complete closed state tree to its original plan and execution.
+`reopen` consumes that handoff's single observational attempt. Because Bubblewrap
+cannot directly bind a detached tmpfs directory, it makes a bounded private copy,
+checks it against the closed-state digest, copies it into a new bounded tmpfs and
+independently reads it back. Missing or changed state fails before engine launch.
+The original retained mount remains pinned; a path cannot reconstruct authority.
+The new bridge uses observation mode and the exact standalone engine path with
+restart continuity uninstalled. There is no automatic retry or replacement launch.
+
+The production `llm-custodian` package includes the private
+`harbor-llm-standalone` namespace helper. It has no host launch/admission CLI and
+rejects the initial user namespace, including host root. No service is enabled
+by packaging it.
+
+The opt-in integrated native gate requires explicit absolute selections for
+`HARBOR_OPENCODE_BINARY`, `HARBOR_OPENCODE_SHA256`, `HARBOR_NODE_BINARY`,
+`HARBOR_STANDALONE_HELPER`, `HARBOR_INSTALLED_DISPATCHER`,
+`HARBOR_BUBBLEWRAP_BINARY`, `HARBOR_NATIVE_EVIDENCE_ROOT` and
+`HARBOR_SHELL_TOOL_PATH`. Missing selections fail rather than skip:
+
+```sh
+cargo test --locked -p harbor-llm-runtime --features native-conformance --lib custodian::native_tests::custodian_through_exact_engine_execution_interruption_recovery_and_cleanup --jobs 2 -- --exact --nocapture
+```
+
+Its same-UID preparation fixture drives the real journal, installed dispatcher,
+selected engine and independent synthetic provider/tool observer. Seven phases
+cover provider/tool interruption, whole-unit crashes, lost release receipts and
+application-validated completion with identical retained redelivery. Observational
+restart must preserve suspension/resume claims and produce zero extra provider
+or tool attempts. Negative controls cover competing/repeated input, plan drift,
+stale cancellation/cleanup identity, reused handoffs, failed revocation and
+missing state. Every attempt and failed database capture is retained outside the
+unit. Reports remain `accepted: false`: this is local managed-supervisor conformance,
+not root-service acceptance, source attestation, consumer parity or deployment.
 
 ### Disabled preparation custodian
 
