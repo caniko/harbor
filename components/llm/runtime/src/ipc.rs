@@ -84,6 +84,13 @@ pub(crate) struct Wire {
     closed: bool,
 }
 impl Exchange {
+    pub(crate) fn from_wire(wire: Wire, channel: AuthenticatedChannel, binding: Binding) -> Self {
+        Self {
+            wire,
+            channel,
+            binding,
+        }
+    }
     /// Take ownership of a supervisor-established private channel. Construction
     /// performs no peer I/O. Channel credentials must be fresh and bound to this
     /// exact registration by the launcher; strings alone are not peer authority.
@@ -153,20 +160,71 @@ impl Exchange {
         }
         result
     }
-    /// Exchange exactly one initial command/reply. Invoke only inside the
-    /// original controller's `dispatch_initial` callback, after its fsynced
+    /// Exchange exactly one effect command/reply. Invoke only inside the
+    /// controller's matching dispatch callback, after its fsynced
     /// reservation. Reply meaning remains the controller/application's policy.
     pub fn request(&mut self, command: &Command) -> Result<Command> {
         let result = (|| {
             self.wire.remaining()?;
             if !matches!(
                 command.body,
-                CommandBody::Create(_) | CommandBody::Submit(_) | CommandBody::Execute(_)
+                CommandBody::Create(_)
+                    | CommandBody::Submit(_)
+                    | CommandBody::Execute(_)
+                    | CommandBody::Interrupt(_)
             ) {
                 return Err(reject(ErrorCode::UnsupportedCapability));
             }
             self.send(command)?;
             self.receive(command)
+        })();
+        if result.is_err() {
+            self.close();
+        }
+        result
+    }
+    /// Read a bounded complete observation transfer for the original execution.
+    /// Reopen/reconcile are observational; this never creates or resumes a server.
+    /// The returned snapshot always needs application validation and gap handling.
+    pub fn reconcile(&mut self, command: &Command, maximum_bytes: u64) -> Result<Vec<u8>> {
+        let result = (|| {
+            let target = match &command.body {
+                CommandBody::Reopen(target) | CommandBody::Reconcile(target) => target,
+                _ => return Err(reject(ErrorCode::UnsupportedCapability)),
+            };
+            if target.handle != self.binding.execution_id {
+                return Err(reject(ErrorCode::AuthorityDenied));
+            }
+            self.send(command)?;
+            let CommandBody::TransferBegin(begin) = self.receive(command)?.body else {
+                return Err(reject(ErrorCode::InvalidFrame));
+            };
+            if begin.reference.purpose != commands::TransferPurpose::Observation {
+                return Err(reject(ErrorCode::CustodyLost));
+            }
+            let reference = begin.reference;
+            let mut receiver = commands::TransferReceiver::new(
+                reference.clone(),
+                maximum_bytes,
+                self.wire.remaining()?,
+            )?;
+            let bytes = loop {
+                match self.receive(command)?.body {
+                    CommandBody::TransferChunk(chunk) => receiver.push(&chunk)?,
+                    CommandBody::TransferEnd(end) => break receiver.finish(&end.transfer_id)?,
+                    _ => return Err(reject(ErrorCode::InvalidFrame)),
+                }
+            };
+            let CommandBody::OutputReceipt(receipt) = self.receive(command)?.body else {
+                return Err(reject(ErrorCode::InvalidFrame));
+            };
+            if receipt.binding != self.binding
+                || receipt.output_digest != reference.digest
+                || receipt.output_bytes != reference.bytes
+            {
+                return Err(reject(ErrorCode::CustodyLost));
+            }
+            Ok(bytes)
         })();
         if result.is_err() {
             self.close();

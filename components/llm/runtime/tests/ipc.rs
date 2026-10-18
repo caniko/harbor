@@ -1,10 +1,11 @@
 //! Real private sockets exercise whole-channel bounds and terminal no-retry I/O.
 use harbor_llm_protocol::{
-    Binding, ErrorCode,
+    Binding, ErrorCode, OutputReceipt,
     channel::Role,
     commands::{self, AuthenticatedChannel, Command, CommandBody},
 };
 use harbor_llm_runtime::ipc::{Exchange, Limits};
+use sha2::{Digest, Sha256};
 use std::{
     io::{Read, Write},
     os::unix::net::UnixStream,
@@ -139,6 +140,115 @@ fn lost_partial_and_mismatched_replies_permanently_close_the_original_socket() {
             exchange.request(&execute()).unwrap_err().code,
             ErrorCode::TransportFailed
         );
+        worker.join().unwrap();
+    }
+}
+
+#[test]
+fn observations_require_exact_transfer_receipt_and_correlation_before_returning_bytes() {
+    for fault in [
+        "none",
+        "purpose",
+        "request",
+        "binding",
+        "receipt-binding",
+        "digest",
+        "length",
+        "budget",
+    ] {
+        let (socket, mut remote) = UnixStream::pair().unwrap();
+        let worker = thread::spawn(move || {
+            let mut channel = peer(Role::Bridge);
+            let mut request = read(&mut remote, &mut channel);
+            if fault == "request" {
+                request.request_id = "other-request".into();
+            }
+            if fault == "binding" {
+                request.binding.intent_id = "other-intent".into();
+            }
+            let bytes = b"original observation";
+            let reference = commands::TransferReference {
+                transfer_id: "observation".into(),
+                purpose: if fault == "purpose" {
+                    commands::TransferPurpose::Input
+                } else {
+                    commands::TransferPurpose::Observation
+                },
+                digest: format!("{:x}", Sha256::digest(bytes)),
+                bytes: bytes.len().to_string(),
+            };
+            write(
+                &mut remote,
+                &mut channel,
+                &Command {
+                    body: CommandBody::TransferBegin(commands::TransferBegin {
+                        reference: reference.clone(),
+                    }),
+                    ..request.clone()
+                },
+            );
+            if ["purpose", "request", "binding", "budget"].contains(&fault) {
+                return;
+            }
+            write(
+                &mut remote,
+                &mut channel,
+                &Command {
+                    body: CommandBody::TransferChunk(commands::TransferChunk {
+                        transfer_id: reference.transfer_id.clone(),
+                        offset: "0".into(),
+                        data: bytes.iter().map(|byte| format!("{byte:02x}")).collect(),
+                    }),
+                    ..request.clone()
+                },
+            );
+            write(
+                &mut remote,
+                &mut channel,
+                &Command {
+                    body: CommandBody::TransferEnd(commands::TransferEnd {
+                        transfer_id: reference.transfer_id,
+                    }),
+                    ..request.clone()
+                },
+            );
+            let mut receipt = OutputReceipt {
+                binding: binding(),
+                output_digest: reference.digest,
+                output_bytes: reference.bytes,
+            };
+            if fault == "receipt-binding" {
+                receipt.binding.intent_id = "other-intent".into();
+            }
+            if fault == "digest" {
+                receipt.output_digest = "e".repeat(64);
+            }
+            if fault == "length" {
+                receipt.output_bytes = "1".into();
+            }
+            write(
+                &mut remote,
+                &mut channel,
+                &Command {
+                    body: CommandBody::OutputReceipt(receipt),
+                    ..request
+                },
+            );
+        });
+        let mut exchange = exchange(socket, limits());
+        let request = command(CommandBody::Reconcile(commands::Target {
+            handle: binding().execution_id,
+        }));
+        let observed = exchange.reconcile(&request, if fault == "budget" { 1 } else { 1024 });
+        if fault == "none" {
+            assert_eq!(observed.unwrap(), b"original observation");
+        } else {
+            assert!(observed.is_err(), "{fault}");
+            assert_eq!(
+                exchange.reconcile(&request, 1024).unwrap_err().code,
+                ErrorCode::TransportFailed
+            );
+        }
         worker.join().unwrap();
     }
 }

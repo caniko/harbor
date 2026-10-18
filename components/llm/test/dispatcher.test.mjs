@@ -3,14 +3,14 @@ import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { InitialDispatcher } from "../src/execution/dispatcher.mjs";
-import { AuthenticatedChannel, schemaDigest } from "../src/execution/commands.mjs";
+import { AuthenticatedChannel, schemaDigest, TransferReceiver } from "../src/execution/commands.mjs";
 
 const binding = { callerAuthority: "controller", callerNamespace: "fixture", intentId: "job", executionId: "ses_fixture", executionGeneration: "1", inputDigest: "a".repeat(64), policyDigest: "b".repeat(64), implementationDigest: "c".repeat(64) };
 const credentials = { key: Buffer.alloc(32, 1), nonce: Buffer.alloc(32, 2), binding: Buffer.alloc(32, 3) };
 const configuration = { model: { providerID: "synthetic", id: "fixture" }, permissions: [] };
 const input = { text: "exact original input" };
 const limits = { timeoutMs: 5000, inputBytes: 65536, records: 64 };
-async function fixture(t, { mode, lost = false, stalled = false, dispatcherLimits = limits } = {}) {
+async function fixture(t, { mode, interruptAuthority, lost = false, stalled = false, dispatcherLimits = limits } = {}) {
   const requests = [];
   let session, inbox = [];
   const http = createServer(async (req, res) => {
@@ -28,6 +28,7 @@ async function fixture(t, { mode, lost = false, stalled = false, dispatcherLimit
       inbox = [{ id, delivery, payload, sessionID: binding.executionId, type: "user" }];
       return json({ data: inbox[0] });
     }
+    if (req.method === "POST" && req.url.endsWith("/interrupt?resume=false")) return json({ interrupted: true });
     if (req.method === "PATCH") {
       if (lost) return res.destroy();
       res.writeHead(204); return res.end();
@@ -37,15 +38,24 @@ async function fixture(t, { mode, lost = false, stalled = false, dispatcherLimit
     return json({ data: session });
   });
   await new Promise(resolve => http.listen(0, "127.0.0.1", resolve));
-  const dispatcher = new InitialDispatcher({ binding, credentials, mode, limits: dispatcherLimits,
+  const dispatcher = new InitialDispatcher({ binding, credentials, mode, interruptAuthority, limits: dispatcherLimits,
     adapter: { url: `http://127.0.0.1:${http.address().port}`, authorization: "Basic fixture", server: { pid: 123, version: "2.0.22" }, directory: "/sealed",
       limits: { timeoutMs: 5000, inputBytes: 65536, outputBytes: 65536, totalResponseBytes: 1024 * 1024, requests: 64, pages: 4, messages: 8 } } });
   t.after(() => { dispatcher.close(); http.closeAllConnections(); http.close(); });
   const channel = new AuthenticatedChannel({ ...credentials, role: "controller" });
   let ordinal = 0;
+  const observations = [];
   const send = async (body, changes) => {
     const request = { schemaVersion: 2, commandSchemaDigest: schemaDigest, requestId: `request-${++ordinal}`, binding, body, ...changes };
-    const response = await dispatcher.handle(channel.seal(request));
+    let receiver;
+    const response = await dispatcher.handle(channel.seal(request), async record => {
+      const reply = channel.open(record);
+      assert.equal(reply.requestId, request.requestId);
+      assert.deepEqual(reply.binding, binding);
+      if (reply.body.kind === "transfer-begin") receiver = new TransferReceiver(reply.body.reference, { maximumBytes: 65536, timeoutMs: 5000 });
+      else if (reply.body.kind === "transfer-chunk") receiver.push(reply.body);
+      else observations.push(JSON.parse(Buffer.from(receiver.finish(reply.body)).toString()));
+    });
     return response ? channel.open(response) : undefined;
   };
   const transfer = async (purpose, value, transferId = purpose) => {
@@ -56,7 +66,7 @@ async function fixture(t, { mode, lost = false, stalled = false, dispatcherLimit
     await send({ kind: "transfer-end", transferId });
     return reference;
   };
-  return { dispatcher, channel, send, transfer, requests };
+  return { dispatcher, channel, send, transfer, requests, observations };
 }
 
 test("authenticated initial dispatch uses only the original queued input and one release", async t => {
@@ -125,4 +135,32 @@ test("lost HTTP release reply is terminal through the dispatcher and never repos
   await assert.rejects(send(execute), { code: "transport-failed" });
   assert.equal(requests.filter(request => request.method === "PATCH").length, 1);
   assert.equal(requests.filter(request => request.path.endsWith("/prompt")).length, 1);
+});
+
+test("bound reconciliation transfers complete observations and never releases work", async t => {
+  const fresh = await fixture(t, { mode: "fresh" });
+  await fresh.send({ kind: "create", configuration: await fresh.transfer("configuration", configuration) });
+  const before = fresh.requests.filter(request => request.method !== "GET").length;
+  const receipt = await fresh.send({ kind: "reconcile", handle: binding.executionId });
+  assert.equal(receipt.body.kind, "output-receipt");
+  assert.equal(fresh.observations.length, 1);
+  assert.equal(fresh.observations[0].gap, true);
+  assert.equal(fresh.observations[0].complete, false);
+  assert.equal(fresh.requests.filter(request => request.method !== "GET").length, before);
+  const observe = await fixture(t);
+  // This observer has no session. A read is allowed; no create fallback is made.
+  await assert.rejects(observe.send({ kind: "reopen", handle: binding.executionId }));
+  assert.ok(observe.requests.every(request => request.method === "GET"));
+});
+
+test("interruption needs separately supplied current authority and stays one-shot", async t => {
+  const denied = await fixture(t, { interruptAuthority: "e".repeat(64) });
+  await assert.rejects(denied.send({ kind: "interrupt", handle: binding.executionId, authorityDigest: "f".repeat(64) }), { code: "authority-denied" });
+  assert.equal(denied.requests.length, 0);
+  const allowed = await fixture(t, { mode: "fresh", interruptAuthority: "e".repeat(64) });
+  await allowed.send({ kind: "create", configuration: await allowed.transfer("configuration", configuration) });
+  const cancel = { kind: "interrupt", handle: binding.executionId, authorityDigest: "e".repeat(64) };
+  assert.equal((await allowed.send(cancel)).body.operation, "interrupt");
+  await assert.rejects(allowed.send(cancel), { code: "effect-unknown" });
+  assert.deepEqual(allowed.requests.filter(request => request.path.endsWith("/interrupt?resume=false")).map(request => request.body), [undefined]);
 });

@@ -66,6 +66,7 @@ fn reply(request: &Command) -> Command {
         CommandBody::Create(_) => Effect::Create,
         CommandBody::Submit(_) => Effect::Submit,
         CommandBody::Execute(_) => Effect::Execute,
+        CommandBody::Interrupt(_) => Effect::Interrupt,
         _ => panic!("not initial"),
     };
     Command {
@@ -288,6 +289,52 @@ fn abrupt_exit_inside_the_exchange_keeps_the_execution_reservation_unknown() {
     assert_eq!(
         reopened
             .dispatch_initial(&initial()[2], |_| panic!("crashed dispatch cannot replay"))
+            .unwrap_err()
+            .code,
+        ErrorCode::EffectUnknown
+    );
+}
+
+#[test]
+fn current_authority_interrupts_only_the_original_execution_after_a_durable_fence() {
+    let root = root();
+    let mut controller = Controller::register(root.path(), &binding(), 4096).unwrap();
+    for request in &initial()[..2] {
+        controller
+            .dispatch_initial(request, |request| Ok(reply(request)))
+            .unwrap();
+    }
+    let registration = controller.registration().clone();
+    let path = controller.entry().join("journal.json");
+    drop(controller);
+    let mut controller = Controller::reopen(root.path(), &registration, &binding()).unwrap();
+    let cancel = command(CommandBody::Interrupt(commands::Cancel {
+        handle: binding().execution_id,
+        authority_digest: "e".repeat(64),
+    }));
+    assert_eq!(
+        controller
+            .dispatch_interrupt(&cancel, &"f".repeat(64), |_| panic!("stale authority"))
+            .unwrap_err()
+            .code,
+        ErrorCode::AuthorityDenied
+    );
+    controller
+        .dispatch_interrupt(&cancel, &"e".repeat(64), |request| {
+            let journal: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert!(journal["operations"]["interrupt"]["receipt"].is_null());
+            assert!(journal["operations"]["interrupt"].is_object());
+            Ok(reply(request))
+        })
+        .unwrap();
+    assert_eq!(
+        controller.state(Operation::Interrupt),
+        Some(State::Observed)
+    );
+    assert_eq!(
+        controller
+            .dispatch_interrupt(&cancel, &"e".repeat(64), |_| panic!("replay"))
             .unwrap_err()
             .code,
         ErrorCode::EffectUnknown

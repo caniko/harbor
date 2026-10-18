@@ -7,10 +7,12 @@ export interface InitialDispatcherOptions {
   adapter: Omit<OpenCodeV2Options, "sessionID" | "mode">;
   /** Observation is the default; only original Rust admission may select fresh. */
   mode?: "fresh" | "observe";
+  /** Independently validated current cancellation authority; never inferred on reopen. */
+  interruptAuthority?: string;
   limits: { timeoutMs: number; inputBytes: number; records: number };
 }
 export class InitialDispatcher {
   constructor(options: InitialDispatcherOptions);
-  handle(record: Uint8Array): Promise<Uint8Array | undefined>;
+  handle(record: Uint8Array, sendTransfer?: (record: Uint8Array) => Promise<void>): Promise<Uint8Array | undefined>;
   close(): void;
 }

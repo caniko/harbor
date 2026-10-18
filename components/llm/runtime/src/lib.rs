@@ -505,7 +505,68 @@ impl Controller {
                 });
             }
         };
-        self.reserve(operation, &input_digest)?;
+        self.dispatch_effect(command, operation, effect, &input_digest, exchange)
+    }
+
+    /// Interrupt only the original execution after independently validating the
+    /// current application's cancellation grant. `current_authority` is supplied
+    /// by that authorizer, never reconstructed from the journal or a peer string.
+    /// Reopened controllers may interrupt, but never replay initial effects. Lost
+    /// replies remain UNKNOWN and this grant cannot be used to retry interruption.
+    pub fn dispatch_interrupt(
+        &mut self,
+        command: &commands::Command,
+        current_authority: &str,
+        exchange: impl FnOnce(
+            &commands::Command,
+        ) -> std::result::Result<
+            commands::Command,
+            harbor_llm_protocol::ProtocolError,
+        >,
+    ) -> Result<EffectReceipt> {
+        self.check()?;
+        commands::encode(command).map_err(|error| Error { code: error.code })?;
+        let CommandBody::Interrupt(cancel) = &command.body else {
+            return Err(Error {
+                code: ErrorCode::UnsupportedCapability,
+            });
+        };
+        if command.binding != self.journal.registration.binding
+            || cancel.handle != command.binding.execution_id
+            || !valid_digest(current_authority)
+            || cancel.authority_digest != current_authority
+        {
+            return Err(Error {
+                code: ErrorCode::AuthorityDenied,
+            });
+        }
+        let input_digest = digest(
+            &serde_json::to_vec(&(cancel.handle.as_str(), current_authority))
+                .map_err(|_| lost())?,
+        );
+        self.dispatch_effect(
+            command,
+            Operation::Interrupt,
+            Effect::Interrupt,
+            &input_digest,
+            exchange,
+        )
+    }
+
+    fn dispatch_effect(
+        &mut self,
+        command: &commands::Command,
+        operation: Operation,
+        effect: Effect,
+        input_digest: &str,
+        exchange: impl FnOnce(
+            &commands::Command,
+        ) -> std::result::Result<
+            commands::Command,
+            harbor_llm_protocol::ProtocolError,
+        >,
+    ) -> Result<EffectReceipt> {
+        self.reserve(operation, input_digest)?;
         let reply = exchange(command).map_err(|_| unknown())?;
         if commands::encode(&reply).is_err()
             || reply.request_id != command.request_id
