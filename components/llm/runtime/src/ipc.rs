@@ -68,9 +68,15 @@ pub struct Limits {
 /// Caller-protected endpoint custody is required for the entire lifetime. Do not
 /// retain socket clones or share its descriptor with backend/daemon writers.
 pub struct Exchange {
-    stream: UnixStream,
+    wire: Wire,
     channel: AuthenticatedChannel,
     binding: Binding,
+}
+
+// The custodian control socket and command endpoint share the same original
+// descriptor, deadline, allocation and cumulative-wire budget implementation.
+pub(crate) struct Wire {
+    stream: UnixStream,
     limits: Limits,
     deadline: Instant,
     records: u32,
@@ -87,6 +93,101 @@ impl Exchange {
         binding: Binding,
         limits: Limits,
     ) -> Result<Self> {
+        commands::encode(&Command {
+            schema_version: 2,
+            command_schema_digest: commands::SCHEMA_DIGEST.into(),
+            request_id: "ipc-binding".into(),
+            binding: binding.clone(),
+            body: CommandBody::Reopen(commands::Target {
+                handle: binding.execution_id.clone(),
+            }),
+        })?;
+        Ok(Self {
+            wire: Wire::new(stream, limits)?,
+            channel,
+            binding,
+        })
+    }
+    fn send(&mut self, command: &Command) -> Result<()> {
+        self.wire.remaining()?;
+        if command.binding != self.binding {
+            return Err(reject(ErrorCode::AuthorityDenied));
+        }
+        let bytes = self.channel.seal(command)?;
+        self.wire.send(&bytes)
+    }
+    fn receive(&mut self, request: &Command) -> Result<Command> {
+        let bytes = self
+            .wire
+            .receive(ceilings().record)?
+            .ok_or_else(|| reject(ErrorCode::TransportFailed))?;
+        if bytes.len() <= ceilings().overhead {
+            return Err(reject(ErrorCode::InvalidFrame));
+        }
+        let reply = self.channel.open(&bytes)?;
+        if reply.binding != self.binding {
+            return Err(reject(ErrorCode::AuthorityDenied));
+        }
+        if reply.request_id != request.request_id {
+            return Err(reject(ErrorCode::TransportFailed));
+        }
+        Ok(reply)
+    }
+    /// Send one transfer record without a response. Effectful commands cannot use
+    /// this path. The dispatcher checks transfer sequence, purpose and contents.
+    pub fn send_transfer(&mut self, command: &Command) -> Result<()> {
+        let result = (|| {
+            self.wire.remaining()?;
+            if !matches!(
+                command.body,
+                CommandBody::TransferBegin(_)
+                    | CommandBody::TransferChunk(_)
+                    | CommandBody::TransferEnd(_)
+            ) {
+                return Err(reject(ErrorCode::UnsupportedCapability));
+            }
+            self.send(command)
+        })();
+        if result.is_err() {
+            self.close();
+        }
+        result
+    }
+    /// Exchange exactly one initial command/reply. Invoke only inside the
+    /// original controller's `dispatch_initial` callback, after its fsynced
+    /// reservation. Reply meaning remains the controller/application's policy.
+    pub fn request(&mut self, command: &Command) -> Result<Command> {
+        let result = (|| {
+            self.wire.remaining()?;
+            if !matches!(
+                command.body,
+                CommandBody::Create(_) | CommandBody::Submit(_) | CommandBody::Execute(_)
+            ) {
+                return Err(reject(ErrorCode::UnsupportedCapability));
+            }
+            self.send(command)?;
+            self.receive(command)
+        })();
+        if result.is_err() {
+            self.close();
+        }
+        result
+    }
+    /// Terminal socket shutdown and key disposal. This does not revoke provider
+    /// authority, stop a supervised process or establish descendant cleanup.
+    pub fn close(&mut self) {
+        self.channel.close();
+        self.wire.close();
+    }
+}
+impl Drop for Exchange {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+impl Wire {
+    pub(crate) fn new(stream: UnixStream, limits: Limits) -> Result<Self> {
         let ceiling = ceilings();
         if limits.timeout.is_zero()
             || limits.timeout > ceiling.timeout
@@ -97,20 +198,9 @@ impl Exchange {
         {
             return Err(reject(ErrorCode::BudgetExhausted));
         }
-        commands::encode(&Command {
-            schema_version: 2,
-            command_schema_digest: commands::SCHEMA_DIGEST.into(),
-            request_id: "ipc-binding".into(),
-            binding: binding.clone(),
-            body: CommandBody::Reopen(commands::Target {
-                handle: binding.execution_id.clone(),
-            }),
-        })?;
         stream.set_nonblocking(false).map_err(io_error)?;
         Ok(Self {
             stream,
-            channel,
-            binding,
             limits,
             deadline: Instant::now() + limits.timeout,
             records: 0,
@@ -118,7 +208,7 @@ impl Exchange {
             closed: false,
         })
     }
-    fn remaining(&self) -> Result<Duration> {
+    pub(crate) fn remaining(&self) -> Result<Duration> {
         if self.closed {
             return Err(reject(ErrorCode::TransportFailed));
         }
@@ -179,87 +269,49 @@ impl Exchange {
         self.remaining()?;
         Ok(())
     }
-    fn send(&mut self, command: &Command) -> Result<()> {
-        self.remaining()?;
-        if command.binding != self.binding {
-            return Err(reject(ErrorCode::AuthorityDenied));
+    pub(crate) fn send(&mut self, bytes: &[u8]) -> Result<()> {
+        if bytes.is_empty() || bytes.len() > ceilings().record {
+            return Err(reject(ErrorCode::InvalidFrame));
         }
-        let bytes = self.channel.seal(command)?;
         self.count_record()?;
         self.count_bytes(4 + bytes.len())?;
         self.write_all(&(bytes.len() as u32).to_be_bytes())?;
-        self.write_all(&bytes)
+        self.write_all(bytes)
     }
-    fn receive(&mut self, request: &Command) -> Result<Command> {
+    pub(crate) fn receive(&mut self, maximum: usize) -> Result<Option<Vec<u8>>> {
         self.count_record()?;
         self.count_bytes(4)?;
         let mut header = [0; 4];
-        self.read_exact(&mut header)?;
+        loop {
+            self.stream
+                .set_read_timeout(Some(self.remaining()?))
+                .map_err(io_error)?;
+            match self.stream.read(&mut header[..1]) {
+                Ok(0) => return Ok(None),
+                Ok(_) => break,
+                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                Err(_) => {
+                    self.remaining()?;
+                    return Err(reject(ErrorCode::TransportFailed));
+                }
+            }
+        }
+        self.read_exact(&mut header[1..])?;
         let length = u32::from_be_bytes(header) as usize;
-        if length <= ceilings().overhead || length > ceilings().record {
+        if length == 0 || length > maximum.min(ceilings().record) {
             return Err(reject(ErrorCode::InvalidFrame));
         }
         self.count_bytes(length)?;
         let mut bytes = vec![0; length];
         self.read_exact(&mut bytes)?;
-        let reply = self.channel.open(&bytes)?;
-        if reply.binding != self.binding {
-            return Err(reject(ErrorCode::AuthorityDenied));
-        }
-        if reply.request_id != request.request_id {
-            return Err(reject(ErrorCode::TransportFailed));
-        }
-        Ok(reply)
+        Ok(Some(bytes))
     }
-    /// Send one transfer record without a response. Effectful commands cannot use
-    /// this path. The dispatcher checks transfer sequence, purpose and contents.
-    pub fn send_transfer(&mut self, command: &Command) -> Result<()> {
-        let result = (|| {
-            self.remaining()?;
-            if !matches!(
-                command.body,
-                CommandBody::TransferBegin(_)
-                    | CommandBody::TransferChunk(_)
-                    | CommandBody::TransferEnd(_)
-            ) {
-                return Err(reject(ErrorCode::UnsupportedCapability));
-            }
-            self.send(command)
-        })();
-        if result.is_err() {
-            self.close();
-        }
-        result
-    }
-    /// Exchange exactly one initial command/reply. Invoke only inside the
-    /// original controller's `dispatch_initial` callback, after its fsynced
-    /// reservation. Reply meaning remains the controller/application's policy.
-    pub fn request(&mut self, command: &Command) -> Result<Command> {
-        let result = (|| {
-            self.remaining()?;
-            if !matches!(
-                command.body,
-                CommandBody::Create(_) | CommandBody::Submit(_) | CommandBody::Execute(_)
-            ) {
-                return Err(reject(ErrorCode::UnsupportedCapability));
-            }
-            self.send(command)?;
-            self.receive(command)
-        })();
-        if result.is_err() {
-            self.close();
-        }
-        result
-    }
-    /// Terminal socket shutdown and key disposal. This does not revoke provider
-    /// authority, stop a supervised process or establish descendant cleanup.
-    pub fn close(&mut self) {
+    fn close(&mut self) {
         self.closed = true;
-        self.channel.close();
         let _ = self.stream.shutdown(Shutdown::Both);
     }
 }
-impl Drop for Exchange {
+impl Drop for Wire {
     fn drop(&mut self) {
         self.close();
     }
