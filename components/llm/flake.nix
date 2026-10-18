@@ -10,6 +10,8 @@
     self,
     nixpkgs,
     harbor-meta,
+    harbor-rs,
+    harborRoot,
     ...
   }: let
     forSystems = nixpkgs.lib.genAttrs ["x86_64-linux" "aarch64-linux"];
@@ -17,9 +19,56 @@
     lib.timezone = harbor-meta.lib.timezone;
     lib.environmentContractVersion = 1;
     homeManagerModules.default = import ./nix/home.nix self;
+    nixosModules.custodian = {
+      lib,
+      pkgs,
+      ...
+    }: {
+      imports = [./nix/custodian.nix];
+      services.harbor-llm-custodian.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.custodian;
+    };
     packages = forSystems (system: let
       pkgs = nixpkgs.legacyPackages.${system};
+      rustPkgs = import nixpkgs {
+        inherit system;
+        overlays = [(import harbor-rs.inputs.rust-overlay)];
+      };
+      inherit
+        (harbor-rs.lib.mkToolchain {
+          pkgs = rustPkgs;
+          toolchainProfile = "stable";
+          cache.enable = false;
+        })
+        craneLib
+        ;
+      custodianArgs = {
+        pname = "harbor-llm-custodian";
+        version = "0.1.0";
+        src = pkgs.lib.cleanSourceWith {
+          src = harborRoot.outPath;
+          filter = path: type:
+            craneLib.filterCargoSources path type
+            || pkgs.lib.hasPrefix "${toString ./.}/protocol/" path
+            || path == "${toString ./.}/rust/README.md";
+        };
+        strictDeps = true;
+        cargoExtraArgs = "--locked -p harbor-llm-runtime --bin harbor-llm-custodian";
+        # Receipt/admission authority must not run through a caller-owned loader.
+        CARGO_BUILD_TARGET = pkgs.stdenv.hostPlatform.rust.rustcTarget;
+        RUSTFLAGS = "-C target-feature=+crt-static -L native=${pkgs.glibc.static}/lib";
+      };
     in {
+      custodian = craneLib.buildPackage (custodianArgs
+        // {
+          cargoArtifacts = craneLib.buildDepsOnly custodianArgs;
+          doCheck = false;
+          meta = {
+            description = "Preparation-only Linux custodian for Harbor LLM execution";
+            license = pkgs.lib.licenses.mit;
+            mainProgram = "harbor-llm-custodian";
+            platforms = pkgs.lib.platforms.linux;
+          };
+        });
       default = pkgs.stdenvNoCC.mkDerivation {
         pname = "harbor-llm";
         version = "0.1.0";
@@ -79,6 +128,11 @@
       module = import ./test/home-module.nix {
         inherit pkgs self;
       };
+      custodian-module = import ./test/custodian-module.nix {
+        inherit pkgs;
+        module = self.nixosModules.custodian;
+      };
+      custodian-package = self.packages.${system}.custodian;
       formatting = pkgs.runCommand "harbor-llm-formatting" {nativeBuildInputs = [pkgs.treefmt pkgs.alejandra];} ''
         cp -r ${self} source
         chmod -R u+w source

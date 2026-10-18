@@ -16,6 +16,9 @@
   its deadline; the installed-dispatcher fixture uses this runtime path.
 - Add bounded Linux artifact snapshots with kernel-enforced byte/size/executable
   seals and an independent post-seal digest check for descriptor-based launch.
+- Add an opt-in, preparation-only Linux custodian with a root-issued admission
+  ledger, kernel-authenticated private control socket, durable consumption and
+  bounded per-connection services. Reopen is observational; launch is unavailable.
 - Add an integrity-pinned OpenCode V2 adapter for admission, one-shot initial
   release and observational reconciliation. Construction defaults to observation;
   fresh release requires the distinct journal reservation and exclusive session

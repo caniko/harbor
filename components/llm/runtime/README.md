@@ -63,13 +63,101 @@ JavaScript imports, establish private session writers, authenticate a process or
 provide admission or a sandbox. macOS keeps its separate existing managed-host
 snapshot boundary until a qualified implementation is integrated.
 
+### Disabled preparation custodian
+
+Harbor exports `nixosModules.llm-custodian` and `packages.<system>.llm-custodian`
+from the consolidated flake. The NixOS option
+`services.harbor-llm-custodian.enable` defaults to false. Importing the module
+creates no service, socket or state directories until explicitly enabled.
+The native `harbor-llm-custodian serve --config <root-owned-file>` entrypoint
+requires root and a systemd-accepted Unix socket on stdin.
+
+The preparation control endpoint has its own private version-1 JSON envelope;
+it is separate from the preserved execution-v1 codec and authenticated v2 bridge.
+Each frame has a big-endian u32 byte length, at most 16 KiB of JSON and depth 64.
+A connection has a non-renewable deadline, 16 total incoming/outgoing frames and
+128 KiB total wire bytes. Unknown/duplicate fields, malformed or partial frames
+and exhausted budgets terminate the connection. Errors expose stable codes only.
+The supported request shape is:
+
+```json
+{
+  "version": 1,
+  "requestId": "correlation-only",
+  "body": { "kind": "prepare", "admission": "<64 lowercase hex characters>" }
+}
+```
+
+`describe` has no admission field and reports `prepare: true, launch: false`.
+`reopen` takes the original admission reference and reads existing registration
+evidence only. `launch` always returns `unsupported-capability`; other effects
+are absent. No preparation response is an execution or worker-qualification grant.
+
+Requests cannot provide paths, authority bindings, credentials or arguments.
+`custodian::admission_id` derives the reference from the original
+`(callerAuthority, callerNamespace, intentId)` tuple using the existing journal
+key. A different execution generation, request ID or engine selection cannot
+create a fresh key. The independent authorized issuer must provision this record
+under `/var/lib/harbor-llm-custodian/admissions/pending/<reference>.json`:
+
+```json
+{
+  "version": 1,
+  "controllerUid": 1000,
+  "binding": "<complete generated execution Binding object>",
+  "engine": "/absolute/path/to/the/selected/artifact",
+  "engineDigest": "<independently qualified SHA-256>",
+  "outputBytes": 4096
+}
+```
+
+The binding placeholder above must be replaced with the typed object, not a
+string. Provisioning is an application/admission-issuer responsibility; the
+socket cannot issue or replace records. The configured file, ledger, state and
+every ancestor are root-owned. Ancestors are non-writable by other principals
+or use sticky ownership protection, as `/nix/store` does. Leaf ledger and state
+directories are private. Symlinks and nonregular/hardlinked record files are
+rejected. Readonly configuration hardlinks remain compatible with Nix store
+deduplication; this tolerance does not apply to admission/registration records.
+Kernel `SO_PEERCRED` authenticates the connecting UID, which
+must equal the root-issued record's `controllerUid`. Socket access or a claimed
+binding alone grants nothing. This preparation boundary trusts the selected
+controller UID as a principal; it does not attest an individual controller
+executable or establish the specialist worker's distinct-writer boundary.
+
+Preparation fsyncs the original admission, moves it atomically with no overwrite
+to `admissions/consumed`, and fsyncs both directories **before** registration or
+artifact capture. It retains the exact admission digest and original registration
+in the consumed ledger, independent of the execution store. The original
+controller lock and sealed image remain held only for that connection's lifetime.
+One connection may prepare one intent. A failure, lost reply, crash or disconnect
+never unconsumes it. Missing state, incomplete receipts, reissued pending records
+and changed generations cannot restore freshness. Consumed and failed entries
+remain evidence; the service never deletes or reconstructs them.
+
+`reopen` verifies the consumed record/receipt and reopens the original journal
+without recapturing an artifact, querying an engine or dispatching anything. Its
+response reports only the registration, not surviving snapshot custody or
+successful preparation. No `Start` reservation is made during preparation.
+
+The module defaults to a root-only socket, allows an explicitly declared
+controller group, caps concurrent connections at four and bounds activation rate.
+Each accepted connection runs in its own root-owned service with a 30-second
+default/60-second maximum lifetime, 768 MiB memory limit, one CPU, four tasks,
+no network, restricted filesystem writes and control-group termination. It
+cannot restart automatically. Native socket, race, malformed-input and abrupt
+process-exit fixtures run unprivileged; they do not establish installed root
+service acceptance. Final engine/bridge confinement, dependency-closure custody,
+exclusive session writers, broker revocation and descendant cleanup require the
+next integration and qualification gates. No Canix host enables this module.
+
 `retain` accepts complete application-validated output and durably binds its
 bytes, digest and execution binding before `deliver` can return identical bytes.
 Applications must authenticate the current delivery generation themselves.
 Changed bindings and path relocation are not implicitly equivalent. Caller
 budgets are required and capped at 16 MiB retained output and 16 KiB journal.
 
-This crate does not authenticate application admission, verify input manifests,
+The journal itself does not authenticate application admission, verify input manifests,
 launch a provider, implement a sandbox or stop descendants. Store owner and
 parent-directory custody remain the application's trust boundary; same-owner
 malicious writers can undo accounting unless a stronger custodian excludes them.

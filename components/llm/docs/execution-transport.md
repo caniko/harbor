@@ -125,6 +125,16 @@ custody, admission, source attestation or process-container supervision. See the
 [runtime contract](../runtime/README.md#linux-artifact-snapshots) for its setup
 deadline and Linux capability requirements.
 
+The disabled Linux preparation custodian consumes an independent root-issued
+admission before registering the journal and holding one sealed image. Its
+kernel-authenticated control socket accepts an admission reference, not caller
+paths or asserted authority. Consumed admissions fence reconnects, changed
+generations and missing runtime state. Discovery reports `launch: false`; journal
+reopen is observational and never recaptures an artifact. The
+[preparation contract](../runtime/README.md#disabled-preparation-custodian)
+documents the bounded per-connection service and the remaining worker/supervisor
+integration. This private control envelope does not change either execution wire.
+
 ## Authenticated records
 
 The channel codec uses HMAC-SHA-256, with independent controller and bridge keys
