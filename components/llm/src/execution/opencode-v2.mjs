@@ -155,13 +155,17 @@ export class OpenCodeV2 {
     if (!this.#fresh) reject("effect-unknown");
     const config = this.#copy(configuration);
     if (!object(config) || Object.keys(config).some(key => !["model", "agent", "permissions"].includes(key))
-        || !id(config.model?.providerID) || !id(config.model?.id) || !Array.isArray(config.permissions)) reject("invalid-frame");
+        || !id(config.model?.providerID) || !id(config.model?.id) || !Array.isArray(config.permissions)
+        || Object.keys(config.model).some(key => !["providerID", "id", "variant"].includes(key))
+        || (config.model.variant !== undefined && !id(config.model.variant))) reject("invalid-frame");
     if (this.#started) reject("effect-unknown");
     this.#started = true;
     return this.#exclusive(async () => {
       await this.#probe();
       const result = await this.#client.session.create({ ...config, id: this.#sessionID, location: { directory: this.#directory } });
       this.#validateSession(result);
+      // Pinned core/session/info.ts materializes an omitted variant as "default".
+      if (Object.keys(config).some(key => !isDeepStrictEqual(result[key], key === "model" ? { variant: "default", ...config.model } : config[key]))) reject("custody-lost");
       this.#created = this.#copy(result);
       return result;
     }, true);

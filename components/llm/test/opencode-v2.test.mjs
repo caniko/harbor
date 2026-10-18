@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { OpenCodeV2 } from "../src/execution/opencode-v2.mjs";
 
 const limits = { timeoutMs: 5000, inputBytes: 4096, outputBytes: 4096, totalResponseBytes: 65536, requests: 32, pages: 4, messages: 8 };
-const session = { id: "ses_fixture", location: { directory: "/sealed" }, time: { updated: 1 } };
+const session = { id: "ses_fixture", location: { directory: "/sealed" }, time: { updated: 1 }, model: { providerID: "synthetic", id: "fixture", variant: "default" }, permissions: [] };
 const prompt = { id: "inb_fixture", text: "synthetic fixture", delivery: "queue", resume: false };
 const receipt = { id: prompt.id, sessionID: session.id, type: "user", payload: { text: prompt.text }, delivery: "queue" };
 async function server(t, respond, mode = "fresh") {
@@ -69,6 +69,17 @@ test("default construction cannot dispatch fresh work", async t => {
   await assert.rejects(adapter.start({ model: { providerID: "synthetic", id: "fixture" }, permissions: [] }), { code: "effect-unknown" });
   await assert.rejects(adapter.execute(prompt.id), { code: "effect-unknown" });
   assert.ok(requests.every(r => r.method === "GET"));
+});
+
+test("a create receipt with changed explicit configuration cannot authorize admission", async t => {
+  const { adapter, requests } = await server(t, (req, res) => {
+    if (req.method === "POST" && req.url === "/api/session") return json(res, { data: { ...session, model: { providerID: "other", id: "other" } } });
+    respond(req, res);
+  });
+  await adapter.probe();
+  await assert.rejects(adapter.start({ model: { providerID: "synthetic", id: "fixture" }, permissions: [] }), { code: "effect-unknown" });
+  await assert.rejects(adapter.submit(prompt), { code: "effect-unknown" });
+  assert.equal(requests.filter(request => request.url.endsWith("/prompt")).length, 0);
 });
 
 test("initial execution steers the original admitted inbox item once without another prompt", async t => {
