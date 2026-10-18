@@ -14,7 +14,7 @@ serde_json = "1"
 sha2 = "0.10"
 fs2 = "0.4"
 tempfile = "3"
-rustix = { version = "1", features = ["process", "fs"] }
+rustix = { version = "1", features = ["process", "fs", "net"] }
 getrandom = "0.4"
 
 [lints.rust]
