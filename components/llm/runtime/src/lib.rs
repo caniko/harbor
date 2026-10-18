@@ -9,6 +9,9 @@ compile_error!("harbor-llm-runtime requires Unix private files and kernel locks"
 
 pub mod ipc;
 
+#[cfg(target_os = "linux")]
+pub mod artifact;
+
 use fs2::FileExt;
 use harbor_llm_protocol::commands::{
     self, CommandBody, Effect, EffectReceipt, EffectState, TransferPurpose,

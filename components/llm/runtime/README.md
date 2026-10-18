@@ -43,6 +43,26 @@ or retrying. The launcher must provide original peer/executable and descriptor
 custody and dispose of its initial key buffers; an owned socket is not a process
 container or exclusive engine-writer boundary.
 
+### Linux artifact snapshots
+
+`artifact::Snapshot::capture` copies a trusted digest-selected regular file into
+an anonymous Linux memfd, seals writes/size/seal changes and executable bits,
+then independently hashes the sealed bytes. Its close-on-exec descriptor starts
+at byte zero and stays pinned while the caller retains the snapshot. Source
+replacement, deletion or in-place writes cannot change the captured image.
+The supervisor must launch from this descriptor, rather than reopen the original
+path after hashing. Linux 6.3+ execution seals are required; there is no mutable
+file fallback. Byte and elapsed-time limits are required, with a 512 MiB artifact
+ceiling and the shared one-hour time ceiling. Capture performs no execution.
+
+The custodian must run file capture inside its killable setup phase because a
+cooperative deadline cannot interrupt a kernel-blocked filesystem read. It must
+retain the complete immutable dependency closure, independently qualified source
+identity and durable evidence. Sealing one image does not pin shared libraries or
+JavaScript imports, establish private session writers, authenticate a process or
+provide admission or a sandbox. macOS keeps its separate existing managed-host
+snapshot boundary until a qualified implementation is integrated.
+
 `retain` accepts complete application-validated output and durably binds its
 bytes, digest and execution binding before `deliver` can return identical bytes.
 Applications must authenticate the current delivery generation themselves.

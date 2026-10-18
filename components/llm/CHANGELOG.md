@@ -14,6 +14,8 @@
 - Supply a single-owner Unix IPC exchange with whole-channel byte/record/time
   limits, terminal shutdown and no reconnect/retry. Partial progress cannot reset
   its deadline; the installed-dispatcher fixture uses this runtime path.
+- Add bounded Linux artifact snapshots with kernel-enforced byte/size/executable
+  seals and an independent post-seal digest check for descriptor-based launch.
 - Add an integrity-pinned OpenCode V2 adapter for admission, one-shot initial
   release and observational reconciliation. Construction defaults to observation;
   fresh release requires the distinct journal reservation and exclusive session

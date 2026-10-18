@@ -116,6 +116,15 @@ that example: one owned socket/channel, whole-channel deadline and cumulative
 record/wire-byte limits, with checks before allocation/writes. It neither opens
 nor reconnects a socket; all failures terminally shut down the original channel.
 
+On Linux, `artifact::Snapshot` supplies a sealed exact-byte image for the
+custodian's launch handoff. Capture rejects nonregular/empty sources, bounds
+copying, seals the image and independently hashes those immutable bytes. The
+supervisor retains the descriptor and the full dependency closure throughout
+execution. This closes a source-path replacement race; it does not replace root
+custody, admission, source attestation or process-container supervision. See the
+[runtime contract](../runtime/README.md#linux-artifact-snapshots) for its setup
+deadline and Linux capability requirements.
+
 ## Authenticated records
 
 The channel codec uses HMAC-SHA-256, with independent controller and bridge keys
