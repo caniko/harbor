@@ -502,8 +502,9 @@ dependencies = [
 
 [[package]]
 name = "fleetix"
-version = "0.4.0"
-source = "git+https://github.com/caniko/fleetix?rev=2230d9ee804a66d94424a91919182e4fcca13ab2#2230d9ee804a66d94424a91919182e4fcca13ab2"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2673218f8e50930be99abf049e2685f61134dea411b7664c46abb992959e05c2"
 dependencies = [
  "indexmap",
  "miette",
@@ -1762,9 +1763,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "log",
  "once_cell",
