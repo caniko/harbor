@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { chmod, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -57,7 +57,7 @@ test("relative preparation lock directories are rejected", () => {
 });
 
 test("preparation admission requires an absolute executable and bounded request", () => {
-  for (const preparationAdmission of [{}, { amc: "amc", contract: "nix-eval", memoryBytes: 1 }, { amc: "/bin/amc", contract: "", memoryBytes: 1 }, { amc: "/bin/amc", contract: "nix-eval", memoryBytes: 0 }]) {
+  for (const preparationAdmission of [{}, { amc: "amc", contract: "nix-eval", memoryBytes: 4096 }, { amc: "/bin/amc", contract: "", memoryBytes: 4096 }, ...[0, 1, 4097].map(memoryBytes => ({ amc: "/bin/amc", contract: "nix-eval", memoryBytes }))]) {
     assert.throws(() => createProjectEnvironments({ roots: ["/workspace"], direnv: "/bin/direnv", nix: "/bin/nix", baseline: {}, preparationAdmission }), /preparationAdmission/);
   }
 });
@@ -99,7 +99,7 @@ test("native preparation queues beyond its execution deadline and frames readine
   const requests = (await readFile(path.join(cwd, "admission-args"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
   assert.equal(requests.length, 2, "both export and Nix catalog evaluation need admission");
   for (const args of requests) {
-    assert.deepEqual(args.slice(0, 9), ["admission", "exec", "--contract", "nix-eval", "--queue", "--max-ram-usage", "1048576", "--runtime-max-sec", args.includes("eval") ? "120" : "1"]);
+    assert.deepEqual(args.slice(0, 9), ["admission", "exec", "--contract", "nix-eval", "--queue", "--max-ram-usage", "1048576B", "--runtime-max-sec", args.includes("eval") ? "120" : "1"]);
     assert.equal(args.includes("--timeout"), false, "no implicit queue deadline");
     assert.match(args[args.indexOf("--ready-token") + 1], /^[a-z0-9-]{36}$/);
   }
@@ -133,6 +133,67 @@ test("a successful native client without entry evidence cannot return an environ
   const { cwd, amc, environments } = await admissionFixture(t);
   await writeFile(amc, `#!${process.execPath}\nprocess.stdout.write("{}");\n`);
   await assert.rejects(environments.resolve({ sessionID: "a", cwd }), { code: "PREPARATION_FAILED" });
+});
+
+test("real AMC admits export and catalog evaluation and cleans up cancelled preparation", {
+  skip: !direnv || !nix || !process.env.AMC_BIN || !process.env.AMC_TEST_SLICE,
+  timeout: 60_000,
+}, async (t) => {
+  const { projects, baseline } = await fixture(t);
+  const cwd = projects[0];
+  const runtime = baseline.XDG_RUNTIME_DIR;
+  // A private fixture broker, not the operator's admission state or policy.
+  // systemctl uses the real manager's runtime directory, not a relocated bus.
+  baseline.XDG_RUNTIME_DIR = process.env.XDG_RUNTIME_DIR;
+  baseline.DBUS_SESSION_BUS_ADDRESS = `unix:path=/run/user/${process.getuid()}/bus`;
+  const manager = await exec("systemctl", ["--user", "show", process.env.AMC_TEST_SLICE,
+    "--property=LoadState,ActiveState,ControlGroup"], { env: baseline });
+  assert.match(manager.stdout, /^ActiveState=active$/m);
+  const socket = path.join(runtime, "amc/admission.sock");
+  baseline.AMC_FIXTURE_SOCKET = socket;
+  const amc = path.join(runtime, "native-amc");
+  // exec preserves AMC's signal/cleanup ownership; only the test socket differs.
+  await writeFile(amc, '#!/bin/sh\nshift 2\nexec "$AMC_BIN" admission exec --socket "$AMC_FIXTURE_SOCKET" "$@"\n', { mode: 0o700 });
+  const policy = path.join(runtime, "admission-policy.json");
+  await writeFile(policy, JSON.stringify({ version: 1, budget_bytes: 512 * 1048576, reserve_bytes: 1048576,
+    queue_limit: 4, contracts: { "nix-eval": { slice: process.env.AMC_TEST_SLICE, memory_max: 512 * 1048576,
+      memory_swap_max: 0, max_running: 1, pause_file: null } } }));
+  const server = spawn(process.env.AMC_BIN, ["admission", "serve", "--policy", policy, "--socket", socket,
+    "--state", path.join(runtime, "admission-state")], { env: baseline, stdio: ["ignore", "ignore", "pipe"] });
+  let diagnostic = "";
+  server.stderr.on("data", chunk => { diagnostic = (diagnostic + chunk).slice(-4096); });
+  const closed = new Promise(resolve => server.once("close", resolve));
+  t.after(async () => { server.kill("SIGTERM"); await closed; });
+  const status = async () => JSON.parse((await exec(process.env.AMC_BIN, ["admission", "status", "--socket", socket, "--json"], { env: baseline })).stdout);
+  async function wait(check) {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      assert.equal(server.exitCode, null, diagnostic);
+      if (await check()) return;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.fail("native preparation condition did not become true");
+  }
+  await wait(async () => { try { await stat(socket); return true; } catch (error) { if (error.code !== "ENOENT") throw error; return false; } });
+  const deadline = AbortSignal.timeout(15_000);
+  const environments = createProjectEnvironments({ roots: projects, baseline, direnv, nix,
+    system: process.arch === "arm64" ? "aarch64-linux" : "x86_64-linux", preparationTimeoutMs: 5000,
+    preparationAdmission: { amc, contract: "nix-eval", memoryBytes: 512 * 1048576 } });
+  const snapshot = await environments.resolve({ sessionID: "a", cwd, signal: deadline }).catch(async error => {
+    t.diagnostic(JSON.stringify(await status()));
+    throw error;
+  });
+  assert.equal(snapshot.env.PROJECT_TEST, "a:default");
+  assert.deepEqual((await environments.list(cwd, deadline)).shells, ["default", "docs"]);
+  await wait(async () => (await status()).entries.length === 0);
+  await writeFile(path.join(cwd, ".envrc"), "touch native-preparation-entered\nsleep 60\ntouch native-must-not-complete\n");
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const pending = assert.rejects(environments.resolve({ sessionID: "a", cwd, signal: AbortSignal.any([controller.signal, deadline]) }), { code: "CANCELLED" });
+  await wait(async () => { try { await stat(path.join(cwd, "native-preparation-entered")); return true; } catch (error) { if (error.code !== "ENOENT") throw error; return false; } });
+  controller.abort();
+  await pending;
+  await wait(async () => (await status()).entries.length === 0);
+  await assert.rejects(stat(path.join(cwd, "native-must-not-complete")), { code: "ENOENT" });
 });
 
 test("bootstrap is explicitly configured and never invokes project executables", async (t) => {

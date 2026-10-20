@@ -144,8 +144,8 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
     if (process.platform !== "linux" || !preparationAdmission || typeof preparationAdmission !== "object" || Array.isArray(preparationAdmission)
       || typeof preparationAdmission.amc !== "string" || !path.isAbsolute(preparationAdmission.amc) || preparationAdmission.amc.includes("\0")
       || typeof preparationAdmission.contract !== "string" || !/^[a-zA-Z0-9_.-]{1,64}$/.test(preparationAdmission.contract)
-      || !Number.isSafeInteger(preparationAdmission.memoryBytes) || preparationAdmission.memoryBytes <= 0) {
-      throw new Error("preparationAdmission requires an absolute AMC executable, contract and positive integer memoryBytes on Linux");
+      || !Number.isSafeInteger(preparationAdmission.memoryBytes) || preparationAdmission.memoryBytes <= 0 || preparationAdmission.memoryBytes % 4096 !== 0) {
+      throw new Error("preparationAdmission requires an absolute AMC executable, contract and positive 4096-byte-aligned memoryBytes on Linux");
     }
     preparationAdmission = Object.freeze({ ...preparationAdmission });
   }
@@ -204,7 +204,7 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       const invocation = detail.lock ? [flock, "--exclusive", detail.lock, binary, ...args] : [binary, ...args];
       const guarded = detail.readLock ? [flock, "--shared", detail.readLock, ...invocation] : invocation;
       const command = admitted ? [preparationAdmission.amc, "admission", "exec", "--contract", preparationAdmission.contract,
-        "--queue", "--max-ram-usage", String(preparationAdmission.memoryBytes), "--runtime-max-sec", String(Math.ceil(timeoutMs / 1000)),
+        "--queue", "--max-ram-usage", `${preparationAdmission.memoryBytes}B`, "--runtime-max-sec", String(Math.ceil(timeoutMs / 1000)),
         "--ready-token", readyToken, "--", ...guarded] : guarded;
       // AMC owns native cancellation and descendant cleanup. Signal its client
       // without execFile's early AbortError or a process-group SIGKILL.

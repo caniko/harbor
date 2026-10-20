@@ -168,7 +168,7 @@ also terminates its helper processes. This does not cancel running commands.
 
 On Linux, `preparationAdmission = { amc, contract, memoryBytes }` optionally
 routes exports and flake catalog evaluation through an absolute, operator-selected
-AMC executable. It requires AMC's version-1 queued admission and native readiness
+AMC executable and a positive, 4096-byte-aligned byte ceiling. It requires AMC's version-1 queued admission and native readiness
 capabilities. The native contract owns RAM/swap limits, queue capacity and cleanup;
 Harbor adds no resource scheduler. Resource waiting has no implicit deadline and
 does not consume `preparationTimeoutMs`: that clock begins only after the fresh
@@ -178,6 +178,12 @@ Cancellation waits for AMC's client to finish its cleanup attempt; the broker
 retains reservations whose native cleanup remains unconfirmed. The final shared
 export waiter also awaits its producer; cancelling one of several waiters leaves
 the others running. The package advertises `preparationAdmissionVersion = 1`.
+
+The optional native integration check runs with `AMC_BIN` set to an absolute
+candidate binary, `AMC_TEST_SLICE` naming an existing user slice, and `DIRENV_BIN`
+and `NIX_BIN` set. It uses a private fixture coordinator and 512 MiB jobs with
+zero swap, never the operator's coordinator state. It verifies real exports,
+catalog evaluation and cancellation cleanup through AMC/systemd.
 
 Use the shell tool's `workdir` field for another project. A `cd` inside the
 command changes its eventual directory but does not select another environment:
