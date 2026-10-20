@@ -16,6 +16,7 @@
   in {
     lib.timezone = harbor-meta.lib.timezone;
     lib.environmentContractVersion = 1;
+    lib.preparationAdmissionVersion = 1;
     homeManagerModules.default = import ./nix/home.nix self;
     packages = forSystems (system: let
       pkgs = nixpkgs.legacyPackages.${system};
@@ -23,6 +24,7 @@
       default = pkgs.stdenvNoCC.mkDerivation {
         pname = "harbor-llm";
         version = "0.1.0";
+        passthru.preparationAdmissionVersion = 1;
         src = builtins.path {
           path = ./.;
           name = "harbor-llm-source";
