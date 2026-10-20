@@ -5,6 +5,7 @@ import { constants } from "node:fs";
 import { inflateSync } from "node:zlib";
 import path from "node:path";
 import { promisify } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 
 const exec = promisify(execFile);
 // Only in-flight exports are shared. Completed environments remain owned by
@@ -187,7 +188,6 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
     const started = performance.now();
     const deadline = new AbortController();
     const admitted = preparationAdmission && ["export", "eval"].includes(args[0]);
-    const readyToken = admitted ? randomUUID() : undefined;
     let timedOut = false;
     let timer;
     const startDeadline = () => { timer = setTimeout(() => { timedOut = true; deadline.abort(); }, timeoutMs); };
@@ -196,41 +196,61 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
     let child, closed;
     const cancel = () => child?.kill("SIGTERM");
     try {
-      combined.throwIfAborted();
-      onProgress?.({ ...progress, status: admitted ? "waiting" : "preparing" });
-      // execFile does not forward a `detached` option. Linux setsid gives
-      // this preparation its own process group while retaining stdlib limits.
-      const grouped = process.platform === "linux";
-      const invocation = detail.lock ? [flock, "--exclusive", detail.lock, binary, ...args] : [binary, ...args];
-      const guarded = detail.readLock ? [flock, "--shared", detail.readLock, ...invocation] : invocation;
-      const command = admitted ? [preparationAdmission.amc, "admission", "exec", "--contract", preparationAdmission.contract,
-        "--queue", "--max-ram-usage", `${preparationAdmission.memoryBytes}B`, "--runtime-max-sec", String(Math.ceil(timeoutMs / 1000)),
-        "--ready-token", readyToken, "--", ...guarded] : guarded;
-      // AMC owns native cancellation and descendant cleanup. Signal its client
-      // without execFile's early AbortError or a process-group SIGKILL.
-      const execution = exec(grouped ? setsid : command[0], grouped ? ["--", ...command] : command.slice(1), { cwd, env, ...(admitted ? {} : { signal: combined }), maxBuffer: 8 * 1024 * 1024 });
-      child = execution.child;
-      closed = new Promise((resolve) => child.once("close", resolve));
-      let entered = !admitted;
-      if (admitted) {
-        combined.addEventListener("abort", cancel, { once: true });
-        if (combined.aborted) cancel();
-        const frame = `\x1e${readyToken}\x1f`;
-        let pending = "";
-        child.stderr.on("data", chunk => {
-          if (entered) return;
-          pending += chunk.toString("latin1");
-          if (!pending.includes(frame)) { pending = pending.slice(-(frame.length - 1)); return; }
-          entered = true;
-          startDeadline();
-          onProgress?.({ ...progress, status: "preparing", waitMs: Math.round(performance.now() - started) });
+      for (;;) {
+        combined.throwIfAborted();
+        const readyToken = admitted ? randomUUID() : undefined;
+        onProgress?.({ ...progress, status: admitted ? "waiting" : "preparing" });
+        // execFile does not forward a `detached` option. Linux setsid gives
+        // this preparation its own process group while retaining stdlib limits.
+        const grouped = process.platform === "linux";
+        const invocation = detail.lock ? [flock, "--exclusive", detail.lock, binary, ...args] : [binary, ...args];
+        const guarded = detail.readLock ? [flock, "--shared", detail.readLock, ...invocation] : invocation;
+        const command = admitted ? [preparationAdmission.amc, "admission", "exec", "--contract", preparationAdmission.contract,
+          "--queue", "--max-ram-usage", `${preparationAdmission.memoryBytes}B`, "--runtime-max-sec", String(Math.ceil(timeoutMs / 1000)),
+          "--ready-token", readyToken, "--", ...guarded] : guarded;
+        // AMC owns native cancellation and descendant cleanup. Signal its client
+        // without execFile's early AbortError or a process-group SIGKILL.
+        const execution = exec(grouped ? setsid : command[0], grouped ? ["--", ...command] : command.slice(1), { cwd, env, ...(admitted ? {} : { signal: combined }), maxBuffer: 8 * 1024 * 1024 });
+        child = execution.child;
+        closed = new Promise((resolve) => child.once("close", resolve));
+        let entered = !admitted;
+        if (admitted) {
+          combined.addEventListener("abort", cancel, { once: true });
+          if (combined.aborted) cancel();
+          const frame = `\x1e${readyToken}\x1f`;
+          let pending = "";
+          child.stderr.on("data", chunk => {
+            if (entered) return;
+            pending += chunk.toString("latin1");
+            if (!pending.includes(frame)) { pending = pending.slice(-(frame.length - 1)); return; }
+            entered = true;
+            startDeadline();
+            onProgress?.({ ...progress, status: "preparing", waitMs: Math.round(performance.now() - started) });
+          });
+        }
+        const result = await execution.catch(error => {
+          // Only a complete, token-bound nonacceptance frame plus exit 75 proves
+          // that no preparation was dispatched. Never replay an ambiguous failure.
+          const frame = admitted && !entered && error.code === 75 && error.stdout === ""
+            ? error.stderr?.match(/^\x1e([a-zA-Z0-9-]+):backpressure:([0-9]{1,5})\x1f$/) : null;
+          if (frame && frame[1] === readyToken && Number(frame[2]) > 0 && Number(frame[2]) <= 60000)
+            return { retryAfterMs: Number(frame[2]) };
+          throw error;
         });
+        if ("retryAfterMs" in result) {
+          await closed;
+          combined.removeEventListener("abort", cancel);
+          child = closed = undefined;
+          combined.throwIfAborted();
+          onProgress?.({ ...progress, status: "waiting", reason: "submission capacity", retryAfterMs: result.retryAfterMs });
+          await delay(result.retryAfterMs, undefined, { signal: combined });
+          continue;
+        }
+        if (!entered) throw new Error("Native preparation entry was not confirmed");
+        combined.throwIfAborted();
+        onProgress?.({ ...progress, status: "ready", elapsedMs: Math.round(performance.now() - started) });
+        return result.stdout;
       }
-      const result = await execution;
-      if (!entered) throw new Error("Native preparation entry was not confirmed");
-      combined.throwIfAborted();
-      onProgress?.({ ...progress, status: "ready", elapsedMs: Math.round(performance.now() - started) });
-      return result.stdout;
     } catch (error) {
       // A timed-out direnv can leave its bash/Nix children alive. Reap this
       // preparation's private process group, never the caller's running jobs.

@@ -179,6 +179,13 @@ retains reservations whose native cleanup remains unconfirmed. The final shared
 export waiter also awaits its producer; cancelling one of several waiters leaves
 the others running. The package advertises `preparationAdmissionVersion = 1`.
 
+Broker submission saturation uses AMC's `admissionBackpressureVersion = 1`:
+only a fresh token-bound nonacceptance frame on stderr followed by exit 75 may
+retry. The exited client is reaped before backoff; waiting holds no execution
+process and remains cancellable without charging the preparation deadline.
+Malformed frames, transport failures and failures after native entry never
+replay. The library and package advertise `preparationBackpressureVersion = 1`.
+
 The optional native integration check runs with `AMC_BIN` set to an absolute
 candidate binary, `AMC_TEST_SLICE` naming an existing user slice, and `DIRENV_BIN`
 and `NIX_BIN` set. It uses a private fixture coordinator and 512 MiB jobs with

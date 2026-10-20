@@ -122,6 +122,70 @@ test("native queued preparation cancellation awaits its owner and never enters",
   assert.equal(events.some(event => event.phase === "direnv export" && event.status === "preparing"), false);
 });
 
+test("native preparation overflow waits without an execution process or deadline charge", integration, async (t) => {
+  let waiting;
+  const rejected = new Promise(resolve => { waiting = resolve; });
+  const f = await admissionFixture(t, { onProgress: event => {
+    if (event.reason === "submission capacity") waiting(event);
+  } });
+  await writeFile(f.amc, `#!${process.execPath}
+import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+const args = process.argv.slice(2);
+const token = args[args.indexOf("--ready-token") + 1];
+await appendFile("overflow-tokens", token + "\\n");
+if (!(await readFile("overflow-pid", "utf8").catch(() => ""))) {
+  await writeFile("overflow-pid", String(process.pid));
+  process.stderr.write("\\x1e" + token + ":backpressure:300\\x1f");
+  process.exit(75);
+}
+process.stderr.write("\\x1e" + token + "\\x1f");
+const payload = args.slice(args.indexOf("--") + 1);
+spawn(payload[0], payload.slice(1), { stdio: "inherit" }).on("exit", code => process.exit(code ?? 1));
+`);
+  const prepared = f.environments.resolve({ sessionID: "overflow", cwd: f.cwd });
+  prepared.catch(() => {});
+  const progress = await Promise.race([rejected, prepared.then(() => null)]);
+  assert.equal(progress?.retryAfterMs, 300);
+  const pid = Number(await readFile(path.join(f.cwd, "overflow-pid"), "utf8"));
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  assert.equal((await prepared).env.PROJECT_TEST, "a:default");
+  const tokens = (await readFile(path.join(f.cwd, "overflow-tokens"), "utf8")).trim().split("\n");
+  assert.equal(tokens.length, 2);
+  assert.equal(new Set(tokens).size, tokens.length, "every attempt needs a fresh token");
+});
+
+test("native overflow backoff remains cancellable and ambiguous frames never replay", integration, async (t) => {
+  const controller = new AbortController();
+  const f = await admissionFixture(t, { onProgress: event => {
+    if (event.reason === "submission capacity") controller.abort();
+  } });
+  const valid = '"\\x1e" + token + ":backpressure:300\\x1f"';
+  for (const [frame, output, code, signal] of [
+    [valid, "stderr", 75, controller.signal],
+    [valid, "stderr", 1],
+    [valid, "stdout", 75],
+    ['"\\x1ewrong-token:backpressure:300\\x1f"', "stderr", 75],
+    ['"\\x1e" + token + ":backpressure:0\\x1f"', "stderr", 75],
+    ['"\\x1e" + token + ":backpressure:60001\\x1f"', "stderr", 75],
+    ['"\\x1e" + token + "\\x1f" + ' + valid, "stderr", 75],
+  ]) {
+    await writeFile(f.amc, `#!${process.execPath}
+import { appendFile } from "node:fs/promises";
+const args = process.argv.slice(2);
+const token = args[args.indexOf("--ready-token") + 1];
+await appendFile("no-replay", "attempt\\n");
+process.${output}.write(${frame});
+process.exit(${code});
+`);
+    await writeFile(path.join(f.cwd, "no-replay"), "");
+    await assert.rejects(f.environments.resolve({ sessionID: "ambiguous", cwd: f.cwd, signal }), {
+      code: signal ? "CANCELLED" : "PREPARATION_FAILED",
+    });
+    assert.equal(await readFile(path.join(f.cwd, "no-replay"), "utf8"), "attempt\n");
+  }
+});
+
 test("unavailable native preparation admission never falls back to an unaccounted export", integration, async (t) => {
   const { projects: [cwd], environments } = await fixture(t, {
     preparationAdmission: { amc: "/missing/amc", contract: "nix-eval", memoryBytes: 1048576 },
