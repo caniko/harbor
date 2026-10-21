@@ -1,7 +1,7 @@
 diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 --- a/share/nix-direnv/direnvrc
 +++ b/share/nix-direnv/direnvrc
-@@ -210,6 +210,65 @@
+@@ -210,6 +210,70 @@
    done
  }
  
@@ -20,7 +20,12 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 +  local lock fd
 +  lock="${1%/*}/.realize-$(_nix_realize_id "$1").lock"
 +  [[ -v _nix_direnv_realize_locks["$lock"] ]] && return 0
-+  exec {fd}>>"$lock" && @flock@ "$fd" && _nix_direnv_realize_locks["$lock"]=$fd
++  if exec {fd}>>"$lock" && @flock@ "$fd"; then
++    _nix_direnv_realize_locks["$lock"]=$fd
++  else
++    # Unserialized renewals still work, and failures still reach the fallback.
++    _nix_direnv_warning "could not lock ${lock}; concurrent renewals are not serialized"
++  fi
 +}
 +
 +# Realize the shell in a user unit so an interrupted activation (Ctrl-C, editor
@@ -67,19 +72,19 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
  _nix_add_gcroot() {
    local storepath=$1
    local symlink=$2
-@@ -375,8 +434,9 @@
+@@ -375,8 +439,9 @@
  
      else
        local tmp_profile_rc
 -      local tmp_profile="${layout_dir}/flake-tmp-profile.$$"
 -      if tmp_profile_rc=$(_nix print-dev-env --profile "$tmp_profile" "$@"); then
 +      local tmp_profile="${layout_dir}/flake-tmp-profile$(_nix_argsum_suffix "$flake_expr")"
-+      _nix_realize_lock "$tmp_profile" || return 1
++      _nix_realize_lock "$tmp_profile"
 +      if tmp_profile_rc=$(_nix_print_dev_env "$tmp_profile" "$@"); then
          # If we've gotten here, the user's current devShell is valid and we should cache it
          # Retain the previous cache and its roots until renewal succeeds.
  
-@@ -585,7 +645,7 @@
+@@ -585,7 +650,7 @@
      if [[ $_nix_direnv_manual_reload -eq 1 && -z ${_nix_direnv_force_reload-} ]]; then
        _nix_direnv_warn_manual_reload "$profile_rc"
      else
@@ -88,7 +93,7 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
        local tmp_profile_rc
        if [[ -n $packages ]]; then
          extra_args+=("--expr" "with import <nixpkgs> {}; mkShell { buildInputs = [ $packages ]; }")
-@@ -601,11 +661,8 @@
+@@ -601,11 +666,8 @@
        # This allows us to more closely mimic nix-shell.
        export IN_NIX_SHELL="impure"
  
@@ -97,7 +102,7 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 -        --profile "$tmp_profile" \
 -        --impure \
 -        "${extra_args[@]}"); then
-+      _nix_realize_lock "$tmp_profile" || return 1
++      _nix_realize_lock "$tmp_profile"
 +      if tmp_profile_rc=$(_nix_print_dev_env "$tmp_profile" --impure "${extra_args[@]}"); then
          _nix_clean_old_gcroots "$layout_dir"
  
