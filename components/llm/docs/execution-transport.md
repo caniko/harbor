@@ -4,15 +4,15 @@ Harbor's LLM component owns provider-independent execution wire contracts and
 transport mechanics. The Rust package is `harbor-llm-protocol`; JavaScript and
 TypeScript exports are part of `harbor-llm`:
 
-| Export                            | Responsibility                                                             |
-| --------------------------------- | -------------------------------------------------------------------------- |
-| `harbor-llm/execution-protocol`   | Canonical JSON validation and exact-implementation discovery               |
-| `harbor-llm/execution-framing`    | Bounded, incremental length-prefixed message framing                       |
-| `harbor-llm/execution-channel`    | Directional authenticated records and replay rejection                     |
-| `harbor-llm/execution-commands`   | Separate v2 command codec, authenticated records and bounded transfers     |
+| Export                            | Responsibility                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------- |
+| `harbor-llm/execution-protocol`   | Canonical JSON validation and exact-implementation discovery                    |
+| `harbor-llm/execution-framing`    | Bounded, incremental length-prefixed message framing                            |
+| `harbor-llm/execution-channel`    | Directional authenticated records and replay rejection                          |
+| `harbor-llm/execution-commands`   | Separate v2 command codec, authenticated records and bounded transfers          |
 | `harbor-llm/execution-dispatcher` | Initial dispatch, observational recovery and separately authorized interruption |
-| `harbor-llm/transport`            | One bounded JSON subprocess operation with cancellation                    |
-| `harbor-llm/opencode-v2`          | Pinned generated-client transport and bounded observational recovery       |
+| `harbor-llm/transport`            | One bounded JSON subprocess operation with cancellation                         |
+| `harbor-llm/opencode-v2`          | Pinned generated-client transport and bounded observational recovery            |
 
 The pure codec/transport exports work without Canix, OpenCode, a provider, or
 installed npm dependencies. `opencode-v2` and `execution-dispatcher` use the published
