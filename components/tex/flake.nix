@@ -26,7 +26,6 @@
     harbor-meta,
     treefmt-nix,
     git-hooks,
-    fleetix,
     ...
   }: let
     systems = [
@@ -67,10 +66,7 @@
         pname = "anx-plugin-zenodo";
         version = "0.1.0";
         src = ../..;
-        cargoLock = {
-          lockFile = ../../Cargo.lock;
-          outputHashes."fleetix-0.4.0" = fleetix.narHash;
-        };
+        cargoLock.lockFile = ../../Cargo.lock;
         cargoBuildFlags = ["--package" "anx-plugin-zenodo"];
         cargoTestFlags = ["--package" "anx-plugin-zenodo"];
         nativeBuildInputs = [pkgs.pkg-config];
