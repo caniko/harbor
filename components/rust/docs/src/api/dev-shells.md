@@ -110,6 +110,10 @@ nix_direnv_disallow_fallback
 use flake . --no-update-lock-file || return 1
 ```
 
+With Harbor's nix-direnv (`packages.<system>.core-nix-direnv`), a cancelled
+activation leaves the shell building in a `nix-direnv-*` user unit; the next
+activation picks up the rooted result instead of rebuilding.
+
 A nested checkout that must not inherit a parent Harbor shell needs its own
 `.envrc`: either `use flake .` for that project, or a no-op file such as
 `true`. An absent `.envrc` inherits the parent.

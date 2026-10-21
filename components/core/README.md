@@ -7,6 +7,9 @@ Shared harbor helpers for editor and agent tooling.
 Formatting uses independent [treefmt modules](docs/treefmt.md), composed
 explicitly by each repository rather than inherited from a parent Harbor.
 
+Harbor's [nix-direnv](docs/direnv.md) keeps plain `use flake` and lets dev-shell
+builds outlive an interrupted activation.
+
 Dev shells are fragments `{ packages, env, shellHook }`. Language harbors merge
 those fragments and render them with `lib.devShell.mkShell` (`pkgs.mkShell` by
 default; Rust passes a `craneLib.devShell` builder). `lib.devShellTests` and
