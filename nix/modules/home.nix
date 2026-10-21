@@ -36,6 +36,9 @@ in {
     programs.harborLlm = {
       enable = lib.mkDefault (lib.elem "llm" cfg.resolved.selected);
     };
+    # Harbor's nix-direnv: batched input roots, and builds that outlive an
+    # interrupted activation. Only the package changes; direnv stays opt-in.
+    programs.direnv.nix-direnv.package = lib.mkIf (self.packages.${pkgs.stdenv.hostPlatform.system} ? core-nix-direnv) (lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.core-nix-direnv);
     xdg.configFile = lib.mapAttrs' (backend: manifest: lib.nameValuePair "harbor/cad/runtime-${backend}.json" {source = manifest;}) cfg.tools.cad.runtimeManifests;
   };
 }

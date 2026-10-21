@@ -260,6 +260,8 @@
 in
   assert import ./resolver.nix {inherit lib;};
   assert disabled.config.programs.harbor.resolved.selected == [];
+  assert disabled.config.programs.direnv.nix-direnv.package == pkgs.nix-direnv;
+  assert !pkgs.stdenv.hostPlatform.isLinux || python.config.programs.direnv.nix-direnv.package == self.packages.${system}.core-nix-direnv;
   assert masterOff.config.programs.harbor.resolved.selected == [];
   assert !(masterOff.config.xdg.dataFile ? "blender-mcp-extension");
   assert assertGood python && assertGood overridden && assertGood javascript;
