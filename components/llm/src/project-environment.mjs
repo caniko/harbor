@@ -97,7 +97,7 @@ async function sharedPreparation(key, signal, prepare, onJoin) {
     if (--state.waiters === 0) {
       if (preparations.get(key) === state) preparations.delete(key);
       state.controller.abort();
-      await state.promise.catch(() => {});
+      await state.promise.catch(error => { if (error.code === "EXECUTION_OUTCOME_UNKNOWN") throw error; });
     }
   }
 }
@@ -127,6 +127,13 @@ const inside = (root, target) => {
 const OUTSIDE_ROOTS = "Working directory is outside configured project roots";
 const SELECTION_NEEDS_ENVRC = "Shell selection requires a project .envrc inside the configured roots";
 const SELECTION_NEEDS_LOCAL_ENVRC = "Shell selection requires a .envrc inside the selected flake root; inherited ancestor environments do not apply to explicit selection";
+
+function confirmedOutcome(stderr, token, code) {
+  if (!Number.isInteger(code) || code < 0 || code > 255) return false;
+  const frames = (stderr ?? "").match(new RegExp(`\x1e${token}:complete:[0-9]{1,5}\x1f`, "g")) ?? [];
+  return frames.length === 1 && frames[0] === `\x1e${token}:complete:${code}\x1f`
+    && stderr.indexOf(frames[0]) > stderr.indexOf(`\x1e${token}\x1f`);
+}
 
 // Selection metadata only. Every launch asks direnv to evaluate from the
 // same baseline; nix-direnv owns its build cache and watch invalidation.
@@ -189,6 +196,7 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
     const deadline = new AbortController();
     const admitted = preparationAdmission && ["export", "eval"].includes(args[0]);
     let timedOut = false;
+    let unresolved = false;
     let timer;
     const startDeadline = () => { timer = setTimeout(() => { timedOut = true; deadline.abort(); }, timeoutMs); };
     if (!admitted) startDeadline();
@@ -235,6 +243,7 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
             ? error.stderr?.match(/^\x1e([a-zA-Z0-9-]+):backpressure:([0-9]{1,5})\x1f$/) : null;
           if (frame && frame[1] === readyToken && Number(frame[2]) > 0 && Number(frame[2]) <= 60000)
             return { retryAfterMs: Number(frame[2]) };
+          unresolved = Boolean(admitted && child?.pid && (!entered || !confirmedOutcome(error.stderr, readyToken, error.code)));
           throw error;
         });
         if ("retryAfterMs" in result) {
@@ -246,7 +255,10 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
           await delay(result.retryAfterMs, undefined, { signal: combined });
           continue;
         }
-        if (!entered) throw new Error("Native preparation entry was not confirmed");
+        if (admitted && (!entered || !confirmedOutcome(result.stderr, readyToken, 0))) {
+          unresolved = true;
+          throw new Error("Native preparation outcome was not confirmed");
+        }
         combined.throwIfAborted();
         onProgress?.({ ...progress, status: "ready", elapsedMs: Math.round(performance.now() - started) });
         return result.stdout;
@@ -262,13 +274,13 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       // Hook output can contain credentials. Never forward stdout/stderr.
       const lockDrift = !signal?.aborted && !timedOut
         && /requires lock file changes but they're not allowed/.test(error.stderr ?? "");
-      const reason = signal?.aborted ? "cancelled" : timedOut ? "timeout" : lockDrift ? "lock file changes required"
+      const reason = unresolved ? `execution outcome is unknown${signal?.aborted ? " (cancelled)" : timedOut ? " (timeout)" : ""}` : signal?.aborted ? "cancelled" : timedOut ? "timeout" : lockDrift ? "lock file changes required"
         : error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? "output limit exceeded"
           : error.signal ? `terminated by ${error.signal}` : `exit ${error.code ?? "unknown"}`;
       const result = { ...progress, status: "failed", reason, elapsedMs: Math.round(performance.now() - started) };
       onProgress?.(result);
-      const failure = new Error(`Project environment preparation failed: ${result.phase}; cwd=${cwd}; envrc=${detail.envrc ?? "not yet resolved"}; approval=${detail.approval ?? "not yet checked"}; ${reason}; elapsed=${result.elapsedMs}ms; limit=${timeoutMs}ms; preparation=${progress.preparationID}`);
-      failure.code = signal?.aborted ? "CANCELLED" : timedOut ? "TIMEOUT" : lockDrift ? "LOCK_DRIFT" : "PREPARATION_FAILED";
+      const failure = new Error(`Project environment preparation failed: ${result.phase}; cwd=${cwd}; envrc=${detail.envrc ?? "not yet resolved"}; approval=${detail.approval ?? "not yet checked"}; ${reason}; elapsed=${result.elapsedMs}ms; limit=${timeoutMs}ms; preparation=${progress.preparationID}${unresolved ? "; Inspect native execution and any side effects before retrying" : ""}`);
+      failure.code = unresolved ? "EXECUTION_OUTCOME_UNKNOWN" : signal?.aborted ? "CANCELLED" : timedOut ? "TIMEOUT" : lockDrift ? "LOCK_DRIFT" : "PREPARATION_FAILED";
       failure.preparation = result;
       throw failure;
     } finally {
@@ -416,7 +428,7 @@ export function createProjectEnvironments({ roots, direnv, nix, system, baseline
       // approval into the same barrier; preserve unrelated evaluation errors.
       // Recovery keeps the selection restriction so a vanishing local .envrc
       // can never prompt for or auto-allow an ancestor on selection's behalf.
-      if (error.code === "CANCELLED" || error.code === "TIMEOUT") throw error;
+      if (["CANCELLED", "TIMEOUT", "EXECUTION_OUTCOME_UNKNOWN"].includes(error.code)) throw error;
       if (error.code === "LOCK_DRIFT" && await definitionGeneration() === generation) {
         if (blocked.size >= 128) blocked.delete(blocked.keys().next().value);
         blocked.set(identity, { message: error.message, preparation: error.preparation });

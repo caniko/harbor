@@ -168,8 +168,9 @@ also terminates its helper processes. This does not cancel running commands.
 
 On Linux, `preparationAdmission = { amc, contract, memoryBytes }` optionally
 routes exports and flake catalog evaluation through an absolute, operator-selected
-AMC executable and a positive, 4096-byte-aligned byte ceiling. It requires AMC's version-1 queued admission and native readiness
-capabilities. The native contract owns RAM/swap limits, queue capacity and cleanup;
+AMC executable and a positive, 4096-byte-aligned byte ceiling. It requires AMC's
+version-1 queued admission and version-2 native readiness capabilities.
+The native contract owns RAM/swap limits, queue capacity and cleanup;
 Harbor adds no resource scheduler. Resource waiting has no implicit deadline and
 does not consume `preparationTimeoutMs`: that clock begins only after the fresh
 native entry token arrives. Progress distinguishes `waiting` from `preparing`.
@@ -177,7 +178,13 @@ Missing admission or entry evidence fails closed, without an unaccounted fallbac
 Cancellation waits for AMC's client to finish its cleanup attempt; the broker
 retains reservations whose native cleanup remains unconfirmed. The final shared
 export waiter also awaits its producer; cancelling one of several waiters leaves
-the others running. The package advertises `preparationAdmissionVersion = 1`.
+the others running. The package advertises `preparationAdmissionVersion = 2`.
+Native preparation requires token-bound completion proof matching the client exit
+code, not just its entry frame. A missing or mismatched outcome fails with
+`EXECUTION_OUTCOME_UNKNOWN`, including cancellation or timeout without proof;
+OpenCode retains the accepted Job as `reconciling`.
+Inspect native execution and any side effects before retrying. This evidence
+never includes project stdout, stderr or environment credentials.
 
 Broker submission saturation uses AMC's `admissionBackpressureVersion = 1`:
 only a fresh token-bound nonacceptance frame on stderr followed by exit 75 may

@@ -81,7 +81,9 @@ if (!cancelled) {
   await delay(10);
   process.stderr.write(token.slice(10) + "\\x1f");
   const payload = args.slice(args.indexOf("--") + 1);
-  spawn(payload[0], payload.slice(1), { stdio: "inherit" }).on("exit", code => process.exit(code ?? 1));
+  spawn(payload[0], payload.slice(1), { stdio: "inherit" }).on("exit", code => {
+    process.stderr.write("\\x1e" + token + ":complete:" + (code ?? 1) + "\\x1f", () => process.exit(code ?? 1));
+  });
 }
 `, { mode: 0o700 });
   const events = [];
@@ -109,7 +111,7 @@ test("native preparation queues beyond its execution deadline and frames readine
 test("native queued preparation cancellation awaits its owner and never enters", integration, async (t) => {
   const { cwd, events, environments } = await admissionFixture(t);
   const controller = new AbortController();
-  const pending = assert.rejects(environments.resolve({ sessionID: "a", cwd, signal: controller.signal }), { code: "CANCELLED" });
+  const pending = assert.rejects(environments.resolve({ sessionID: "a", cwd, signal: controller.signal }), { code: "EXECUTION_OUTCOME_UNKNOWN" });
   let queued = false;
   for (let attempt = 0; attempt < 100; attempt++) {
     try { await readFile(path.join(cwd, "admission-args")); queued = true; break; } catch (error) { if (error.code !== "ENOENT") throw error; }
@@ -141,7 +143,9 @@ if (!(await readFile("overflow-pid", "utf8").catch(() => ""))) {
 }
 process.stderr.write("\\x1e" + token + "\\x1f");
 const payload = args.slice(args.indexOf("--") + 1);
-spawn(payload[0], payload.slice(1), { stdio: "inherit" }).on("exit", code => process.exit(code ?? 1));
+spawn(payload[0], payload.slice(1), { stdio: "inherit" }).on("exit", code => {
+  process.stderr.write("\\x1e" + token + ":complete:" + (code ?? 1) + "\\x1f", () => process.exit(code ?? 1));
+});
 `);
   const prepared = f.environments.resolve({ sessionID: "overflow", cwd: f.cwd });
   prepared.catch(() => {});
@@ -180,7 +184,7 @@ process.exit(${code});
 `);
     await writeFile(path.join(f.cwd, "no-replay"), "");
     await assert.rejects(f.environments.resolve({ sessionID: "ambiguous", cwd: f.cwd, signal }), {
-      code: signal ? "CANCELLED" : "PREPARATION_FAILED",
+      code: signal ? "CANCELLED" : "EXECUTION_OUTCOME_UNKNOWN",
     });
     assert.equal(await readFile(path.join(f.cwd, "no-replay"), "utf8"), "attempt\n");
   }
@@ -190,13 +194,48 @@ test("unavailable native preparation admission never falls back to an unaccounte
   const { projects: [cwd], environments } = await fixture(t, {
     preparationAdmission: { amc: "/missing/amc", contract: "nix-eval", memoryBytes: 1048576 },
   });
-  await assert.rejects(environments.resolve({ sessionID: "a", cwd }), { code: "PREPARATION_FAILED" });
+  await assert.rejects(environments.resolve({ sessionID: "a", cwd }), { code: "EXECUTION_OUTCOME_UNKNOWN" });
 });
 
 test("a successful native client without entry evidence cannot return an environment", integration, async (t) => {
   const { cwd, amc, environments } = await admissionFixture(t);
   await writeFile(amc, `#!${process.execPath}\nprocess.stdout.write("{}");\n`);
-  await assert.rejects(environments.resolve({ sessionID: "a", cwd }), { code: "PREPARATION_FAILED" });
+  await assert.rejects(environments.resolve({ sessionID: "a", cwd }), { code: "EXECUTION_OUTCOME_UNKNOWN" });
+});
+
+test("native preparation requires a matching confirmed outcome after entry", integration, async (t) => {
+  const { cwd, amc, environments } = await admissionFixture(t);
+  const frames = ["", '"\\x1ewrong:complete:0\\x1f"', '"\\x1e" + token + ":complete:1\\x1f"',
+    '"\\x1e" + token + ":complete:0\\x1f\\x1e" + token + ":complete:0\\x1f"',
+    '"\\x1e" + token + ":complete:99999\\x1f\\x1e" + token + ":complete:0\\x1f"'];
+  for (const frame of frames) {
+    await writeFile(amc, `#!${process.execPath}
+import { appendFile } from "node:fs/promises";
+const args = process.argv.slice(2);
+const token = args[args.indexOf("--ready-token") + 1];
+await appendFile("unknown-preparation", "once\\n");
+process.stderr.write("\\x1e" + token + "\\x1f");
+${frame ? `process.stderr.write(${frame});` : ""}
+process.stdout.write("{}");
+`);
+    await assert.rejects(environments.resolve({ sessionID: "unknown", cwd }), error => {
+      assert.equal(error.code, "EXECUTION_OUTCOME_UNKNOWN");
+      assert.match(error.message, /Inspect native execution and any side effects before retrying/);
+      return true;
+    });
+  }
+  assert.equal(await readFile(path.join(cwd, "unknown-preparation"), "utf8"), "once\n".repeat(frames.length));
+});
+
+test("native preparation completion cannot precede entry", integration, async (t) => {
+  const { cwd, amc, environments } = await admissionFixture(t);
+  await writeFile(amc, `#!${process.execPath}
+const args = process.argv.slice(2);
+const token = args[args.indexOf("--ready-token") + 1];
+process.stderr.write("\\x1e" + token + ":complete:0\\x1f\\x1e" + token + "\\x1f");
+process.stdout.write("{}");
+`);
+  await assert.rejects(environments.resolve({ sessionID: "unknown", cwd }), { code: "EXECUTION_OUTCOME_UNKNOWN" });
 });
 
 test("real AMC admits export and catalog evaluation and cleans up cancelled preparation", {
@@ -252,7 +291,7 @@ test("real AMC admits export and catalog evaluation and cleans up cancelled prep
   await writeFile(path.join(cwd, ".envrc"), "touch native-preparation-entered\nsleep 60\ntouch native-must-not-complete\n");
   const controller = new AbortController();
   t.after(() => controller.abort());
-  const pending = assert.rejects(environments.resolve({ sessionID: "a", cwd, signal: AbortSignal.any([controller.signal, deadline]) }), { code: "CANCELLED" });
+  const pending = assert.rejects(environments.resolve({ sessionID: "a", cwd, signal: AbortSignal.any([controller.signal, deadline]) }), { code: "EXECUTION_OUTCOME_UNKNOWN" });
   await wait(async () => { try { await stat(path.join(cwd, "native-preparation-entered")); return true; } catch (error) { if (error.code !== "ENOENT") throw error; return false; } });
   controller.abort();
   await pending;
