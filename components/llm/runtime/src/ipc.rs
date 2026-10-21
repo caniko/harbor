@@ -95,6 +95,8 @@ pub(crate) struct Wire {
     closed: bool,
 }
 impl Exchange {
+    // Only the Linux standalone supervisor hands over an established wire.
+    #[cfg(target_os = "linux")]
     pub(crate) fn from_wire(wire: Wire, channel: AuthenticatedChannel, binding: Binding) -> Self {
         Self {
             wire,
