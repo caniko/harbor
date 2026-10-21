@@ -20,6 +20,17 @@ fn reject(code: ErrorCode) -> ProtocolError {
 fn io_error(_: std::io::Error) -> ProtocolError {
     reject(ErrorCode::TransportFailed)
 }
+/// Apple kernels reject SO_RCVTIMEO/SO_SNDTIMEO with EINVAL once the peer has
+/// shut down, even with a reply still buffered. The following read or write
+/// then reports those bytes, EOF or a broken pipe, which is classified as usual.
+fn timeout_set(result: std::io::Result<()>) -> Result<()> {
+    match result {
+        Err(error) if cfg!(target_vendor = "apple") && error.kind() == ErrorKind::InvalidInput => {
+            Ok(())
+        }
+        other => other.map_err(io_error),
+    }
+}
 
 struct Ceilings {
     record: usize,
@@ -293,9 +304,7 @@ impl Wire {
     }
     fn write_all(&mut self, mut bytes: &[u8]) -> Result<()> {
         while !bytes.is_empty() {
-            self.stream
-                .set_write_timeout(Some(self.remaining()?))
-                .map_err(io_error)?;
+            timeout_set(self.stream.set_write_timeout(Some(self.remaining()?)))?;
             match self.stream.write(bytes) {
                 Ok(0) => return Err(reject(ErrorCode::TransportFailed)),
                 Ok(count) => bytes = &bytes[count..],
@@ -311,9 +320,7 @@ impl Wire {
     }
     fn read_exact(&mut self, mut bytes: &mut [u8]) -> Result<()> {
         while !bytes.is_empty() {
-            self.stream
-                .set_read_timeout(Some(self.remaining()?))
-                .map_err(io_error)?;
+            timeout_set(self.stream.set_read_timeout(Some(self.remaining()?)))?;
             match self.stream.read(bytes) {
                 Ok(0) => return Err(reject(ErrorCode::TransportFailed)),
                 Ok(count) => bytes = &mut bytes[count..],
@@ -341,9 +348,7 @@ impl Wire {
         self.count_bytes(4)?;
         let mut header = [0; 4];
         loop {
-            self.stream
-                .set_read_timeout(Some(self.remaining()?))
-                .map_err(io_error)?;
+            timeout_set(self.stream.set_read_timeout(Some(self.remaining()?)))?;
             match self.stream.read(&mut header[..1]) {
                 Ok(0) => return Ok(None),
                 Ok(_) => break,
