@@ -21,16 +21,16 @@
   };
   direnvrc = "${nixDirenv}/share/nix-direnv/direnvrc";
   bash = lib.getExe pkgs.bash;
-  # A stdenv-free shell whose only input sleeps, so print-dev-env must build it.
+  # A stdenv-free shell with one input, so print-dev-env must build it.
   fixture = pkgs.writeTextDir "flake.nix" ''
     {
       outputs = _: let
         system = "${pkgs.stdenv.hostPlatform.system}";
-        slow = derivation {
-          name = "direnv-slow-input-v1";
+        input = derivation {
+          name = "direnv-input-v1";
           inherit system;
           builder = "${bash}";
-          args = ["-c" "${pkgs.coreutils}/bin/sleep 20; ${pkgs.coreutils}/bin/mkdir $out"];
+          args = ["-c" "${pkgs.coreutils}/bin/mkdir $out"];
         };
       in {
         devShells.''${system}.default = derivation {
@@ -39,7 +39,7 @@
           builder = "${bash}";
           args = ["-c" "exit 1"];
           outputs = ["out"];
-          SLOW = slow;
+          INPUT = input;
         };
       };
     }
@@ -67,6 +67,9 @@ in {
     nodes.machine = {
       environment.systemPackages = [pkgs.bash pkgs.coreutils pkgs.direnv pkgs.gnused pkgs.gnugrep];
       virtualisation.additionalPaths = [fixture pkgs.bash pkgs.coreutils];
+      # With one vCPU and 1 GiB, Nix in the VM intermittently SIGKILLs builders.
+      virtualisation.cores = 2;
+      virtualisation.memorySize = 2048;
       nix.settings = {
         experimental-features = ["nix-command" "flakes"];
         # The fixture names its builders by store path, without input context.
@@ -91,8 +94,8 @@ in {
       machine.wait_for_unit("user@1000.service")
       machine.succeed("${as "alice" "interrupt"}")
       # The finished realization is rooted before any activation publishes it.
-      machine.fail("nix-store --delete \"$(ls -d /nix/store/*-direnv-slow-input-v1)\"")
-      machine.succeed("test -d \"$(ls -d /nix/store/*-direnv-slow-input-v1)\"")
+      machine.fail("nix-store --delete \"$(ls -d /nix/store/*-direnv-input-v1)\"")
+      machine.succeed("test -d \"$(ls -d /nix/store/*-direnv-input-v1)\"")
       machine.succeed("${as "alice" "renew"}")
       machine.succeed("${as "alice" "cached"}")
       machine.succeed("${as "alice" "concurrent"}")

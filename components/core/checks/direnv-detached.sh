@@ -5,53 +5,72 @@ set -euo pipefail
 direnvrc=$1 fixture=$2 phase=$3
 [[ -d $HOME/fx ]] || cp -r --no-preserve=mode "$fixture" "$HOME/fx"
 cd "$HOME/fx"
-trap 'tail -n 40 ./*.out >&2' ERR
+trap 'tail -n 40 ./*.out .direnv/*.log >&2' ERR
+
+# A gate instead of a slow build: print-dev-env waits until $HOME/release
+# exists, so the test decides how long the realization stays in flight.
+if [[ ! -x $HOME/bin/nix ]]; then
+  mkdir -p "$HOME/bin"
+  printf '%s\n' '#!/bin/sh' \
+    'case " $* " in *" print-dev-env "*) until [ -e "$HOME/release" ]; do sleep 0.2; done ;; esac' \
+    "exec $(command -v nix) \"\$@\"" >"$HOME/bin/nix"
+  chmod +x "$HOME/bin/nix"
+fi
+export PATH=$HOME/bin:$PATH
 
 activate() {
-  bash -c 'eval "$(direnv stdlib)"; source "$1"; use flake .; printf "SLOW=%s\n" "$SLOW"' _ "$direnvrc"
+  bash -c 'eval "$(direnv stdlib)"; source "$1"; use flake .; printf "INPUT=%s\n" "$INPUT"' _ "$direnvrc"
 }
-building() { systemctl --user list-units 'nix-direnv-*' --state=active --no-legend | grep -q .; }
+units() { systemctl --user list-units 'nix-direnv-*' --state=active --no-legend | grep -c . || true; }
 
 case $phase in
 interrupt)
+  rm -f "$HOME/release"
   # A failed unit degrades the user manager; detection must still detach.
   systemd-run --user --unit=degrade-manager false || true
   set -m
   activate >interrupted.out 2>&1 &
   pid=$!
-  until building; do sleep 1; done
+  until (($(units) == 1)); do sleep 1; done
   # The same signal harbor-llm uses on timeout: SIGKILL the whole group.
   kill -KILL -- "-$pid"
   wait "$pid" || true
-  building
+  (($(units) == 1))
   printf 'Activation killed; realization still running\n'
-  until ! building; do sleep 1; done
+  touch "$HOME/release"
+  until (($(units) == 0)); do sleep 1; done
+  # The detached realization itself must have succeeded and left its root.
+  [[ $(cat .direnv/flake-tmp-profile*.status) == 0 ]]
+  compgen -G '.direnv/flake-tmp-profile-*-link' >/dev/null
   ;;
 renew)
-  start=$SECONDS
   activate >renew.out 2>&1
   grep -F 'Renewed cache' renew.out
-  # The fixture input sleeps 20 s; a renewal under that did not rebuild it.
-  ((SECONDS - start < 20))
   ;;
 cached)
   activate >cached.out 2>&1
   grep -F 'Using cached dev shell' cached.out
   ;;
 concurrent)
-  sed -i 's/slow-input-v1/slow-input-v2/' flake.nix
-  start=$SECONDS
+  rm -f "$HOME/release"
+  sed -i 's/input-v1/input-v2/' flake.nix
   activate >first.out 2>&1 &
   first=$!
-  activate >second.out 2>&1
+  activate >second.out 2>&1 &
+  second=$!
+  until (($(units) == 1)); do sleep 1; done
+  sleep 3
+  # The second activation waits on the profile lock; it starts no second unit.
+  (($(units) == 1))
+  touch "$HOME/release"
   wait "$first"
-  # One shared 20 s build, not two.
-  ((SECONDS - start < 35))
-  [[ $(grep '^SLOW=' first.out) == "$(grep '^SLOW=' second.out)" ]]
-  grep -F 'slow-input-v2' first.out
+  wait "$second"
+  [[ $(grep '^INPUT=' first.out) == "$(grep '^INPUT=' second.out)" ]]
+  grep -F 'input-v2' first.out
   ;;
 fallback)
-  sed -i 's/slow-input-v[0-9]/slow-input-root/' flake.nix
+  touch "$HOME/release"
+  sed -i 's/input-v[0-9]/input-root/' flake.nix
   activate >fallback.out 2>&1
   grep -F 'Renewed cache' fallback.out
   if grep -F 'realizing in user unit' fallback.out; then exit 1; fi
