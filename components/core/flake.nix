@@ -53,6 +53,7 @@
           harbor-evidence = import ./package.nix {inherit pkgs;};
           harbor = self.packages.${system}.harbor-evidence;
           harbor-opencode = harborOpencode;
+          nix-direnv = import ./nix/direnv/package.nix {inherit pkgs;};
           default = harborOpencode;
         };
 
@@ -74,6 +75,10 @@
             inherit (self) lib;
             inherit harborOpencode;
           })
+          // import ./checks/direnv.nix {
+            inherit pkgs;
+            nixDirenv = self.packages.${system}.nix-direnv;
+          }
           // {
             timezone = import ./checks/timezone.nix {
               inherit pkgs;

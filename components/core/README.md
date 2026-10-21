@@ -10,6 +10,9 @@ explicitly by each repository rather than inherited from a parent Harbor.
 [Command-scoped runtimes](docs/scoped-runtime.md) isolate loader and driver
 settings and define dependency-preserving composition of language shells.
 
+Harbor's [nix-direnv](docs/direnv.md) keeps plain `use flake` and lets dev-shell
+builds outlive an interrupted activation.
+
 Dev shells are fragments `{ packages, env, shellHook }`. Language harbors merge
 those fragments and render them with `lib.devShell.mkShell` (`pkgs.mkShell` by
 default; Rust passes a `craneLib.devShell` builder). `lib.devShellTests` and
