@@ -1,5 +1,7 @@
 """Run evaluated condition/reload commands and prove their actual authority leases."""
 
+import contextlib
+import fcntl
 import json
 import os
 import pwd
@@ -10,7 +12,16 @@ import tempfile
 import time
 from pathlib import Path
 
-from harbor_db.durable import lock
+
+@contextlib.contextmanager
+def lock(path):
+    # Probe the persistent kernel anchor independently of either runtime.
+    fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield fd
+    finally:
+        os.close(fd)
 
 
 def main():
@@ -32,6 +43,11 @@ def main():
         # These are disposable processes, not systemd units. Exclusive-lock
         # refusal must prove lease coverage, independently of unit-state checks.
         resource["runtime_units"] = []
+        # This fixture certifies a plain-file corpus and tests production writer
+        # command leases. It has no Git requirements. Store ownership is unmapped
+        # in the build namespace; Git admission is covered by the ownership-bound
+        # native/Python cargo fixtures and the production cutover VM.
+        resource.pop("git_executable")
         resource["authority"]["state_dir"] = str(authority)
         resource["authority"]["directories"] = [str(source)]
         resource["custody_file"] = str(authority / "custody.json")
@@ -135,6 +151,50 @@ def main():
                     "literal_arguments_preserved": True,
                     "exclusive_lease_blocked_until_exit": True,
                     "certification_resumed_after_exit": True,
+                }
+            )
+        # Quiescing deliberately rejects ordinary startup. Shutdown hooks must
+        # still reach the application, preserving literal argv and exit status.
+        (authority / "transition.json").write_text(json.dumps({"phase": "quiescing"}))
+        startup = [
+            fixture["checker"],
+            "check",
+            "--contract",
+            str(contract),
+            "--host",
+            "fixture",
+            "--phase",
+            "startup",
+        ]
+        blocked = subprocess.run(
+            startup, check=False, capture_output=True, text=True, timeout=15
+        )
+        assert blocked.returncode != 0, (
+            "unfinished transition admitted ordinary custody inspection"
+        )
+        for phase, expected_exit in (("ExecStop", 31), ("ExecStopPost", 37)):
+            commands = fixture["commands"][phase]
+            assert len(commands) == 1, (phase, commands)
+            command = shlex.split(commands[0])
+            ready = root / f"{phase}-ready.json"
+            command[command.index("HARBOR_DB_PHASE_READY")] = str(ready)
+            completed = subprocess.run(
+                command, input="x", capture_output=True, text=True, timeout=15
+            )
+            assert completed.returncode == expected_exit, (
+                phase,
+                completed.returncode,
+                completed.stderr,
+            )
+            assert json.loads(ready.read_text()) == {
+                "phase": phase,
+                "arguments": [fixture["literalArgument"]],
+            }
+            results.append(
+                {
+                    "phase": phase,
+                    "exit_code": expected_exit,
+                    "quiescing_shutdown_executed": True,
                 }
             )
         print(json.dumps({"status": "ok", "commands": results}))

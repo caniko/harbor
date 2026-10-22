@@ -3,6 +3,7 @@ name: Nix installable builds
 
 on:
   push:
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
@@ -10,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -22,14 +23,37 @@ jobs:
       max-parallel: 2
       matrix:
         installable:
+          - ".#packages.x86_64-linux.storage-lifecycle-rust"
+          - ".#packages.x86_64-linux.harbor-db-test"
+          - ".#checks.x86_64-linux.native-package-eval"
+          - ".#checks.x86_64-linux.native-storage-eval"
+          - ".#checks.x86_64-linux.native-cli-smoke"
+          - ".#checks.x86_64-linux.native-supervisor"
+          - ".#checks.x86_64-linux.native-postgres-backup-service"
+          - ".#checks.x86_64-linux.native-source-local-recovery"
+          - ".#checks.x86_64-linux.native-postgres-crash-rollback"
+          - ".#checks.x86_64-linux.native-postgres-interrupted-upgrade"
+          - ".#checks.x86_64-linux.native-postgres-recovery-acceptance"
+          - ".#checks.x86_64-linux.native-postgres-writer-fence"
+          - ".#checks.x86_64-linux.native-application-provision"
+          - ".#checks.x86_64-linux.native-application-backup"
+          - ".#checks.x86_64-linux.native-application-transition"
+          - ".#checks.x86_64-linux.native-application-postgres-transition"
           - ".#packages.x86_64-linux.storage-lifecycle"
           - ".#checks.x86_64-linux.postgres-lifecycle-test"
+          - ".#checks.x86_64-linux.postgres-lifecycle-oracle-test"
           - ".#checks.x86_64-linux.cutover-eval"
           - ".#packages.x86_64-linux.harbor-db-cached"
           - ".#checks.x86_64-linux.postgres-lifecycle-eval"
           - ".#checks.x86_64-linux.postgres-crash-rollback"
           - ".#checks.x86_64-linux.postgres-interrupted-upgrade"
           - ".#checks.x86_64-linux.postgres-recovery-acceptance"
+          - ".#checks.x86_64-linux.postgres-writer-fence"
+          - ".#checks.x86_64-linux.application-provision-eval"
+          - ".#checks.x86_64-linux.application-provision"
+          - ".#checks.x86_64-linux.application-backup"
+          - ".#checks.x86_64-linux.application-transition"
+          - ".#checks.x86_64-linux.application-postgres-transition"
           - ".#checks.x86_64-linux.pg-backup-eval"
           - ".#checks.x86_64-linux.module-eval"
           - ".#checks.x86_64-linux.module-smoke"
@@ -54,7 +78,7 @@ jobs:
           git rev-parse HEAD > "$SIMIT_NIX_BUILD_RESULTS/revision"
           printf '%s\n' "$INSTALLABLE" > "$SIMIT_NIX_BUILD_RESULTS/installable"
       - name: Install Nix
-        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
 
       - name: Configure GitHub input transport
         run: |

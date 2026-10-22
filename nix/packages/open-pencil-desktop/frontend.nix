@@ -18,6 +18,7 @@
     # archive; fixup runs only on the eventual application closure.
     dontFixup = true;
     installPhase = ''
+      bun test ${./.}/normalize-links.test.ts
       # Independent cold installs must agree before accepting the fixed hash.
       # Bun's alias/bin races are repaired from the frozen graph, not by
       # dropping entries or choosing whichever install finished first.

@@ -142,6 +142,14 @@ in {
     blenderCheck = nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
       blender-mcp-runtime = import ./tooling/tests/blender.nix {inherit self inputs pkgs;};
     };
+    # Core's retained component outputs are Linux-scoped; its shared shell
+    # library also serves the portable Rust and Python Darwin consumers.
+    portableCoreChecks = nixlib.optionalAttrs (!pkgs.stdenv.hostPlatform.isLinux) {
+      scoped-runtime = import ../components/core/checks/scoped-runtime.nix {
+        inherit pkgs;
+        devShell = self.lib.core.devShell;
+      };
+    };
     sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
       pkgs.runCommand "harbor-component-source-materialization" {} ''
         set -euo pipefail
@@ -157,18 +165,20 @@ in {
           name = check;
           inherit path;
         }) ((components.${name}.checks.${system} or {})
-          // nixlib.optionalAttrs (name == "core") {
-            source-materialization = sourceMaterialization;
-            template-contract = templateContract;
-            bootstrap-inputs = bootstrapInputs;
-            module-contracts = moduleContracts;
-          }
+          // nixlib.optionalAttrs (name == "core") ({
+              source-materialization = sourceMaterialization;
+              template-contract = templateContract;
+              bootstrap-inputs = bootstrapInputs;
+              module-contracts = moduleContracts;
+            }
+            // portableCoreChecks)
           // nixlib.optionalAttrs (name == "cad" && system == "x86_64-linux") {
             dependency-links = desktopChecks.open-pencil-dependency-links;
           }))))
     componentNames);
   in
     collect "checks" system
+    // nixlib.mapAttrs' (key: value: nixlib.nameValuePair "core-${key}" value) portableCoreChecks
     // groups
     // desktopChecks
     // blenderCheck
@@ -189,18 +199,34 @@ in {
       toolchainProfile = "nightly";
       cache.enable = false;
     };
-    shell = pkgs.mkShell {
-      packages = [toolchain.rustToolchain pkgs.pkg-config pkgs.openssl pkgs.git pkgs.python3 pkgs.uv pkgs.jq formatters.${system}.config.build.wrapper];
-    };
+    # Native workspace tests consume the DB check's existing immutable fixtures.
+    # Namespace fixtures use this compile-time identity only with the testing
+    # feature. Production builds always retain installed machine custody.
+    databaseTestEnvironment = nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (let
+      databaseTest = self.checks.${system}.database-cargo-test;
+    in {
+      inherit (databaseTest) HARBOR_DB_TEST_POSTGRES HARBOR_DB_TEST_POSTGRES_17 HARBOR_DB_TEST_CONFIG_FIXTURE HARBOR_DB_TEST_MACHINE_ID;
+      HARBOR_DB_TEST_ROOT_UID = "0";
+    });
+    shell = pkgs.mkShell (databaseTestEnvironment
+      // {
+        # Protocol tests exchange authenticated records between Rust and Node.
+        packages = [toolchain.rustToolchain pkgs.pkg-config pkgs.openssl pkgs.git pkgs.python3 pkgs.uv pkgs.jq pkgs.nodejs formatters.${system}.config.build.wrapper] ++ nixlib.optionals pkgs.stdenv.hostPlatform.isLinux [pkgs.util-linux];
+        shellHook = nixlib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+          # nix-direnv may cache exports after Nix removes its shell TMPDIR.
+          export HARBOR_DB_TEST_TMPDIR="''${XDG_RUNTIME_DIR:-/tmp}"
+        '';
+      });
   in
     collect "devShells" system
     // {
       default = shell;
     }
     // {
-      ci = pkgs.mkShell {
-        inputsFrom = [shell];
-        packages = [(bootstrap system).simit];
-      };
+      ci = pkgs.mkShell (databaseTestEnvironment
+        // {
+          inputsFrom = [shell];
+          packages = [(bootstrap system).simit];
+        });
     });
 }

@@ -5,6 +5,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/caniko/harbor"
 description = "Generic Attic helpers for harbor-rs and downstream tooling"
+readme = "README.md"
 rust-version = "1.88"
 documentation = "https://docs.rs/harbor-cache"
 keywords = ["nix", "attic", "cache", "jwt"]

@@ -58,6 +58,12 @@ HARBOR_CAD_TEST_BINARY="$PWD/target/debug/harbor-cad" uv run --locked pytest -q
 treefmt --config-file treefmt.toml
 ```
 
+CAD's tagged JSON inputs decode numeric fields with their declared types, including
+when another workspace member enables `serde_json/arbitrary_precision`. The native
+regressions exercise this feature union, borrowed generic inputs, worker defaults,
+round trips, and rejection of duplicate, unknown, and inactive-variant fields.
+Serialization and the generated public JSON schemas retain the existing contract.
+
 `doctor` is read-only inventory, not a GPU benchmark. `qualify` reports gate
 status without promoting untested combinations. Native package outputs and
 execution receipts must be qualified before A0/B1 can be declared complete.

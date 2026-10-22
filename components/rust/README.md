@@ -42,6 +42,20 @@ The library also exports these helpers (re-exported as `harbor-rs.lib.*`):
 - `mkDioxusBuildPlan` / `resolveWasmBindgenCli` — reusable Dioxus command planning and lockfile-to-toolchain version resolution for downstream flakes
 - `mkAndroidApk` / `mkAndroidApkDevBuilder` / `mkAndroidFlavorTable` / `findLocalMavenCache` / `mkAndroidSdk` / `mkAndroidDevShell` — re-exported from [harbor-android](https://github.com/caniko/harbor-android) for one migration release
 
+## Cargo SDK helper
+
+The macOS SDK archive helper's registry package is `caniko-harbor-sdk`, with
+Rust library name `harbor_sdk`. The unqualified crates.io package `harbor-sdk`
+belongs to an unrelated project. Preserve the import name with this dependency:
+
+```toml
+harbor-sdk = { package = "caniko-harbor-sdk", version = "0.1.0" }
+```
+
+The imported source remains at `crates/harbor-sdk`. Its package-qualified release
+tag is `caniko-harbor-sdk/v0.1.0`; registry publication still requires the signed
+tag's source and independent publisher qualification.
+
 ## Prerequisites
 
 - [Nix](https://nixos.org/) with flakes enabled
@@ -85,6 +99,27 @@ This produces:
 - `nix develop .#windows` for MinGW cross builds
 - `nix develop .#macos` for osxcross when a macOS SDK is configured
 - `nix develop .#cross` for both Windows and macOS helpers
+
+### Command-scoped native runtime
+
+Pass a `harbor.lib.core.devShell.mkRuntime` derivation as `runtime` to
+`mkDevShell` or `mkDevShells`. Cargo run, test and bench executables then use a
+launcher configured only for the host's native Rust target. Loader/driver
+variables stay inside those commands. With no runtime or `nativeRunner`, runner
+configuration remains unchanged.
+
+For an existing native runner, pass its executable and arguments as the
+`nativeRunner` list; the resulting command is `runtime nativeRunner executable
+arguments...`. Arguments with spaces are preserved. Supplying the same native
+runner variable through `extraEnv` is rejected rather than silently discarding
+one configuration. Explicit runtime selection overrides Cargo's native runner
+from config files or the inherited shell; migrate that runner into
+`nativeRunner`. Cross-target runner variables remain untouched.
+
+Keep required RPATH/build settings: target runners do not cover build scripts,
+proc macros or every alternate test runner. `checks.<system>.rust-native-runner`
+executes a dependency-free crate through Cargo run/test/bench with a custom
+runner and verifies parent-shell isolation.
 
 ### Dioxus bundles
 

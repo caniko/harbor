@@ -1,0 +1,414 @@
+//! Persistent authority and lifetime consumer leases.
+use super::{Result, durable, invalid, process, string};
+use serde_json::{Value, json};
+use std::{
+    collections::BTreeSet,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
+pub fn valid_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+fn directory(p: &Path) -> Result<()> {
+    if !p.is_absolute() || !p.is_dir() || std::fs::canonicalize(p)? != p {
+        return Err(invalid(format!(
+            "storage directory is missing or redirected: {}",
+            p.display()
+        )));
+    }
+    Ok(())
+}
+pub fn state_directory(c: &Value) -> Result<PathBuf> {
+    super::pg_core::require_mounts(c)?;
+    let p = PathBuf::from(string(c, "state_dir")?);
+    directory(&p)?;
+    Ok(p)
+}
+fn strings(v: Option<&Value>) -> Result<Vec<String>> {
+    match v {
+        None => Ok(vec![]),
+        Some(v) => v
+            .as_array()
+            .ok_or_else(|| invalid("invalid storage paths"))?
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| invalid("invalid storage path"))
+            })
+            .collect(),
+    }
+}
+pub fn require_files(files: &[String]) -> Result<()> {
+    for s in files {
+        let p = Path::new(s);
+        if !p.is_absolute()
+            || !p.is_file()
+            || std::fs::canonicalize(p)? != p
+            || std::fs::metadata(p)?.len() == 0
+        {
+            return Err(invalid(format!(
+                "required storage file is missing, empty or redirected: {s}"
+            )));
+        }
+    }
+    Ok(())
+}
+fn counter(v: &Value) -> Result<String> {
+    let s = v
+        .as_number()
+        .ok_or_else(|| invalid("invalid consumer storage counters"))?
+        .to_string();
+    if !s.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(invalid("invalid consumer storage counters"));
+    }
+    Ok(s)
+}
+/// Validate nested consumer policy before a privileged coordinator can dispatch it.
+pub(super) fn consumer_policy(
+    c: &Value,
+) -> Result<Option<(Vec<String>, String, process::Identity)>> {
+    let argv = strings(c.get("consumer_command"))?;
+    if argv.is_empty() {
+        return Ok(None);
+    }
+    consumer_timeout(c)?;
+    let executable = durable::immutable_store_reference(Path::new(&argv[0]))?;
+    if std::fs::metadata(&executable)?.mode() & 0o111 == 0 {
+        return Err(invalid(
+            "consumer validator requires an immutable executable",
+        ));
+    }
+    let uid = unsafe { libc::geteuid() };
+    let user = match c.get("user") {
+        Some(value) => value
+            .as_str()
+            .ok_or_else(|| invalid("invalid resource user"))?
+            .to_owned(),
+        None if uid != 0 => process::current_username()?,
+        None => {
+            return Err(invalid(
+                "root consumer validation requires the declared resource user",
+            ));
+        }
+    };
+    let identity = process::account(&user)?;
+    if identity.uid == 0
+        || (uid != 0 && (uid != identity.uid || unsafe { libc::getuid() } != identity.uid))
+    {
+        return Err(invalid(
+            "consumer validator requires the unprivileged resource user",
+        ));
+    }
+    Ok(Some((argv, user, identity)))
+}
+
+fn consumer_timeout(c: &Value) -> Result<Duration> {
+    let seconds = c
+        .get("consumer_timeout_seconds")
+        .unwrap_or(&json!(30))
+        .as_u64()
+        .filter(|seconds| (1..=300).contains(seconds))
+        .ok_or_else(|| invalid("invalid consumer execution budget"))?;
+    Ok(Duration::from_secs(seconds))
+}
+
+pub fn contract(c: &Value) -> Result<Value> {
+    contract_until(c, None)
+}
+
+pub fn contract_until(c: &Value, deadline: Option<Instant>) -> Result<Value> {
+    let remaining = || {
+        deadline
+            .map(|deadline| {
+                deadline
+                    .checked_duration_since(Instant::now())
+                    .filter(|remaining| !remaining.is_zero())
+                    .ok_or_else(|| invalid("cutover inspection budget exhausted"))
+            })
+            .transpose()
+    };
+    remaining()?;
+    let state = state_directory(c)?;
+    let name = string(c, "resource")?;
+    if !valid_name(name) {
+        return Err(invalid("invalid resource name"));
+    }
+    let mut consumer = json!({});
+    if let Some((argv, user, identity)) = consumer_policy(c)? {
+        let mut spec = process::CommandSpec::new(argv.clone());
+        spec.environment = Some(std::collections::BTreeMap::from([
+            (
+                "PATH".into(),
+                Path::new(&argv[0])
+                    .parent()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ("HOME".into(), "/".into()),
+            ("LANG".into(), "C.UTF-8".into()),
+            ("USER".into(), user.clone()),
+            ("LOGNAME".into(), user),
+        ]));
+        spec.cwd = Some(PathBuf::from("/"));
+        spec.timeout = consumer_timeout(c)?;
+        spec.maximum_output = 1024 * 1024;
+        spec.capture_stderr = true;
+        if unsafe { libc::geteuid() } == 0 {
+            spec.identity = Some(identity);
+        }
+        if let Some(remaining) = remaining()? {
+            spec.timeout = spec.timeout.min(remaining);
+        }
+        let output = process::run(&spec)?;
+        if !output.status.success() {
+            return Err(invalid(format!(
+                "consumer storage validation failed: {}",
+                process::text(&output.stderr)?.trim()
+            )));
+        }
+        consumer = super::codec::decode_str(&process::text(&output.stdout)?)?;
+        let m = consumer
+            .as_object()
+            .ok_or_else(|| invalid("invalid consumer storage contract"))?;
+        if m.keys().any(|k| {
+            ![
+                "binding",
+                "directories",
+                "required_files",
+                "minimum_counters",
+            ]
+            .contains(&k.as_str())
+        }) || ["binding", "directories", "required_files"]
+            .iter()
+            .any(|k| !m.contains_key(*k))
+            || !consumer["binding"].is_object()
+        {
+            return Err(invalid("invalid consumer storage contract"));
+        }
+    }
+    let dirs: BTreeSet<_> = strings(c.get("directories"))?
+        .into_iter()
+        .chain(strings(consumer.get("directories"))?)
+        .collect();
+    if dirs.is_empty() {
+        return Err(invalid("authority requires at least one storage directory"));
+    }
+    for d in &dirs {
+        directory(Path::new(d))?;
+        if state.starts_with(d) {
+            return Err(invalid(
+                "authority state must be outside the guarded directories",
+            ));
+        }
+    }
+    let files: BTreeSet<_> = strings(c.get("required_files"))?
+        .into_iter()
+        .chain(strings(consumer.get("required_files"))?)
+        .collect();
+    require_files(&files.iter().cloned().collect::<Vec<_>>())?;
+    let mut binding = c
+        .get("binding")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid("invalid storage binding"))?
+        .clone();
+    if consumer.get("binding").is_some() {
+        binding.insert("consumer".into(), consumer["binding"].clone());
+    }
+    let mut result = json!({"version":1,"resource":name,"binding":binding,"directories":dirs,"required_files":files});
+    if let Some(v) = consumer.get("minimum_counters") {
+        let m = v
+            .as_object()
+            .ok_or_else(|| invalid("invalid consumer storage counters"))?;
+        for v in m.values() {
+            counter(v)?;
+        }
+        if !m.is_empty() {
+            result["minimum_counters"] = v.clone();
+        }
+    }
+    Ok(result)
+}
+pub fn anchor(c: &Value, d: &Path) -> Result<PathBuf> {
+    Ok(d.join(format!(
+        ".harbor-db-{}-identity.json",
+        string(c, "resource")?
+    )))
+}
+pub fn verify(c: &Value, e: &Value) -> Result<Value> {
+    let r = durable::read_json(&Path::new(string(c, "state_dir")?).join("identity.json"))?;
+    for k in ["version", "resource", "binding", "directories"] {
+        if r.get(k).is_none() || r.get(k) != e.get(k) {
+            return Err(invalid(
+                "storage authority mismatch: backend, schema or paths changed",
+            ));
+        }
+    }
+    require_files(&strings(r.get("required_files"))?)?;
+    if let Some(v) = r.get("minimum_counters") {
+        for (k, v) in v
+            .as_object()
+            .ok_or_else(|| invalid("invalid adopted counters"))?
+        {
+            let a = counter(v)?;
+            let b = counter(
+                e.get("minimum_counters")
+                    .and_then(|v| v.get(k))
+                    .ok_or_else(|| {
+                        invalid("consumer storage is older or incomplete compared with adoption")
+                    })?,
+            )?;
+            if (b.len(), &b) < (a.len(), &a) {
+                return Err(invalid(
+                    "consumer storage is older or incomplete compared with adoption",
+                ));
+            }
+        }
+    }
+    let marker = json!({"resource":c["resource"],"identity":r.get("identity").ok_or_else(||invalid("missing storage identity"))?});
+    for d in strings(e.get("directories"))? {
+        if durable::read_json(&anchor(c, Path::new(&d))?)? != marker {
+            return Err(invalid(format!("storage identity mismatch at {d}")));
+        }
+    }
+    Ok(r)
+}
+pub fn require_stable(c: &Value) -> Result<()> {
+    let p = Path::new(string(c, "state_dir")?).join("transition.json");
+    if p.exists()
+        && !["planned", "write-enabled", "complete", "aborted"]
+            .contains(&string(&durable::read_json(&p)?, "phase")?)
+    {
+        return Err(invalid(
+            "application backend transition is unfinished; ordinary startup is inhibited",
+        ));
+    }
+    Ok(())
+}
+pub fn inspection(c: &Value) -> Result<(durable::Lease, Value)> {
+    inspection_with_contract(c, None)
+}
+
+pub fn inspection_with_contract(
+    c: &Value,
+    pinned: Option<&Value>,
+) -> Result<(durable::Lease, Value)> {
+    inspection_until(c, pinned, None)
+}
+pub fn inspection_until(
+    c: &Value,
+    pinned: Option<&Value>,
+    deadline: Option<Instant>,
+) -> Result<(durable::Lease, Value)> {
+    let s = state_directory(c)?;
+    if !s.join("identity.json").exists() {
+        return Err(invalid(
+            "storage is not adopted; explicit adoption is required",
+        ));
+    }
+    let l = durable::lock(&s.join("lock"), true, false)?;
+    require_stable(c)?;
+    let expected = contract_until(c, deadline)?;
+    require_contract(&expected, pinned)?;
+    let r = verify(c, &expected)?;
+    Ok((l, r))
+}
+
+pub fn require_contract(observed: &Value, pinned: Option<&Value>) -> Result<()> {
+    let Some(pinned) = pinned else {
+        return Ok(());
+    };
+    if ["version", "resource", "binding", "directories"]
+        .iter()
+        .any(|key| observed.get(key) != pinned.get(key))
+    {
+        return Err(invalid(
+            "consumer authority differs from the namespace inspection contract",
+        ));
+    }
+    let files = strings(observed.get("required_files"))?;
+    let retained = strings(pinned.get("required_files"))?;
+    if retained.iter().any(|file| !files.contains(file)) {
+        return Err(invalid(
+            "consumer evidence regressed since namespace inspection",
+        ));
+    }
+    require_files(&retained)?;
+    if let Some(counters) = pinned.get("minimum_counters") {
+        for (key, floor) in counters
+            .as_object()
+            .ok_or_else(|| invalid("invalid pinned counters"))?
+        {
+            let floor = counter(floor)?;
+            let current = counter(observed["minimum_counters"].get(key).ok_or_else(|| {
+                invalid("consumer evidence regressed since namespace inspection")
+            })?)?;
+            if (current.len(), &current) < (floor.len(), &floor) {
+                return Err(invalid(
+                    "consumer evidence regressed since namespace inspection",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+pub fn check(c: &Value) -> Result<()> {
+    let _guard = inspection(c)?;
+    Ok(())
+}
+pub fn adoption(c: &Value, id: &str) -> Result<durable::Lease> {
+    if id.is_empty() || id.chars().count() > 128 {
+        return Err(invalid(
+            "a verified nonempty storage identifier is required",
+        ));
+    }
+    let s = state_directory(c)?;
+    durable::lock(&s.join("lock"), false, !s.join("identity.json").exists())
+}
+/// Publish only while retaining the exclusive lease returned by `adoption`.
+pub fn publish_adoption(c: &Value, id: &str) -> Result<Value> {
+    let s = state_directory(c)?;
+    let mut e = contract(c)?;
+    if s.join("identity.json").exists() {
+        let r = verify(c, &e)?;
+        if r["identity"] != id {
+            return Err(invalid("cannot replace adopted storage identity"));
+        }
+        return Ok(r);
+    }
+    let marker = json!({"resource":c["resource"],"identity":id});
+    let dirs = strings(e.get("directories"))?;
+    for d in &dirs {
+        let p = anchor(c, Path::new(d))?;
+        if p.exists() && durable::read_json(&p)? != marker {
+            return Err(invalid(format!("existing storage identity differs at {d}")));
+        }
+    }
+    for d in dirs {
+        durable::write_json(&anchor(c, Path::new(&d))?, &marker)?;
+    }
+    e["identity"] = json!(id);
+    durable::write_json(&s.join("identity.json"), &e)?;
+    Ok(e)
+}
+pub fn adopt(c: &Value, id: &str) -> Result<Value> {
+    let _lease = adoption(c, id)?;
+    publish_adoption(c, id)
+}
+pub fn serve(c: &Value, argv: &[String]) -> Result<()> {
+    let exe = argv
+        .first()
+        .ok_or_else(|| invalid("consumer executable must be an absolute path"))?;
+    if !Path::new(exe).is_absolute() {
+        return Err(invalid("consumer executable must be an absolute path"));
+    }
+    let (lease, _) = inspection(c)?;
+    let mut command = std::process::Command::new(exe);
+    command.args(&argv[1..]);
+    super::process::exec(&mut command, &[lease.fd()])
+}

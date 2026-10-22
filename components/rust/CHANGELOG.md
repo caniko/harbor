@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Publish the macOS SDK helper as `caniko-harbor-sdk` because `harbor-sdk` is
+  owned by an unrelated crates.io project. The `harbor_sdk` library name and
+  CLI dependency alias remain stable. CLI path dependencies declare their
+  registry versions for packaging.
 - Nix builds of `harbor-rs` and `harbor-ci` retain workspace README files used
   by dependency crates as compile-time documentation.
 - Direnv loads the Rust tools and OpenCode LSP configuration through one shell,
@@ -28,6 +32,10 @@
 
 ### Added
 
+- Command-scoped native Cargo runners compose a shared runtime with an existing
+  runner argument list, preserve cross-target runner settings, and reject
+  conflicting native runner overrides. Native Linux and macOS checks exercise
+  Cargo run, test, and bench while verifying parent-shell isolation.
 - Export the native `rust-sccache` package on both macOS systems so portable
   consumers can retain their shared compiler-cache policy.
 - Expose `rust-harbor-rs` and `rust-harbor-ci` production packages on both

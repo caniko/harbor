@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "integrationBaseline": "45e4f163d4dd6000c4a0f5b15e988f50b2975f93",
+  "authorization": "Operator authorized registry rename on 2026-10-14",
+  "sourcePath": "components/rust/crates/harbor-sdk",
+  "previousPackage": "harbor-sdk",
+  "package": "caniko-harbor-sdk",
+  "version": "0.1.0",
+  "rustLibrary": "harbor_sdk",
+  "cliDependencyAlias": "harbor-sdk",
+  "collision": {
+    "endpoint": "https://crates.io/api/v1/crates/harbor-sdk/owners",
+    "owner": "nicolugo0503-glitch",
+    "repository": "https://github.com/nicolugo0503-glitch/harbor-rust",
+    "versionChecksum": "1ca040c40e8ce5e51080c1d5d4b8e2f2019c5ed35f3808d7790dc3b95f133ae9"
+  },
+  "availabilityProbe": {
+    "endpoint": "https://crates.io/api/v1/crates/caniko-harbor-sdk",
+    "httpStatus": 404,
+    "reservationEstablished": false
+  },
+  "historyPreserved": true,
+  "published": false,
+  "qualified": false,
+  "consumerCutoverAccepted": false
+}

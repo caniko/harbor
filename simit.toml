@@ -15,9 +15,13 @@ schema_version = 1
 [[monorepo.components]]
 id = "core"
 paths = ["components/core"]
+cargo_packages = ["harbor-evidence"]
 checks = [
   { id = "history", run = "python3 scripts/check_history.py" },
+  { id = "userns-contracts", run = "python3 -B -m unittest discover -s scripts -p test_ci_userns.py", timeout_minutes = 5 },
   { id = "format", run = "treefmt --ci" },
+  { id = "test", run = "cargo test --locked -p harbor-evidence --all-targets --jobs 2", timeout_minutes = 30 },
+  { id = "clippy", run = "cargo clippy --locked -p harbor-evidence --all-targets --jobs 2 -- -D warnings", timeout_minutes = 30 },
   { id = "module-platforms", run = "for system in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do nix eval --raw .#checks.$system.harbor-modules.drvPath; done", timeout_minutes = 30 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-core", timeout_minutes = 90 },
 ]
@@ -28,20 +32,23 @@ paths = ["components/rust"]
 cargo_packages = [
   "nix_harbor_rs",
   "harbor-cache",
-  "harbor-sdk",
+  "caniko-harbor-sdk",
   "harbor-xtask",
   "harbor-sandbox",
 ]
 depends_on = ["core", "android", "macos-sdk"]
 systems = ["x86_64-linux", "aarch64-darwin"]
 checks = [
-  # CAD's Linux worker uses renameat2, prctl, /proc, systemd and DRM devices.
-  # Linux qualifies all eight members; Darwin qualifies the seven portable ones.
-  { id = "test", run = "set --; if [ \"$(uname -s)\" = Darwin ]; then set -- --exclude harbor-cad; fi; simit test --git-fixtures -- cargo test --locked --workspace \"$@\" --jobs 2 -- --test-threads=2", timeout_minutes = 30 },
-  { id = "clippy", run = "set --; if [ \"$(uname -s)\" = Darwin ]; then set -- --exclude harbor-cad; fi; cargo clippy --locked --workspace \"$@\" --all-targets --jobs 2 -- -D warnings", timeout_minutes = 30 },
+  # CAD's worker and DB's lifecycle engines require Linux kernel/runtime APIs.
+  # Linux qualifies all twelve members; Darwin qualifies the ten portable ones.
+  { id = "userns", run = "python3 scripts/ci_userns.py", timeout_minutes = 5 },
+  { id = "test", run = "set -- --features harbor-db/testing; if [ \"$(uname -s)\" = Darwin ]; then set -- --exclude harbor-cad --exclude harbor-db; fi; simit test --git-fixtures -- cargo test --locked --workspace \"$@\" --jobs 2 -- --test-threads=2", timeout_minutes = 30 },
+  { id = "clippy", run = "set -- --features harbor-db/testing; if [ \"$(uname -s)\" = Darwin ]; then set -- --exclude harbor-cad --exclude harbor-db; fi; cargo clippy --locked --workspace \"$@\" --all-targets --jobs 2 -- -D warnings", timeout_minutes = 30 },
   # Namespace acceptance applies to Linux; the Darwin lane still qualifies the
   # supported native Cargo members and component outputs above/below this gate.
-  { id = "sandbox-runtime", run = "bash -euc 'if [ \"$(uname -s)\" = Darwin ]; then echo \"Linux namespace runtime: not applicable on Darwin\"; exit 0; fi; test \"$(uname -s)\" = Linux; test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted; if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1'", timeout_minutes = 30 },
+  # Enter through the util-linux profile admitted by the userns gate; nested
+  # Bubblewrap fixtures retain the global AppArmor restriction.
+  { id = "sandbox-runtime", run = "bash -euc 'if [ \"$(uname -s)\" = Darwin ]; then echo \"Linux namespace runtime: not applicable on Darwin\"; exit 0; fi; test \"$(uname -s)\" = Linux; test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted; exec nix develop --no-update-lock-file --max-jobs 1 --cores 2 .#rust-default --command unshare --user --map-root-user --mount --fork --kill-child cargo test --locked --jobs 2 -p harbor-sandbox --test runtime --test nested -- --ignored --test-threads=1'", timeout_minutes = 30 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-rust", timeout_minutes = 180 },
 ]
 
@@ -96,6 +103,7 @@ paths = ["components/database"]
 cargo_packages = ["harbor-db"]
 depends_on = ["rust"]
 checks = [
+  { id = "userns", run = "python3 scripts/ci_userns.py", timeout_minutes = 5 },
   { id = "hosted-cache", run = "test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted && test -r /dev/kvm && test -w /dev/kvm && sudo install -d -m 1777 -o root -g root /var/cache/sccache && test ! -L /var/cache/sccache && test \"$(stat -c '%u:%a' /var/cache/sccache)\" = 0:1777 && printf '%s\\n' 'extra-sandbox-paths = /var/cache/sccache' 'log-lines = 250' | sudo tee -a /etc/nix/nix.conf && sudo systemctl restart nix-daemon.service && nix config show sandbox-paths | grep -F /var/cache/sccache" },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-database .#database-storage-lifecycle .#database-harbor-db-cached", timeout_minutes = 90 },
 ]
@@ -127,12 +135,20 @@ checks = [
 [[monorepo.components]]
 id = "llm"
 paths = ["components/llm"]
+cargo_packages = [
+  "harbor-llm-protocol",
+  "harbor-llm-runtime",
+  "harbor-llm-codegen",
+]
 releases = [
   { manifest = "components/llm/package.json", namespace = "harbor-llm", publish = false },
   { manifest = "components/llm/pyproject.toml", namespace = "harbor-llm-python", publish = false },
 ]
 depends_on = ["core"]
 checks = [
+  { id = "protocol-test", run = "cargo test --locked -p harbor-llm-protocol -p harbor-llm-runtime --jobs 2", timeout_minutes = 10 },
+  { id = "protocol-clippy", run = "cargo clippy --locked -p harbor-llm-protocol -p harbor-llm-runtime -p harbor-llm-codegen --all-targets --jobs 2 -- -D warnings", timeout_minutes = 10 },
+  { id = "protocol-generated", run = "cargo run --locked -p harbor-llm-codegen -- --check components/llm", timeout_minutes = 10 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#llm-default", timeout_minutes = 30 },
 ]
 

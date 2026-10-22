@@ -13,14 +13,16 @@
       echo '{"tests":[{"id":"review-progress","status":"passed"}]}' > "$HARBOR_ACCEPTANCE_REPORT"
     '';
   };
+  verifier = packageTests.mkArtifactVerifier {inherit pkgs;};
 in
   pkgs.runCommand "harbor-artifact-acceptance-contract" {
-    nativeBuildInputs = [pkgs.python3];
+    nativeBuildInputs = [verifier];
   } ''
     test -f ${checked}/.harbor/acceptance.json
     cmp ${artifact}/app/index.html ${checked}/app/index.html
-    python3 ${../lib/artifact-acceptance.py} verify-local \
+    harbor-verify-artifact verify-local \
       --manifest ${checked}/.harbor/acceptance.json --root ${checked}
-    HARBOR_ACCEPTANCE_MODULE=${../lib/artifact-acceptance.py} python3 ${./test-artifact-acceptance.py}
+    # Native Rust package tests include byte substitution, missing/extra assets,
+    # required test IDs, HTTP drift/redirects, and compatibility CLI contracts.
     touch "$out"
   ''

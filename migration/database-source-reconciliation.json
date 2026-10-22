@@ -1,0 +1,3051 @@
+{
+  "schemaVersion": 1,
+  "status": "retained-database-source-reconciled-pending-canonical-qualification",
+  "canonicalPrefix": "components/database",
+  "baseline": "f08d2cdcb91b48f50942f1221d95ec643e176880",
+  "retainedTips": {
+    "native": {
+      "tip": "04bb467215967f2b88bf28fb975c37dab8949a39",
+      "tree": "afc59f255c547995fdfd11a350fe10a88f9975f0",
+      "files": {
+        ".github/workflows/nix-builds.yaml": {
+          "retainedSha256": "0cc019876c30c38055b717fa4698c77ddcccec4bac993d767776b611196a3343",
+          "proposalSha256": "ff0a310e8a924c2ebf578d271530c8f4f0ca29c9d66fd20cb7af644cd9e17608",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        ".gitignore": {
+          "retainedSha256": "a7e984a44e26801a96f0a35674e02057f8ad5cd9ad6547ee21f0a5d69b5f80a0",
+          "proposalSha256": "70a09eb0d6f9d706c1c4ecdc9347f18c75e2e5ae7bd46096890eae6ed58ef955",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        ".pre-commit-config.yaml": {
+          "retainedSha256": "e2a19a935532054e37a840106ccc949c1569756ff63863561d21c6bef1edeee0",
+          "proposalSha256": "e2a19a935532054e37a840106ccc949c1569756ff63863561d21c6bef1edeee0",
+          "disposition": "retained-exact"
+        },
+        "Cargo.lock": {
+          "retainedSha256": "6fc409363b129d27498a353e7747a152af30b114e52bf2cae01fb4f264a0afec",
+          "proposalSha256": "6fc409363b129d27498a353e7747a152af30b114e52bf2cae01fb4f264a0afec",
+          "disposition": "retained-exact"
+        },
+        "Cargo.toml": {
+          "retainedSha256": "930e018ed5c1bc0660a8663d87268290ee45f25b1315ece4c268996ade7caa37",
+          "proposalSha256": "acfc2baa68dcf15a2a28ec49bc46b9cf7e1e94396b0f5d64ea03d3baa5423930",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "README.md": {
+          "retainedSha256": "d541e768352162826f8d867624ae325705b56bad73f406a10cb3076269c2dd32",
+          "proposalSha256": "0300d27a8c78d867fd942e8d0ad31e4eb3c6e3c27b3aa0f7054ea29026bb1400",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "docs/application-storage.md": {
+          "retainedSha256": "903350d7ff37fe8bcf20deba8615316b96edae2259ba336a683a461bf7d06696",
+          "proposalSha256": "c61703a1f825a356feb50d2385c6bf3666b920dd74853313bd6eeb2fb91ba55f",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "docs/cutover-admission.md": {
+          "retainedSha256": "5788c2545ff829a8ceb5f882467ef4abfd6d29cc41655bd068a89734d4a3d320",
+          "proposalSha256": "78dc67012ef652a8e3e57991033183392b784b5d60358ac6e483fcc5dd3bd818",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "docs/rust-migration-baseline.md": {
+          "retainedSha256": "1710aa320f544efb26c8fa45d681c901241efe414b250a70c094a06c45551390",
+          "proposalSha256": "2079457675974ee900d8622a208bf1d40f51a5edf645bf612647aeb29694cee1",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "docs/storage-durability.md": {
+          "retainedSha256": "de04363e3a908e3a76ba2e833546e11122900d0fe95aaf825fcbbf05fff18b2e",
+          "proposalSha256": "7bd582a28d54062ef87f4735e7684993191223fe8953d3dd21ec4728673bf73a",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "docs/testing-suite.md": {
+          "retainedSha256": "35bb8756ab76bd04dba944a0ab99724306d9e53b67603da3694f778baa6b4577",
+          "proposalSha256": "78b81f61eecd27a119473cc2ff46efbee57c802479f954d1aae2ffc416aa58fe",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "flake.lock": {
+          "retainedSha256": "e3284c8a523386f985528ed9b5c597aee67aa80d2f858954bfd0e4131ff1c85e",
+          "proposalSha256": "e3284c8a523386f985528ed9b5c597aee67aa80d2f858954bfd0e4131ff1c85e",
+          "disposition": "retained-exact"
+        },
+        "flake.nix": {
+          "retainedSha256": "e5761e265142f46f1c9edebcf18abfb14080f386a1f330d61198d7f9eb730a70",
+          "proposalSha256": "499f71c47b8810eb9b7f9a7d75114e22bb747187930a9c3be169098d5f201b51",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta",
+          "refreshedAfter": "remove duplicated documentation flags while preserving locked all-feature package scope"
+        },
+        "nix/application-backup.nix": {
+          "retainedSha256": "665aec5d24ca3ad2b8c7d089b6aa7cb3d9e210c5b2ff3c3ff4cdfe344d6133ad",
+          "proposalSha256": "985626fa979479692abf2670fff49d1b25e944a879b259325118f58742084924",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/application-provision-eval.nix": {
+          "retainedSha256": "59c2bce57087f63fc6b2314d1cb4d4aa3c6dd2f326ff20c4bb24eaf57c6c2f8b",
+          "proposalSha256": "0cb3ac5e3e8f3eb922ece844e467c55cf020ebac995dea64f392328c0192cde4",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/application-provision.nix": {
+          "retainedSha256": "242e489afd4e699a6a4dfdbcf1008f61c8dd6804700030fe07e6dc5b4e97c91e",
+          "proposalSha256": "ba39f0bf544926583107c10ab305b7248df310d7723aabd2fe888c2d8ea6ea8a",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/application-transition.nix": {
+          "retainedSha256": "d332623d9a5704a78b3d9758ebeea04cef2676090eb0be5b3bde3cc3007fd596",
+          "proposalSha256": "398af10e148cd248121a2c0c030b03c307591ba6049c5d35ddc3652ebdb5e608",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/cutover-eval.nix": {
+          "retainedSha256": "e58ac00a31b8313585a51f5abd413c46e367ed5d3853c77401ca47dee41f29b1",
+          "proposalSha256": "56b5d82fbd341f99fac80ece0390f3ef9e7f430f3e0a3157241ef49c8b4e1d60",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/cutover.nix": {
+          "retainedSha256": "976898472b68151b6fc969413fb496cc4014b39aafe81dfe69b9bbe74ced37f8",
+          "proposalSha256": "7fb0d065e0d8cf1ea6be77bb7ad256e0edbe175b0d9b199465a01018ff3d1653",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/eval-checks.nix": {
+          "retainedSha256": "03e231e5cca1dfffdfbe975b6d217764346d676633ec6ee17cb48547754d9c79",
+          "proposalSha256": "03e231e5cca1dfffdfbe975b6d217764346d676633ec6ee17cb48547754d9c79",
+          "disposition": "retained-exact"
+        },
+        "nix/module-eval.nix": {
+          "retainedSha256": "e42f49955cde5b0bdda108bc0005da2c3fca17bf283255c7da6ca72f4aed6293",
+          "proposalSha256": "101aec06393fdba6bc169d2265962d766e7cbba1bed8784c206ed66e04c6e7f0",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/module.nix": {
+          "retainedSha256": "82df33ff1e54f85f0de0f243e1a5f67a79645cda4f4ff0c9b57c163aedb5fce2",
+          "proposalSha256": "a8d6db6c2cb57d16395802afe8f98616d1111f97f0a458576dffea3118b39d98",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/native-cli-smoke.nix": {
+          "retainedSha256": "f8caaddc0456d0d9e9823f9b48a051962928f8bd2f4cfd67302ea9a25f35ecb9",
+          "proposalSha256": "3599220970cba55ef8e8c8ee294bf6f08d0dbf87f569b3ad63e09b8cf9d8230e",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/native-storage-eval.nix": {
+          "retainedSha256": "079109e5f8a3f25495bf8c8146a37373cf1fc510b9de3f10ec9acef79c4f1146",
+          "proposalSha256": "4aa9aa0f2f03feb2200fee270e9f83ebf6dafb316b54aa20fd4e5549b9bc54b4",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/pg-backup-eval.nix": {
+          "retainedSha256": "db6ce0642bf32ce21886efdaee273e302a54ee228be4483854cb2fe50ffa9209",
+          "proposalSha256": "831e4214cdce446ee5cec812acb287e57b8ebd6d1b59c859aad2340cf5a7a5e1",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/pg-backup.nix": {
+          "retainedSha256": "9f146a4c9dedf9a17fb3532551409733126f814a9510b342516891a2eeb38d29",
+          "proposalSha256": "a8e023b0ff278569e10e670a7de90c60023063c50e50759a68f45c54377fae56",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/postgres-lifecycle-eval.nix": {
+          "retainedSha256": "f31ed4c6c852adea3e0479d55c3c7b8e5232162cbc76d32570d00ba41bd67339",
+          "proposalSha256": "8fceef6bf18b62aa25e36afff6e9b8332b24bee12df765a64f5dd7a6520d1969",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/postgres-lifecycle.nix": {
+          "retainedSha256": "3bcbc1e010fead8bb71c922161c5703f55e2e1418233d7cbbc5b2501defe2ac6",
+          "proposalSha256": "8d5ba9acf23389b25cea605105cc9de181e35499418709ffeca0959f8cf5d36a",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/postgres-package.nix": {
+          "retainedSha256": "d97fd83bfdf82eb69fc63482c1c922194a16f620ab8c8559800c24e31855b0a4",
+          "proposalSha256": null,
+          "disposition": "retired-Python-wrapper-replaced-by-native-package"
+        },
+        "nix/postgres-writer-clients.nix": {
+          "retainedSha256": "21e342aaec9a9b6d7f442ebce7eb5f1c474000360c7412d02e6e33a74f1bbca4",
+          "proposalSha256": "21e342aaec9a9b6d7f442ebce7eb5f1c474000360c7412d02e6e33a74f1bbca4",
+          "disposition": "retained-exact"
+        },
+        "nix/pre-commit.nix": {
+          "retainedSha256": "e4c6ff68d2ba1a78f5eb87c7cd2c84046bf98de658eae33c6005b82f1714b474",
+          "proposalSha256": "e4c6ff68d2ba1a78f5eb87c7cd2c84046bf98de658eae33c6005b82f1714b474",
+          "disposition": "retained-exact"
+        },
+        "nix/storage-package-argument.nix": {
+          "retainedSha256": "b0b2abe2a2b05beb4a04a7a7993e7b924a8df70aa0c6ae66551a62b109d8b851",
+          "proposalSha256": "1820d3406e89bfcc912afe4cc50d2ac3af872ca93aff0d76d999aa13d002824b",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-application-backup.nix": {
+          "retainedSha256": "e7479f43ff0f8c59d58b01d690290bb54f05b556be590d2d7c7dbac156faf558",
+          "proposalSha256": "07f6b15f71b187f57e9b0855d899af8964e9ad45d5c79d1781b4898d080f148e",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-application-postgres-transition.py": {
+          "retainedSha256": "c20b457b2c00fae4257add514eb4026079714255dc7c8711b20aa622337b8625",
+          "proposalSha256": "78b2eb1cf75bd74138ad77470d594e8eaf84fd1f885b3642ab8fd28f91ef661e",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "nix/test-application-provision.nix": {
+          "retainedSha256": "964b2683fc2ba2155cea5424ce8f9612540513f65e195fa1fbe442a302f3a111",
+          "proposalSha256": "302798b8cf411504f166f0b4c47f43f448afae433c3eb18a4d4a132679a9effb",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-application-transition.nix": {
+          "retainedSha256": "9936b3f7674c7b1241655f8e4237babbeb2347e269e66eee9fd4eebab9ed89b5",
+          "proposalSha256": "e8899636bc16da7ecf691b08eaaae55e874f83eafff3b9599ee01ddfbf5ec488",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-module.nix": {
+          "retainedSha256": "a66bd1c48adb031c2cc5b6487d9bd80922fb9f7295e6035ed906d150c3d5dd3c",
+          "proposalSha256": "3308d62a3662b31db1d6b4ad21a09b1a07c6c81429e6dfe4fd5627bb75137218",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-native-supervisor.nix": {
+          "retainedSha256": "a73c076d7b79611be27ec50a2044c79853f54fcaa395ef97e00e158b84a44bea",
+          "proposalSha256": "a73c076d7b79611be27ec50a2044c79853f54fcaa395ef97e00e158b84a44bea",
+          "disposition": "retained-exact"
+        },
+        "nix/test-postgres-backup-service.nix": {
+          "retainedSha256": "085d3b62df7cd6b42dd797a0efca36fa0328236d849857e94542941e9efdab7d",
+          "proposalSha256": "f8510651bf62b07072c2bfd61a30913bdbe08cfd1958f1dc0a11d24bc52b96fe",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-postgres-lifecycle.nix": {
+          "retainedSha256": "42d8916883c1c5e70196f2669916ed54ae6ca218b9a2c2ab527a0c941a3e6e79",
+          "proposalSha256": "01608109dce09b3d8d6b8300c4e58accf0a71b14ba1e3a554978d2f6adfdb702",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-postgres-recovery.nix": {
+          "retainedSha256": "a8299133096c502da2915c040016681d7085edd6d55bc51068166ebdf8169e70",
+          "proposalSha256": "d77e58bc3174c6684666220c98654365994ca75c40b3769a767813a4d175ccae",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-postgres-upgrade.nix": {
+          "retainedSha256": "1ea69db62bd3bbe74172d2101ac1778820a17b37b73aa7fc141bd86948a6d39c",
+          "proposalSha256": "8804ae5cf528814453630b1f5d781cca5e0eea09458fe26cb7a57a8a81fb3314",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "nix/test-postgres-writer-fence.nix": {
+          "retainedSha256": "0d9b31d4b67d8f9c7386fe9b3f597df95e36708281f94e0ab0ea3fa26617c1db",
+          "proposalSha256": "13a2788d9b2a3857dcfb6647b5a33eb0065f87af8b1a4aef3eeb9325b50d5cae",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/__init__.py": {
+          "retainedSha256": "b1d438055e85a2730e66b0276522b4f10b0ac6a682a26c5bf5c93f9aa05055a2",
+          "proposalSha256": "b1d438055e85a2730e66b0276522b4f10b0ac6a682a26c5bf5c93f9aa05055a2",
+          "disposition": "retained-exact"
+        },
+        "python/harbor_db/application_backup.py": {
+          "retainedSha256": "224b575b845d5a63d5d7c4f98dff4e0e205fce98be296b16bea853cf8f4db57f",
+          "proposalSha256": "2cf427a24498a6468ed2e15b9421e9ab49429de255b854053826eaa2cbf60b93",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/application_transition.py": {
+          "retainedSha256": "4754a7951373fa190690c2dcd2a56c08483b449eccb2f635daa8eb3104db530d",
+          "proposalSha256": "5e3ca10ba64dfc6b54ed4938c570311fd056ddd44106e983df088960b615250b",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/backup.py": {
+          "retainedSha256": "fff776a9364470e980df992bf2dc99e4bdf9f2a20ff711e6cd5024497a567ea7",
+          "proposalSha256": "4ee1b3b4ab3dae479b2d5cc01fccb23db3b0916dc40970ae6ff993a1f4b3d51b",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/cutover.py": {
+          "retainedSha256": "5806877e2a6e6d51772f6fbae62df165a969340f3bb44c6104db2fc0cfa65aaf",
+          "proposalSha256": "e7f11cabdf9f64fe243ffa26b31c7d2f73a3cf47082f58574368620633224225",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/durable.py": {
+          "retainedSha256": "677ba1a93df9cda7938a004d5b6e0bb699f2a6415485fa77436f2a54fad49384",
+          "proposalSha256": "8ca8db7d77af7f8221e2cfb445f5b39c5cbbceedf856fa1966f72c9fac8393af",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/login_shell.py": {
+          "retainedSha256": "e66ac5a3994f2718d8cc4c7e3ab8003eb90ef6122908a2c30be1b5d5d25a1998",
+          "proposalSha256": "053bc03e655e1b7411ec37054adba54c446fa01234297eab9070b6fa6e66af5a",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/postgres.py": {
+          "retainedSha256": "89e72ef1487cd5a76131f9fdf8f6777e18d8730aad1e743af287719ab02ac7dd",
+          "proposalSha256": "eade751cfd5c49588cd0c678c362fcf9117f48f52f7144755a8731ebc60c336a",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/postgres_drill.py": {
+          "retainedSha256": "14b0f35a3f6bae12cfbe69720837cfb6fe44352c0bede335e0cb816123cb1604",
+          "proposalSha256": "c772d0b3951db451e52ccb3109f632b807ae7004a05b9b976d8e4f7e479fa4ce",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/process.py": {
+          "retainedSha256": "6a198f97ba9ee8fd5c4fa3bab00595b1f1a148834524e7400c22c7836ff74541",
+          "proposalSha256": "92617dc1f64fc6d9d3e5a8595fcceb2f663887e67fc4a1261b04586c1d975b0b",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/provision.py": {
+          "retainedSha256": "5270b9fc8e6df93ab97af1bbe1cb3c3b06ca94df65fdb017a1358c1a369688f0",
+          "proposalSha256": "37e895c7d040f4d34dc6aeae80e7e5c8d0cc730963b4b4e4161f54226903c440",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/recovery.py": {
+          "retainedSha256": "ca2b0b42929009388ded7d3589dcfc7f12c00995f7cd72b56940a3ef99b86d59",
+          "proposalSha256": "5080d898722b14126599646def709dbf652f4f7ac3886423d24ab3612c53770c",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/resource.py": {
+          "retainedSha256": "13f83b6b9a277b0b8520a25a3fd95e35f09311c8316385b064dfe1a92129884c",
+          "proposalSha256": "c9299b49b80f352a1c1432e97ef427633a692d2adcb7f3e4bea9dc6681ebe72c",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/startup_inhibition.py": {
+          "retainedSha256": "113c4d74646f26fa993ecad9891e364285ab15f17fbe70adb0df3f3dfac0ef96",
+          "proposalSha256": "4de2a8b2385a29968479bb50b1283fa7924c11ab7f8c9778a931226ade57410c",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/test_bridge.py": {
+          "retainedSha256": "357f3d9fb000d6a8e3f2e363fb83a89098c6f27b0b5f44bc75a8d5461e7e84c7",
+          "proposalSha256": "a752b0de35f75f3aa9a0d4aa29f42518e697b200ca3f6eec9e600b6793a66654",
+          "disposition": "scoped-NixOS-driver-transport-repair-with-red-green-protocol-evidence",
+          "refreshedAfter": "export through a driver-relative temporary directory beneath out_dir; preserve exact filename and exception cleanup",
+          "regressionEvidence": {
+            "red": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-bridge-relative-export-regression-20261012T211352Z/red-receipt.json",
+            "redSha256": "75821a9c3aa75ae226f99e73cb73d809a3e0f00619d1e5918052101b7132efe9",
+            "green": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-bridge-relative-export-regression-20261012T211352Z/green-receipt.json",
+            "greenSha256": "a6c2068fb5da7a1e85ff5dc8255eca84946c44fdd547fa291c850ad205a73447"
+          }
+        },
+        "python/harbor_db/transition_manifest.py": {
+          "retainedSha256": "0e62b5a95bd48e7d9c2e2df9b448b2fe399a5816341a6c49da03a4307172a6f3",
+          "proposalSha256": "4f27dc7a98d70c5dd89c978ca7d4cccaf4c98f75da3d3d603e7c15cd238f189c",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "python/harbor_db/writer_fence.py": {
+          "retainedSha256": "f262abcafb879bac0b7b9d3c6814742b59efdc8a950fff99a7e1ed0fae38f8e3",
+          "proposalSha256": "d5e44fab765c7af915f625e1c037d2b907aa5260b53eaf114a1fb40637549bde",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "simit.toml": {
+          "retainedSha256": "c21dc6612f3653160b9420211049606c2824eda024ec84827342a9ccf8f2ffb6",
+          "proposalSha256": "3984cf908ff71852a8c4f649d48b30e44531985a1559d83751a69732f004e00c",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/bin/harbor-db-application-backup.rs": {
+          "retainedSha256": "7bcfaa35509c8142e8abf1035ea97d1a6e12ee67b3478c2bae864917feb65cdf",
+          "proposalSha256": "f66b89dda9578c142f1e3db00fc759efce4f79e700654207fb1f1a473df6f005",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/bin/harbor-db-backup-prune.rs": {
+          "retainedSha256": "6c8c6d674cf96f35632005c1df87f66afe77c6b4a3b47a2401673edf12454087",
+          "proposalSha256": "6c8c6d674cf96f35632005c1df87f66afe77c6b4a3b47a2401673edf12454087",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-cutover-shell.rs": {
+          "retainedSha256": "0a3614f93bb09378c9e834a681a0de4ac617c0ab31409f7588daf2dbf2e08d08",
+          "proposalSha256": "0a3614f93bb09378c9e834a681a0de4ac617c0ab31409f7588daf2dbf2e08d08",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-cutover.rs": {
+          "retainedSha256": "889c286ca19d214db685eebc0ec8b332aa328905985a954f11b91fa5bacf5ca3",
+          "proposalSha256": "ea42db72f6b7fb7be7bd7002a0d4fa34f5e9b9810e8cf418f43ea44feb0d2272",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/bin/harbor-db-durable.rs": {
+          "retainedSha256": "bdcfef387f94ed9b793193b4fbd714ce12fe238b447355e99776fd00350588f3",
+          "proposalSha256": "bdcfef387f94ed9b793193b4fbd714ce12fe238b447355e99776fd00350588f3",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-postgres-drill.rs": {
+          "retainedSha256": "843db7a5bdd039457460e0355be91072dd3e8238462fed1e9c8b114e4236e77b",
+          "proposalSha256": "8be1f9a2854a89caee50793c122f3c92614db1aae74e445998c9fbea304adadd",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/bin/harbor-db-postgres.rs": {
+          "retainedSha256": "e526368a79817b87ac8968d28f0f6cb55b43c0747c10df72ead92a3c84d65f0c",
+          "proposalSha256": "843c630bb652af49564ca4e169a1470edb706b80975f16adc88f48299677ed2d",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/bin/harbor-db-provision.rs": {
+          "retainedSha256": "60c348ccb15ded9adc7d4745530feac9454c807fad5b93a6f0c4f51150913ae2",
+          "proposalSha256": "1b7d2e9df545bf1e5faae7974d305fe31813c8cc0a734f42d874363109f30bf6",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/bin/harbor-db-resource.rs": {
+          "retainedSha256": "24fb1050c22e43b8a475ee7b6b7bc3a3494b657138cc6b95671b48d3a2d7500d",
+          "proposalSha256": "24fb1050c22e43b8a475ee7b6b7bc3a3494b657138cc6b95671b48d3a2d7500d",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-test.rs": {
+          "retainedSha256": "c6b4abf3fa5a82357a6fcc694444f7ffbbcc841aba0efa060d2dd03ec06b6fb7",
+          "proposalSha256": "c6b4abf3fa5a82357a6fcc694444f7ffbbcc841aba0efa060d2dd03ec06b6fb7",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-transition-start.rs": {
+          "retainedSha256": "7fd71775847f212838cfea9bba3cfa4ff289de2fe7913d71a6ad95ea5b1c2aea",
+          "proposalSha256": "7fd71775847f212838cfea9bba3cfa4ff289de2fe7913d71a6ad95ea5b1c2aea",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-transition.rs": {
+          "retainedSha256": "0e0243d4c31d5c7be0b9f8193e6a794d93c341ce55ddc768c5caf7c3db4addf0",
+          "proposalSha256": "8d68e455431d6366a252b6c965681a9790407f7c0b81cdca150f174ae7613cfc",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/bin/home-manager-backup.rs": {
+          "retainedSha256": "3f1ae8b92d998477c23347b0439015683281662ee5bd4193873b430e46417930",
+          "proposalSha256": "3f1ae8b92d998477c23347b0439015683281662ee5bd4193873b430e46417930",
+          "disposition": "retained-exact"
+        },
+        "src/lib.rs": {
+          "retainedSha256": "a97bf09a33eceb6fdf2945afdfee0157db70066b96c96595d86ce544e5e698ac",
+          "proposalSha256": "a97bf09a33eceb6fdf2945afdfee0157db70066b96c96595d86ce544e5e698ac",
+          "disposition": "retained-exact"
+        },
+        "src/main.rs": {
+          "retainedSha256": "0328f11c7ed40d04e0eb064a4c5f3da1b724f481ad557649e530da7869e64e64",
+          "proposalSha256": "0328f11c7ed40d04e0eb064a4c5f3da1b724f481ad557649e530da7869e64e64",
+          "disposition": "retained-exact"
+        },
+        "src/planner/error.rs": {
+          "retainedSha256": "7d8a5334db22266b657b6a940015153a8832c79b16831405e2aa4427f973249a",
+          "proposalSha256": "7d8a5334db22266b657b6a940015153a8832c79b16831405e2aa4427f973249a",
+          "disposition": "retained-exact"
+        },
+        "src/planner/execute.rs": {
+          "retainedSha256": "137cdb93b7307480e0916931a1772cb16e03590ed195c35b70707a704d77cab4",
+          "proposalSha256": "4e4a7b6d1164b7bc41a010018fbbc52ed0ba46bbe63496740a2ad4749d115e8d",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/planner/mod.rs": {
+          "retainedSha256": "746a4c36f1610d993dbb4dcf91bbe6cc43af05f448f3558e63d895aa70f75615",
+          "proposalSha256": "746a4c36f1610d993dbb4dcf91bbe6cc43af05f448f3558e63d895aa70f75615",
+          "disposition": "retained-exact"
+        },
+        "src/planner/model.rs": {
+          "retainedSha256": "76d8fa2600b313cc56cda9c6adc3e7e20d4739238503d53258a79ad8265a795f",
+          "proposalSha256": "60a498f2154fa02fd17647c95066ad17a3d1d0470c57f7ed66c8f91239cbef22",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/planner/tests.rs": {
+          "retainedSha256": "86b2b8e2f8356d6f32154c33c55670d9e64669e9557b013b440bb4b178058bf5",
+          "proposalSha256": "86b2b8e2f8356d6f32154c33c55670d9e64669e9557b013b440bb4b178058bf5",
+          "disposition": "retained-exact"
+        },
+        "src/storage/application_backup.rs": {
+          "retainedSha256": "c34f9b8079fec20489d8c6ea6bb6530e708f62b6dd18ebfac3f13c2d7740e056",
+          "proposalSha256": "0a057ffc3018ebbef868a561dd140a4532e80e2f621bbbc734331344a29c26a2",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/application_transition.rs": {
+          "retainedSha256": "5349248be64c289dba0d9b92d56f78ccd27052e9764bf6e7aa430890a7250f66",
+          "proposalSha256": "7a9f87a976f62005d0a0fc8d3d24fd15c58805dc1da8420a091bbe4589ab10ac",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/backup.rs": {
+          "retainedSha256": "e3d2a057b0ab28c241afc6194cc9549127f0b3ed21c893810dfd0ef268ac3ce1",
+          "proposalSha256": "5e10acacea519b1b4c3a9243eb1418396a7d4639b4a02eb6df2299224c43ba6f",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/codec.rs": {
+          "retainedSha256": "b4b2de77958fabd65d38aaa064bd044ad2168db20c81feaa501754930b68083b",
+          "proposalSha256": "9492f447cca25934472bba14db109ffca3a844c48a685e7706be3063cead17d7",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/custody.rs": {
+          "retainedSha256": "6eb85cf53ee27bc293d2e90a93ae8bc99f15d39708bf0a1f47b4c3c0554921ca",
+          "proposalSha256": "50c7dac942aa2bca896a17e5fb871605a508e4e469622979e8309e913e52ba84",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/cutover.rs": {
+          "retainedSha256": "cc09be77cf0bc9dc9e8332de2172018755584a80319f812d43f6f50045c08594",
+          "proposalSha256": "38253a62f6c6051a689cbcafd6764f83f6315fd74cb55520d52366e793fea2c9",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/durable.rs": {
+          "retainedSha256": "2ab63289ee0567b5545c027fba276cb2c430e4c57e889570beb5bbf0caa2797c",
+          "proposalSha256": "145ab8841a52075eb9ed81447bf57ffd916f08fc2ae99456d8f64da15e91a0ee",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/login_shell.rs": {
+          "retainedSha256": "fa2bac2525f33f1212481fb613f9c3be77687db660291b6734ba4dc54eddc972",
+          "proposalSha256": "2f36e79e3a7737cd92c282551dd30f8bdf26e0cdf9838797f59209316951cd9c",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/mod.rs": {
+          "retainedSha256": "5af493695aabcbaf8c88561fe30182fcb6946d0b25831fafc323a2cf38f03e1e",
+          "proposalSha256": "8f1dc3e7a82e658e2bd5e7fecd793f57746885113e53b96f9ecb95a8f3dd0ec2",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/pg_core.rs": {
+          "retainedSha256": "60a4147b38d979749283a429555b518ce1aeadedae4535f063d0a77158825baa",
+          "proposalSha256": "8d679b511d210388c60b04d613f98a2867a2e50cd44c24cbb2ead845aae35052",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/postgres.rs": {
+          "retainedSha256": "ecc3abc09039a5ca722bb907735ffee1ed4698a801f84cd2216d6824232275ff",
+          "proposalSha256": "129e36db7f7e103bca18e7354935ddd5abc9d3a6a3a7132aca0d1c3204573b00",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/postgres_drill.rs": {
+          "retainedSha256": "c558a470226b74ba23d735fb672699ce63d0607605071eff9bdff167dd260837",
+          "proposalSha256": "aa6803edeea3189a71e964009326e5868ddc848095631e69df53dc9d70fe4942",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/process.rs": {
+          "retainedSha256": "036e8feabe173670f6464d7d71ee8a1edcd228fdc0f366cf03bf05c348af58c0",
+          "proposalSha256": "3b03642f0f98a4065a5d2dfc54ffc44f713bec7317b04cdfd034da41b45f608c",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/provision.rs": {
+          "retainedSha256": "a3b2d3bd93bc58aed22b657fef7f21fadc5cb5ff08fe41cab1519b1ca93724ba",
+          "proposalSha256": "642b7c39718e42affac3bf4eb6ac76dd2fa9ba2cc89bad67cc6613cca02701a8",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/recovery.rs": {
+          "retainedSha256": "336c8388ce0d87f7320cea59a93806779827c5bae8c27926d2f284e509eae033",
+          "proposalSha256": "ba242e2efd531bf37a0dce7e712725a843fd9dd984ade8fae48aec444887cad9",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/resource.rs": {
+          "retainedSha256": "63befe535dcc62e9d948300f4c1b83398742e83242a540c78d627abac4dd069a",
+          "proposalSha256": "8de6c76fe7ae777686b5dad5b091e75542bc3732e521eb57d762f4ff06acae6a",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/retention_json.rs": {
+          "retainedSha256": "a0b73b4346e046b9c35c58c9c03d41df214754d6cd85b9f4d83c8a53ed013ac8",
+          "proposalSha256": "f5fe1044b23ec4c8479e1cff312a37ce1ce5fb11b7adf3560f6d5e62a51b8ce0",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/startup_inhibition.rs": {
+          "retainedSha256": "1c13f3730b0d921c6760f1a52a82a0b6c89d5fcfe22e010cc7a4ecfe38f70f06",
+          "proposalSha256": "4cbbdc26e76aeb2c07312cca90b6d7d1288d1c5dc50e3b3ea18b5d0c3621343d",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/transition_manifest.rs": {
+          "retainedSha256": "6295f11ee61f3994678092e7bfc42d0d31fb4aefe149de93da3a8e77e7a2ea9e",
+          "proposalSha256": "3e3e928ff560d924d79d0d2c66142ae94522066f41df0e1059a30506cfe44463",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/storage/writer_fence.rs": {
+          "retainedSha256": "bd48f2ea89ab05f65743afbf0e4a23ff24d7de4c90170aeb0efa64aa54e2d772",
+          "proposalSha256": "24d72febf67b41ea3c5b04925466c1bad3be7a2979cf739853031101fbd32bcb",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/testing/baseline.rs": {
+          "retainedSha256": "f9442046b064dc0f352819472278efcc91c794d8d079a7ae04c2c952b8d83369",
+          "proposalSha256": "d2faf893dff0601994e67d7201251a1ec2c196592ae3e5d567f7ff194f659fee",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/testing/candidate.rs": {
+          "retainedSha256": "8dfebcd5945a2dd8fd0818976854550c8b49d9710ea883685271676098650810",
+          "proposalSha256": "720d3e8db90cf2152652db6564695b8eb6947b152b1c21053186917a7987e2a5",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/testing/catalog.rs": {
+          "retainedSha256": "e96591a0a8973ccd108a5f5604f463e6ac7d00241e5e58aa7156818a470efda3",
+          "proposalSha256": "e96591a0a8973ccd108a5f5604f463e6ac7d00241e5e58aa7156818a470efda3",
+          "disposition": "retained-exact"
+        },
+        "src/testing/evidence.rs": {
+          "retainedSha256": "2cbbc4d4b84d160993e474567a895389dc1f9a88058b7beb6ef3173a2e97fe0b",
+          "proposalSha256": "f6b6d7c2b98ca84d057a82e5c78e41292083c9dfa672f18de18ccaea3fa248f9",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/testing/executor.rs": {
+          "retainedSha256": "d7839025130ea3898113d10bc403c9a05d48138a3412b0e1e3988eabd8a4317a",
+          "proposalSha256": "d7839025130ea3898113d10bc403c9a05d48138a3412b0e1e3988eabd8a4317a",
+          "disposition": "retained-exact"
+        },
+        "src/testing/host.rs": {
+          "retainedSha256": "cd8695763b81ac368ceec989165720b9f0df8c2a8889589a5ba205e1c5818b3c",
+          "proposalSha256": "cd8695763b81ac368ceec989165720b9f0df8c2a8889589a5ba205e1c5818b3c",
+          "disposition": "retained-exact"
+        },
+        "src/testing/mod.rs": {
+          "retainedSha256": "0a28fcb62aeb7b45f3e6e9221a35f11c6c65d7589e8cf9c77f0eb53a9656ce59",
+          "proposalSha256": "0a28fcb62aeb7b45f3e6e9221a35f11c6c65d7589e8cf9c77f0eb53a9656ce59",
+          "disposition": "retained-exact"
+        },
+        "src/testing/protocol.rs": {
+          "retainedSha256": "2c4710f52f978b964a6d52add0fd2211423bae10113ef89cc50b88765751b05c",
+          "proposalSha256": "2c4710f52f978b964a6d52add0fd2211423bae10113ef89cc50b88765751b05c",
+          "disposition": "retained-exact"
+        },
+        "src/testing/runner.rs": {
+          "retainedSha256": "9755fe073239e5fa828d6f5aa0612c8c2f4e2d6a5472bbcbe061818e70b1d4ea",
+          "proposalSha256": "c6d294071e4276d0e461f98e725ab6dffbedae44fba2d45c9d8de434e72fea44",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "src/testing/supervisor.rs": {
+          "retainedSha256": "3c366bfe5514b5c3be27cb1e48d4067462a95c4feaeab87884f9b5caf16531c2",
+          "proposalSha256": "9de7764b18671f2b8c35930ba652e43b46afe6940110e50803109fab1c880b59",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/application_storage.rs": {
+          "retainedSha256": "19fd948fd80ef5432b372e6cd3480ede4d107ca8b5f0c5ace8082fdb0671be54",
+          "proposalSha256": "2d4a1d94f71f46e34b3edadd4791be70c677816d8809592db5cb307aa4584c89",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta",
+          "refreshedAfter": "preserve Python CLI exit status through SystemExit after the machine-ID fixture binding"
+        },
+        "tests/backup_interruption.rs": {
+          "retainedSha256": "2c92edc9c19c2dca2bca9a2d2d9aefb1081607f09a38177e2c04946e9e523aca",
+          "proposalSha256": "2c92edc9c19c2dca2bca9a2d2d9aefb1081607f09a38177e2c04946e9e523aca",
+          "disposition": "retained-exact"
+        },
+        "tests/backup_storage.rs": {
+          "retainedSha256": "ff80b357c9d85480a348d9a90a93ac0478975ffd6640435d2422d0f15220f21e",
+          "proposalSha256": "ff80b357c9d85480a348d9a90a93ac0478975ffd6640435d2422d0f15220f21e",
+          "disposition": "retained-exact"
+        },
+        "tests/candidate.rs": {
+          "retainedSha256": "09e78d974d1e17a6378cdd0f4647b2fd8294edefa03953888d94dd0ddb14a1e9",
+          "proposalSha256": "1b79bdff3000273a5ce9f48c0c18f07c6fd4f4e11ec8f8cb801b3ccb0497a861",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/catalog.rs": {
+          "retainedSha256": "261e1d3a0615ec1e3e6341adb0e72b66f6a0d5a2220b68dbf14a351ecf38fae3",
+          "proposalSha256": "864950fa26f2443a30e56998f62bb058ae682fd66c371918d913702459d5f64d",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/check_cutover_command_phases.py": {
+          "retainedSha256": "ab7063e4df715fd3a589652c1d60ac22e06296b3acd6347836956c0566ced5df",
+          "proposalSha256": "5bcc07fd6e779c931959ebd58d648b8237f042fa6393d6047750de2e7fb3bb94",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/check_recovery_preparation_hook.py": {
+          "retainedSha256": "266033c00f039745dc194cdd32df0add47d09bde4d40d4aa90952f2c85f83ae9",
+          "proposalSha256": "0d63dc5d261dff5992f78017838453bcf1ca035ae96560addf63599c37ea872b",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/cutover_storage.rs": {
+          "retainedSha256": "9fee381454a7f18cebb416f53602dc54bcd9e2f36513e05a986c10ce8e0020df",
+          "proposalSha256": "1dd3486dac4a10b86e52703305680ba69b4de8f53cbbc5fe165a8acca1735688",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/drill_interop.rs": {
+          "retainedSha256": "bf9c00b40a011d7f0c44034111283e3411f58640cb0b33220af4a90bfd5acb4d",
+          "proposalSha256": "c90c913478af54ec1463e89f8ba1e36397c1cea6859d9a42129d11e62929b215",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/durable_publication.rs": {
+          "retainedSha256": "6b4fb6426a85f7f6750ddb70b892b60b1288640abf80067c7ecd2c362f3b6731",
+          "proposalSha256": "e04fb388e68afbf75d7c22ad912049446393f51c485ed64127d29f172bc5a84e",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/evidence.rs": {
+          "retainedSha256": "85e63d9d1f136d2375a2f8d39c5440f7aa2d35bf1e75c6629baf6b2b41408749",
+          "proposalSha256": "85e63d9d1f136d2375a2f8d39c5440f7aa2d35bf1e75c6629baf6b2b41408749",
+          "disposition": "retained-exact"
+        },
+        "tests/fence_storage.rs": {
+          "retainedSha256": "5b5b5283b8dc89d5d651a847a326fe5eb0c0cd39c067e69d27f43467caa76180",
+          "proposalSha256": "5b5b5283b8dc89d5d651a847a326fe5eb0c0cd39c067e69d27f43467caa76180",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/backend_transition.rs": {
+          "retainedSha256": "ec297d6017e482f38a7341546dcc1f4f9287bff413f02c8ab1c6d833a25df5bb",
+          "proposalSha256": "e77385ae9014a1408b25bfc67c508a3d067c26c594fba71404015d76c278b3ca",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/fixtures/native_supervisor.rs": {
+          "retainedSha256": "9bdf3b08c317bef93cb29d66b5c6ac0f22f645cafc643ed46d9d889499d36cce",
+          "proposalSha256": "4c01f1a8b5d981fc8727f91e13afb4a1883235d560404533ac3907cd8c146219",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/fixtures/postgres_backup.rs": {
+          "retainedSha256": "cbff33a4d84e28b95d7a617a1811d57405303443cbdc8323322023018cab8849",
+          "proposalSha256": "cbff33a4d84e28b95d7a617a1811d57405303443cbdc8323322023018cab8849",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/postgres_transition.rs": {
+          "retainedSha256": "e66405d2dc785a5e6d65f1edeafaf3368aa2e6757b0238b7508d647348904fa2",
+          "proposalSha256": "564100252143a24913d49bf9c74e5940eb93e375eb7b8a89d9b0dfaf2a2dbe4e",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/fixtures/provision.rs": {
+          "retainedSha256": "67abf7b49765ed4e720b7667707a159b3049f45716211d3cd263a3e0ea6f9390",
+          "proposalSha256": "c1b1604cbcd43eb1cb8fc196f4387f8c166059125cfd7507b2e5432c19aed934",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/fixtures/supervisor_worker.rs": {
+          "retainedSha256": "784c99272b7382f4d37f2b61ab4caf1666bd1c8406bca7a4caa35865a2cb191a",
+          "proposalSha256": "784c99272b7382f4d37f2b61ab4caf1666bd1c8406bca7a4caa35865a2cb191a",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/writer_fence.rs": {
+          "retainedSha256": "bd71737316a1962433e5a4e57f16725ed6209ee07a862050e139202e6c3faa11",
+          "proposalSha256": "7fa74dfca49561957da50deb50056af7b4ba144d8c06c9ac6344d5e6b4b19e3d",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/home_manager_cli.rs": {
+          "retainedSha256": "df5e3c8023e27994daed91c1f11370e7540368e2e1e8b9f7fb476bc77bf7aeab",
+          "proposalSha256": "df5e3c8023e27994daed91c1f11370e7540368e2e1e8b9f7fb476bc77bf7aeab",
+          "disposition": "retained-exact"
+        },
+        "tests/migration_baseline.rs": {
+          "retainedSha256": "2cf11a481c784c36da2d7bcbd2d67bb88b57fcdb40a96fb1a0fbcc3e99c9fde3",
+          "proposalSha256": "5f185764f80b8bb161441e1c55c16c3f90bb06c47f7e0eb7aebd814b379c8f5b",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/plan_cli.rs": {
+          "retainedSha256": "f1237bf07d6046544cc11f3d9cadfc8fa87add86c6e31e2894ac28ca6aa28d79",
+          "proposalSha256": "06be56df5c89317fbabd51013035a24c6944a42c397e05955ad6db4e47ab2155",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/postgres_storage.rs": {
+          "retainedSha256": "135e2f74f621d219ac2470885e063c61cb58a43bda1967b29c2879efcdc915b5",
+          "proposalSha256": "8dfeb48c6c8bd666530ed30dedef19906f9c90dc9e7db103044c84845897d6d9",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/pr14-baseline.toml": {
+          "retainedSha256": "353c5ca758d16cb6734106ae54428a660cc36621fe71ecae76de0ce8eb4a2c4a",
+          "proposalSha256": "353c5ca758d16cb6734106ae54428a660cc36621fe71ecae76de0ce8eb4a2c4a",
+          "disposition": "retained-exact"
+        },
+        "tests/pr14_cli_parity.rs": {
+          "retainedSha256": "5c9b353ab6745201365ed5f3d9874e9d70f9099ef907b520a0f8f44e329cedc7",
+          "proposalSha256": "48f7306730d8052daad817809a8577241d1c27e977588e6be18b1ec26305ee1c",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/protocol.rs": {
+          "retainedSha256": "a800f4247c870d6ea69e16372a5060118bd672b45a88d0ddb59d3dc6ec59420f",
+          "proposalSha256": "c86e04d69937565bf79c0b29b86a795830f4f28dbc962bf4484305c3590d1a44",
+          "disposition": "scoped-NixOS-driver-transport-repair-with-red-green-protocol-evidence",
+          "refreshedAfter": "require relative driver staging, complete byte preservation, refusal propagation and temporary-output cleanup",
+          "regressionEvidence": {
+            "red": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-bridge-relative-export-regression-20261012T211352Z/red-receipt.json",
+            "redSha256": "75821a9c3aa75ae226f99e73cb73d809a3e0f00619d1e5918052101b7132efe9",
+            "green": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-bridge-relative-export-regression-20261012T211352Z/green-receipt.json",
+            "greenSha256": "a6c2068fb5da7a1e85ff5dc8255eca84946c44fdd547fa291c850ad205a73447"
+          }
+        },
+        "tests/recovery_storage.rs": {
+          "retainedSha256": "d212eb7cf6a779172087f7a9e47e3b1e8284899c5be761ee33c0e90a97c70407",
+          "proposalSha256": "7e74e06cf29b31d2b2fe343a1352b5e8478847ff5ebe33f6bbe61c72b55aa9a5",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/resource_storage.rs": {
+          "retainedSha256": "72590a09538dfb87e734cc683bd0da79bc22a2a14d1907f40c9d127ec678d42b",
+          "proposalSha256": "72590a09538dfb87e734cc683bd0da79bc22a2a14d1907f40c9d127ec678d42b",
+          "disposition": "retained-exact"
+        },
+        "tests/storage_primitives.rs": {
+          "retainedSha256": "8f62eaa19b0e1c426f1162e0dc7baa80d2007d00880f8f11746da53b99c71eab",
+          "proposalSha256": "a48efcbe34b5f81aa63612159318339930351ecfef35ce3c9bce2b26e1841acf",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/suite.toml": {
+          "retainedSha256": "4e21f303af6cd486a76bb982698211c800f317eaa0c7607be9cbd59004766b47",
+          "proposalSha256": "593de3d6df57ecdad20ef20b4782a38fa74dfaeebd2f701b9be04c7ea97d6b6d",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/supervisor.rs": {
+          "retainedSha256": "d83ce576319c0fef663bf70932032580fd9d60a5b532e323a1ec878256cb3304",
+          "proposalSha256": "ba091334a3d3a44b7e095426d1d809ba993dbc04699aff70bcbb43c67c0b8a61",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/test_application_backup.py": {
+          "retainedSha256": "5731efff1c46883b6cb404f881b3b896784e6755f732b115da64783bb727b44c",
+          "proposalSha256": "68fde3e19f7bac768a7f3198ccc1e6f1f1c154a4a9dfad7f56b92360271cb981",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/test_application_provision.py": {
+          "retainedSha256": "563a2cd5512e57ab14be849f13bf05652eb6a36649fbadd7611681495eb24745",
+          "proposalSha256": "11dec37fce626a857eecf9caa50995f272e0425b4ef847d69fad77b196221fc7",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/test_application_transition.py": {
+          "retainedSha256": "419025775676ec0af58254a0b4edf90267725f0cdb72f68a8d58b399d82e3611",
+          "proposalSha256": "c913a0728f36d3fd16462edf125eb5da639c05a7350be4e69e27d42982ba567e",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/test_backup_lifecycle.py": {
+          "retainedSha256": "9689c7c08db6545f4596d4c533b4574fc4adfcc4f4eee2c5363a5a016ac0d55e",
+          "proposalSha256": "ed0e1037e162f873daf3a5532d8fa8d6ff739c5288599b47361c024756e48e6f",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_cutover.py": {
+          "retainedSha256": "67ed7e759f5eab9b0175d1d8f9d7166557ae9b0a58b2a3a361a2064a2fadc021",
+          "proposalSha256": "0833bcc996acad81222df8b25c5f5dabf8a57ea80f058f1d4c9395e389f7fe5f",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_cutover_process.py": {
+          "retainedSha256": "9a1f895aeadc02f04d42dda6d776ede505fba1c7c366730d6e82f024aecdd079",
+          "proposalSha256": "7b2861175eadada2a51f4409e559530f73fbb4530214daaf9160b81243538e9d",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_durable_lifecycle.py": {
+          "retainedSha256": "763ba7b31b30d24ed80b6a289dd4e7449f55b13dbbdf99367c001eeb27baf2c1",
+          "proposalSha256": "c35296544ff95df18bcdeda7dcee6e197724ecba066b3379590ec37a7055eeed",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_fence_recovery.py": {
+          "retainedSha256": "002b8b8d8340878baee04336e06c93427cf5c8b84433a665dbcd666104a1785a",
+          "proposalSha256": "1c1e50cdfbe469085ef157aa99ed4f7b59781d653718134013bba7cae804fdea",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/test_postgres_drill.py": {
+          "retainedSha256": "c331767f4ce291b93be284b91740dd17c425a158758a5702f30e0d723c47365d",
+          "proposalSha256": "8776218abff597092706ed1d3ce4aa7093513e26d365c0cb56b5bd165f5af8dd",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_postgres_lifecycle.py": {
+          "retainedSha256": "e39f708871a3099e1f7b19769c2efbedf69dec0fd90e8c04aeec86d7dfd2c2c3",
+          "proposalSha256": "30653cd2d3212f4d6bde4606adfc8d7965fcd38a7abf6fff864d3e3c53122df8",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "tests/test_receipt_process.py": {
+          "retainedSha256": "05a89816cf1bdd2507d000c63560e1aa748a1e1215385e3a0616a7a04c85722a",
+          "proposalSha256": "3fd91b094f669c9a037e0fba1b05f9fa17df943da91993a7a3be718a77410941",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_recovery_readiness.py": {
+          "retainedSha256": "431401fde3e7e83fa4bcba29a594dc8ce1ec78b1e612d32fcb093f9a01e31130",
+          "proposalSha256": "ee032b83b3f10e58a6cc0c1ca3cd2041c31e4b1a2bbdca874223693faebe7631",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_resource_lifecycle.py": {
+          "retainedSha256": "772b25ee192f980377236aa3efebd563fcaaa2eeb82d5d826e2eb9d0b2084158",
+          "proposalSha256": "3f029e00d0de6dfb053e3bdae636886b95b59fd2d2378413b2146dc2a02c4cfa",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_startup_inhibition.py": {
+          "retainedSha256": "3f3fbc19e058cf20b8389489ecc27e92993809005e9590d6446f7da225f774b0",
+          "proposalSha256": "fe988e455211bd2b68411fc2c3833279561e41772f78112c08b75d29a5337920",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_writer_fence.py": {
+          "retainedSha256": "6a76083163498137b0a37a7450d4d251a47f111900ad08f70c3e297ff9744bf7",
+          "proposalSha256": "a5b4257cca6fdead27bb3122ca668fb3aef23417f4d09546a57dc897141ac382",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "tests/testing_cli.rs": {
+          "retainedSha256": "c9c2e87ec421a5b1f19bb3e937166ce3a8ca71f9c875457e75afca13c5e97bcd",
+          "proposalSha256": "c9c2e87ec421a5b1f19bb3e937166ce3a8ca71f9c875457e75afca13c5e97bcd",
+          "disposition": "retained-exact"
+        },
+        "tests/transition_storage.rs": {
+          "retainedSha256": "1a1f190b5bd6e81176cf61d1ba3e31f1cc423fedcf200cf485c66206d04e576d",
+          "proposalSha256": "e4cc65bbb0536405424ac10bc373879637b41038effddc3378f717811d22b6a2",
+          "disposition": "reconciled-through-newer-writer-fence-tip-with-scoped-migration-delta"
+        },
+        "treefmt.toml": {
+          "retainedSha256": "b3009258c98d4ce794bdf010921fc6bcdeec18ee0f4601128ccd9fc1f620bcc5",
+          "proposalSha256": "b3009258c98d4ce794bdf010921fc6bcdeec18ee0f4601128ccd9fc1f620bcc5",
+          "disposition": "retained-exact"
+        }
+      }
+    },
+    "writer-fence": {
+      "tip": "784f80a62adedcaf04c796cc6e4866955e09d5bc",
+      "tree": "6ba3555096e3353f537377b0bd4da41b6a0af598",
+      "files": {
+        ".envrc": {
+          "retainedSha256": "0077fbeb5b64e17954c78167d45a3b5bbd6ea38debd8cf60683567cb298dcc31",
+          "proposalSha256": "0077fbeb5b64e17954c78167d45a3b5bbd6ea38debd8cf60683567cb298dcc31",
+          "disposition": "retained-exact"
+        },
+        ".github/workflows/nix-builds.yaml": {
+          "retainedSha256": "ff0a310e8a924c2ebf578d271530c8f4f0ca29c9d66fd20cb7af644cd9e17608",
+          "proposalSha256": "ff0a310e8a924c2ebf578d271530c8f4f0ca29c9d66fd20cb7af644cd9e17608",
+          "disposition": "retained-exact"
+        },
+        ".gitignore": {
+          "retainedSha256": "70a09eb0d6f9d706c1c4ecdc9347f18c75e2e5ae7bd46096890eae6ed58ef955",
+          "proposalSha256": "70a09eb0d6f9d706c1c4ecdc9347f18c75e2e5ae7bd46096890eae6ed58ef955",
+          "disposition": "retained-exact"
+        },
+        ".pre-commit-config.yaml": {
+          "retainedSha256": "e2a19a935532054e37a840106ccc949c1569756ff63863561d21c6bef1edeee0",
+          "proposalSha256": "e2a19a935532054e37a840106ccc949c1569756ff63863561d21c6bef1edeee0",
+          "disposition": "retained-exact"
+        },
+        "CHANGELOG.md": {
+          "retainedSha256": "7c01ef19aa9e471c9b8033e59f62dffa44f0164f7e2e539fc41ea674edbdb6eb",
+          "proposalSha256": "7c01ef19aa9e471c9b8033e59f62dffa44f0164f7e2e539fc41ea674edbdb6eb",
+          "disposition": "retained-exact"
+        },
+        "Cargo.lock": {
+          "retainedSha256": "6fc409363b129d27498a353e7747a152af30b114e52bf2cae01fb4f264a0afec",
+          "proposalSha256": "6fc409363b129d27498a353e7747a152af30b114e52bf2cae01fb4f264a0afec",
+          "disposition": "retained-exact"
+        },
+        "Cargo.toml": {
+          "retainedSha256": "f39c3d170bed524ea59cef86eca6ddcab54a1c81cbaf184d83d5c323dcf09ad3",
+          "proposalSha256": "acfc2baa68dcf15a2a28ec49bc46b9cf7e1e94396b0f5d64ea03d3baa5423930",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "README.md": {
+          "retainedSha256": "5653dc6a61452072c6d148e48cc5449d14dbd0cff7a470bcc9c37ff2351c4fa3",
+          "proposalSha256": "0300d27a8c78d867fd942e8d0ad31e4eb3c6e3c27b3aa0f7054ea29026bb1400",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "docs/application-storage.md": {
+          "retainedSha256": "c61703a1f825a356feb50d2385c6bf3666b920dd74853313bd6eeb2fb91ba55f",
+          "proposalSha256": "c61703a1f825a356feb50d2385c6bf3666b920dd74853313bd6eeb2fb91ba55f",
+          "disposition": "retained-exact"
+        },
+        "docs/cutover-admission.md": {
+          "retainedSha256": "78dc67012ef652a8e3e57991033183392b784b5d60358ac6e483fcc5dd3bd818",
+          "proposalSha256": "78dc67012ef652a8e3e57991033183392b784b5d60358ac6e483fcc5dd3bd818",
+          "disposition": "retained-exact"
+        },
+        "docs/rust-migration-baseline.md": {
+          "retainedSha256": "0460586cbc493ff03d573f14763ccd7bd075648239819654171407ff607670f6",
+          "proposalSha256": "2079457675974ee900d8622a208bf1d40f51a5edf645bf612647aeb29694cee1",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "docs/source-local-recovery.md": {
+          "retainedSha256": "9a3812c875a59431cdf76ce040b896ddba69cdc490508912ea542709afcb34aa",
+          "proposalSha256": "ffc0c4e15e99f61983cd9feabcf0e7c40c4615648ca73091a18a521281f91521",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "docs/storage-durability.md": {
+          "retainedSha256": "7bd582a28d54062ef87f4735e7684993191223fe8953d3dd21ec4728673bf73a",
+          "proposalSha256": "7bd582a28d54062ef87f4735e7684993191223fe8953d3dd21ec4728673bf73a",
+          "disposition": "retained-exact"
+        },
+        "docs/storage-refactoring.md": {
+          "retainedSha256": "5c1475d597d9848386b376606df4c8ff60e30a5ddd169cc44db39647dd2f39e3",
+          "proposalSha256": "5b656177b427d50dd81db32b074d5eb315d33c41325a901dd1453231709c4a35",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "docs/testing-suite.md": {
+          "retainedSha256": "fc69c59a4f48edbcf23d0356fa5a74898caa5535c55eec302527cb46792a0c03",
+          "proposalSha256": "78b81f61eecd27a119473cc2ff46efbee57c802479f954d1aae2ffc416aa58fe",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "flake.lock": {
+          "retainedSha256": "e3284c8a523386f985528ed9b5c597aee67aa80d2f858954bfd0e4131ff1c85e",
+          "proposalSha256": "e3284c8a523386f985528ed9b5c597aee67aa80d2f858954bfd0e4131ff1c85e",
+          "disposition": "retained-exact"
+        },
+        "flake.nix": {
+          "retainedSha256": "46b84d48f763b4f422aaa1d2bd352156e660d1f7264f3c813d2ad1a736ab208b",
+          "proposalSha256": "499f71c47b8810eb9b7f9a7d75114e22bb747187930a9c3be169098d5f201b51",
+          "disposition": "scoped-migration-delta-recorded-below",
+          "refreshedAfter": "remove duplicated documentation flags while preserving locked all-feature package scope"
+        },
+        "nix/application-backup.nix": {
+          "retainedSha256": "985626fa979479692abf2670fff49d1b25e944a879b259325118f58742084924",
+          "proposalSha256": "985626fa979479692abf2670fff49d1b25e944a879b259325118f58742084924",
+          "disposition": "retained-exact"
+        },
+        "nix/application-provision-eval.nix": {
+          "retainedSha256": "0cb3ac5e3e8f3eb922ece844e467c55cf020ebac995dea64f392328c0192cde4",
+          "proposalSha256": "0cb3ac5e3e8f3eb922ece844e467c55cf020ebac995dea64f392328c0192cde4",
+          "disposition": "retained-exact"
+        },
+        "nix/application-provision.nix": {
+          "retainedSha256": "ba39f0bf544926583107c10ab305b7248df310d7723aabd2fe888c2d8ea6ea8a",
+          "proposalSha256": "ba39f0bf544926583107c10ab305b7248df310d7723aabd2fe888c2d8ea6ea8a",
+          "disposition": "retained-exact"
+        },
+        "nix/application-transition.nix": {
+          "retainedSha256": "398af10e148cd248121a2c0c030b03c307591ba6049c5d35ddc3652ebdb5e608",
+          "proposalSha256": "398af10e148cd248121a2c0c030b03c307591ba6049c5d35ddc3652ebdb5e608",
+          "disposition": "retained-exact"
+        },
+        "nix/custody-namespaces.nix": {
+          "retainedSha256": "33e4373033a532b11ebec038e23c548d0a587010853a462dcda24cd2579dd96e",
+          "proposalSha256": "33e4373033a532b11ebec038e23c548d0a587010853a462dcda24cd2579dd96e",
+          "disposition": "retained-exact"
+        },
+        "nix/cutover-eval.nix": {
+          "retainedSha256": "6d3e07e676d22ec15c6a7a6924e32ea16aeeabbefee9bec014fb6451d282422f",
+          "proposalSha256": "56b5d82fbd341f99fac80ece0390f3ef9e7f430f3e0a3157241ef49c8b4e1d60",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "nix/cutover.nix": {
+          "retainedSha256": "7fb0d065e0d8cf1ea6be77bb7ad256e0edbe175b0d9b199465a01018ff3d1653",
+          "proposalSha256": "7fb0d065e0d8cf1ea6be77bb7ad256e0edbe175b0d9b199465a01018ff3d1653",
+          "disposition": "retained-exact"
+        },
+        "nix/eval-checks.nix": {
+          "retainedSha256": "03e231e5cca1dfffdfbe975b6d217764346d676633ec6ee17cb48547754d9c79",
+          "proposalSha256": "03e231e5cca1dfffdfbe975b6d217764346d676633ec6ee17cb48547754d9c79",
+          "disposition": "retained-exact"
+        },
+        "nix/immutable-files.nix": {
+          "retainedSha256": "34b6e36425f5275d3e705a7441c2c2d5ad36c8b0f0e0967a6d10aa1e8072dd3f",
+          "proposalSha256": "34b6e36425f5275d3e705a7441c2c2d5ad36c8b0f0e0967a6d10aa1e8072dd3f",
+          "disposition": "retained-exact"
+        },
+        "nix/module-eval.nix": {
+          "retainedSha256": "0c528eb9b71e55115f190a397e10227421d7ee1782d9f8470b60685660930bdb",
+          "proposalSha256": "101aec06393fdba6bc169d2265962d766e7cbba1bed8784c206ed66e04c6e7f0",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "nix/module.nix": {
+          "retainedSha256": "a8d6db6c2cb57d16395802afe8f98616d1111f97f0a458576dffea3118b39d98",
+          "proposalSha256": "a8d6db6c2cb57d16395802afe8f98616d1111f97f0a458576dffea3118b39d98",
+          "disposition": "retained-exact"
+        },
+        "nix/native-cli-smoke.nix": {
+          "retainedSha256": "3599220970cba55ef8e8c8ee294bf6f08d0dbf87f569b3ad63e09b8cf9d8230e",
+          "proposalSha256": "3599220970cba55ef8e8c8ee294bf6f08d0dbf87f569b3ad63e09b8cf9d8230e",
+          "disposition": "retained-exact"
+        },
+        "nix/native-package.nix": {
+          "retainedSha256": "7f73f06f430dbd6d6853df532c79d8af2f2b8316dcb54d98488fbac9dd74899a",
+          "proposalSha256": "7f73f06f430dbd6d6853df532c79d8af2f2b8316dcb54d98488fbac9dd74899a",
+          "disposition": "retained-exact"
+        },
+        "nix/native-storage-eval.nix": {
+          "retainedSha256": "4aa9aa0f2f03feb2200fee270e9f83ebf6dafb316b54aa20fd4e5549b9bc54b4",
+          "proposalSha256": "4aa9aa0f2f03feb2200fee270e9f83ebf6dafb316b54aa20fd4e5549b9bc54b4",
+          "disposition": "retained-exact"
+        },
+        "nix/pg-backup-eval.nix": {
+          "retainedSha256": "61db2b075b15a8d6f85eb59161f8f071125b6b02bfc03f35fb50b344c76f38de",
+          "proposalSha256": "831e4214cdce446ee5cec812acb287e57b8ebd6d1b59c859aad2340cf5a7a5e1",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "nix/pg-backup.nix": {
+          "retainedSha256": "a8e023b0ff278569e10e670a7de90c60023063c50e50759a68f45c54377fae56",
+          "proposalSha256": "a8e023b0ff278569e10e670a7de90c60023063c50e50759a68f45c54377fae56",
+          "disposition": "retained-exact"
+        },
+        "nix/postgres-lifecycle-eval.nix": {
+          "retainedSha256": "86f85f3a08ba756683879dfe0ac1906f8d8752f374bd01c9965f7cc1198ce523",
+          "proposalSha256": "8fceef6bf18b62aa25e36afff6e9b8332b24bee12df765a64f5dd7a6520d1969",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "nix/postgres-lifecycle.nix": {
+          "retainedSha256": "8d5ba9acf23389b25cea605105cc9de181e35499418709ffeca0959f8cf5d36a",
+          "proposalSha256": "8d5ba9acf23389b25cea605105cc9de181e35499418709ffeca0959f8cf5d36a",
+          "disposition": "retained-exact"
+        },
+        "nix/postgres-writer-clients.nix": {
+          "retainedSha256": "21e342aaec9a9b6d7f442ebce7eb5f1c474000360c7412d02e6e33a74f1bbca4",
+          "proposalSha256": "21e342aaec9a9b6d7f442ebce7eb5f1c474000360c7412d02e6e33a74f1bbca4",
+          "disposition": "retained-exact"
+        },
+        "nix/pre-commit.nix": {
+          "retainedSha256": "e4c6ff68d2ba1a78f5eb87c7cd2c84046bf98de658eae33c6005b82f1714b474",
+          "proposalSha256": "e4c6ff68d2ba1a78f5eb87c7cd2c84046bf98de658eae33c6005b82f1714b474",
+          "disposition": "retained-exact"
+        },
+        "nix/storage-package-argument.nix": {
+          "retainedSha256": "1820d3406e89bfcc912afe4cc50d2ac3af872ca93aff0d76d999aa13d002824b",
+          "proposalSha256": "1820d3406e89bfcc912afe4cc50d2ac3af872ca93aff0d76d999aa13d002824b",
+          "disposition": "retained-exact"
+        },
+        "nix/storage-paths.nix": {
+          "retainedSha256": "d764693d068e5c2923dd0d79911b760974a2907e46eaf837d69aafd3ef9b3a7d",
+          "proposalSha256": "d764693d068e5c2923dd0d79911b760974a2907e46eaf837d69aafd3ef9b3a7d",
+          "disposition": "retained-exact"
+        },
+        "nix/test-application-backup.nix": {
+          "retainedSha256": "07f6b15f71b187f57e9b0855d899af8964e9ad45d5c79d1781b4898d080f148e",
+          "proposalSha256": "07f6b15f71b187f57e9b0855d899af8964e9ad45d5c79d1781b4898d080f148e",
+          "disposition": "retained-exact"
+        },
+        "nix/test-application-postgres-transition.py": {
+          "retainedSha256": "c20b457b2c00fae4257add514eb4026079714255dc7c8711b20aa622337b8625",
+          "proposalSha256": "78b2eb1cf75bd74138ad77470d594e8eaf84fd1f885b3642ab8fd28f91ef661e",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "nix/test-application-provision.nix": {
+          "retainedSha256": "302798b8cf411504f166f0b4c47f43f448afae433c3eb18a4d4a132679a9effb",
+          "proposalSha256": "302798b8cf411504f166f0b4c47f43f448afae433c3eb18a4d4a132679a9effb",
+          "disposition": "retained-exact"
+        },
+        "nix/test-application-transition.nix": {
+          "retainedSha256": "e8899636bc16da7ecf691b08eaaae55e874f83eafff3b9599ee01ddfbf5ec488",
+          "proposalSha256": "e8899636bc16da7ecf691b08eaaae55e874f83eafff3b9599ee01ddfbf5ec488",
+          "disposition": "retained-exact"
+        },
+        "nix/test-module.nix": {
+          "retainedSha256": "3308d62a3662b31db1d6b4ad21a09b1a07c6c81429e6dfe4fd5627bb75137218",
+          "proposalSha256": "3308d62a3662b31db1d6b4ad21a09b1a07c6c81429e6dfe4fd5627bb75137218",
+          "disposition": "retained-exact"
+        },
+        "nix/test-native-bridge.nix": {
+          "retainedSha256": "6b389623826af1c5e238022891f5119ae7de7b7394b98b828a67b924b7ca4645",
+          "proposalSha256": "6b389623826af1c5e238022891f5119ae7de7b7394b98b828a67b924b7ca4645",
+          "disposition": "retained-exact"
+        },
+        "nix/test-native-supervisor.nix": {
+          "retainedSha256": "a73c076d7b79611be27ec50a2044c79853f54fcaa395ef97e00e158b84a44bea",
+          "proposalSha256": "a73c076d7b79611be27ec50a2044c79853f54fcaa395ef97e00e158b84a44bea",
+          "disposition": "retained-exact"
+        },
+        "nix/test-postgres-backup-service.nix": {
+          "retainedSha256": "f8510651bf62b07072c2bfd61a30913bdbe08cfd1958f1dc0a11d24bc52b96fe",
+          "proposalSha256": "f8510651bf62b07072c2bfd61a30913bdbe08cfd1958f1dc0a11d24bc52b96fe",
+          "disposition": "retained-exact"
+        },
+        "nix/test-postgres-lifecycle.nix": {
+          "retainedSha256": "01608109dce09b3d8d6b8300c4e58accf0a71b14ba1e3a554978d2f6adfdb702",
+          "proposalSha256": "01608109dce09b3d8d6b8300c4e58accf0a71b14ba1e3a554978d2f6adfdb702",
+          "disposition": "retained-exact"
+        },
+        "nix/test-postgres-oracle.nix": {
+          "retainedSha256": "afe6c23a1529d3ecbf1cc3d6c1affee93e8de91ba70cb5b43ee85db0b5ad8a93",
+          "proposalSha256": "6b8147da4f8a8ee3b31f6f03e181cc26b494b74932dd398cec59fe5913c947e5",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "nix/test-postgres-recovery.nix": {
+          "retainedSha256": "d77e58bc3174c6684666220c98654365994ca75c40b3769a767813a4d175ccae",
+          "proposalSha256": "d77e58bc3174c6684666220c98654365994ca75c40b3769a767813a4d175ccae",
+          "disposition": "retained-exact"
+        },
+        "nix/test-postgres-upgrade.nix": {
+          "retainedSha256": "8804ae5cf528814453630b1f5d781cca5e0eea09458fe26cb7a57a8a81fb3314",
+          "proposalSha256": "8804ae5cf528814453630b1f5d781cca5e0eea09458fe26cb7a57a8a81fb3314",
+          "disposition": "retained-exact"
+        },
+        "nix/test-postgres-writer-fence.nix": {
+          "retainedSha256": "13a2788d9b2a3857dcfb6647b5a33eb0065f87af8b1a4aef3eeb9325b50d5cae",
+          "proposalSha256": "13a2788d9b2a3857dcfb6647b5a33eb0065f87af8b1a4aef3eeb9325b50d5cae",
+          "disposition": "retained-exact"
+        },
+        "nix/test-python-package.nix": {
+          "retainedSha256": "775b44628a3ca6ae1048a9af30d904abba575f21b00c2aa470e0c3887c85bf9a",
+          "proposalSha256": "775b44628a3ca6ae1048a9af30d904abba575f21b00c2aa470e0c3887c85bf9a",
+          "disposition": "retained-exact"
+        },
+        "nix/test-python-regressions.nix": {
+          "retainedSha256": "71f8b3196e0c6ecfe244ad6f0b018fdc76d20348ee80b735475aa54c2966bbbf",
+          "proposalSha256": "119740fb21f71c56fb0b41ecbac03439efdd458e3f5bafbb358fab692d65ea1b",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "nix/test-source-local-recovery.nix": {
+          "retainedSha256": "c7794263eba3d1b23544b83adf2410cb0f1809e5998358789555363e161261f3",
+          "proposalSha256": "c7794263eba3d1b23544b83adf2410cb0f1809e5998358789555363e161261f3",
+          "disposition": "retained-exact"
+        },
+        "python/harbor_db/__init__.py": {
+          "retainedSha256": "b1d438055e85a2730e66b0276522b4f10b0ac6a682a26c5bf5c93f9aa05055a2",
+          "proposalSha256": "b1d438055e85a2730e66b0276522b4f10b0ac6a682a26c5bf5c93f9aa05055a2",
+          "disposition": "retained-exact"
+        },
+        "python/harbor_db/application_backup.py": {
+          "retainedSha256": "d75224a317bef337f01c6d33df38c954df078694140fd38b0127d89c6be99a06",
+          "proposalSha256": "2cf427a24498a6468ed2e15b9421e9ab49429de255b854053826eaa2cbf60b93",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/application_publication.py": {
+          "retainedSha256": "f121faf2bf86391cc33fe0a51ec41be3bfeedd6d757ffdcfac1227507b88c6a1",
+          "proposalSha256": "7940c5916d23f0c6c9d3d2089ed632555cf05b3ca12c6e040fdf6f45c2f719bd",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/application_retention.py": {
+          "retainedSha256": "0f48f3c40dbd0ecba77b09011d8f658dfbf7df7ab0469ddbbcac9ddc2312ff8a",
+          "proposalSha256": "c1e0e158c4a2ca7885193631bf6b1f2e38bd88c525b70099d73efdfd8bf66bf7",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/application_transition.py": {
+          "retainedSha256": "5ad08ad0d495096b6bb37893eea0e489aff2a2b7b490d0f1329b8b1d42d66b7a",
+          "proposalSha256": "5e3ca10ba64dfc6b54ed4938c570311fd056ddd44106e983df088960b615250b",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/backup.py": {
+          "retainedSha256": "47e441ba84dfef1a86f07d6e91f88ff09a1d22076f6c316830a20f2a6fcceac5",
+          "proposalSha256": "4ee1b3b4ab3dae479b2d5cc01fccb23db3b0916dc40970ae6ff993a1f4b3d51b",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/backup_pins.py": {
+          "retainedSha256": "8ea7dd0dce2d9f4f9df5b5cee459a64f3796cd697dc2e63e8f4b9a6814880732",
+          "proposalSha256": "205e58b69cdafb86273942eab3a910bd1007239ae29fed8fd5bd73591a05a8c3",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/cutover.py": {
+          "retainedSha256": "31faaedc87295158d0e05ffb609db429ba7e1b8d8e4a7fee013cecc7230f6e54",
+          "proposalSha256": "e7f11cabdf9f64fe243ffa26b31c7d2f73a3cf47082f58574368620633224225",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/durable.py": {
+          "retainedSha256": "6aadb28cecea0ddff75ce6fc80982816770e1e614051a51356834b566cb41053",
+          "proposalSha256": "8ca8db7d77af7f8221e2cfb445f5b39c5cbbceedf856fa1966f72c9fac8393af",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/login_shell.py": {
+          "retainedSha256": "e66ac5a3994f2718d8cc4c7e3ab8003eb90ef6122908a2c30be1b5d5d25a1998",
+          "proposalSha256": "053bc03e655e1b7411ec37054adba54c446fa01234297eab9070b6fa6e66af5a",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/postgres.py": {
+          "retainedSha256": "d926f12793d5828f48f019c1fdceab859e74cc57bb83aa1d64805bb3f6630458",
+          "proposalSha256": "eade751cfd5c49588cd0c678c362fcf9117f48f52f7144755a8731ebc60c336a",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/postgres_drill.py": {
+          "retainedSha256": "00c42cdd3cbf46009bd258c8ba1c162e79f064a8d77ba413de4d1e6208b3138b",
+          "proposalSha256": "c772d0b3951db451e52ccb3109f632b807ae7004a05b9b976d8e4f7e479fa4ce",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/process.py": {
+          "retainedSha256": "0685d1e6b43c10ac8637614090f099dcbe6a5d7b859c899e07377f74841c524c",
+          "proposalSha256": "92617dc1f64fc6d9d3e5a8595fcceb2f663887e67fc4a1261b04586c1d975b0b",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/provision.py": {
+          "retainedSha256": "f5d1bc8cbcada931dfe0ad0362cb095c276b9dc37144e7f9721aa8028c71a556",
+          "proposalSha256": "37e895c7d040f4d34dc6aeae80e7e5c8d0cc730963b4b4e4161f54226903c440",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/recovery.py": {
+          "retainedSha256": "98080d38d82954e71723d8a913915c1d6fbae63409ebeb9d3588089259a765bb",
+          "proposalSha256": "5080d898722b14126599646def709dbf652f4f7ac3886423d24ab3612c53770c",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/recovery_repository.py": {
+          "retainedSha256": "db11e5306d8fb28346757c83d1ebaaa3355974c4d426de0a3417d072fbfaa8bb",
+          "proposalSha256": "6abf6182f5e4ea4806685fc303ff89f238fe2fb38dbf271914e9df76201a8dbc",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/resource.py": {
+          "retainedSha256": "13f83b6b9a277b0b8520a25a3fd95e35f09311c8316385b064dfe1a92129884c",
+          "proposalSha256": "c9299b49b80f352a1c1432e97ef427633a692d2adcb7f3e4bea9dc6681ebe72c",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/startup_inhibition.py": {
+          "retainedSha256": "113c4d74646f26fa993ecad9891e364285ab15f17fbe70adb0df3f3dfac0ef96",
+          "proposalSha256": "4de2a8b2385a29968479bb50b1283fa7924c11ab7f8c9778a931226ade57410c",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/test_bridge.py": {
+          "retainedSha256": "357f3d9fb000d6a8e3f2e363fb83a89098c6f27b0b5f44bc75a8d5461e7e84c7",
+          "proposalSha256": "a752b0de35f75f3aa9a0d4aa29f42518e697b200ca3f6eec9e600b6793a66654",
+          "disposition": "scoped-NixOS-driver-transport-repair-with-red-green-protocol-evidence",
+          "refreshedAfter": "export through a driver-relative temporary directory beneath out_dir; preserve exact filename and exception cleanup",
+          "regressionEvidence": {
+            "red": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-bridge-relative-export-regression-20261012T211352Z/red-receipt.json",
+            "redSha256": "75821a9c3aa75ae226f99e73cb73d809a3e0f00619d1e5918052101b7132efe9",
+            "green": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-bridge-relative-export-regression-20261012T211352Z/green-receipt.json",
+            "greenSha256": "a6c2068fb5da7a1e85ff5dc8255eca84946c44fdd547fa291c850ad205a73447"
+          }
+        },
+        "python/harbor_db/transition_manifest.py": {
+          "retainedSha256": "f60c33c1f418b52532ce819f0fae1c6b0ebfbc802b6b5f8927bd14baa8199e5c",
+          "proposalSha256": "4f27dc7a98d70c5dd89c978ca7d4cccaf4c98f75da3d3d603e7c15cd238f189c",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "python/harbor_db/writer_fence.py": {
+          "retainedSha256": "f262abcafb879bac0b7b9d3c6814742b59efdc8a950fff99a7e1ed0fae38f8e3",
+          "proposalSha256": "d5e44fab765c7af915f625e1c037d2b907aa5260b53eaf114a1fb40637549bde",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "simit.toml": {
+          "retainedSha256": "ebf21d27e3272187df0ba9882e2963b8095a6d60fa88c4a5c427f6bfe5c9d9da",
+          "proposalSha256": "3984cf908ff71852a8c4f649d48b30e44531985a1559d83751a69732f004e00c",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "src/bin/harbor-db-application-backup.rs": {
+          "retainedSha256": "f66b89dda9578c142f1e3db00fc759efce4f79e700654207fb1f1a473df6f005",
+          "proposalSha256": "f66b89dda9578c142f1e3db00fc759efce4f79e700654207fb1f1a473df6f005",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-backup-prune.rs": {
+          "retainedSha256": "6c8c6d674cf96f35632005c1df87f66afe77c6b4a3b47a2401673edf12454087",
+          "proposalSha256": "6c8c6d674cf96f35632005c1df87f66afe77c6b4a3b47a2401673edf12454087",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-cutover-shell.rs": {
+          "retainedSha256": "0a3614f93bb09378c9e834a681a0de4ac617c0ab31409f7588daf2dbf2e08d08",
+          "proposalSha256": "0a3614f93bb09378c9e834a681a0de4ac617c0ab31409f7588daf2dbf2e08d08",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-cutover.rs": {
+          "retainedSha256": "ea42db72f6b7fb7be7bd7002a0d4fa34f5e9b9810e8cf418f43ea44feb0d2272",
+          "proposalSha256": "ea42db72f6b7fb7be7bd7002a0d4fa34f5e9b9810e8cf418f43ea44feb0d2272",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-durable.rs": {
+          "retainedSha256": "bdcfef387f94ed9b793193b4fbd714ce12fe238b447355e99776fd00350588f3",
+          "proposalSha256": "bdcfef387f94ed9b793193b4fbd714ce12fe238b447355e99776fd00350588f3",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-postgres-drill.rs": {
+          "retainedSha256": "8be1f9a2854a89caee50793c122f3c92614db1aae74e445998c9fbea304adadd",
+          "proposalSha256": "8be1f9a2854a89caee50793c122f3c92614db1aae74e445998c9fbea304adadd",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-postgres.rs": {
+          "retainedSha256": "843c630bb652af49564ca4e169a1470edb706b80975f16adc88f48299677ed2d",
+          "proposalSha256": "843c630bb652af49564ca4e169a1470edb706b80975f16adc88f48299677ed2d",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-provision.rs": {
+          "retainedSha256": "1b7d2e9df545bf1e5faae7974d305fe31813c8cc0a734f42d874363109f30bf6",
+          "proposalSha256": "1b7d2e9df545bf1e5faae7974d305fe31813c8cc0a734f42d874363109f30bf6",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-resource.rs": {
+          "retainedSha256": "24fb1050c22e43b8a475ee7b6b7bc3a3494b657138cc6b95671b48d3a2d7500d",
+          "proposalSha256": "24fb1050c22e43b8a475ee7b6b7bc3a3494b657138cc6b95671b48d3a2d7500d",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-test.rs": {
+          "retainedSha256": "c6b4abf3fa5a82357a6fcc694444f7ffbbcc841aba0efa060d2dd03ec06b6fb7",
+          "proposalSha256": "c6b4abf3fa5a82357a6fcc694444f7ffbbcc841aba0efa060d2dd03ec06b6fb7",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-transition-start.rs": {
+          "retainedSha256": "7fd71775847f212838cfea9bba3cfa4ff289de2fe7913d71a6ad95ea5b1c2aea",
+          "proposalSha256": "7fd71775847f212838cfea9bba3cfa4ff289de2fe7913d71a6ad95ea5b1c2aea",
+          "disposition": "retained-exact"
+        },
+        "src/bin/harbor-db-transition.rs": {
+          "retainedSha256": "8d68e455431d6366a252b6c965681a9790407f7c0b81cdca150f174ae7613cfc",
+          "proposalSha256": "8d68e455431d6366a252b6c965681a9790407f7c0b81cdca150f174ae7613cfc",
+          "disposition": "retained-exact"
+        },
+        "src/bin/home-manager-backup.rs": {
+          "retainedSha256": "3f1ae8b92d998477c23347b0439015683281662ee5bd4193873b430e46417930",
+          "proposalSha256": "3f1ae8b92d998477c23347b0439015683281662ee5bd4193873b430e46417930",
+          "disposition": "retained-exact"
+        },
+        "src/lib.rs": {
+          "retainedSha256": "a97bf09a33eceb6fdf2945afdfee0157db70066b96c96595d86ce544e5e698ac",
+          "proposalSha256": "a97bf09a33eceb6fdf2945afdfee0157db70066b96c96595d86ce544e5e698ac",
+          "disposition": "retained-exact"
+        },
+        "src/main.rs": {
+          "retainedSha256": "0328f11c7ed40d04e0eb064a4c5f3da1b724f481ad557649e530da7869e64e64",
+          "proposalSha256": "0328f11c7ed40d04e0eb064a4c5f3da1b724f481ad557649e530da7869e64e64",
+          "disposition": "retained-exact"
+        },
+        "src/planner/error.rs": {
+          "retainedSha256": "7d8a5334db22266b657b6a940015153a8832c79b16831405e2aa4427f973249a",
+          "proposalSha256": "7d8a5334db22266b657b6a940015153a8832c79b16831405e2aa4427f973249a",
+          "disposition": "retained-exact"
+        },
+        "src/planner/execute.rs": {
+          "retainedSha256": "4e4a7b6d1164b7bc41a010018fbbc52ed0ba46bbe63496740a2ad4749d115e8d",
+          "proposalSha256": "4e4a7b6d1164b7bc41a010018fbbc52ed0ba46bbe63496740a2ad4749d115e8d",
+          "disposition": "retained-exact"
+        },
+        "src/planner/mod.rs": {
+          "retainedSha256": "746a4c36f1610d993dbb4dcf91bbe6cc43af05f448f3558e63d895aa70f75615",
+          "proposalSha256": "746a4c36f1610d993dbb4dcf91bbe6cc43af05f448f3558e63d895aa70f75615",
+          "disposition": "retained-exact"
+        },
+        "src/planner/model.rs": {
+          "retainedSha256": "60a498f2154fa02fd17647c95066ad17a3d1d0470c57f7ed66c8f91239cbef22",
+          "proposalSha256": "60a498f2154fa02fd17647c95066ad17a3d1d0470c57f7ed66c8f91239cbef22",
+          "disposition": "retained-exact"
+        },
+        "src/planner/tests.rs": {
+          "retainedSha256": "86b2b8e2f8356d6f32154c33c55670d9e64669e9557b013b440bb4b178058bf5",
+          "proposalSha256": "86b2b8e2f8356d6f32154c33c55670d9e64669e9557b013b440bb4b178058bf5",
+          "disposition": "retained-exact"
+        },
+        "src/storage/accounts.rs": {
+          "retainedSha256": "9b64a48160fcc149b7b7f6d0ad2d1536013a216847066a03655acf0cee2461aa",
+          "proposalSha256": "9b64a48160fcc149b7b7f6d0ad2d1536013a216847066a03655acf0cee2461aa",
+          "disposition": "retained-exact"
+        },
+        "src/storage/application_backup.rs": {
+          "retainedSha256": "0a057ffc3018ebbef868a561dd140a4532e80e2f621bbbc734331344a29c26a2",
+          "proposalSha256": "0a057ffc3018ebbef868a561dd140a4532e80e2f621bbbc734331344a29c26a2",
+          "disposition": "retained-exact"
+        },
+        "src/storage/application_publication.rs": {
+          "retainedSha256": "20873f115f929c27ca6b55cb7b1c2fb5801bf962d3f05ce5f9f9f99deec61ec4",
+          "proposalSha256": "20873f115f929c27ca6b55cb7b1c2fb5801bf962d3f05ce5f9f9f99deec61ec4",
+          "disposition": "retained-exact"
+        },
+        "src/storage/application_retention.rs": {
+          "retainedSha256": "f111b0c0d68e6a699b15fd8a19af24834e889bbbffce6586934e030c97c6d271",
+          "proposalSha256": "f111b0c0d68e6a699b15fd8a19af24834e889bbbffce6586934e030c97c6d271",
+          "disposition": "retained-exact"
+        },
+        "src/storage/application_transition.rs": {
+          "retainedSha256": "7a9f87a976f62005d0a0fc8d3d24fd15c58805dc1da8420a091bbe4589ab10ac",
+          "proposalSha256": "7a9f87a976f62005d0a0fc8d3d24fd15c58805dc1da8420a091bbe4589ab10ac",
+          "disposition": "retained-exact"
+        },
+        "src/storage/backup.rs": {
+          "retainedSha256": "5e10acacea519b1b4c3a9243eb1418396a7d4639b4a02eb6df2299224c43ba6f",
+          "proposalSha256": "5e10acacea519b1b4c3a9243eb1418396a7d4639b4a02eb6df2299224c43ba6f",
+          "disposition": "retained-exact"
+        },
+        "src/storage/backup/pins.rs": {
+          "retainedSha256": "c8c68d6865ab1f1825624c7040a199e9c5e6f73f17b3670a3321532b3ecc07c0",
+          "proposalSha256": "c8c68d6865ab1f1825624c7040a199e9c5e6f73f17b3670a3321532b3ecc07c0",
+          "disposition": "retained-exact"
+        },
+        "src/storage/backup_manifest.rs": {
+          "retainedSha256": "ce4aeefeb41e7ae6ddb885b249f3ab032056f2b6f78efaf5928c4b411397430c",
+          "proposalSha256": "ce4aeefeb41e7ae6ddb885b249f3ab032056f2b6f78efaf5928c4b411397430c",
+          "disposition": "retained-exact"
+        },
+        "src/storage/codec.rs": {
+          "retainedSha256": "9492f447cca25934472bba14db109ffca3a844c48a685e7706be3063cead17d7",
+          "proposalSha256": "9492f447cca25934472bba14db109ffca3a844c48a685e7706be3063cead17d7",
+          "disposition": "retained-exact"
+        },
+        "src/storage/custody.rs": {
+          "retainedSha256": "50c7dac942aa2bca896a17e5fb871605a508e4e469622979e8309e913e52ba84",
+          "proposalSha256": "50c7dac942aa2bca896a17e5fb871605a508e4e469622979e8309e913e52ba84",
+          "disposition": "retained-exact"
+        },
+        "src/storage/cutover.rs": {
+          "retainedSha256": "38253a62f6c6051a689cbcafd6764f83f6315fd74cb55520d52366e793fea2c9",
+          "proposalSha256": "38253a62f6c6051a689cbcafd6764f83f6315fd74cb55520d52366e793fea2c9",
+          "disposition": "retained-exact"
+        },
+        "src/storage/durable.rs": {
+          "retainedSha256": "145ab8841a52075eb9ed81447bf57ffd916f08fc2ae99456d8f64da15e91a0ee",
+          "proposalSha256": "145ab8841a52075eb9ed81447bf57ffd916f08fc2ae99456d8f64da15e91a0ee",
+          "disposition": "retained-exact"
+        },
+        "src/storage/json_tokens.rs": {
+          "retainedSha256": "9d9c546001050426640eb38f03de9cb07e0e3b8750448bcdd5dbfa5ca43a610d",
+          "proposalSha256": "9d9c546001050426640eb38f03de9cb07e0e3b8750448bcdd5dbfa5ca43a610d",
+          "disposition": "retained-exact"
+        },
+        "src/storage/login_shell.rs": {
+          "retainedSha256": "2f36e79e3a7737cd92c282551dd30f8bdf26e0cdf9838797f59209316951cd9c",
+          "proposalSha256": "2f36e79e3a7737cd92c282551dd30f8bdf26e0cdf9838797f59209316951cd9c",
+          "disposition": "retained-exact"
+        },
+        "src/storage/mod.rs": {
+          "retainedSha256": "8f1dc3e7a82e658e2bd5e7fecd793f57746885113e53b96f9ecb95a8f3dd0ec2",
+          "proposalSha256": "8f1dc3e7a82e658e2bd5e7fecd793f57746885113e53b96f9ecb95a8f3dd0ec2",
+          "disposition": "retained-exact"
+        },
+        "src/storage/pg_core.rs": {
+          "retainedSha256": "8d679b511d210388c60b04d613f98a2867a2e50cd44c24cbb2ead845aae35052",
+          "proposalSha256": "8d679b511d210388c60b04d613f98a2867a2e50cd44c24cbb2ead845aae35052",
+          "disposition": "retained-exact"
+        },
+        "src/storage/postgres.rs": {
+          "retainedSha256": "129e36db7f7e103bca18e7354935ddd5abc9d3a6a3a7132aca0d1c3204573b00",
+          "proposalSha256": "129e36db7f7e103bca18e7354935ddd5abc9d3a6a3a7132aca0d1c3204573b00",
+          "disposition": "retained-exact"
+        },
+        "src/storage/postgres_drill.rs": {
+          "retainedSha256": "aa6803edeea3189a71e964009326e5868ddc848095631e69df53dc9d70fe4942",
+          "proposalSha256": "aa6803edeea3189a71e964009326e5868ddc848095631e69df53dc9d70fe4942",
+          "disposition": "retained-exact"
+        },
+        "src/storage/process.rs": {
+          "retainedSha256": "3b03642f0f98a4065a5d2dfc54ffc44f713bec7317b04cdfd034da41b45f608c",
+          "proposalSha256": "3b03642f0f98a4065a5d2dfc54ffc44f713bec7317b04cdfd034da41b45f608c",
+          "disposition": "retained-exact"
+        },
+        "src/storage/provision.rs": {
+          "retainedSha256": "642b7c39718e42affac3bf4eb6ac76dd2fa9ba2cc89bad67cc6613cca02701a8",
+          "proposalSha256": "642b7c39718e42affac3bf4eb6ac76dd2fa9ba2cc89bad67cc6613cca02701a8",
+          "disposition": "retained-exact"
+        },
+        "src/storage/recovery.rs": {
+          "retainedSha256": "ba242e2efd531bf37a0dce7e712725a843fd9dd984ade8fae48aec444887cad9",
+          "proposalSha256": "ba242e2efd531bf37a0dce7e712725a843fd9dd984ade8fae48aec444887cad9",
+          "disposition": "retained-exact"
+        },
+        "src/storage/recovery_capture.rs": {
+          "retainedSha256": "94d1d53d1583535da8e72ce77796a306d4a969ceb58b818d4f88fc68b87d4e68",
+          "proposalSha256": "94d1d53d1583535da8e72ce77796a306d4a969ceb58b818d4f88fc68b87d4e68",
+          "disposition": "retained-exact"
+        },
+        "src/storage/recovery_repository.rs": {
+          "retainedSha256": "c53347b4ffc529f711dee38a445b5d296c93e6bff4d2e94bdf6271c364fb4e96",
+          "proposalSha256": "c53347b4ffc529f711dee38a445b5d296c93e6bff4d2e94bdf6271c364fb4e96",
+          "disposition": "retained-exact"
+        },
+        "src/storage/resource.rs": {
+          "retainedSha256": "8de6c76fe7ae777686b5dad5b091e75542bc3732e521eb57d762f4ff06acae6a",
+          "proposalSha256": "8de6c76fe7ae777686b5dad5b091e75542bc3732e521eb57d762f4ff06acae6a",
+          "disposition": "retained-exact"
+        },
+        "src/storage/retention_json.rs": {
+          "retainedSha256": "f5fe1044b23ec4c8479e1cff312a37ce1ce5fb11b7adf3560f6d5e62a51b8ce0",
+          "proposalSha256": "f5fe1044b23ec4c8479e1cff312a37ce1ce5fb11b7adf3560f6d5e62a51b8ce0",
+          "disposition": "retained-exact"
+        },
+        "src/storage/startup_inhibition.rs": {
+          "retainedSha256": "4cbbdc26e76aeb2c07312cca90b6d7d1288d1c5dc50e3b3ea18b5d0c3621343d",
+          "proposalSha256": "4cbbdc26e76aeb2c07312cca90b6d7d1288d1c5dc50e3b3ea18b5d0c3621343d",
+          "disposition": "retained-exact"
+        },
+        "src/storage/transition_manifest.rs": {
+          "retainedSha256": "3e3e928ff560d924d79d0d2c66142ae94522066f41df0e1059a30506cfe44463",
+          "proposalSha256": "3e3e928ff560d924d79d0d2c66142ae94522066f41df0e1059a30506cfe44463",
+          "disposition": "retained-exact"
+        },
+        "src/storage/writer_fence.rs": {
+          "retainedSha256": "24d72febf67b41ea3c5b04925466c1bad3be7a2979cf739853031101fbd32bcb",
+          "proposalSha256": "24d72febf67b41ea3c5b04925466c1bad3be7a2979cf739853031101fbd32bcb",
+          "disposition": "retained-exact"
+        },
+        "src/testing/baseline.rs": {
+          "retainedSha256": "cec2437940fcd99c553295306856bd330733e6a7756d3e0e36372974d892d5f2",
+          "proposalSha256": "d2faf893dff0601994e67d7201251a1ec2c196592ae3e5d567f7ff194f659fee",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "src/testing/candidate.rs": {
+          "retainedSha256": "720d3e8db90cf2152652db6564695b8eb6947b152b1c21053186917a7987e2a5",
+          "proposalSha256": "720d3e8db90cf2152652db6564695b8eb6947b152b1c21053186917a7987e2a5",
+          "disposition": "retained-exact"
+        },
+        "src/testing/catalog.rs": {
+          "retainedSha256": "e96591a0a8973ccd108a5f5604f463e6ac7d00241e5e58aa7156818a470efda3",
+          "proposalSha256": "e96591a0a8973ccd108a5f5604f463e6ac7d00241e5e58aa7156818a470efda3",
+          "disposition": "retained-exact"
+        },
+        "src/testing/evidence.rs": {
+          "retainedSha256": "f6b6d7c2b98ca84d057a82e5c78e41292083c9dfa672f18de18ccaea3fa248f9",
+          "proposalSha256": "f6b6d7c2b98ca84d057a82e5c78e41292083c9dfa672f18de18ccaea3fa248f9",
+          "disposition": "retained-exact"
+        },
+        "src/testing/executor.rs": {
+          "retainedSha256": "d7839025130ea3898113d10bc403c9a05d48138a3412b0e1e3988eabd8a4317a",
+          "proposalSha256": "d7839025130ea3898113d10bc403c9a05d48138a3412b0e1e3988eabd8a4317a",
+          "disposition": "retained-exact"
+        },
+        "src/testing/host.rs": {
+          "retainedSha256": "cd8695763b81ac368ceec989165720b9f0df8c2a8889589a5ba205e1c5818b3c",
+          "proposalSha256": "cd8695763b81ac368ceec989165720b9f0df8c2a8889589a5ba205e1c5818b3c",
+          "disposition": "retained-exact"
+        },
+        "src/testing/mod.rs": {
+          "retainedSha256": "0a28fcb62aeb7b45f3e6e9221a35f11c6c65d7589e8cf9c77f0eb53a9656ce59",
+          "proposalSha256": "0a28fcb62aeb7b45f3e6e9221a35f11c6c65d7589e8cf9c77f0eb53a9656ce59",
+          "disposition": "retained-exact"
+        },
+        "src/testing/protocol.rs": {
+          "retainedSha256": "2c4710f52f978b964a6d52add0fd2211423bae10113ef89cc50b88765751b05c",
+          "proposalSha256": "2c4710f52f978b964a6d52add0fd2211423bae10113ef89cc50b88765751b05c",
+          "disposition": "retained-exact"
+        },
+        "src/testing/runner.rs": {
+          "retainedSha256": "c6d294071e4276d0e461f98e725ab6dffbedae44fba2d45c9d8de434e72fea44",
+          "proposalSha256": "c6d294071e4276d0e461f98e725ab6dffbedae44fba2d45c9d8de434e72fea44",
+          "disposition": "retained-exact"
+        },
+        "src/testing/supervisor.rs": {
+          "retainedSha256": "9de7764b18671f2b8c35930ba652e43b46afe6940110e50803109fab1c880b59",
+          "proposalSha256": "9de7764b18671f2b8c35930ba652e43b46afe6940110e50803109fab1c880b59",
+          "disposition": "retained-exact"
+        },
+        "tests/application_storage.rs": {
+          "retainedSha256": "043cdb34b5d97abf50dce23816d15c31cb21c6ead3aca9d12d618001009caac4",
+          "proposalSha256": "2d4a1d94f71f46e34b3edadd4791be70c677816d8809592db5cb307aa4584c89",
+          "disposition": "scoped-migration-delta-recorded-below",
+          "refreshedAfter": "preserve Python CLI exit status through SystemExit after the machine-ID fixture binding"
+        },
+        "tests/backup_interruption.rs": {
+          "retainedSha256": "2c92edc9c19c2dca2bca9a2d2d9aefb1081607f09a38177e2c04946e9e523aca",
+          "proposalSha256": "2c92edc9c19c2dca2bca9a2d2d9aefb1081607f09a38177e2c04946e9e523aca",
+          "disposition": "retained-exact"
+        },
+        "tests/backup_pins.rs": {
+          "retainedSha256": "7cd470146674038d676dc9ad33ed44eef837f1b47d8cbd750072cb1d01414376",
+          "proposalSha256": "7cd470146674038d676dc9ad33ed44eef837f1b47d8cbd750072cb1d01414376",
+          "disposition": "retained-exact"
+        },
+        "tests/backup_storage.rs": {
+          "retainedSha256": "ff80b357c9d85480a348d9a90a93ac0478975ffd6640435d2422d0f15220f21e",
+          "proposalSha256": "ff80b357c9d85480a348d9a90a93ac0478975ffd6640435d2422d0f15220f21e",
+          "disposition": "retained-exact"
+        },
+        "tests/candidate.rs": {
+          "retainedSha256": "1b79bdff3000273a5ce9f48c0c18f07c6fd4f4e11ec8f8cb801b3ccb0497a861",
+          "proposalSha256": "1b79bdff3000273a5ce9f48c0c18f07c6fd4f4e11ec8f8cb801b3ccb0497a861",
+          "disposition": "retained-exact"
+        },
+        "tests/catalog.rs": {
+          "retainedSha256": "328e6d894d23614f1a6b5cc560a651a89677a04a39130d0fc6de63b15216056b",
+          "proposalSha256": "864950fa26f2443a30e56998f62bb058ae682fd66c371918d913702459d5f64d",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "tests/check_custody_cross_root.py": {
+          "retainedSha256": "5e02dd76798c150b48dbf0cc37c65cee26442a533281ab3cd3abd75c548670c5",
+          "proposalSha256": "8ad4c72594dcacd31f9ee14277e9dc1592ce03bb4d51c77f2aaff9574e0bd59c",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/check_cutover_command_phases.py": {
+          "retainedSha256": "7b9b5a0777d7f5d1e801a32d9a7aba4e3489aa580c7c44ef5b9d8b5958275005",
+          "proposalSha256": "5bcc07fd6e779c931959ebd58d648b8237f042fa6393d6047750de2e7fb3bb94",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/check_recovery_preparation_hook.py": {
+          "retainedSha256": "266033c00f039745dc194cdd32df0add47d09bde4d40d4aa90952f2c85f83ae9",
+          "proposalSha256": "0d63dc5d261dff5992f78017838453bcf1ca035ae96560addf63599c37ea872b",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/cutover_storage.rs": {
+          "retainedSha256": "1dd3486dac4a10b86e52703305680ba69b4de8f53cbbc5fe165a8acca1735688",
+          "proposalSha256": "1dd3486dac4a10b86e52703305680ba69b4de8f53cbbc5fe165a8acca1735688",
+          "disposition": "retained-exact"
+        },
+        "tests/drill_deadlines.rs": {
+          "retainedSha256": "026212d6228deefb95faedcb343b326bfbe670cc39b6d35e021efe91f9ff9f98",
+          "proposalSha256": "026212d6228deefb95faedcb343b326bfbe670cc39b6d35e021efe91f9ff9f98",
+          "disposition": "retained-exact"
+        },
+        "tests/drill_interop.rs": {
+          "retainedSha256": "c90c913478af54ec1463e89f8ba1e36397c1cea6859d9a42129d11e62929b215",
+          "proposalSha256": "c90c913478af54ec1463e89f8ba1e36397c1cea6859d9a42129d11e62929b215",
+          "disposition": "retained-exact"
+        },
+        "tests/durable_publication.rs": {
+          "retainedSha256": "e04fb388e68afbf75d7c22ad912049446393f51c485ed64127d29f172bc5a84e",
+          "proposalSha256": "e04fb388e68afbf75d7c22ad912049446393f51c485ed64127d29f172bc5a84e",
+          "disposition": "retained-exact"
+        },
+        "tests/evidence.rs": {
+          "retainedSha256": "85e63d9d1f136d2375a2f8d39c5440f7aa2d35bf1e75c6629baf6b2b41408749",
+          "proposalSha256": "85e63d9d1f136d2375a2f8d39c5440f7aa2d35bf1e75c6629baf6b2b41408749",
+          "disposition": "retained-exact"
+        },
+        "tests/fence_storage.rs": {
+          "retainedSha256": "5b5b5283b8dc89d5d651a847a326fe5eb0c0cd39c067e69d27f43467caa76180",
+          "proposalSha256": "5b5b5283b8dc89d5d651a847a326fe5eb0c0cd39c067e69d27f43467caa76180",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/backend_transition.rs": {
+          "retainedSha256": "e77385ae9014a1408b25bfc67c508a3d067c26c594fba71404015d76c278b3ca",
+          "proposalSha256": "e77385ae9014a1408b25bfc67c508a3d067c26c594fba71404015d76c278b3ca",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/native_supervisor.rs": {
+          "retainedSha256": "4c01f1a8b5d981fc8727f91e13afb4a1883235d560404533ac3907cd8c146219",
+          "proposalSha256": "4c01f1a8b5d981fc8727f91e13afb4a1883235d560404533ac3907cd8c146219",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/postgres_backup.rs": {
+          "retainedSha256": "cbff33a4d84e28b95d7a617a1811d57405303443cbdc8323322023018cab8849",
+          "proposalSha256": "cbff33a4d84e28b95d7a617a1811d57405303443cbdc8323322023018cab8849",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/postgres_transition.rs": {
+          "retainedSha256": "564100252143a24913d49bf9c74e5940eb93e375eb7b8a89d9b0dfaf2a2dbe4e",
+          "proposalSha256": "564100252143a24913d49bf9c74e5940eb93e375eb7b8a89d9b0dfaf2a2dbe4e",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/provision.rs": {
+          "retainedSha256": "c1b1604cbcd43eb1cb8fc196f4387f8c166059125cfd7507b2e5432c19aed934",
+          "proposalSha256": "c1b1604cbcd43eb1cb8fc196f4387f8c166059125cfd7507b2e5432c19aed934",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/source_local_recovery.rs": {
+          "retainedSha256": "ceee9876f7c580abec9144904696dfe68a0a1441f330e158b7e6b6d10b5f301a",
+          "proposalSha256": "d41b984906fe7549a70ac3646d1420dbdd0c0ea94d66bd78995f821dfe695579",
+          "disposition": "single-statement-test-fixture-repair-with-exact-red-green-vm-evidence",
+          "refreshedAfter": "one preparable read-only delayed record query; retain production single-statement validation and freshness refusal assertions",
+          "regressionEvidence": {
+            "red": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-native-source-recovery-diagnosis-20261012T214641Z/red-receipt.json",
+            "redSha256": "7b282ff5209e2f3883cfe5f3c784bbb1b3f7111243ffa5960277d2ae0f76fc0f",
+            "green": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-single-statement-vm-binding-20261012T222234Z/receipt.json",
+            "greenSha256": "7d885f80895b605c5dbc53202784c05afae9d60f58b10c444840145b64b41699"
+          }
+        },
+        "tests/fixtures/supervisor_worker.rs": {
+          "retainedSha256": "784c99272b7382f4d37f2b61ab4caf1666bd1c8406bca7a4caa35865a2cb191a",
+          "proposalSha256": "784c99272b7382f4d37f2b61ab4caf1666bd1c8406bca7a4caa35865a2cb191a",
+          "disposition": "retained-exact"
+        },
+        "tests/fixtures/writer_fence.rs": {
+          "retainedSha256": "7fa74dfca49561957da50deb50056af7b4ba144d8c06c9ac6344d5e6b4b19e3d",
+          "proposalSha256": "7fa74dfca49561957da50deb50056af7b4ba144d8c06c9ac6344d5e6b4b19e3d",
+          "disposition": "retained-exact"
+        },
+        "tests/home_manager_cli.rs": {
+          "retainedSha256": "df5e3c8023e27994daed91c1f11370e7540368e2e1e8b9f7fb476bc77bf7aeab",
+          "proposalSha256": "df5e3c8023e27994daed91c1f11370e7540368e2e1e8b9f7fb476bc77bf7aeab",
+          "disposition": "retained-exact"
+        },
+        "tests/migration_baseline.rs": {
+          "retainedSha256": "28958f2881e622efc57ddded2a6eeac5f72e0b96a9ab45de26bc65918352c1cb",
+          "proposalSha256": "5f185764f80b8bb161441e1c55c16c3f90bb06c47f7e0eb7aebd814b379c8f5b",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "tests/oracles/pr14/python/harbor_db/__init__.py": {
+          "retainedSha256": "b1d438055e85a2730e66b0276522b4f10b0ac6a682a26c5bf5c93f9aa05055a2",
+          "proposalSha256": "b1d438055e85a2730e66b0276522b4f10b0ac6a682a26c5bf5c93f9aa05055a2",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/application_backup.py": {
+          "retainedSha256": "224b575b845d5a63d5d7c4f98dff4e0e205fce98be296b16bea853cf8f4db57f",
+          "proposalSha256": "224b575b845d5a63d5d7c4f98dff4e0e205fce98be296b16bea853cf8f4db57f",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/application_transition.py": {
+          "retainedSha256": "4754a7951373fa190690c2dcd2a56c08483b449eccb2f635daa8eb3104db530d",
+          "proposalSha256": "4754a7951373fa190690c2dcd2a56c08483b449eccb2f635daa8eb3104db530d",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/backup.py": {
+          "retainedSha256": "fff776a9364470e980df992bf2dc99e4bdf9f2a20ff711e6cd5024497a567ea7",
+          "proposalSha256": "fff776a9364470e980df992bf2dc99e4bdf9f2a20ff711e6cd5024497a567ea7",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/cutover.py": {
+          "retainedSha256": "5806877e2a6e6d51772f6fbae62df165a969340f3bb44c6104db2fc0cfa65aaf",
+          "proposalSha256": "5806877e2a6e6d51772f6fbae62df165a969340f3bb44c6104db2fc0cfa65aaf",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/durable.py": {
+          "retainedSha256": "677ba1a93df9cda7938a004d5b6e0bb699f2a6415485fa77436f2a54fad49384",
+          "proposalSha256": "677ba1a93df9cda7938a004d5b6e0bb699f2a6415485fa77436f2a54fad49384",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/login_shell.py": {
+          "retainedSha256": "e66ac5a3994f2718d8cc4c7e3ab8003eb90ef6122908a2c30be1b5d5d25a1998",
+          "proposalSha256": "e66ac5a3994f2718d8cc4c7e3ab8003eb90ef6122908a2c30be1b5d5d25a1998",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/postgres.py": {
+          "retainedSha256": "89e72ef1487cd5a76131f9fdf8f6777e18d8730aad1e743af287719ab02ac7dd",
+          "proposalSha256": "89e72ef1487cd5a76131f9fdf8f6777e18d8730aad1e743af287719ab02ac7dd",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/postgres_drill.py": {
+          "retainedSha256": "14b0f35a3f6bae12cfbe69720837cfb6fe44352c0bede335e0cb816123cb1604",
+          "proposalSha256": "14b0f35a3f6bae12cfbe69720837cfb6fe44352c0bede335e0cb816123cb1604",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/process.py": {
+          "retainedSha256": "6a198f97ba9ee8fd5c4fa3bab00595b1f1a148834524e7400c22c7836ff74541",
+          "proposalSha256": "6a198f97ba9ee8fd5c4fa3bab00595b1f1a148834524e7400c22c7836ff74541",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/provision.py": {
+          "retainedSha256": "5270b9fc8e6df93ab97af1bbe1cb3c3b06ca94df65fdb017a1358c1a369688f0",
+          "proposalSha256": "5270b9fc8e6df93ab97af1bbe1cb3c3b06ca94df65fdb017a1358c1a369688f0",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/recovery.py": {
+          "retainedSha256": "ca2b0b42929009388ded7d3589dcfc7f12c00995f7cd72b56940a3ef99b86d59",
+          "proposalSha256": "ca2b0b42929009388ded7d3589dcfc7f12c00995f7cd72b56940a3ef99b86d59",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/resource.py": {
+          "retainedSha256": "13f83b6b9a277b0b8520a25a3fd95e35f09311c8316385b064dfe1a92129884c",
+          "proposalSha256": "13f83b6b9a277b0b8520a25a3fd95e35f09311c8316385b064dfe1a92129884c",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/startup_inhibition.py": {
+          "retainedSha256": "113c4d74646f26fa993ecad9891e364285ab15f17fbe70adb0df3f3dfac0ef96",
+          "proposalSha256": "113c4d74646f26fa993ecad9891e364285ab15f17fbe70adb0df3f3dfac0ef96",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/transition_manifest.py": {
+          "retainedSha256": "0e62b5a95bd48e7d9c2e2df9b448b2fe399a5816341a6c49da03a4307172a6f3",
+          "proposalSha256": "0e62b5a95bd48e7d9c2e2df9b448b2fe399a5816341a6c49da03a4307172a6f3",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/python/harbor_db/writer_fence.py": {
+          "retainedSha256": "f262abcafb879bac0b7b9d3c6814742b59efdc8a950fff99a7e1ed0fae38f8e3",
+          "proposalSha256": "f262abcafb879bac0b7b9d3c6814742b59efdc8a950fff99a7e1ed0fae38f8e3",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/tests/test_application_backup.py": {
+          "retainedSha256": "5731efff1c46883b6cb404f881b3b896784e6755f732b115da64783bb727b44c",
+          "proposalSha256": "5731efff1c46883b6cb404f881b3b896784e6755f732b115da64783bb727b44c",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/tests/test_application_provision.py": {
+          "retainedSha256": "563a2cd5512e57ab14be849f13bf05652eb6a36649fbadd7611681495eb24745",
+          "proposalSha256": "563a2cd5512e57ab14be849f13bf05652eb6a36649fbadd7611681495eb24745",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/tests/test_application_transition.py": {
+          "retainedSha256": "419025775676ec0af58254a0b4edf90267725f0cdb72f68a8d58b399d82e3611",
+          "proposalSha256": "419025775676ec0af58254a0b4edf90267725f0cdb72f68a8d58b399d82e3611",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/tests/test_fence_recovery.py": {
+          "retainedSha256": "002b8b8d8340878baee04336e06c93427cf5c8b84433a665dbcd666104a1785a",
+          "proposalSha256": "002b8b8d8340878baee04336e06c93427cf5c8b84433a665dbcd666104a1785a",
+          "disposition": "retained-exact"
+        },
+        "tests/oracles/pr14/tests/test_postgres_lifecycle.py": {
+          "retainedSha256": "e39f708871a3099e1f7b19769c2efbedf69dec0fd90e8c04aeec86d7dfd2c2c3",
+          "proposalSha256": "e39f708871a3099e1f7b19769c2efbedf69dec0fd90e8c04aeec86d7dfd2c2c3",
+          "disposition": "retained-exact"
+        },
+        "tests/plan_cli.rs": {
+          "retainedSha256": "06be56df5c89317fbabd51013035a24c6944a42c397e05955ad6db4e47ab2155",
+          "proposalSha256": "06be56df5c89317fbabd51013035a24c6944a42c397e05955ad6db4e47ab2155",
+          "disposition": "retained-exact"
+        },
+        "tests/postgres_storage.rs": {
+          "retainedSha256": "a62eb98695f1585fd0cbffca5c320aac3805e21c70dbf65cb84a395274fede00",
+          "proposalSha256": "8dfeb48c6c8bd666530ed30dedef19906f9c90dc9e7db103044c84845897d6d9",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "tests/pr14-baseline.toml": {
+          "retainedSha256": "353c5ca758d16cb6734106ae54428a660cc36621fe71ecae76de0ce8eb4a2c4a",
+          "proposalSha256": "353c5ca758d16cb6734106ae54428a660cc36621fe71ecae76de0ce8eb4a2c4a",
+          "disposition": "retained-exact"
+        },
+        "tests/pr14_cli_parity.rs": {
+          "retainedSha256": "48f7306730d8052daad817809a8577241d1c27e977588e6be18b1ec26305ee1c",
+          "proposalSha256": "48f7306730d8052daad817809a8577241d1c27e977588e6be18b1ec26305ee1c",
+          "disposition": "retained-exact"
+        },
+        "tests/protocol.rs": {
+          "retainedSha256": "a800f4247c870d6ea69e16372a5060118bd672b45a88d0ddb59d3dc6ec59420f",
+          "proposalSha256": "c86e04d69937565bf79c0b29b86a795830f4f28dbc962bf4484305c3590d1a44",
+          "disposition": "scoped-NixOS-driver-transport-repair-with-red-green-protocol-evidence",
+          "refreshedAfter": "require relative driver staging, complete byte preservation, refusal propagation and temporary-output cleanup",
+          "regressionEvidence": {
+            "red": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-bridge-relative-export-regression-20261012T211352Z/red-receipt.json",
+            "redSha256": "75821a9c3aa75ae226f99e73cb73d809a3e0f00619d1e5918052101b7132efe9",
+            "green": "/data/scratch/tmp/opencode/harbor-combined-20261011/database-bridge-relative-export-regression-20261012T211352Z/green-receipt.json",
+            "greenSha256": "a6c2068fb5da7a1e85ff5dc8255eca84946c44fdd547fa291c850ad205a73447"
+          }
+        },
+        "tests/recovery_capture.rs": {
+          "retainedSha256": "a711c54ff6a20f03d2ca414e42599389960970aab8c9035674551a08ca84c59b",
+          "proposalSha256": "a711c54ff6a20f03d2ca414e42599389960970aab8c9035674551a08ca84c59b",
+          "disposition": "retained-exact"
+        },
+        "tests/recovery_repository.rs": {
+          "retainedSha256": "2c14750a1e60c6eeb07e6ac90e7efae54dae59557d5a0bea6abdb415e1afbf3b",
+          "proposalSha256": "2c14750a1e60c6eeb07e6ac90e7efae54dae59557d5a0bea6abdb415e1afbf3b",
+          "disposition": "retained-exact"
+        },
+        "tests/recovery_storage.rs": {
+          "retainedSha256": "7e74e06cf29b31d2b2fe343a1352b5e8478847ff5ebe33f6bbe61c72b55aa9a5",
+          "proposalSha256": "7e74e06cf29b31d2b2fe343a1352b5e8478847ff5ebe33f6bbe61c72b55aa9a5",
+          "disposition": "retained-exact"
+        },
+        "tests/resource_storage.rs": {
+          "retainedSha256": "72590a09538dfb87e734cc683bd0da79bc22a2a14d1907f40c9d127ec678d42b",
+          "proposalSha256": "72590a09538dfb87e734cc683bd0da79bc22a2a14d1907f40c9d127ec678d42b",
+          "disposition": "retained-exact"
+        },
+        "tests/run_python_regressions.py": {
+          "retainedSha256": "0b256fe5e3b146bd2ed2fc9d0f374e8c304debf8af471a8b121f23a32d825480",
+          "proposalSha256": "498eb5ea3367ca6b05bac9702382005c7cfa7f76b6a6ab9cd38c5458dccf1580",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "tests/runtime-extensions.toml": {
+          "retainedSha256": "ff4863351166d8eb4d166aa6a338c970b636c58f08f098fc84ece424c3c97fe2",
+          "proposalSha256": "18fe12a1af47034f69dedbb0fdbc5ff6a812bb9eac2919fb460ec0fe2af638a2",
+          "disposition": "scoped-migration-delta-recorded-below",
+          "refreshedAfter": "add four exact-AST formatter-only admissions; retain every earlier extension"
+        },
+        "tests/storage_primitives.rs": {
+          "retainedSha256": "a48efcbe34b5f81aa63612159318339930351ecfef35ce3c9bce2b26e1841acf",
+          "proposalSha256": "a48efcbe34b5f81aa63612159318339930351ecfef35ce3c9bce2b26e1841acf",
+          "disposition": "retained-exact"
+        },
+        "tests/suite.toml": {
+          "retainedSha256": "2c46feb769bb0a3b267456a7b84e338be2cf0847c87d1d1911c963e870e09815",
+          "proposalSha256": "593de3d6df57ecdad20ef20b4782a38fa74dfaeebd2f701b9be04c7ea97d6b6d",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "tests/supervisor.rs": {
+          "retainedSha256": "ba091334a3d3a44b7e095426d1d809ba993dbc04699aff70bcbb43c67c0b8a61",
+          "proposalSha256": "ba091334a3d3a44b7e095426d1d809ba993dbc04699aff70bcbb43c67c0b8a61",
+          "disposition": "retained-exact"
+        },
+        "tests/test_application_backup.py": {
+          "retainedSha256": "57cd96e9c83f699bf7213094d98011b2fefd6034233dafb444278bfe1b4ee730",
+          "proposalSha256": "68fde3e19f7bac768a7f3198ccc1e6f1f1c154a4a9dfad7f56b92360271cb981",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_application_provision.py": {
+          "retainedSha256": "958f1c84f67fd46f7eab054c334dd312c851b74559c032036c08e5e5653bcc69",
+          "proposalSha256": "11dec37fce626a857eecf9caa50995f272e0425b4ef847d69fad77b196221fc7",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_application_transition.py": {
+          "retainedSha256": "20e61fc4db3e92ff24689198a51744b71d562525b6670e009fb1bbe8eb05afc0",
+          "proposalSha256": "c913a0728f36d3fd16462edf125eb5da639c05a7350be4e69e27d42982ba567e",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_backup_lifecycle.py": {
+          "retainedSha256": "9689c7c08db6545f4596d4c533b4574fc4adfcc4f4eee2c5363a5a016ac0d55e",
+          "proposalSha256": "ed0e1037e162f873daf3a5532d8fa8d6ff739c5288599b47361c024756e48e6f",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_cutover.py": {
+          "retainedSha256": "67ed7e759f5eab9b0175d1d8f9d7166557ae9b0a58b2a3a361a2064a2fadc021",
+          "proposalSha256": "0833bcc996acad81222df8b25c5f5dabf8a57ea80f058f1d4c9395e389f7fe5f",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_cutover_process.py": {
+          "retainedSha256": "9a1f895aeadc02f04d42dda6d776ede505fba1c7c366730d6e82f024aecdd079",
+          "proposalSha256": "7b2861175eadada2a51f4409e559530f73fbb4530214daaf9160b81243538e9d",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_durable_lifecycle.py": {
+          "retainedSha256": "763ba7b31b30d24ed80b6a289dd4e7449f55b13dbbdf99367c001eeb27baf2c1",
+          "proposalSha256": "c35296544ff95df18bcdeda7dcee6e197724ecba066b3379590ec37a7055eeed",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_fence_recovery.py": {
+          "retainedSha256": "272ba7f286bcc31b4af7282076a1c79c6f7a2334cd74506d1339d12c139281a8",
+          "proposalSha256": "1c1e50cdfbe469085ef157aa99ed4f7b59781d653718134013bba7cae804fdea",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_postgres_drill.py": {
+          "retainedSha256": "c331767f4ce291b93be284b91740dd17c425a158758a5702f30e0d723c47365d",
+          "proposalSha256": "8776218abff597092706ed1d3ce4aa7093513e26d365c0cb56b5bd165f5af8dd",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_postgres_lifecycle.py": {
+          "retainedSha256": "fc3e386880bd57129d00a7ca9d78ae0a5b05f600b12620e6cb6e3a7b33ceb6d4",
+          "proposalSha256": "30653cd2d3212f4d6bde4606adfc8d7965fcd38a7abf6fff864d3e3c53122df8",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_receipt_process.py": {
+          "retainedSha256": "05a89816cf1bdd2507d000c63560e1aa748a1e1215385e3a0616a7a04c85722a",
+          "proposalSha256": "3fd91b094f669c9a037e0fba1b05f9fa17df943da91993a7a3be718a77410941",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_recovery_readiness.py": {
+          "retainedSha256": "431401fde3e7e83fa4bcba29a594dc8ce1ec78b1e612d32fcb093f9a01e31130",
+          "proposalSha256": "ee032b83b3f10e58a6cc0c1ca3cd2041c31e4b1a2bbdca874223693faebe7631",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_resource_lifecycle.py": {
+          "retainedSha256": "772b25ee192f980377236aa3efebd563fcaaa2eeb82d5d826e2eb9d0b2084158",
+          "proposalSha256": "3f029e00d0de6dfb053e3bdae636886b95b59fd2d2378413b2146dc2a02c4cfa",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_startup_inhibition.py": {
+          "retainedSha256": "3f3fbc19e058cf20b8389489ecc27e92993809005e9590d6446f7da225f774b0",
+          "proposalSha256": "fe988e455211bd2b68411fc2c3833279561e41772f78112c08b75d29a5337920",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/test_writer_fence.py": {
+          "retainedSha256": "6a76083163498137b0a37a7450d4d251a47f111900ad08f70c3e297ff9744bf7",
+          "proposalSha256": "a5b4257cca6fdead27bb3122ca668fb3aef23417f4d09546a57dc897141ac382",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "tests/testing_cli.rs": {
+          "retainedSha256": "c9c2e87ec421a5b1f19bb3e937166ce3a8ca71f9c875457e75afca13c5e97bcd",
+          "proposalSha256": "c9c2e87ec421a5b1f19bb3e937166ce3a8ca71f9c875457e75afca13c5e97bcd",
+          "disposition": "retained-exact"
+        },
+        "tests/trace_migration.py": {
+          "retainedSha256": "3b762927ce54d44124221994415b0a48e3c77810d157a4a1edfdae415374d565",
+          "proposalSha256": "80e54dbec8236da88077dbecfe44092b513765557ebb1b998cd2c2b88196547a",
+          "disposition": "retained-exact-Python-AST-format-only"
+        },
+        "tests/transition_storage.rs": {
+          "retainedSha256": "ec175d7b68b798dacc63c96e717f827ab7c2e0ad9c0a03b6952e07ec27c31afa",
+          "proposalSha256": "e4cc65bbb0536405424ac10bc373879637b41038effddc3378f717811d22b6a2",
+          "disposition": "scoped-migration-delta-recorded-below"
+        },
+        "treefmt.toml": {
+          "retainedSha256": "b3009258c98d4ce794bdf010921fc6bcdeec18ee0f4601128ccd9fc1f620bcc5",
+          "proposalSha256": "b3009258c98d4ce794bdf010921fc6bcdeec18ee0f4601128ccd9fc1f620bcc5",
+          "disposition": "retained-exact"
+        }
+      }
+    }
+  },
+  "sourceInventory": {
+    ".envrc": {
+      "sha256": "0077fbeb5b64e17954c78167d45a3b5bbd6ea38debd8cf60683567cb298dcc31",
+      "executable": false
+    },
+    ".gitignore": {
+      "sha256": "70a09eb0d6f9d706c1c4ecdc9347f18c75e2e5ae7bd46096890eae6ed58ef955",
+      "executable": false
+    },
+    "CHANGELOG.md": {
+      "sha256": "7c01ef19aa9e471c9b8033e59f62dffa44f0164f7e2e539fc41ea674edbdb6eb",
+      "executable": false
+    },
+    "Cargo.lock": {
+      "sha256": "6fc409363b129d27498a353e7747a152af30b114e52bf2cae01fb4f264a0afec",
+      "executable": false
+    },
+    "Cargo.toml": {
+      "sha256": "acfc2baa68dcf15a2a28ec49bc46b9cf7e1e94396b0f5d64ea03d3baa5423930",
+      "executable": false
+    },
+    "README.md": {
+      "sha256": "0300d27a8c78d867fd942e8d0ad31e4eb3c6e3c27b3aa0f7054ea29026bb1400",
+      "executable": false
+    },
+    "flake.lock": {
+      "sha256": "e3284c8a523386f985528ed9b5c597aee67aa80d2f858954bfd0e4131ff1c85e",
+      "executable": false
+    },
+    "flake.nix": {
+      "sha256": "499f71c47b8810eb9b7f9a7d75114e22bb747187930a9c3be169098d5f201b51",
+      "executable": false
+    },
+    "simit.toml": {
+      "sha256": "3984cf908ff71852a8c4f649d48b30e44531985a1559d83751a69732f004e00c",
+      "executable": false
+    },
+    "treefmt.toml": {
+      "sha256": "b3009258c98d4ce794bdf010921fc6bcdeec18ee0f4601128ccd9fc1f620bcc5",
+      "executable": false
+    },
+    ".pre-commit-config.yaml": {
+      "symlink": "/nix/store/fpl1mldwjvpfbnmj37afyfcfg5vwz92c-pre-commit-config.json"
+    },
+    "docs/application-storage.md": {
+      "sha256": "c61703a1f825a356feb50d2385c6bf3666b920dd74853313bd6eeb2fb91ba55f",
+      "executable": false
+    },
+    "docs/cutover-admission.md": {
+      "sha256": "78dc67012ef652a8e3e57991033183392b784b5d60358ac6e483fcc5dd3bd818",
+      "executable": false
+    },
+    "docs/rust-migration-baseline.md": {
+      "sha256": "2079457675974ee900d8622a208bf1d40f51a5edf645bf612647aeb29694cee1",
+      "executable": false
+    },
+    "docs/source-local-recovery.md": {
+      "sha256": "ffc0c4e15e99f61983cd9feabcf0e7c40c4615648ca73091a18a521281f91521",
+      "executable": false
+    },
+    "docs/storage-durability.md": {
+      "sha256": "7bd582a28d54062ef87f4735e7684993191223fe8953d3dd21ec4728673bf73a",
+      "executable": false
+    },
+    "docs/storage-refactoring.md": {
+      "sha256": "5b656177b427d50dd81db32b074d5eb315d33c41325a901dd1453231709c4a35",
+      "executable": false
+    },
+    "docs/testing-suite.md": {
+      "sha256": "78b81f61eecd27a119473cc2ff46efbee57c802479f954d1aae2ffc416aa58fe",
+      "executable": false
+    },
+    "nix/application-backup.nix": {
+      "sha256": "985626fa979479692abf2670fff49d1b25e944a879b259325118f58742084924",
+      "executable": false
+    },
+    "nix/application-provision-eval.nix": {
+      "sha256": "0cb3ac5e3e8f3eb922ece844e467c55cf020ebac995dea64f392328c0192cde4",
+      "executable": false
+    },
+    "nix/application-provision.nix": {
+      "sha256": "ba39f0bf544926583107c10ab305b7248df310d7723aabd2fe888c2d8ea6ea8a",
+      "executable": false
+    },
+    "nix/application-transition.nix": {
+      "sha256": "398af10e148cd248121a2c0c030b03c307591ba6049c5d35ddc3652ebdb5e608",
+      "executable": false
+    },
+    "nix/custody-namespaces.nix": {
+      "sha256": "33e4373033a532b11ebec038e23c548d0a587010853a462dcda24cd2579dd96e",
+      "executable": false
+    },
+    "nix/cutover-eval.nix": {
+      "sha256": "56b5d82fbd341f99fac80ece0390f3ef9e7f430f3e0a3157241ef49c8b4e1d60",
+      "executable": false
+    },
+    "nix/cutover.nix": {
+      "sha256": "7fb0d065e0d8cf1ea6be77bb7ad256e0edbe175b0d9b199465a01018ff3d1653",
+      "executable": false
+    },
+    "nix/eval-checks.nix": {
+      "sha256": "03e231e5cca1dfffdfbe975b6d217764346d676633ec6ee17cb48547754d9c79",
+      "executable": false
+    },
+    "nix/immutable-files.nix": {
+      "sha256": "34b6e36425f5275d3e705a7441c2c2d5ad36c8b0f0e0967a6d10aa1e8072dd3f",
+      "executable": false
+    },
+    "nix/module-eval-runtime.py": {
+      "sha256": "0fd8eec9c9dfb08ece775c2bcdd4e09ab66a44625c3835c04542bd7969017566",
+      "executable": false
+    },
+    "nix/module-eval.nix": {
+      "sha256": "101aec06393fdba6bc169d2265962d766e7cbba1bed8784c206ed66e04c6e7f0",
+      "executable": false
+    },
+    "nix/module.nix": {
+      "sha256": "a8d6db6c2cb57d16395802afe8f98616d1111f97f0a458576dffea3118b39d98",
+      "executable": false
+    },
+    "nix/native-cli-smoke.nix": {
+      "sha256": "3599220970cba55ef8e8c8ee294bf6f08d0dbf87f569b3ad63e09b8cf9d8230e",
+      "executable": false
+    },
+    "nix/native-package.nix": {
+      "sha256": "7f73f06f430dbd6d6853df532c79d8af2f2b8316dcb54d98488fbac9dd74899a",
+      "executable": false
+    },
+    "nix/native-storage-eval.nix": {
+      "sha256": "4aa9aa0f2f03feb2200fee270e9f83ebf6dafb316b54aa20fd4e5549b9bc54b4",
+      "executable": false
+    },
+    "nix/pg-backup-eval.nix": {
+      "sha256": "831e4214cdce446ee5cec812acb287e57b8ebd6d1b59c859aad2340cf5a7a5e1",
+      "executable": false
+    },
+    "nix/pg-backup.nix": {
+      "sha256": "a8e023b0ff278569e10e670a7de90c60023063c50e50759a68f45c54377fae56",
+      "executable": false
+    },
+    "nix/postgres-lifecycle-eval.nix": {
+      "sha256": "8fceef6bf18b62aa25e36afff6e9b8332b24bee12df765a64f5dd7a6520d1969",
+      "executable": false
+    },
+    "nix/postgres-lifecycle.nix": {
+      "sha256": "8d5ba9acf23389b25cea605105cc9de181e35499418709ffeca0959f8cf5d36a",
+      "executable": false
+    },
+    "nix/postgres-writer-clients.nix": {
+      "sha256": "21e342aaec9a9b6d7f442ebce7eb5f1c474000360c7412d02e6e33a74f1bbca4",
+      "executable": false
+    },
+    "nix/pre-commit.nix": {
+      "sha256": "e4c6ff68d2ba1a78f5eb87c7cd2c84046bf98de658eae33c6005b82f1714b474",
+      "executable": false
+    },
+    "nix/storage-package-argument.nix": {
+      "sha256": "1820d3406e89bfcc912afe4cc50d2ac3af872ca93aff0d76d999aa13d002824b",
+      "executable": false
+    },
+    "nix/storage-paths.nix": {
+      "sha256": "d764693d068e5c2923dd0d79911b760974a2907e46eaf837d69aafd3ef9b3a7d",
+      "executable": false
+    },
+    "nix/test-application-backup.nix": {
+      "sha256": "07f6b15f71b187f57e9b0855d899af8964e9ad45d5c79d1781b4898d080f148e",
+      "executable": false
+    },
+    "nix/test-application-postgres-transition.py": {
+      "sha256": "78b2eb1cf75bd74138ad77470d594e8eaf84fd1f885b3642ab8fd28f91ef661e",
+      "executable": false
+    },
+    "nix/test-application-provision.nix": {
+      "sha256": "302798b8cf411504f166f0b4c47f43f448afae433c3eb18a4d4a132679a9effb",
+      "executable": false
+    },
+    "nix/test-application-transition.nix": {
+      "sha256": "e8899636bc16da7ecf691b08eaaae55e874f83eafff3b9599ee01ddfbf5ec488",
+      "executable": false
+    },
+    "nix/test-module.nix": {
+      "sha256": "3308d62a3662b31db1d6b4ad21a09b1a07c6c81429e6dfe4fd5627bb75137218",
+      "executable": false
+    },
+    "nix/test-native-bridge.nix": {
+      "sha256": "6b389623826af1c5e238022891f5119ae7de7b7394b98b828a67b924b7ca4645",
+      "executable": false
+    },
+    "nix/test-native-supervisor.nix": {
+      "sha256": "a73c076d7b79611be27ec50a2044c79853f54fcaa395ef97e00e158b84a44bea",
+      "executable": false
+    },
+    "nix/test-postgres-backup-service.nix": {
+      "sha256": "f8510651bf62b07072c2bfd61a30913bdbe08cfd1958f1dc0a11d24bc52b96fe",
+      "executable": false
+    },
+    "nix/test-postgres-lifecycle.nix": {
+      "sha256": "01608109dce09b3d8d6b8300c4e58accf0a71b14ba1e3a554978d2f6adfdb702",
+      "executable": false
+    },
+    "nix/test-postgres-oracle.nix": {
+      "sha256": "6b8147da4f8a8ee3b31f6f03e181cc26b494b74932dd398cec59fe5913c947e5",
+      "executable": false
+    },
+    "nix/test-postgres-recovery.nix": {
+      "sha256": "d77e58bc3174c6684666220c98654365994ca75c40b3769a767813a4d175ccae",
+      "executable": false
+    },
+    "nix/test-postgres-upgrade.nix": {
+      "sha256": "8804ae5cf528814453630b1f5d781cca5e0eea09458fe26cb7a57a8a81fb3314",
+      "executable": false
+    },
+    "nix/test-postgres-writer-fence.nix": {
+      "sha256": "13a2788d9b2a3857dcfb6647b5a33eb0065f87af8b1a4aef3eeb9325b50d5cae",
+      "executable": false
+    },
+    "nix/test-python-package.nix": {
+      "sha256": "775b44628a3ca6ae1048a9af30d904abba575f21b00c2aa470e0c3887c85bf9a",
+      "executable": false
+    },
+    "nix/test-python-regressions.nix": {
+      "sha256": "119740fb21f71c56fb0b41ecbac03439efdd458e3f5bafbb358fab692d65ea1b",
+      "executable": false
+    },
+    "nix/test-source-local-recovery.nix": {
+      "sha256": "c7794263eba3d1b23544b83adf2410cb0f1809e5998358789555363e161261f3",
+      "executable": false
+    },
+    "src/lib.rs": {
+      "sha256": "a97bf09a33eceb6fdf2945afdfee0157db70066b96c96595d86ce544e5e698ac",
+      "executable": false
+    },
+    "src/main.rs": {
+      "sha256": "0328f11c7ed40d04e0eb064a4c5f3da1b724f481ad557649e530da7869e64e64",
+      "executable": false
+    },
+    "tests/application_storage.rs": {
+      "sha256": "2d4a1d94f71f46e34b3edadd4791be70c677816d8809592db5cb307aa4584c89",
+      "executable": false
+    },
+    "tests/backup_interruption.rs": {
+      "sha256": "2c92edc9c19c2dca2bca9a2d2d9aefb1081607f09a38177e2c04946e9e523aca",
+      "executable": false
+    },
+    "tests/backup_pins.rs": {
+      "sha256": "7cd470146674038d676dc9ad33ed44eef837f1b47d8cbd750072cb1d01414376",
+      "executable": false
+    },
+    "tests/backup_storage.rs": {
+      "sha256": "ff80b357c9d85480a348d9a90a93ac0478975ffd6640435d2422d0f15220f21e",
+      "executable": false
+    },
+    "tests/candidate.rs": {
+      "sha256": "1b79bdff3000273a5ce9f48c0c18f07c6fd4f4e11ec8f8cb801b3ccb0497a861",
+      "executable": false
+    },
+    "tests/catalog.rs": {
+      "sha256": "864950fa26f2443a30e56998f62bb058ae682fd66c371918d913702459d5f64d",
+      "executable": false
+    },
+    "tests/check_custody_cross_root.py": {
+      "sha256": "8ad4c72594dcacd31f9ee14277e9dc1592ce03bb4d51c77f2aaff9574e0bd59c",
+      "executable": false
+    },
+    "tests/check_cutover_command_phases.py": {
+      "sha256": "5bcc07fd6e779c931959ebd58d648b8237f042fa6393d6047750de2e7fb3bb94",
+      "executable": false
+    },
+    "tests/check_recovery_preparation_hook.py": {
+      "sha256": "0d63dc5d261dff5992f78017838453bcf1ca035ae96560addf63599c37ea872b",
+      "executable": false
+    },
+    "tests/cutover_storage.rs": {
+      "sha256": "1dd3486dac4a10b86e52703305680ba69b4de8f53cbbc5fe165a8acca1735688",
+      "executable": false
+    },
+    "tests/drill_deadlines.rs": {
+      "sha256": "026212d6228deefb95faedcb343b326bfbe670cc39b6d35e021efe91f9ff9f98",
+      "executable": false
+    },
+    "tests/drill_interop.rs": {
+      "sha256": "c90c913478af54ec1463e89f8ba1e36397c1cea6859d9a42129d11e62929b215",
+      "executable": false
+    },
+    "tests/durable_publication.rs": {
+      "sha256": "e04fb388e68afbf75d7c22ad912049446393f51c485ed64127d29f172bc5a84e",
+      "executable": false
+    },
+    "tests/evidence.rs": {
+      "sha256": "85e63d9d1f136d2375a2f8d39c5440f7aa2d35bf1e75c6629baf6b2b41408749",
+      "executable": false
+    },
+    "tests/fence_storage.rs": {
+      "sha256": "5b5b5283b8dc89d5d651a847a326fe5eb0c0cd39c067e69d27f43467caa76180",
+      "executable": false
+    },
+    "tests/home_manager_cli.rs": {
+      "sha256": "df5e3c8023e27994daed91c1f11370e7540368e2e1e8b9f7fb476bc77bf7aeab",
+      "executable": false
+    },
+    "tests/migration_baseline.rs": {
+      "sha256": "5f185764f80b8bb161441e1c55c16c3f90bb06c47f7e0eb7aebd814b379c8f5b",
+      "executable": false
+    },
+    "tests/plan_cli.rs": {
+      "sha256": "06be56df5c89317fbabd51013035a24c6944a42c397e05955ad6db4e47ab2155",
+      "executable": false
+    },
+    "tests/postgres_storage.rs": {
+      "sha256": "8dfeb48c6c8bd666530ed30dedef19906f9c90dc9e7db103044c84845897d6d9",
+      "executable": false
+    },
+    "tests/pr14-baseline.toml": {
+      "sha256": "353c5ca758d16cb6734106ae54428a660cc36621fe71ecae76de0ce8eb4a2c4a",
+      "executable": false
+    },
+    "tests/pr14_cli_parity.rs": {
+      "sha256": "48f7306730d8052daad817809a8577241d1c27e977588e6be18b1ec26305ee1c",
+      "executable": false
+    },
+    "tests/protocol.rs": {
+      "sha256": "c86e04d69937565bf79c0b29b86a795830f4f28dbc962bf4484305c3590d1a44",
+      "executable": false
+    },
+    "tests/recovery_capture.rs": {
+      "sha256": "a711c54ff6a20f03d2ca414e42599389960970aab8c9035674551a08ca84c59b",
+      "executable": false
+    },
+    "tests/recovery_repository.rs": {
+      "sha256": "2c14750a1e60c6eeb07e6ac90e7efae54dae59557d5a0bea6abdb415e1afbf3b",
+      "executable": false
+    },
+    "tests/recovery_storage.rs": {
+      "sha256": "7e74e06cf29b31d2b2fe343a1352b5e8478847ff5ebe33f6bbe61c72b55aa9a5",
+      "executable": false
+    },
+    "tests/resource_storage.rs": {
+      "sha256": "72590a09538dfb87e734cc683bd0da79bc22a2a14d1907f40c9d127ec678d42b",
+      "executable": false
+    },
+    "tests/run_python_regressions.py": {
+      "sha256": "498eb5ea3367ca6b05bac9702382005c7cfa7f76b6a6ab9cd38c5458dccf1580",
+      "executable": false
+    },
+    "tests/runtime-extensions.toml": {
+      "sha256": "18fe12a1af47034f69dedbb0fdbc5ff6a812bb9eac2919fb460ec0fe2af638a2",
+      "executable": false
+    },
+    "tests/storage_primitives.rs": {
+      "sha256": "a48efcbe34b5f81aa63612159318339930351ecfef35ce3c9bce2b26e1841acf",
+      "executable": false
+    },
+    "tests/suite.toml": {
+      "sha256": "593de3d6df57ecdad20ef20b4782a38fa74dfaeebd2f701b9be04c7ea97d6b6d",
+      "executable": false
+    },
+    "tests/supervisor.rs": {
+      "sha256": "ba091334a3d3a44b7e095426d1d809ba993dbc04699aff70bcbb43c67c0b8a61",
+      "executable": false
+    },
+    "tests/test_application_backup.py": {
+      "sha256": "68fde3e19f7bac768a7f3198ccc1e6f1f1c154a4a9dfad7f56b92360271cb981",
+      "executable": false
+    },
+    "tests/test_application_provision.py": {
+      "sha256": "11dec37fce626a857eecf9caa50995f272e0425b4ef847d69fad77b196221fc7",
+      "executable": false
+    },
+    "tests/test_application_transition.py": {
+      "sha256": "c913a0728f36d3fd16462edf125eb5da639c05a7350be4e69e27d42982ba567e",
+      "executable": false
+    },
+    "tests/test_backup_lifecycle.py": {
+      "sha256": "ed0e1037e162f873daf3a5532d8fa8d6ff739c5288599b47361c024756e48e6f",
+      "executable": false
+    },
+    "tests/test_cutover.py": {
+      "sha256": "0833bcc996acad81222df8b25c5f5dabf8a57ea80f058f1d4c9395e389f7fe5f",
+      "executable": false
+    },
+    "tests/test_cutover_process.py": {
+      "sha256": "7b2861175eadada2a51f4409e559530f73fbb4530214daaf9160b81243538e9d",
+      "executable": false
+    },
+    "tests/test_durable_lifecycle.py": {
+      "sha256": "c35296544ff95df18bcdeda7dcee6e197724ecba066b3379590ec37a7055eeed",
+      "executable": false
+    },
+    "tests/test_fence_recovery.py": {
+      "sha256": "1c1e50cdfbe469085ef157aa99ed4f7b59781d653718134013bba7cae804fdea",
+      "executable": false
+    },
+    "tests/test_postgres_drill.py": {
+      "sha256": "8776218abff597092706ed1d3ce4aa7093513e26d365c0cb56b5bd165f5af8dd",
+      "executable": false
+    },
+    "tests/test_postgres_lifecycle.py": {
+      "sha256": "30653cd2d3212f4d6bde4606adfc8d7965fcd38a7abf6fff864d3e3c53122df8",
+      "executable": false
+    },
+    "tests/test_receipt_process.py": {
+      "sha256": "3fd91b094f669c9a037e0fba1b05f9fa17df943da91993a7a3be718a77410941",
+      "executable": false
+    },
+    "tests/test_recovery_readiness.py": {
+      "sha256": "ee032b83b3f10e58a6cc0c1ca3cd2041c31e4b1a2bbdca874223693faebe7631",
+      "executable": false
+    },
+    "tests/test_resource_lifecycle.py": {
+      "sha256": "3f029e00d0de6dfb053e3bdae636886b95b59fd2d2378413b2146dc2a02c4cfa",
+      "executable": false
+    },
+    "tests/test_startup_inhibition.py": {
+      "sha256": "fe988e455211bd2b68411fc2c3833279561e41772f78112c08b75d29a5337920",
+      "executable": false
+    },
+    "tests/test_writer_fence.py": {
+      "sha256": "a5b4257cca6fdead27bb3122ca668fb3aef23417f4d09546a57dc897141ac382",
+      "executable": false
+    },
+    "tests/testing_cli.rs": {
+      "sha256": "c9c2e87ec421a5b1f19bb3e937166ce3a8ca71f9c875457e75afca13c5e97bcd",
+      "executable": false
+    },
+    "tests/trace_migration.py": {
+      "sha256": "80e54dbec8236da88077dbecfe44092b513765557ebb1b998cd2c2b88196547a",
+      "executable": false
+    },
+    "tests/transition_storage.rs": {
+      "sha256": "e4cc65bbb0536405424ac10bc373879637b41038effddc3378f717811d22b6a2",
+      "executable": false
+    },
+    "tests/fixtures/backend_transition.rs": {
+      "sha256": "e77385ae9014a1408b25bfc67c508a3d067c26c594fba71404015d76c278b3ca",
+      "executable": false
+    },
+    "tests/fixtures/native_supervisor.rs": {
+      "sha256": "4c01f1a8b5d981fc8727f91e13afb4a1883235d560404533ac3907cd8c146219",
+      "executable": false
+    },
+    "tests/fixtures/postgres_backup.rs": {
+      "sha256": "cbff33a4d84e28b95d7a617a1811d57405303443cbdc8323322023018cab8849",
+      "executable": false
+    },
+    "tests/fixtures/postgres_transition.rs": {
+      "sha256": "564100252143a24913d49bf9c74e5940eb93e375eb7b8a89d9b0dfaf2a2dbe4e",
+      "executable": false
+    },
+    "tests/fixtures/provision.rs": {
+      "sha256": "c1b1604cbcd43eb1cb8fc196f4387f8c166059125cfd7507b2e5432c19aed934",
+      "executable": false
+    },
+    "tests/fixtures/source_local_recovery.rs": {
+      "sha256": "d41b984906fe7549a70ac3646d1420dbdd0c0ea94d66bd78995f821dfe695579",
+      "executable": false
+    },
+    "tests/fixtures/supervisor_worker.rs": {
+      "sha256": "784c99272b7382f4d37f2b61ab4caf1666bd1c8406bca7a4caa35865a2cb191a",
+      "executable": false
+    },
+    "tests/fixtures/writer_fence.rs": {
+      "sha256": "7fa74dfca49561957da50deb50056af7b4ba144d8c06c9ac6344d5e6b4b19e3d",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_application_backup.py": {
+      "sha256": "5731efff1c46883b6cb404f881b3b896784e6755f732b115da64783bb727b44c",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_application_provision.py": {
+      "sha256": "563a2cd5512e57ab14be849f13bf05652eb6a36649fbadd7611681495eb24745",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_application_transition.py": {
+      "sha256": "419025775676ec0af58254a0b4edf90267725f0cdb72f68a8d58b399d82e3611",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_fence_recovery.py": {
+      "sha256": "002b8b8d8340878baee04336e06c93427cf5c8b84433a665dbcd666104a1785a",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_postgres_lifecycle.py": {
+      "sha256": "e39f708871a3099e1f7b19769c2efbedf69dec0fd90e8c04aeec86d7dfd2c2c3",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_backup_lifecycle.py": {
+      "sha256": "9689c7c08db6545f4596d4c533b4574fc4adfcc4f4eee2c5363a5a016ac0d55e",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_cutover.py": {
+      "sha256": "67ed7e759f5eab9b0175d1d8f9d7166557ae9b0a58b2a3a361a2064a2fadc021",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_cutover_process.py": {
+      "sha256": "9a1f895aeadc02f04d42dda6d776ede505fba1c7c366730d6e82f024aecdd079",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_durable_lifecycle.py": {
+      "sha256": "763ba7b31b30d24ed80b6a289dd4e7449f55b13dbbdf99367c001eeb27baf2c1",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_postgres_drill.py": {
+      "sha256": "c331767f4ce291b93be284b91740dd17c425a158758a5702f30e0d723c47365d",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_receipt_process.py": {
+      "sha256": "05a89816cf1bdd2507d000c63560e1aa748a1e1215385e3a0616a7a04c85722a",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_recovery_readiness.py": {
+      "sha256": "431401fde3e7e83fa4bcba29a594dc8ce1ec78b1e612d32fcb093f9a01e31130",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_resource_lifecycle.py": {
+      "sha256": "772b25ee192f980377236aa3efebd563fcaaa2eeb82d5d826e2eb9d0b2084158",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_startup_inhibition.py": {
+      "sha256": "3f3fbc19e058cf20b8389489ecc27e92993809005e9590d6446f7da225f774b0",
+      "executable": false
+    },
+    "tests/oracles/pr14/tests/test_writer_fence.py": {
+      "sha256": "6a76083163498137b0a37a7450d4d251a47f111900ad08f70c3e297ff9744bf7",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/__init__.py": {
+      "sha256": "b1d438055e85a2730e66b0276522b4f10b0ac6a682a26c5bf5c93f9aa05055a2",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/application_backup.py": {
+      "sha256": "224b575b845d5a63d5d7c4f98dff4e0e205fce98be296b16bea853cf8f4db57f",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/application_transition.py": {
+      "sha256": "4754a7951373fa190690c2dcd2a56c08483b449eccb2f635daa8eb3104db530d",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/backup.py": {
+      "sha256": "fff776a9364470e980df992bf2dc99e4bdf9f2a20ff711e6cd5024497a567ea7",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/cutover.py": {
+      "sha256": "5806877e2a6e6d51772f6fbae62df165a969340f3bb44c6104db2fc0cfa65aaf",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/durable.py": {
+      "sha256": "677ba1a93df9cda7938a004d5b6e0bb699f2a6415485fa77436f2a54fad49384",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/login_shell.py": {
+      "sha256": "e66ac5a3994f2718d8cc4c7e3ab8003eb90ef6122908a2c30be1b5d5d25a1998",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/postgres.py": {
+      "sha256": "89e72ef1487cd5a76131f9fdf8f6777e18d8730aad1e743af287719ab02ac7dd",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/postgres_drill.py": {
+      "sha256": "14b0f35a3f6bae12cfbe69720837cfb6fe44352c0bede335e0cb816123cb1604",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/process.py": {
+      "sha256": "6a198f97ba9ee8fd5c4fa3bab00595b1f1a148834524e7400c22c7836ff74541",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/provision.py": {
+      "sha256": "5270b9fc8e6df93ab97af1bbe1cb3c3b06ca94df65fdb017a1358c1a369688f0",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/recovery.py": {
+      "sha256": "ca2b0b42929009388ded7d3589dcfc7f12c00995f7cd72b56940a3ef99b86d59",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/resource.py": {
+      "sha256": "13f83b6b9a277b0b8520a25a3fd95e35f09311c8316385b064dfe1a92129884c",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/startup_inhibition.py": {
+      "sha256": "113c4d74646f26fa993ecad9891e364285ab15f17fbe70adb0df3f3dfac0ef96",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/transition_manifest.py": {
+      "sha256": "0e62b5a95bd48e7d9c2e2df9b448b2fe399a5816341a6c49da03a4307172a6f3",
+      "executable": false
+    },
+    "tests/oracles/pr14/python/harbor_db/writer_fence.py": {
+      "sha256": "f262abcafb879bac0b7b9d3c6814742b59efdc8a950fff99a7e1ed0fae38f8e3",
+      "executable": false
+    },
+    "src/bin/harbor-db-application-backup.rs": {
+      "sha256": "f66b89dda9578c142f1e3db00fc759efce4f79e700654207fb1f1a473df6f005",
+      "executable": false
+    },
+    "src/bin/harbor-db-backup-prune.rs": {
+      "sha256": "6c8c6d674cf96f35632005c1df87f66afe77c6b4a3b47a2401673edf12454087",
+      "executable": false
+    },
+    "src/bin/harbor-db-cutover-shell.rs": {
+      "sha256": "0a3614f93bb09378c9e834a681a0de4ac617c0ab31409f7588daf2dbf2e08d08",
+      "executable": false
+    },
+    "src/bin/harbor-db-cutover.rs": {
+      "sha256": "ea42db72f6b7fb7be7bd7002a0d4fa34f5e9b9810e8cf418f43ea44feb0d2272",
+      "executable": false
+    },
+    "src/bin/harbor-db-durable.rs": {
+      "sha256": "bdcfef387f94ed9b793193b4fbd714ce12fe238b447355e99776fd00350588f3",
+      "executable": false
+    },
+    "src/bin/harbor-db-postgres-drill.rs": {
+      "sha256": "8be1f9a2854a89caee50793c122f3c92614db1aae74e445998c9fbea304adadd",
+      "executable": false
+    },
+    "src/bin/harbor-db-postgres.rs": {
+      "sha256": "843c630bb652af49564ca4e169a1470edb706b80975f16adc88f48299677ed2d",
+      "executable": false
+    },
+    "src/bin/harbor-db-provision.rs": {
+      "sha256": "1b7d2e9df545bf1e5faae7974d305fe31813c8cc0a734f42d874363109f30bf6",
+      "executable": false
+    },
+    "src/bin/harbor-db-resource.rs": {
+      "sha256": "24fb1050c22e43b8a475ee7b6b7bc3a3494b657138cc6b95671b48d3a2d7500d",
+      "executable": false
+    },
+    "src/bin/harbor-db-test.rs": {
+      "sha256": "c6b4abf3fa5a82357a6fcc694444f7ffbbcc841aba0efa060d2dd03ec06b6fb7",
+      "executable": false
+    },
+    "src/bin/harbor-db-transition-start.rs": {
+      "sha256": "7fd71775847f212838cfea9bba3cfa4ff289de2fe7913d71a6ad95ea5b1c2aea",
+      "executable": false
+    },
+    "src/bin/harbor-db-transition.rs": {
+      "sha256": "8d68e455431d6366a252b6c965681a9790407f7c0b81cdca150f174ae7613cfc",
+      "executable": false
+    },
+    "src/bin/home-manager-backup.rs": {
+      "sha256": "3f1ae8b92d998477c23347b0439015683281662ee5bd4193873b430e46417930",
+      "executable": false
+    },
+    "src/planner/error.rs": {
+      "sha256": "7d8a5334db22266b657b6a940015153a8832c79b16831405e2aa4427f973249a",
+      "executable": false
+    },
+    "src/planner/execute.rs": {
+      "sha256": "4e4a7b6d1164b7bc41a010018fbbc52ed0ba46bbe63496740a2ad4749d115e8d",
+      "executable": false
+    },
+    "src/planner/mod.rs": {
+      "sha256": "746a4c36f1610d993dbb4dcf91bbe6cc43af05f448f3558e63d895aa70f75615",
+      "executable": false
+    },
+    "src/planner/model.rs": {
+      "sha256": "60a498f2154fa02fd17647c95066ad17a3d1d0470c57f7ed66c8f91239cbef22",
+      "executable": false
+    },
+    "src/planner/tests.rs": {
+      "sha256": "86b2b8e2f8356d6f32154c33c55670d9e64669e9557b013b440bb4b178058bf5",
+      "executable": false
+    },
+    "src/storage/accounts.rs": {
+      "sha256": "9b64a48160fcc149b7b7f6d0ad2d1536013a216847066a03655acf0cee2461aa",
+      "executable": false
+    },
+    "src/storage/application_backup.rs": {
+      "sha256": "0a057ffc3018ebbef868a561dd140a4532e80e2f621bbbc734331344a29c26a2",
+      "executable": false
+    },
+    "src/storage/application_publication.rs": {
+      "sha256": "20873f115f929c27ca6b55cb7b1c2fb5801bf962d3f05ce5f9f9f99deec61ec4",
+      "executable": false
+    },
+    "src/storage/application_retention.rs": {
+      "sha256": "f111b0c0d68e6a699b15fd8a19af24834e889bbbffce6586934e030c97c6d271",
+      "executable": false
+    },
+    "src/storage/application_transition.rs": {
+      "sha256": "7a9f87a976f62005d0a0fc8d3d24fd15c58805dc1da8420a091bbe4589ab10ac",
+      "executable": false
+    },
+    "src/storage/backup.rs": {
+      "sha256": "5e10acacea519b1b4c3a9243eb1418396a7d4639b4a02eb6df2299224c43ba6f",
+      "executable": false
+    },
+    "src/storage/backup_manifest.rs": {
+      "sha256": "ce4aeefeb41e7ae6ddb885b249f3ab032056f2b6f78efaf5928c4b411397430c",
+      "executable": false
+    },
+    "src/storage/codec.rs": {
+      "sha256": "9492f447cca25934472bba14db109ffca3a844c48a685e7706be3063cead17d7",
+      "executable": false
+    },
+    "src/storage/custody.rs": {
+      "sha256": "50c7dac942aa2bca896a17e5fb871605a508e4e469622979e8309e913e52ba84",
+      "executable": false
+    },
+    "src/storage/cutover.rs": {
+      "sha256": "38253a62f6c6051a689cbcafd6764f83f6315fd74cb55520d52366e793fea2c9",
+      "executable": false
+    },
+    "src/storage/durable.rs": {
+      "sha256": "145ab8841a52075eb9ed81447bf57ffd916f08fc2ae99456d8f64da15e91a0ee",
+      "executable": false
+    },
+    "src/storage/json_tokens.rs": {
+      "sha256": "9d9c546001050426640eb38f03de9cb07e0e3b8750448bcdd5dbfa5ca43a610d",
+      "executable": false
+    },
+    "src/storage/login_shell.rs": {
+      "sha256": "2f36e79e3a7737cd92c282551dd30f8bdf26e0cdf9838797f59209316951cd9c",
+      "executable": false
+    },
+    "src/storage/mod.rs": {
+      "sha256": "8f1dc3e7a82e658e2bd5e7fecd793f57746885113e53b96f9ecb95a8f3dd0ec2",
+      "executable": false
+    },
+    "src/storage/pg_core.rs": {
+      "sha256": "8d679b511d210388c60b04d613f98a2867a2e50cd44c24cbb2ead845aae35052",
+      "executable": false
+    },
+    "src/storage/postgres.rs": {
+      "sha256": "129e36db7f7e103bca18e7354935ddd5abc9d3a6a3a7132aca0d1c3204573b00",
+      "executable": false
+    },
+    "src/storage/postgres_drill.rs": {
+      "sha256": "aa6803edeea3189a71e964009326e5868ddc848095631e69df53dc9d70fe4942",
+      "executable": false
+    },
+    "src/storage/process.rs": {
+      "sha256": "3b03642f0f98a4065a5d2dfc54ffc44f713bec7317b04cdfd034da41b45f608c",
+      "executable": false
+    },
+    "src/storage/provision.rs": {
+      "sha256": "642b7c39718e42affac3bf4eb6ac76dd2fa9ba2cc89bad67cc6613cca02701a8",
+      "executable": false
+    },
+    "src/storage/recovery.rs": {
+      "sha256": "ba242e2efd531bf37a0dce7e712725a843fd9dd984ade8fae48aec444887cad9",
+      "executable": false
+    },
+    "src/storage/recovery_capture.rs": {
+      "sha256": "94d1d53d1583535da8e72ce77796a306d4a969ceb58b818d4f88fc68b87d4e68",
+      "executable": false
+    },
+    "src/storage/recovery_repository.rs": {
+      "sha256": "c53347b4ffc529f711dee38a445b5d296c93e6bff4d2e94bdf6271c364fb4e96",
+      "executable": false
+    },
+    "src/storage/resource.rs": {
+      "sha256": "8de6c76fe7ae777686b5dad5b091e75542bc3732e521eb57d762f4ff06acae6a",
+      "executable": false
+    },
+    "src/storage/retention_json.rs": {
+      "sha256": "f5fe1044b23ec4c8479e1cff312a37ce1ce5fb11b7adf3560f6d5e62a51b8ce0",
+      "executable": false
+    },
+    "src/storage/startup_inhibition.rs": {
+      "sha256": "4cbbdc26e76aeb2c07312cca90b6d7d1288d1c5dc50e3b3ea18b5d0c3621343d",
+      "executable": false
+    },
+    "src/storage/transition_manifest.rs": {
+      "sha256": "3e3e928ff560d924d79d0d2c66142ae94522066f41df0e1059a30506cfe44463",
+      "executable": false
+    },
+    "src/storage/writer_fence.rs": {
+      "sha256": "24d72febf67b41ea3c5b04925466c1bad3be7a2979cf739853031101fbd32bcb",
+      "executable": false
+    },
+    "src/testing/baseline.rs": {
+      "sha256": "d2faf893dff0601994e67d7201251a1ec2c196592ae3e5d567f7ff194f659fee",
+      "executable": false
+    },
+    "src/testing/candidate.rs": {
+      "sha256": "720d3e8db90cf2152652db6564695b8eb6947b152b1c21053186917a7987e2a5",
+      "executable": false
+    },
+    "src/testing/catalog.rs": {
+      "sha256": "e96591a0a8973ccd108a5f5604f463e6ac7d00241e5e58aa7156818a470efda3",
+      "executable": false
+    },
+    "src/testing/evidence.rs": {
+      "sha256": "f6b6d7c2b98ca84d057a82e5c78e41292083c9dfa672f18de18ccaea3fa248f9",
+      "executable": false
+    },
+    "src/testing/executor.rs": {
+      "sha256": "d7839025130ea3898113d10bc403c9a05d48138a3412b0e1e3988eabd8a4317a",
+      "executable": false
+    },
+    "src/testing/host.rs": {
+      "sha256": "cd8695763b81ac368ceec989165720b9f0df8c2a8889589a5ba205e1c5818b3c",
+      "executable": false
+    },
+    "src/testing/mod.rs": {
+      "sha256": "0a28fcb62aeb7b45f3e6e9221a35f11c6c65d7589e8cf9c77f0eb53a9656ce59",
+      "executable": false
+    },
+    "src/testing/protocol.rs": {
+      "sha256": "2c4710f52f978b964a6d52add0fd2211423bae10113ef89cc50b88765751b05c",
+      "executable": false
+    },
+    "src/testing/runner.rs": {
+      "sha256": "c6d294071e4276d0e461f98e725ab6dffbedae44fba2d45c9d8de434e72fea44",
+      "executable": false
+    },
+    "src/testing/supervisor.rs": {
+      "sha256": "9de7764b18671f2b8c35930ba652e43b46afe6940110e50803109fab1c880b59",
+      "executable": false
+    },
+    "src/storage/backup/pins.rs": {
+      "sha256": "c8c68d6865ab1f1825624c7040a199e9c5e6f73f17b3670a3321532b3ecc07c0",
+      "executable": false
+    },
+    "python/harbor_db/__init__.py": {
+      "sha256": "b1d438055e85a2730e66b0276522b4f10b0ac6a682a26c5bf5c93f9aa05055a2",
+      "executable": false
+    },
+    "python/harbor_db/application_backup.py": {
+      "sha256": "2cf427a24498a6468ed2e15b9421e9ab49429de255b854053826eaa2cbf60b93",
+      "executable": false
+    },
+    "python/harbor_db/application_publication.py": {
+      "sha256": "7940c5916d23f0c6c9d3d2089ed632555cf05b3ca12c6e040fdf6f45c2f719bd",
+      "executable": false
+    },
+    "python/harbor_db/application_retention.py": {
+      "sha256": "c1e0e158c4a2ca7885193631bf6b1f2e38bd88c525b70099d73efdfd8bf66bf7",
+      "executable": false
+    },
+    "python/harbor_db/application_transition.py": {
+      "sha256": "5e3ca10ba64dfc6b54ed4938c570311fd056ddd44106e983df088960b615250b",
+      "executable": false
+    },
+    "python/harbor_db/backup.py": {
+      "sha256": "4ee1b3b4ab3dae479b2d5cc01fccb23db3b0916dc40970ae6ff993a1f4b3d51b",
+      "executable": false
+    },
+    "python/harbor_db/backup_pins.py": {
+      "sha256": "205e58b69cdafb86273942eab3a910bd1007239ae29fed8fd5bd73591a05a8c3",
+      "executable": false
+    },
+    "python/harbor_db/cutover.py": {
+      "sha256": "e7f11cabdf9f64fe243ffa26b31c7d2f73a3cf47082f58574368620633224225",
+      "executable": false
+    },
+    "python/harbor_db/durable.py": {
+      "sha256": "8ca8db7d77af7f8221e2cfb445f5b39c5cbbceedf856fa1966f72c9fac8393af",
+      "executable": false
+    },
+    "python/harbor_db/login_shell.py": {
+      "sha256": "053bc03e655e1b7411ec37054adba54c446fa01234297eab9070b6fa6e66af5a",
+      "executable": false
+    },
+    "python/harbor_db/postgres.py": {
+      "sha256": "eade751cfd5c49588cd0c678c362fcf9117f48f52f7144755a8731ebc60c336a",
+      "executable": false
+    },
+    "python/harbor_db/postgres_drill.py": {
+      "sha256": "c772d0b3951db451e52ccb3109f632b807ae7004a05b9b976d8e4f7e479fa4ce",
+      "executable": false
+    },
+    "python/harbor_db/process.py": {
+      "sha256": "92617dc1f64fc6d9d3e5a8595fcceb2f663887e67fc4a1261b04586c1d975b0b",
+      "executable": false
+    },
+    "python/harbor_db/provision.py": {
+      "sha256": "37e895c7d040f4d34dc6aeae80e7e5c8d0cc730963b4b4e4161f54226903c440",
+      "executable": false
+    },
+    "python/harbor_db/recovery.py": {
+      "sha256": "5080d898722b14126599646def709dbf652f4f7ac3886423d24ab3612c53770c",
+      "executable": false
+    },
+    "python/harbor_db/recovery_repository.py": {
+      "sha256": "6abf6182f5e4ea4806685fc303ff89f238fe2fb38dbf271914e9df76201a8dbc",
+      "executable": false
+    },
+    "python/harbor_db/resource.py": {
+      "sha256": "c9299b49b80f352a1c1432e97ef427633a692d2adcb7f3e4bea9dc6681ebe72c",
+      "executable": false
+    },
+    "python/harbor_db/startup_inhibition.py": {
+      "sha256": "4de2a8b2385a29968479bb50b1283fa7924c11ab7f8c9778a931226ade57410c",
+      "executable": false
+    },
+    "python/harbor_db/test_bridge.py": {
+      "sha256": "a752b0de35f75f3aa9a0d4aa29f42518e697b200ca3f6eec9e600b6793a66654",
+      "executable": false
+    },
+    "python/harbor_db/transition_manifest.py": {
+      "sha256": "4f27dc7a98d70c5dd89c978ca7d4cccaf4c98f75da3d3d603e7c15cd238f189c",
+      "executable": false
+    },
+    "python/harbor_db/writer_fence.py": {
+      "sha256": "d5e44fab765c7af915f625e1c037d2b907aa5260b53eaf114a1fb40637549bde",
+      "executable": false
+    },
+    ".github/workflows/nix-builds.yaml": {
+      "sha256": "ff0a310e8a924c2ebf578d271530c8f4f0ca29c9d66fd20cb7af644cd9e17608",
+      "executable": false
+    }
+  },
+  "scopedMigrationDispositions": {
+    "flake.nix": "shared-root Cargo graph and package-scoped checks; common formatter; retained production/testing separation; documentation uses inherited locked all-feature package arguments exactly once",
+    "nix/{cutover,module,pg-backup,postgres-lifecycle}-eval.nix": "preserve Nix input context; evaluate realized module artifacts in builders",
+    "nix/test-postgres-oracle.nix": "execute only the exact 174-method frozen directory without overlaying new tests",
+    "nix/test-python-regressions.nix; tests/run_python_regressions.py": "catalog-bound 182 current methods; frozen 174 methods; test-only namespace fixture for immutable Git ownership",
+    "python/harbor_db/writer_fence.py": "preserve enrollment helpers independently; runtime policy rejects enrollment/mixed schemas before selector writes; original fence journal bytes and live/offline behavior retained",
+    "src/testing/baseline.rs": "hash-bind frozen oracle; require every original method to remain in current source; return exactly the frozen 174-method identity set",
+    "tests/catalog.rs; tests/migration_baseline.rs": "assert original 174 selectors plus eight distinct prototypes; reject original-method replacement even with an approved source checksum",
+    "tests/application_storage.rs": "retain backup/retention assertions and CLI paths; map only the compile-time test machine-ID fixture in Python subprocesses; report failed PostgreSQL startup; preserve CLI refusal exit codes with SystemExit",
+    "tests/postgres_storage.rs; tests/transition_storage.rs": "retain exact external Cargo test executable in nested namespace mounts",
+    "tests/runtime-extensions.toml": "source-bind all retained extensions and format-only AST-equal normalizations; no removed entry",
+    "tests/suite.toml": "retain original selectors and Nix outputs; add distinct current prototypes and repair writer-fence fixture evidence output contract",
+    "tests/test_writer_fence.py": "all original runtime test bodies AST-identical; retain real PostgreSQL fence drill; add enrollment/runtime boundary regressions",
+    "Cargo.toml; simit.toml": "format-only TOML with byte-equivalent parsed values",
+    "README.md; docs": "preserve retained architecture; document frozen-byte gates and namespace fixture provenance",
+    "python/harbor_db/test_bridge.py": "export through a driver-relative temporary directory beneath out_dir; preserve exact filename and exception cleanup",
+    "tests/protocol.rs": "require relative driver staging, complete byte preservation, refusal propagation and temporary-output cleanup",
+    "tests/fixtures/source_local_recovery.rs": "one preparable read-only delayed record query; retain production single-statement validation and freshness refusal assertions"
+  },
+  "exactRustRuntimeFilesFromWriterFence": 48,
+  "originalWriterFenceTestsAstIdentical": 11,
+  "frozenFilesVerified": 31,
+  "selectorContracts": {
+    "status": "both-retained-tip-selector-contracts-preserved-pending-runtime-acceptance",
+    "suiteSha256": "593de3d6df57ecdad20ef20b4782a38fa74dfaeebd2f701b9be04c7ea97d6b6d",
+    "currentSelectors": 548,
+    "tips": {
+      "native": {
+        "tip": "04bb467215967f2b88bf28fb975c37dab8949a39",
+        "suiteSha256": "4e21f303af6cd486a76bb982698211c800f317eaa0c7607be9cbd59004766b47",
+        "retainedSelectors": 415,
+        "retainedSelectorsMissing": [],
+        "unchangedExecutionContracts": 415,
+        "laterTipExecutionUpdates": {},
+        "additionalSelectors": [
+          "native.application-publication.storage::application_publication::tests::credential_sources_require_bounded_names_and_runtime_paths_in_both_engines",
+          "native.application-publication.storage::application_publication::tests::sealed_copy_is_independent_of_retained_worker_write_handles_in_both_engines",
+          "native.application-publication.storage::application_publication::tests::sealed_copy_rejects_redirected_shared_and_special_inputs_in_both_engines",
+          "native.application-publication.storage::application_publication::tests::sealed_copy_streams_complete_large_artifacts_in_both_engines",
+          "native.application_storage.artifact_inventory_rejects_non_utf8_files_and_directories_without_collapsing_valid_names",
+          "native.application_storage.automatic_manual_capture_remains_pinned_after_scheduled_retention_in_both_engines",
+          "native.application_storage.empty_directory_changes_invalidate_accepted_artifacts_in_both_engines",
+          "native.application_storage.hard_linked_capture_and_accepted_artifacts_reject_in_both_engines_without_chmod",
+          "native.application_storage.independent_certification_retries_preserve_original_evidence_across_engines_and_later_seconds",
+          "native.application_storage.interrupted_scheduled_retention_resumes_partial_deletion_without_rechecking_removed_acceptance_in_both_engines",
+          "native.application_storage.last_success_syncs_reader_permissions_before_publication_in_both_engines",
+          "native.application_storage.lossy_capture_paths_cannot_publish_or_replace_the_previous_restore_point_in_either_engine",
+          "native.application_storage.published_backup_files_are_read_only_in_both_engines",
+          "native.application_storage.reserved_attempts_cannot_poison_backup_publication_in_both_engines",
+          "native.application_storage.retained_success_prunes_its_incomplete_siblings_without_changing_evidence_in_both_engines",
+          "native.application_storage.scheduled_pruning_rejects_contention_and_redirects_before_deletion_in_both_engines",
+          "native.application_storage.scheduled_retention_bounds_success_and_incomplete_attempts_without_pruning_transitions_in_both_engines",
+          "native.application_storage.stale_capture_preserves_success_and_allows_the_same_attempt_to_retry_in_both_engines",
+          "native.backup-manifest.storage::backup_manifest::tests::large_file_inventory_preserves_complete_byte_digest_and_wal_ranges",
+          "native.backup-manifest.storage::backup_manifest::tests::rejects_malformed_inventory_and_trailing_bytes",
+          "native.backup-pins.cross_carrier_pins_preserve_old_backup_and_actual_wal_floor",
+          "native.backup-pins.empty_valid_pins_use_normal_retention",
+          "native.backup-pins.explicit_capture_retirement_releases_only_obsolete_pins_and_resumes_in_both_engines",
+          "native.backup-pins.large_pinned_manifest_prunes_in_both_carriers_without_releasing_its_backup",
+          "native.backup-pins.shared_mutation_lease_rejects_native_and_python_cli_with_eagain",
+          "native.backup-pins.source_local_requires_absolute_unredirected_root",
+          "native.backup-pins.uncertainty_preserves_entire_tree_in_both_carriers",
+          "native.candidate.dangling_source_symlink_is_rejected_instead_of_silently_omitted",
+          "native.candidate.generated_hook_link_is_excluded_with_present_or_absent_store_target",
+          "native.cutover_storage.cross_resource_inode_aliases_reject_before_workers_in_both_engines",
+          "native.cutover_storage.custody_authorities_and_corpora_have_disjoint_global_namespaces_in_both_engines",
+          "native.cutover_storage.custody_receipts_cannot_replace_authority_controls_in_both_engines",
+          "native.cutover_storage.database_corpus_query_cannot_replace_the_policy_root_in_both_engines",
+          "native.cutover_storage.enrolled_postgres_primary_and_state_exclude_filesystem_namespaces_in_both_engines",
+          "native.cutover_storage.git_integrity_rejects_mutable_checkers_before_execution_in_both_engines",
+          "native.cutover_storage.hardlinked_custody_corpus_rejects_metadata_and_content_admission_in_both_engines",
+          "native.cutover_storage.restored_corpus_roots_must_be_pairwise_independent_in_both_engines",
+          "native.drill-deadlines.cancelled_restore_retains_private_state_for_explicit_peer_cleanup",
+          "native.drill-deadlines.invalid_budgets_reject_before_mutation_and_explicit_budget_overrides_inheritance",
+          "native.drill-deadlines.owning_deadline_aborts_restore_and_allows_peer_cleanup",
+          "native.drill-deadlines.restores_outlive_the_old_120_second_probe_limit_in_both_engines",
+          "native.drill-interop.stale_disposable_pid_cleanup_never_signals_unrelated_processes_in_both_engines",
+          "native.durable-publication.atomic_write_survives_stale_pid_temporary_without_deleting_it",
+          "native.migration_baseline.absent_extension_manifest_keeps_original_runtime_hash_requirement",
+          "native.migration_baseline.approved_source_hash_cannot_replace_an_original_method_with_a_prototype",
+          "native.migration_baseline.extension_gates_cases_and_required_vm_artifacts_cannot_be_substituted",
+          "native.migration_baseline.extension_manifest_rejects_typos_provenance_paths_and_invalid_hashes",
+          "native.migration_baseline.extension_requires_every_frozen_oracle_even_for_unchanged_runtime",
+          "native.migration_baseline.extension_requires_exact_hash_and_explicit_changed_scope",
+          "native.migration_baseline.registered_prototypes_preserve_the_frozen_method_inventory",
+          "native.migration_baseline.regression_gate_rejects_a_skip_that_unittest_accepts",
+          "native.plan-cli.credential_name_boundaries_match_systemd_before_plan_execution",
+          "native.plan-cli.invalid_environment_bindings_reject_the_entire_plan_before_any_command_runs",
+          "native.plan-cli.manual_prerequisites_require_confirmation_and_execute_before_dependents",
+          "native.plan-cli.normal_apply_excludes_restore_lifecycle_even_with_automatic_safety",
+          "native.postgres_storage.nested_upgrade_paths_reject_before_lock_or_copy_in_both_engines",
+          "native.postgres_storage.ready_upgrade_binds_policy_and_executable_bytes_across_native_and_python_resume",
+          "native.recovery-capture-core.storage::recovery_capture::tests::conflicting_snapshot_is_not_overwritten_or_selected",
+          "native.recovery-capture-core.storage::recovery_capture::tests::expiry_after_carrier_sync_preserves_previous_selection_and_frozen_attempt",
+          "native.recovery-capture-core.storage::recovery_capture::tests::interrupted_capture_scratch_preserves_its_inode_and_allows_publication",
+          "native.recovery-capture-core.storage::recovery_capture::tests::manifest_rejects_empty_reversed_and_multiple_timelines",
+          "native.recovery-capture-core.storage::recovery_capture::tests::missing_wal_preserves_old_selection_and_pin_then_complete_carrier_allows_retry",
+          "native.recovery-capture-core.storage::recovery_capture::tests::occupied_snapshot_preserves_previous_generation_then_retry_commits_once",
+          "native.recovery-capture-core.storage::recovery_capture::tests::switch_worker_retains_all_four_leases_after_coordinator_descriptors_close",
+          "native.recovery-capture-core.storage::recovery_capture::tests::target_boundary_requires_previous_segment_and_actual_floor",
+          "native.recovery-capture.cli_legacy_capture_rejects_without_mutating_selected_evidence",
+          "native.recovery-capture.legacy_capture_is_rejected_before_any_publication",
+          "native.recovery-capture.source_local_capture_requires_explicit_writer_fence",
+          "native.recovery-capture.unsafe_identifiers_are_rejected_before_opening_repository",
+          "native.recovery-preparation.storage::recovery::tests::managed_backup_outlives_the_short_probe_deadline",
+          "native.recovery-repository.actual_manifest_ranges_bind_timeline_stop_and_target",
+          "native.recovery-repository.capture_drift_and_invalid_metadata_are_rejected_without_writes",
+          "native.recovery-repository.forged_source_records_or_token_never_certify_admit_import_or_prepare",
+          "native.recovery-repository.generated_timestamp_is_not_a_legacy_completed_identifier",
+          "native.recovery-repository.identical_metadata_carriers_preserve_complete_legacy_and_selected_bindings",
+          "native.recovery-repository.invalid_repository_protocol_is_rejected_before_mutation_in_both_readers",
+          "native.recovery-repository.preparation_without_selected_capture_requires_explicit_producer_without_writes",
+          "native.recovery-repository.primary_snapshot_retry_returns_frozen_generation_without_republishing",
+          "native.recovery-repository.protocol_and_exact_immutable_pin_carrier_are_required",
+          "native.recovery-repository.selected_generation_ignores_global_snapshot_and_uncommitted_capture",
+          "native.recovery-repository.source_local_cutover_hashes_selected_snapshot_with_absent_or_unrelated_legacy_carrier",
+          "native.recovery-repository.source_local_primary_snapshot_requires_fence_before_evidence_mutation",
+          "native.recovery-repository.source_local_transition_binds_selected_snapshot_and_rejects_changed_resume",
+          "native.recovery-repository.unsafe_selectors_and_redirected_carriers_are_rejected_without_writes",
+          "native.recovery_repository.same_length_wal_corruption_invalidates_selected_readiness_without_rebinding_evidence_in_both_engines",
+          "native.recovery_repository.selected_capture_requires_complete_retained_wal_through_post_target_in_both_engines",
+          "native.recovery_repository.wal_inventory_is_mandatory_and_cannot_be_rebound_after_certification_in_both_engines",
+          "native.recovery_storage.legacy_evidence_cannot_replace_repository_control_paths_in_both_engines",
+          "native.recovery_storage.local_acceptance_cannot_reuse_an_independent_host_receipt_in_both_engines",
+          "native.recovery_storage.local_and_off_host_receipt_paths_cannot_alias_in_admission",
+          "native.recovery_storage.primary_and_selected_backup_cannot_share_inodes_even_with_an_independent_restore_in_both_engines",
+          "native.recovery_storage.primary_configuration_links_are_protected_without_admitting_restore_redirects_in_both_engines",
+          "native.recovery_storage.recovery_evidence_cannot_replace_postgres_storage_in_both_engines",
+          "native.recovery_storage.restored_clusters_cannot_share_primary_or_selected_backup_inodes_in_both_engines",
+          "native.recovery_storage.source_local_evidence_cannot_replace_repository_control_paths_in_both_engines",
+          "native.storage_primitives.decoded_duplicate_members_match_python_and_invalid_json_never_rewrites_receipts",
+          "native.storage_primitives.literal_number_sentinels_remain_objects_in_receipts_and_hashes",
+          "native.storage_primitives.successful_native_workers_terminate_silent_descendants_retaining_leases",
+          "native.storage_primitives.successful_python_workers_terminate_silent_descendants_retaining_leases",
+          "native.supervisor.argv_cases_exclude_ambient_variables_and_keep_the_retained_environment",
+          "native.supervisor.detached_nix_case_retains_launcher_path_without_service_manager_environment",
+          "native.supervisor.detached_worker_loss_before_registration_uses_the_acknowledged_unit_state",
+          "native.supervisor.restarted_roles_retry_evidence_collisions_without_replacing_stale_inodes",
+          "native.supervisor.skipped_cases_record_terminal_results_without_acquiring_busy_resources",
+          "native.supervisor.worker_failure_before_registration_publishes_terminal_evidence_and_forbids_retry",
+          "native.transition-retirement.storage::application_transition::tests::retirement_retains_distinct_runs_and_resumes_without_rewriting_history_in_both_engines",
+          "native.transition_storage.barrier_and_guarded_storage_must_be_disjoint_in_both_directions_in_both_engines",
+          "native.transition_storage.custody_writers_must_be_covered_before_transition_or_inventory_in_both_engines",
+          "native.transition_storage.external_backup_manifest_cannot_share_a_transition_barrier_in_both_engines",
+          "native.transition_storage.independent_receipts_cannot_alias_backup_publication_storage_before_inhibition_in_both_engines",
+          "native.transition_storage.independent_receipts_cannot_alias_transition_control_storage_in_both_engines",
+          "native.transition_storage.independent_receipts_cannot_alias_transition_corpora_before_inhibition_in_both_engines",
+          "native.transition_storage.interrupted_write_enabled_release_keeps_the_source_backup_pinned",
+          "native.transition_storage.operator_policy_requires_every_declared_manifest_to_be_immutable",
+          "native.transition_storage.partial_or_extended_custody_cannot_authorize_transition_retries_in_both_engines",
+          "native.transition_storage.python_interrupted_release_revalidates_and_preserves_barrier_until_retry",
+          "native.transition_storage.rejected_barrier_installation_preserves_policy_markers_and_drop_ins_in_both_engines",
+          "native.transition_storage.rejected_barrier_release_preserves_all_markers_and_startup_policy_in_both_engines",
+          "native.transition_storage.repeated_transition_runs_capture_intervening_writes_and_retry_only_their_own_attempt_in_both_engines",
+          "native.transition_storage.reverified_transition_custody_returns_fresh_evidence_without_rebinding_contents_in_both_engines",
+          "native.transition_storage.transition_backup_root_must_be_disjoint_from_both_corpora_in_both_engines",
+          "native.transition_storage.transition_backups_cannot_overlap_the_shared_authority_in_both_engines",
+          "native.transition_storage.transition_capture_honors_the_nested_backup_stage_budgets_in_both_engines",
+          "native.transition_storage.transition_capture_uses_the_backup_owner_instead_of_the_authority_owner_in_both_engines",
+          "native.transition_storage.transition_source_and_target_roots_must_be_disjoint_before_any_writes_in_both_engines",
+          "python.test_writer_fence.FencePolicyTest.test_epoch_binding_rejects_a_replacement_cluster_or_changed_fence",
+          "python.test_writer_fence.FencePolicyTest.test_new_package_or_enrollment_retirement_does_not_discard_an_active_epoch",
+          "python.test_writer_fence.FencePolicyTest.test_public_policy_preserves_enrollment_schema_and_validation",
+          "python.test_writer_fence.FencePolicyTest.test_redirected_state_is_not_a_fence_authority",
+          "python.test_writer_fence.FencePolicyTest.test_replication_policy_rejects_role_address_or_rule_injection",
+          "python.test_writer_fence.FencePolicyTest.test_strict_hba_never_permits_an_application_database_role",
+          "python.test_writer_fence.WriterFenceTest.test_runtime_rejects_enrollment_policy_without_publishing_a_selector",
+          "python.test_writer_fence.WriterFenceTest.test_runtime_rejects_mixed_replication_policy_without_publishing_a_selector"
+        ]
+      },
+      "writer-fence": {
+        "tip": "784f80a62adedcaf04c796cc6e4866955e09d5bc",
+        "suiteSha256": "2c46feb769bb0a3b267456a7b84e338be2cf0847c87d1d1911c963e870e09815",
+        "retainedSelectors": 538,
+        "retainedSelectorsMissing": [],
+        "unchangedExecutionContracts": 538,
+        "laterTipExecutionUpdates": {},
+        "additionalSelectors": [
+          "native.migration_baseline.approved_source_hash_cannot_replace_an_original_method_with_a_prototype",
+          "native.migration_baseline.registered_prototypes_preserve_the_frozen_method_inventory",
+          "python.test_writer_fence.FencePolicyTest.test_epoch_binding_rejects_a_replacement_cluster_or_changed_fence",
+          "python.test_writer_fence.FencePolicyTest.test_new_package_or_enrollment_retirement_does_not_discard_an_active_epoch",
+          "python.test_writer_fence.FencePolicyTest.test_public_policy_preserves_enrollment_schema_and_validation",
+          "python.test_writer_fence.FencePolicyTest.test_redirected_state_is_not_a_fence_authority",
+          "python.test_writer_fence.FencePolicyTest.test_replication_policy_rejects_role_address_or_rule_injection",
+          "python.test_writer_fence.FencePolicyTest.test_strict_hba_never_permits_an_application_database_role",
+          "python.test_writer_fence.WriterFenceTest.test_runtime_rejects_enrollment_policy_without_publishing_a_selector",
+          "python.test_writer_fence.WriterFenceTest.test_runtime_rejects_mixed_replication_policy_without_publishing_a_selector"
+        ]
+      }
+    },
+    "writerFenceArtifactRequirement": "retained-plus-required-nix-outputs"
+  },
+  "snapshotQualification": {
+    "source": "/nix/store/axh5y35nclh8p3rlifwcxsd081i4hd0c-harbor-database-proposal",
+    "narHash": "sha256-YaSpeQqv9QgdhXbkRyMfN4NHOZSr2beNUNLcZPoIrh0=",
+    "checks": 35,
+    "packages": 9,
+    "qualificationSha256": "77a4de342050b52309803a6cf9c374d7053431f168c5e90b9674ab6d14b39f6a",
+    "realizationSha256": "fcc46780db9cad75b539438ceff50185441d606a8c692cec10b297bade7e7640",
+    "sourceInventorySha256": "5ea5c5c56c1245d0897c0ea7a869237d49a3aa36a11ad17eb724d215a9dec43e",
+    "dispositionsSha256": "66ffffefb8f95c80eadea411ac5c08af9aee7ce4826801b5a7f2167e1a5004bb",
+    "selectorAuditSha256": "ad2f5e82cf8290966228ca75329b30aa97956f3f084380c990ad564b62e320b2",
+    "planSha256": "e7e0e4d9666f2f64e27549c74bf05638f44a3d03a0283b059a64d952de3a61a8",
+    "rootLockDelta": {
+      "changedPackages": [
+        ["harbor-cad", "0.1.0", null],
+        ["harbor-db", "0.1.0", null]
+      ],
+      "addedPackages": [
+        [
+          "roxmltree",
+          "0.20.0",
+          "registry+https://github.com/rust-lang/crates.io-index"
+        ]
+      ]
+    }
+  },
+  "canonicalQualification": "pending",
+  "downstreamAdmission": false
+}

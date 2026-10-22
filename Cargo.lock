@@ -210,6 +210,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "caniko-harbor-sdk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
+ "thiserror",
+ "which",
+]
+
+[[package]]
 name = "cc"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -369,6 +379,7 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
  "crypto-common",
+ "subtle",
 ]
 
 [[package]]
@@ -502,8 +513,9 @@ dependencies = [
 
 [[package]]
 name = "fleetix"
-version = "0.4.0"
-source = "git+https://github.com/caniko/fleetix?rev=2230d9ee804a66d94424a91919182e4fcca13ab2#2230d9ee804a66d94424a91919182e4fcca13ab2"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2673218f8e50930be99abf049e2685f61134dea411b7664c46abb992959e05c2"
 dependencies = [
  "indexmap",
  "miette",
@@ -696,7 +708,7 @@ dependencies = [
  "fleetix",
  "fs2",
  "libc",
- "roxmltree",
+ "roxmltree 0.21.1",
  "rusqlite",
  "schemars",
  "serde",
@@ -713,11 +725,63 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
+ "libc",
+ "roxmltree 0.20.0",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "harbor-evidence"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "ureq",
+ "url",
+ "walkdir",
+]
+
+[[package]]
+name = "harbor-llm-codegen"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "harbor-llm-protocol"
+version = "0.1.0"
+dependencies = [
+ "hmac",
+ "serde",
+ "serde_json",
+ "sha2",
+ "zeroize",
+]
+
+[[package]]
+name = "harbor-llm-runtime"
+version = "0.1.0"
+dependencies = [
+ "fs2",
+ "getrandom 0.4.3",
+ "harbor-llm-protocol",
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]
@@ -730,16 +794,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "walkdir",
-]
-
-[[package]]
-name = "harbor-sdk"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "tempfile",
- "thiserror",
- "which",
 ]
 
 [[package]]
@@ -791,6 +845,15 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "hmac"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
+dependencies = [
+ "digest",
+]
 
 [[package]]
 name = "home"
@@ -1299,11 +1362,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "caniko-harbor-sdk",
  "clap",
  "goblin",
  "harbor-cache",
  "harbor-sandbox",
- "harbor-sdk",
  "regex",
  "serde_json",
  "sha2",
@@ -1687,6 +1750,12 @@ dependencies = [
 
 [[package]]
 name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+
+[[package]]
+name = "roxmltree"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
@@ -1762,9 +1831,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "log",
  "once_cell",

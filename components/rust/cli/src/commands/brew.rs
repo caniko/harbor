@@ -53,7 +53,7 @@ pub struct BumpArgs {
     #[arg(long = "depends")]
     pub dependencies: Vec<String>,
 
-    /// Target tap repository. Writes Formula/<name>.rb unless --stdout is set.
+    /// Target tap repository. Writes `Formula/<name>.rb` unless `--stdout` is set.
     #[arg(long, required_unless_present = "stdout")]
     pub tap: Option<PathBuf>,
 
@@ -66,7 +66,7 @@ pub struct BumpArgs {
     #[arg(long, requires = "tap")]
     pub push: bool,
 
-    /// Commit message for --push. Defaults to "<name> <version>".
+    /// Commit message for `--push`. Defaults to `<name> <version>`.
     #[arg(long, requires = "push")]
     pub commit_message: Option<String>,
 }

@@ -178,6 +178,8 @@ in
         echo ok > $out/result
       '';
 
+      managed-venv = import ./managed-venv.nix {inherit pkgs harbor;};
+
       template-default = meta.templateTests.mkCheck {
         inherit pkgs system;
         flakeNix = ../templates/default/flake.nix;

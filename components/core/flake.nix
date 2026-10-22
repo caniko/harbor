@@ -50,12 +50,18 @@
         treefmt = inputs.treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
       in {
         packages = {
+          harbor-evidence = import ./package.nix {inherit pkgs;};
+          harbor = self.packages.${system}.harbor-evidence;
           harbor-opencode = harborOpencode;
           nix-direnv = import ./nix/direnv/package.nix {inherit pkgs;};
           default = harborOpencode;
         };
 
         apps = {
+          harbor = {
+            type = "app";
+            program = "${self.packages.${system}.harbor-evidence}/bin/harbor";
+          };
           harbor-opencode = {
             type = "app";
             program = "${harborOpencode}/bin/harbor-opencode";
