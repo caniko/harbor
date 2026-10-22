@@ -5,7 +5,7 @@ set -euo pipefail
 direnvrc=$1 fixture=$2 phase=$3
 [[ -d $HOME/fx ]] || cp -r --no-preserve=mode "$fixture" "$HOME/fx"
 cd "$HOME/fx"
-trap 'tail -n 40 ./*.out .direnv/*.log >&2' ERR
+trap 'printf "%s failed at line %s\n" "$phase" "$LINENO" >&2; tail -n +1 ./*.out .direnv/*.log >&2' ERR
 
 # A gate instead of a slow build: print-dev-env waits until $HOME/release
 # exists, so the test decides how long the realization stays in flight.
@@ -59,14 +59,14 @@ concurrent)
   activate >second.out 2>&1 &
   second=$!
   until (($(units) == 1)); do sleep 1; done
-  sleep 3
-  # The second activation waits on the profile lock; it starts no second unit.
+  # The other activation waits on the profile lock; it starts no second unit.
+  until pgrep -x flock >/dev/null; do sleep 0.2; done
   (($(units) == 1))
   touch "$HOME/release"
   wait "$first"
   wait "$second"
   [[ $(grep '^INPUT=' first.out) == "$(grep '^INPUT=' second.out)" ]]
-  grep -F 'input-v2' first.out
+  grep -x 'INPUT=.*-direnv-input-v2' first.out
   ;;
 fallback)
   touch "$HOME/release"

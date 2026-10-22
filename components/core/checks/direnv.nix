@@ -30,7 +30,9 @@
           name = "direnv-input-v1";
           inherit system;
           builder = "${bash}";
-          args = ["-c" "${pkgs.coreutils}/bin/mkdir $out"];
+          # Keep bash as the last process: Nix SIGKILLs a builder whose log
+          # closes first, and coreutils closes stdio before it exits.
+          args = ["-c" "${pkgs.coreutils}/bin/mkdir $out; exit"];
         };
       in {
         devShells.''${system}.default = derivation {
@@ -67,9 +69,6 @@ in {
     nodes.machine = {
       environment.systemPackages = [pkgs.bash pkgs.coreutils pkgs.direnv pkgs.gnused pkgs.gnugrep];
       virtualisation.additionalPaths = [fixture pkgs.bash pkgs.coreutils];
-      # With one vCPU and 1 GiB, Nix in the VM intermittently SIGKILLs builders.
-      virtualisation.cores = 2;
-      virtualisation.memorySize = 2048;
       nix.settings = {
         experimental-features = ["nix-command" "flakes"];
         # The fixture names its builders by store path, without input context.
