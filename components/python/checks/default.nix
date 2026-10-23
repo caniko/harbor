@@ -13,6 +13,7 @@
   fixture = ../templates/default;
   templateFlake = builtins.readFile (fixture + "/flake.nix");
   templateSimit = builtins.fromTOML (builtins.readFile (fixture + "/simit.toml"));
+  templatePyproject = builtins.fromTOML (builtins.readFile (fixture + "/pyproject.toml"));
   templateTreefmt = (treefmt-nix.lib.evalModule pkgs (import (fixture + "/nix/treefmt.nix") {harbor = self.inputs.harborRoot;})).config;
   languageTreefmt = (treefmt-nix.lib.evalModule pkgs {imports = [self.treefmtModules.python];}).config;
   templateHooks = builtins.readFile (fixture + "/nix/pre-commit.nix");
@@ -139,6 +140,9 @@ in
       "nix-flake-check"
     ];
   };
+  # mkUvDevShell's default devGroup is synced with `--group dev`; uv rejects
+  # an undefined group, which would fail every template shell entry.
+  assert templatePyproject ? dependency-groups.dev;
   assert pkgs.lib.hasInfix "treefmt-nix.follows" templateFlake;
   assert pkgs.lib.hasInfix "git-hooks.follows" templateFlake;
   assert pkgs.lib.hasInfix "treefmtEval.config.build.check self" templateFlake;
@@ -210,6 +214,7 @@ in
           "pyproject.toml"
           "uv.lock"
           "src/minimal/__init__.py"
+          "tests/test_minimal.py"
           "simit.toml"
           "nix/treefmt.nix"
           "nix/pre-commit.nix"
