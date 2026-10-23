@@ -31,6 +31,7 @@ in {
       "flake.lock"
       ".envrc"
       ".vscode/settings.json"
+      ".vscode/rust-analyzer"
       "pyproject.toml"
       "uv.lock"
       "Cargo.toml"
@@ -48,16 +49,19 @@ in {
     pkgs.runCommand "harbor-template-polyglot-samples" {
       inherit (shell) nativeBuildInputs;
     } ''
-      cp -r ${root} project
-      chmod -R u+w project
-      cd project
-      export HOME="$TMPDIR/home" CARGO_HOME="$TMPDIR/cargo"
-      if rustc --version | grep -q nightly; then
-        echo 'polyglot template resolved a nightly rustc' >&2
-        exit 1
-      fi
-      cargo test --offline --quiet
-      node --test
-      touch "$out"
+        cp -r ${root} project
+        chmod -R u+w project
+        cd project
+        export HOME="$TMPDIR/home" CARGO_HOME="$TMPDIR/cargo"
+        if rustc --version | grep -q nightly; then
+          echo 'polyglot template resolved a nightly rustc' >&2
+          exit 1
+        fi
+        cargo test --offline --quiet
+      # VS Code starts rust-analyzer through this direnv wrapper (settings.json).
+      test -x .vscode/rust-analyzer
+      grep -q '"rust-analyzer.server.path": "''${workspaceFolder}/.vscode/rust-analyzer"' .vscode/settings.json
+        node --test
+        touch "$out"
     '';
 }
