@@ -10,6 +10,11 @@
     inherit pkgs packageJson;
     extraEnv.HARBOR_NODE_CHECK = "configured";
   };
+  shellWithoutLsp = node.mkNodeDevShell {
+    inherit pkgs packageJson;
+    opencodeLsp.enable = false;
+  };
+  hasPackage = shell: builtins.elem pkgs.typescript-language-server shell.passthru.devShellSpec.packages;
   fails = value: !(builtins.tryEval (builtins.deepSeq value true)).success;
   # A real consumer still pins pnpm 9. Exercise the Nixpkgs builder override
   # and a frozen offline install, rather than only testing the default tool.
@@ -34,6 +39,12 @@ in {
   });
   assert toolchain.nodejs == pkgs.nodejs;
   assert !(pkgs.lib.hasInfix "pnpm install" shell.passthru.devShellSpec.shellHook);
+  # OpenCode gets a TypeScript server (and other editors find it on PATH)
+  # unless the profile is disabled.
+  assert hasPackage shell;
+  assert pkgs.lib.hasInfix "OPENCODE_CONFIG_CONTENT" shell.passthru.devShellSpec.shellHook;
+  assert !(hasPackage shellWithoutLsp);
+  assert !(pkgs.lib.hasInfix "OPENCODE_CONFIG_CONTENT" shellWithoutLsp.passthru.devShellSpec.shellHook);
     pkgs.runCommand "harbor-js-node-contract" {
       nativeBuildInputs = toolchain.packages;
     } ''
@@ -46,9 +57,26 @@ in {
   node-dev-shell = meta.devShellTests.mkCheck {
     inherit pkgs shell;
     name = "harbor-js-node-dev-shell";
-    commands = ["node" "npm" "pnpm"];
+    commands = ["node" "npm" "pnpm" "typescript-language-server"];
     env.HARBOR_NODE_CHECK = "configured";
   };
+
+  # The merged OpenCode config points the typescript server at the binary the
+  # shell puts on PATH, and keeps an existing caller config.
+  node-opencode-typescript-lsp =
+    pkgs.runCommand "harbor-js-node-opencode-typescript-lsp" {
+      nativeBuildInputs = shell.nativeBuildInputs ++ [pkgs.jq];
+    } ''
+      export HOME="$TMPDIR" XDG_CACHE_HOME="$TMPDIR"
+      export OPENCODE_CONFIG_CONTENT='{"lsp":{"caller":{"command":["caller-lsp"]}}}'
+      ${shell.passthru.devShellSpec.shellHook}
+      server="$(jq -er '.lsp.typescript.command[0]' <<<"$OPENCODE_CONFIG_CONTENT")"
+      test -x "$server"
+      test "$server" = "$(command -v typescript-language-server)"
+      jq -e '.lsp.caller.command == ["caller-lsp"]' <<<"$OPENCODE_CONFIG_CONTENT" >/dev/null
+      mkdir -p "$out"
+      echo ok > "$out/result"
+    '';
 
   pnpm-pinned-install = pkgs.runCommand "harbor-js-pnpm-pinned-install" ({
       nativeBuildInputs = pinnedToolchain.packages;

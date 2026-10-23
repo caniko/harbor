@@ -15,6 +15,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    nix-opencode-lsp = {
+      url = "git+https://github.com/caniko/nix-opencode-lsp.git?ref=trunk";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -32,6 +37,7 @@
     nixpkgs-darwin,
     bun-overlay,
     harbor-meta,
+    nix-opencode-lsp,
     ...
   }:
     flake-parts.lib.mkFlake {inherit inputs;} {
@@ -45,6 +51,7 @@
       flake = let
         lib = import ./lib {
           inherit nixpkgs bun-overlay harbor-meta;
+          opencodeLspLib = nix-opencode-lsp.lib;
         };
       in {
         inherit lib;

@@ -39,6 +39,11 @@ lockfiles or use Corepack to fetch a different manager. Install locked dependenc
 explicitly with the selected `pnpm install --frozen-lockfile` in isolated project
 state before running the project's own tests.
 
+`mkNodeDevShell` and `mkBunDevShell` put `typescript-language-server` on `PATH`
+and merge it into `OPENCODE_CONFIG_CONTENT` as OpenCode's `typescript` server,
+the same nix-opencode-lsp route the Python shell uses. Pass
+`opencodeLsp.enable = false` to opt out.
+
 Python projects should compose the existing `harbor-py` environment helpers,
 rather than copy uv plumbing into this library or a consumer flake.
 
