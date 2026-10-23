@@ -124,6 +124,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component android --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -267,6 +384,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component cad --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -644,6 +878,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component core --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: history
       run: |
         set -euo pipefail
@@ -1489,6 +1840,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component database --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: userns
       run: |
         set -euo pipefail
@@ -1866,6 +2334,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component evm --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -2020,6 +2605,123 @@ jobs:
           exit 1
         fi
       shell: bash
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component go --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -2174,6 +2876,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component javascript --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -2317,6 +3136,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component llm --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: protocol-test
       run: |
         set -euo pipefail
@@ -2811,6 +3747,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component macos-sdk --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: pin
       run: |
         set -euo pipefail
@@ -2954,6 +4007,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component ntt --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -3097,6 +4267,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component projects --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -3240,6 +4527,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component python --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -3394,6 +4798,123 @@ jobs:
           exit 1
         fi
       shell: bash
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component rust --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: userns
       run: |
         set -euo pipefail
@@ -4248,6 +5769,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component solana --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail
@@ -4391,6 +6029,123 @@ jobs:
         git config --global --add url.https://github.com/.insteadOf git@github.com:
         git config --global --add url.https://codeberg.org/.insteadOf ssh://git@codeberg.org/
         git config --global --add url.https://codeberg.org/.insteadOf git@codeberg.org:
+    - name: provision
+      run: |
+        set -euo pipefail
+        SIMIT_GATE_DIRECTORY=$(mktemp -d)
+        set -- "$SIMIT_GATE_DIRECTORY" "$(date +%s)" "$(( $(date +%s) + 3600 < ${{ steps.simit-gate-budget.outputs.deadline }} ? $(date +%s) + 3600 : ${{ steps.simit-gate-budget.outputs.deadline }} ))"
+        unset SIMIT_GATE_DIRECTORY
+        test -n "$1"
+        test -d "$1"
+        trap 'rm -f -- "$1/ready" "$1/ready.diagnostics-complete" || true; rmdir -- "$1" || true' EXIT
+        set -- "$@" nix develop --print-build-logs .#ci --command simit monorepo check --component tex --check provision --nix-diagnostics --gate-env provider-staged --deadline "$3" --supervisor-ready "$1/ready"
+        if (
+          set -- "$1/ready" "$3" "${@:4}"
+        #!/usr/bin/env bash
+        # Bound provisioning, including exec, until native deadline ownership.
+        trap - EXIT
+        ready=$1
+        remaining=$(($2 - $(date +%s)))
+        shift 2
+        cancelled=0
+        trap 'cancelled=130' INT
+        trap 'cancelled=143' TERM
+        trap 'cancelled=129' HUP
+        if [ "$remaining" -le 0 ]; then
+          echo 'Nix provisioning timed out before execution' >&2
+          exit 124
+        fi
+        deadline=$((SECONDS + remaining))
+        # Bash launches async jobs in a new process group before child-side exec.
+        # This keeps even blocked executable lookup outside the supervising process.
+        set -m
+        "$@" &
+        pid=$!
+        set +m
+        status=1
+        gate_pid=
+        trap '
+          if [ "$status" -ne 0 ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            # A killed native runner cannot drop its separate gate process group.
+            # Its private marker records that group only after a successful spawn.
+            if [ -f "$ready" ] && [ ! -f "$ready.diagnostics-complete" ]; then
+              read -r gate_pid < "$ready" || true
+              if [[ "$gate_pid" =~ ^[1-9][0-9]*$ ]]; then
+                kill -KILL -- "-$gate_pid" 2>/dev/null || true
+              fi
+            fi
+          fi
+          # Do not block the diagnostic reserve waiting for an uninterruptible child.
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+          fi
+        ' EXIT
+        while kill -0 "$pid" 2>/dev/null; do
+          if [ "$cancelled" -ne 0 ] || { [ ! -f "$ready" ] && [ "$SECONDS" -ge "$deadline" ]; }; then
+            if [ "$cancelled" -ne 0 ]; then
+              echo 'Nix provisioning cancelled' >&2
+              status=$cancelled
+            else
+              echo 'Nix provisioning timed out' >&2
+              status=124
+            fi
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            grace=5
+            if [ -f "$ready" ]; then
+              # Native owns its isolated gate and bounded cancellation diagnostics.
+              grace=90
+            fi
+            limit=$((SECONDS + grace))
+            while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$limit" ]; do
+              sleep 0.05
+            done
+            exit "$status"
+          fi
+          sleep 0.05
+        done
+        if wait "$pid"; then
+          status=0
+        else
+          status=$?
+        fi
+        exit "$status"
+
+        ); then
+          exit 0
+        else
+          set -- "$1" "$2" "$3" "$?"
+        fi
+        if [ ! -f "$1/ready.diagnostics-complete" ]; then
+          (
+            set -- "$2"
+        printf '=== Nix failure diagnostics (check start @%s) ===\n' "$1" >&2
+        if [ "$(uname -s)" != Linux ]; then
+          printf '%s\n' 'Linux kernel/systemd diagnostics unavailable on this platform' >&2
+          exit 0
+        fi
+        for path in /proc/meminfo /proc/pressure/memory; do
+          printf '\n--- %s ---\n' "$path" >&2
+          cat -- "$path" >&2 || true
+        done
+        capture() {
+          printf '\n--- %s ---\n' "$1" >&2
+          shift
+          if timeout --kill-after=5s 15s sudo -n "$@" >&2; then
+            printf 'status: 0\n' >&2
+          else
+            printf 'status: %s\n' "$?" >&2
+          fi
+        }
+        capture 'Nix daemon status' systemctl show nix-daemon.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,MemoryCurrent,MemoryPeak,OOMPolicy
+        capture 'Nix daemon journal' journalctl --unit=nix-daemon.service --since "@$1" --lines=150 --no-pager --output=short-iso
+        capture 'Kernel journal' journalctl --dmesg --since "@$1" --lines=150 --no-pager --output=short-iso
+
+          ) || true
+        fi
+        exit "$4"
+      shell: bash
+      timeout-minutes: 62
     - name: nix
       run: |
         set -euo pipefail

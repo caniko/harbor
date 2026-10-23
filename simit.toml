@@ -20,6 +20,8 @@ id = "core"
 paths = ["components/core"]
 cargo_packages = ["harbor-evidence"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "history", run = "python3 scripts/check_history.py" },
   { id = "userns-contracts", run = "python3 -B -m unittest discover -s scripts -p test_ci_userns.py", timeout_minutes = 5 },
   { id = "format", run = "treefmt --ci" },
@@ -44,6 +46,8 @@ cargo_packages = [
 depends_on = ["core", "android", "macos-sdk"]
 systems = ["x86_64-linux", "aarch64-darwin"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   # The root workspace (evidence, database, CAD, Zenodo) and harbor-rs's own
   # workspace are qualified separately. CAD's worker and DB's lifecycle engines
   # require Linux kernel/runtime APIs, so Darwin excludes them.
@@ -65,6 +69,8 @@ id = "python"
 paths = ["components/python"]
 depends_on = ["core"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-python", timeout_minutes = 90 },
 ]
 
@@ -73,6 +79,8 @@ id = "javascript"
 paths = ["components/javascript"]
 depends_on = ["core"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-javascript", timeout_minutes = 90 },
 ]
 
@@ -82,6 +90,8 @@ paths = ["components/go"]
 depends_on = ["core"]
 systems = ["x86_64-linux", "aarch64-linux", "aarch64-darwin"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-go", timeout_minutes = 90 },
 ]
 
@@ -90,6 +100,8 @@ id = "android"
 paths = ["components/android"]
 depends_on = ["core"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-android", timeout_minutes = 90 },
 ]
 
@@ -102,6 +114,8 @@ releases = [
 ]
 depends_on = ["core"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-tex .#tex-anx-plugin-zenodo .#tex-anx-plugin-pandoc", timeout_minutes = 90 },
 ]
 
@@ -111,6 +125,8 @@ paths = ["components/database"]
 cargo_packages = ["harbor-db"]
 depends_on = ["rust"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "userns", run = "python3 scripts/ci_userns.py", timeout_minutes = 5 },
   { id = "hosted-cache", run = "test \"${RUNNER_ENVIRONMENT:-}\" = github-hosted && test -r /dev/kvm && test -w /dev/kvm && sudo install -d -m 1777 -o root -g root /var/cache/sccache && test ! -L /var/cache/sccache && test \"$(stat -c '%u:%a' /var/cache/sccache)\" = 0:1777 && printf '%s\\n' 'extra-sandbox-paths = /var/cache/sccache' 'log-lines = 250' | sudo tee -a /etc/nix/nix.conf && sudo systemctl restart nix-daemon.service && nix config show sandbox-paths | grep -F /var/cache/sccache" },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-database .#database-storage-lifecycle .#database-harbor-db-cached", timeout_minutes = 90 },
@@ -121,6 +137,8 @@ id = "evm"
 paths = ["components/evm"]
 depends_on = ["core"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-evm", timeout_minutes = 90 },
 ]
 
@@ -129,6 +147,8 @@ id = "solana"
 paths = ["components/solana"]
 depends_on = ["core", "rust"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-solana", timeout_minutes = 90 },
 ]
 
@@ -137,6 +157,8 @@ id = "ntt"
 paths = ["components/ntt"]
 depends_on = ["core"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-ntt", timeout_minutes = 90 },
 ]
 
@@ -156,6 +178,8 @@ releases = [
 ]
 depends_on = ["core"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "protocol-test", run = "cargo test --locked --manifest-path components/llm/Cargo.toml -p harbor-llm-protocol -p harbor-llm-runtime --jobs 2", timeout_minutes = 10 },
   { id = "protocol-clippy", run = "cargo clippy --locked --manifest-path components/llm/Cargo.toml -p harbor-llm-protocol -p harbor-llm-runtime -p harbor-llm-codegen --all-targets --jobs 2 -- -D warnings", timeout_minutes = 10 },
   { id = "protocol-generated", run = "cargo run --locked --manifest-path components/llm/Cargo.toml -p harbor-llm-codegen -- --check components/llm", timeout_minutes = 10 },
@@ -171,6 +195,8 @@ releases = [
 ]
 depends_on = ["rust", "python"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-cad", timeout_minutes = 90 },
   { id = "blender-companion", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.blender-mcp-runtime", timeout_minutes = 90 },
   { id = "openpencil-companion", run = "nix build --print-build-logs --no-link --max-jobs 1 --cores 2 .#open-pencil-desktop .#checks.x86_64-linux.open-pencil-package-smoke .#checks.x86_64-linux.open-pencil-desktop-mcp", timeout_minutes = 180 },
@@ -181,6 +207,8 @@ id = "projects"
 paths = ["components/projects"]
 depends_on = ["core"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-projects", timeout_minutes = 90 },
 ]
 
@@ -188,5 +216,7 @@ checks = [
 id = "macos-sdk"
 paths = ["components/macos-sdk"]
 checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "pin", run = "nix eval --json .#lib.pins.macosSdk | jq -e '(.sdkVersion | test(\"^[0-9]+([.][0-9]+)+$\")) and (.outputHash | startswith(\"sha256-\")) and (.storePath | startswith(\"/nix/store/\")) and .attic.cacheName == \"harbor-macos-sdk\"'" },
 ]
