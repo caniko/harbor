@@ -1,8 +1,29 @@
 # Harbor
 
-Harbor brings the owned Harbor build-infrastructure repositories into one
-history-preserving repository. Components retain independent package identities,
-versions, publication settings, and licenses.
+Harbor is the superproject for the owned Harbor build-infrastructure
+repositories. Most components are git submodules of their own live repositories
+(for example `components/rust` is `caniko/harbor-rs`); `cad`, `tex` and
+`macos-sdk` are still inline. Components retain independent package identities,
+versions, publication settings, and licenses, and the imported histories remain
+reachable here.
+
+## Working with submodules
+
+```console
+git clone --recurse-submodules https://github.com/caniko/harbor.git
+git submodule update --init --recursive   # existing checkout
+```
+
+Change a component in its own repository (or in `components/<name>`, which is
+that repository's checkout), merge it there, then bump the gitlink here:
+`git -C components/<name> fetch && git -C components/<name> checkout <rev>`
+and commit `components/<name>`. Harbor CI qualifies every bump. Each component
+also evaluates standalone: it reads `harborRoot` when harbor passes it and
+otherwise falls back to harbor-meta's `lib.standaloneRoot`. Component lock pins
+match the root pins (nixpkgs, nixpkgs-darwin, rust-overlay, flake-parts, ...);
+keep them aligned when the root moves. Nix consumers must fetch submodules:
+`git+https://github.com/caniko/harbor.git?ref=...&submodules=1`; the
+`github:` tarball fetcher omits them.
 
 ## Shared infrastructure
 
@@ -13,10 +34,12 @@ adapter. See [framework tooling modules](docs/tooling-modules.md) for the exact
 catalog, platform support, Blender/OpenPencil MCP and CAD runtime contracts.
 
 The root `flake.nix` and `flake.lock` own the input graph. Component output
-adapters are imported with those inputs and a component-local `self`; their
-former input declarations and lockfiles do not participate in root evaluation.
-The root Cargo workspace has twelve members, with one lockfile and package-scoped
-Nix builds. Templates and test fixtures keep their independent project manifests.
+adapters are imported with those inputs and a component-local `self`; their own
+input declarations and lockfiles serve standalone evaluation only. The root
+Cargo workspace holds core's `harbor-evidence`, database, CAD and the Zenodo
+plugin with one lockfile; `components/rust` and `components/llm` are their own
+Cargo workspaces with their own lockfiles. Templates and test fixtures keep
+their independent project manifests.
 
 | Component                                               | Nix library namespace             |
 | ------------------------------------------------------- | --------------------------------- |

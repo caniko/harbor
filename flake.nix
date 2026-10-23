@@ -2,6 +2,8 @@
   description = "Harbor shared build infrastructure: independent components in one repository";
 
   inputs = {
+    # Components are git submodules; evaluate them as part of this flake's source.
+    self.submodules = true;
     # Consume qualified tool sources without their consumer flake graphs.
     simit = {
       url = "git+https://github.com/caniko/simit.git?ref=fix/monorepo-nix-diagnostics-20261014&rev=54ae206d02f7ad371bb206c337594615894cd43e";

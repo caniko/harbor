@@ -1,7 +1,0 @@
-[package]
-name = "registry-like"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-fake-api = "0.1.0"

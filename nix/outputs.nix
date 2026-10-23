@@ -150,6 +150,13 @@ in {
         devShell = self.lib.core.devShell;
       };
     };
+    # Spans sibling components (rust, python, ...), so the superproject root
+    # owns it; components/core keeps the test file for that reason.
+    timezoneConsumers = let
+      results = import ../components/core/tests/timezone-consumers.nix;
+    in
+      assert builtins.all (value: value) (builtins.attrValues results);
+        pkgs.writeText "harbor-timezone-consumers.json" (builtins.toJSON results);
     sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
       pkgs.runCommand "harbor-component-source-materialization" {} ''
         set -euo pipefail
@@ -167,6 +174,7 @@ in {
         }) ((components.${name}.checks.${system} or {})
           // nixlib.optionalAttrs (name == "core") ({
               source-materialization = sourceMaterialization;
+              timezone-consumers = timezoneConsumers;
               template-contract = templateContract;
               bootstrap-inputs = bootstrapInputs;
               module-contracts = moduleContracts;
@@ -179,6 +187,7 @@ in {
   in
     collect "checks" system
     // nixlib.mapAttrs' (key: value: nixlib.nameValuePair "core-${key}" value) portableCoreChecks
+    // {core-timezone-consumers = timezoneConsumers;}
     // groups
     // desktopChecks
     // blenderCheck
