@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "mkhl.direnv",
+    "rust-lang.rust-analyzer",
+    "ms-python.python",
+    "detachhead.basedpyright",
+    "charliermarsh.ruff",
+    "esbenp.prettier-vscode"
+  ]
+}

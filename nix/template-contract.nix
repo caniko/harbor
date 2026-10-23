@@ -7,6 +7,7 @@
   inherit (pkgs) lib;
   templates = [
     "android/templates/default"
+    "core/templates/polyglot"
     "evm/templates/default"
     "go/templates/default"
     "javascript/templates/default"
@@ -19,7 +20,7 @@
     "solana/templates/default"
     "tex/templates/default"
   ];
-  qualifiedRevision = "7d99eb50c52d0a941e2996b97c469b32a7657ef4";
+  qualifiedRevision = "3be813378c4b97f97edf06beb3bfed0a8d8acff1";
   qualifiedUrl = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=${qualifiedRevision}";
   evaluate = name: let
     source = self.outPath + "/components/${name}";
