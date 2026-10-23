@@ -157,6 +157,19 @@ in {
     in
       assert builtins.all (value: value) (builtins.attrValues results);
         pkgs.writeText "harbor-timezone-consumers.json" (builtins.toJSON results);
+    # Submodule components declare their own inputs for standalone use; the
+    # root must provide every one of them (or an alias), else evaluation fails
+    # deep inside a component with "attribute missing".
+    inputCoverage = let
+      provided = builtins.attrNames inputs ++ builtins.attrNames aliases;
+      missing = nixlib.concatMap (name: let
+        flake = import (../components + "/${name}/flake.nix");
+      in
+        map (input: "${name}: ${input}") (nixlib.subtractLists provided (builtins.attrNames (flake.inputs or {}))))
+      componentNames;
+    in
+      assert nixlib.assertMsg (missing == []) "harbor root lacks component inputs (declare them in flake.nix): ${nixlib.concatStringsSep ", " missing}";
+        pkgs.writeText "harbor-component-input-coverage" "ok";
     sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
       pkgs.runCommand "harbor-component-source-materialization" {} ''
         set -euo pipefail
@@ -175,6 +188,7 @@ in {
           // nixlib.optionalAttrs (name == "core") ({
               source-materialization = sourceMaterialization;
               timezone-consumers = timezoneConsumers;
+              input-coverage = inputCoverage;
               template-contract = templateContract;
               bootstrap-inputs = bootstrapInputs;
               module-contracts = moduleContracts;

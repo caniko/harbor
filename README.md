@@ -19,7 +19,10 @@ that repository's checkout), merge it there, then bump the gitlink here:
 `git -C components/<name> fetch && git -C components/<name> checkout <rev>`
 and commit `components/<name>`. Harbor CI qualifies every bump. Each component
 also evaluates standalone: it reads `harborRoot` when harbor passes it and
-otherwise falls back to harbor-meta's `lib.standaloneRoot`. Component lock pins
+otherwise falls back to harbor-meta's `lib.standaloneRoot`. When a component
+adds a flake input, declare it in the root `flake.nix` too (the root supplies
+every component input; `checks.<system>.component-core` fails otherwise).
+Component lock pins
 match the root pins (nixpkgs, nixpkgs-darwin, rust-overlay, flake-parts, ...);
 keep them aligned when the root moves. Nix consumers must fetch submodules:
 `git+https://github.com/caniko/harbor.git?ref=...&submodules=1`; the

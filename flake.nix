@@ -82,6 +82,11 @@
       url = "github:anza-xyz/agave/5a06890206cf9f00a5fbd253b8f417cc5c3a075c";
       flake = false;
     };
+    # Source for harbor-rs's mkCachePin check (components/rust declares the same pin).
+    nix-cache-pin = {
+      url = "github:caniko/nix-cache-pin/0.3.0";
+      flake = false;
+    };
     openlb = {
       url = "git+https://gitlab.com/openlb/release.git?ref=1.9.0&rev=145cd54810b468f4b6fd3ed86b10644264841578";
       flake = false;
