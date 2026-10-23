@@ -1,4 +1,4 @@
-# mkToolchain :: { pkgs, toolchainProfile?, toolchainFile?, channel?, date?, extensions?, withRustAnalyzer?, crossTargets?, cache? }
+# mkToolchain :: { pkgs, toolchainProfile?, toolchainFile?, channel?, date?, extensions?, withRustAnalyzer?, crossTargets?, targets?, cache? }
 #             -> { rustToolchain, craneLib, rawCraneLib, buildCache, cargoConfig, crossTargets }
 #
 # Build a Rust toolchain + craneLib for a given pkgs set.
@@ -23,11 +23,16 @@
   extensions ? null,
   withRustAnalyzer ? true,
   crossTargets ? null,
+  # Replaces the profile/file/legacy target list instead of extending it;
+  # `[]` installs only the host standard library.
+  targets ? null,
   # Compiler caching requires host transport and is therefore explicit.
   cache ? {},
 }:
 assert pkgs.lib.assertMsg (pkgs ? rust-bin)
 "harbor-rs: mkToolchain requires pkgs with rust-overlay applied (pkgs.rust-bin must exist)";
+assert pkgs.lib.assertMsg (targets == null || (builtins.isList targets && crossTargets == null))
+"harbor-rs: mkToolchain 'targets' must be a list and cannot be combined with 'crossTargets'";
 assert pkgs.lib.assertMsg (toolchainProfile == null || builtins.elem toolchainProfile ["nightly" "stable"])
 "harbor-rs: mkToolchain 'toolchainProfile' must be \"nightly\" or \"stable\", got \"${toString toolchainProfile}\"";
 assert pkgs.lib.assertMsg (toolchainProfile == null || (toolchainFile == null && channel == null && date == null))
@@ -51,7 +56,9 @@ assert pkgs.lib.assertMsg (date == null || date == "latest" || builtins.match "[
     then ["rust-src" "rustfmt" "rustc-codegen-cranelift-preview" "llvm-tools-preview"]
     else extensions;
   legacyCrossTargets =
-    if crossTargets == null
+    if targets != null
+    then targets
+    else if crossTargets == null
     then [
       "x86_64-unknown-linux-gnu"
       "aarch64-unknown-linux-gnu"
@@ -86,14 +93,18 @@ assert pkgs.lib.assertMsg (date == null || date == "latest" || builtins.match "[
       then ["rust-analyzer"]
       else []
     );
-  fileTargets = pkgs.lib.unique (
-    manifestTargets
-    ++ (
-      if crossTargets == null
-      then []
-      else crossTargets
-    )
-  );
+  fileTargets =
+    if targets != null
+    then targets
+    else
+      pkgs.lib.unique (
+        manifestTargets
+        ++ (
+          if crossTargets == null
+          then []
+          else crossTargets
+        )
+      );
   resolvedCrossTargets =
     if resolvedToolchainFile != null
     then fileTargets

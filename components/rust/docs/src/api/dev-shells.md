@@ -1,4 +1,4 @@
-# mkDevShell, mkDocsShell, and mkDevShells
+# mkDevShell, mkDocsShell, mkDevShells, and mkToolchainShell
 
 `mkDevShell` builds one development shell. `mkDocsShell` builds a dedicated docs/tooling shell with the same base toolchain wiring but with Windows and macOS cross environment variables disabled by default. `mkDevShells` builds the default four-shell layout used by most downstream workspaces. All generated shells include `cargo-sweep` and the shared native build tools before project-specific packages are appended.
 
@@ -46,6 +46,29 @@ Append `projectCli.packages` to the shell packages and `projectCli.shellHook` to
 - `cross`
 
 That layout works well for workspaces where some crates only need native tools while others need MinGW or osxcross.
+
+## mkToolchainShell
+
+A composable Rust toolchain shell for polyglot projects. It needs no crane,
+`mkCross`, MinGW, or osxcross, applies rust-overlay itself when `pkgs` lacks
+it, and defaults to the pinned stable profile with only the host standard
+library. Compose it with harbor-meta's `devShell.mkShell`:
+
+```nix
+devShells.default = harbor.lib.core.devShell.mkShell {
+  inherit pkgs;
+  shells = [
+    (harbor.lib.rust.mkToolchainShell {inherit pkgs;})
+    (harbor.lib.python.mkUvDevShell {inherit pkgs;})
+  ];
+};
+```
+
+Arguments: `pkgs`, `timeZone`, `toolchainProfile` (`"stable"`), `targets`
+(`[]`), `packages`, `extraEnv`, `extraShellHook`, and `opencodeLsp`. The
+toolchain is available as `passthru.toolchain`. The Cargo hook is the same as
+`mkDevShell`'s. `checks.mkToolchainShell-composes` covers composition, host-only
+targets, and replacement of a parent nightly `CARGO_HOME`.
 
 ## mkDocsShell
 
@@ -121,8 +144,11 @@ A nested checkout that must not inherit a parent Harbor shell needs its own
 Harbor's Cargo hook:
 
 - installs generated config only into Harbor's hashed cache directory
-- leaves an existing `CARGO_HOME` unchanged and reports that generated config
-  is not activated
+- replaces an inherited `CARGO_HOME` that is another harbor-rs generated
+  config (for example a parent nightly shell's `-Z` rustflags under a stable
+  child)
+- leaves any other existing `CARGO_HOME` unchanged and reports that generated
+  config is not activated
 - fails the shell when that install cannot complete
 
 `checks.mkDevShells-cargo-home` covers repeated, concurrent, user-owned, and

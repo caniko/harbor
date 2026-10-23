@@ -73,6 +73,7 @@
       flake = let
         lib = import ./lib {
           inherit crane osxcross;
+          rustOverlay = rust-overlay;
           harbor-meta = harbor-meta.lib;
           nixBundle = nix-bundle;
           harbor-android = harbor-android.lib;

@@ -12,6 +12,7 @@
 - `extensions`: extra Rust components to install. Defaults to `["rust-src" "rustfmt" "rustc-codegen-cranelift-preview" "llvm-tools-preview"]`. `llvm-tools-preview` provides `llvm-cov`/`llvm-profdata`, which `cargo-llvm-cov`-based coverage CI requires.
 - `withRustAnalyzer`: whether to include `rust-analyzer` in the toolchain extensions; defaults to `true`
 - `crossTargets`: list of target triples to include in the toolchain
+- `targets`: list of target triples that replaces the profile, file, or legacy target list instead of extending it; `[]` installs only the host standard library. Cannot be combined with `crossTargets`
 - `cache.enable`: explicitly enable the host-backed compiler cache; defaults to `false`
 
 ## Returns
@@ -108,4 +109,5 @@ toolchain = harbor-rs.lib.mkToolchain {
 ```
 
 In file mode, `channel` and `date` must be omitted. Explicit `extensions` and
-`crossTargets` are added to the components and targets declared by the file.
+`crossTargets` are added to the components and targets declared by the file;
+`targets` replaces the file's targets.
