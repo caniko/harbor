@@ -11,20 +11,20 @@ fixture, the lifecycle fixes and the original-obligation contract, the
 harbor-android SDK environment fix, and harbor-llm's version 2 preparation
 admission.
 
-| Component | Repository | Gitlink |
-| --- | --- | --- |
-| core | caniko/harbor-meta | `0fd1008` |
-| rust | caniko/harbor-rs | `fcc3d75` |
-| python | caniko/harbor-py | `535cc40` |
-| javascript | caniko/harbor-js | `51cb062` |
-| go | caniko/harbor-go | `9785b9c` |
-| android | caniko/harbor-android | `7af2976` |
-| database | caniko/harbor-db | `d704a10` |
-| evm | caniko/harbor-eth | `6060c62` |
-| solana | caniko/harbor-sol | `4ee4fe0` |
-| ntt | caniko/harbor-ntt | `57d2429` |
-| llm | caniko/harbor-llm | `4062374` |
-| projects | caniko/harbor-projects | `8e7503d` |
+| Component  | Repository             | Gitlink   |
+| ---------- | ---------------------- | --------- |
+| core       | caniko/harbor-meta     | `0fd1008` |
+| rust       | caniko/harbor-rs       | `fcc3d75` |
+| python     | caniko/harbor-py       | `535cc40` |
+| javascript | caniko/harbor-js       | `51cb062` |
+| go         | caniko/harbor-go       | `9785b9c` |
+| android    | caniko/harbor-android  | `7af2976` |
+| database   | caniko/harbor-db       | `d704a10` |
+| evm        | caniko/harbor-eth      | `6060c62` |
+| solana     | caniko/harbor-sol      | `4ee4fe0` |
+| ntt        | caniko/harbor-ntt      | `57d2429` |
+| llm        | caniko/harbor-llm      | `4062374` |
+| projects   | caniko/harbor-projects | `8e7503d` |
 
 `cad` and `tex` are synced the same way after harbor #6 lands. `macos-sdk`
 stays inline because `caniko/harbor-macos-sdk-pin` is private.
