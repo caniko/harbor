@@ -34,6 +34,10 @@
           nix = ./nix/treefmt/nix.nix;
           toml = ./nix/treefmt/toml.nix;
         };
+        templates.polyglot = {
+          path = ./templates/polyglot;
+          description = "Stable Rust, Python (uv) and TypeScript (Node) in one Harbor shell";
+        };
       };
 
       perSystem = {
@@ -108,7 +112,14 @@
               inherit pkgs;
               inherit (self.lib) packageTests;
             };
-          };
+          }
+          # The polyglot template composes the Rust, Python and JavaScript
+          # components, so it is checked only inside the Harbor monorepo.
+          // pkgs.lib.optionalAttrs (inputs ? harborRoot) (import ./checks/template-polyglot.nix {
+            inherit pkgs system nixpkgs;
+            inherit (inputs) harborRoot treefmt-nix;
+            inherit (self.lib) templateTests devShellTests;
+          });
 
         formatter = treefmt.config.build.wrapper;
       };

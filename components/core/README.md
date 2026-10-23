@@ -47,6 +47,18 @@ host PATH. Build the resulting check: `nix flake check --no-build` only evaluate
 it. This is an executable-availability check, not a runtime or direnv activation
 test. Keep application startup and dependency-import checks separate.
 
+## Polyglot template
+
+`templates.core-polyglot` composes `lib.rust.mkToolchainShell`,
+`lib.python.mkUvDevShell` and `lib.javascript.mkNodeDevShell` (Node 22) through
+`devShell.mkShell`. It ships small Rust, Python and TypeScript samples with
+tests, and a `.vscode/settings.json` that points the Python, Ruff, basedpyright
+and rust-analyzer extensions at the shell's and `.venv`'s binaries via direnv.
+
+```bash
+nix flake init -t github:caniko/harbor#core-polyglot
+```
+
 ## Usage
 
 ```bash
