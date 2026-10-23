@@ -1,6 +1,7 @@
 {
   crane,
   osxcross,
+  rustOverlay ? null,
   harbor-meta ? null,
   nixBundle ? null,
   harbor-android ? null,
@@ -11,6 +12,7 @@
       then harbor-meta.devShell
       else null;
     opencodeProfiles = opencodeLib.profiles;
+    inherit mkToolchain rustOverlay;
   };
   adapterLib = import ./adapter.nix;
   opencodeLib =
@@ -111,7 +113,7 @@ in {
   mkMacosUniversalStager = import ./macos-staging.nix;
   mkOsxcrossHooks = import ./osxcross-hooks.nix;
   mkWindowsMsvcDevShell = import ./windows-msvc-shell.nix {inherit metaShellTools;};
-  inherit (devShellLib) mkDevShell mkDocsShell mkDevShells;
+  inherit (devShellLib) mkDevShell mkDocsShell mkDevShells mkToolchainShell;
   inherit (metaShellTools) mkProjectCliShellTools mkPkgConfigEnv;
   inherit (adapterLib) mkAdapter isHarborAdapter;
   inherit (minisignLib) mkMinisignSign mkMinisignVerify;

@@ -1,6 +1,7 @@
 # mkDevShell   :: { ... } -> devShell derivation
 # mkDocsShell  :: { ... } -> devShell derivation
 # mkDevShells  :: { ... } -> { default, windows, macos, cross }
+# mkToolchainShell :: { pkgs, toolchainProfile?, targets?, ... } -> devShell derivation
 #
 # Build devShells with Rust cross-compilation environment variables pre-configured.
 # mkDevShells calls mkDevShell internally, so both live in the same file.
@@ -11,7 +12,87 @@
 {
   metaDevShell ? null,
   opencodeProfiles ? null,
+  mkToolchain ? null,
+  rustOverlay ? null,
 }: rec {
+  # Install a generated Cargo config as CARGO_HOME. An inherited CARGO_HOME is
+  # kept unless it is another harbor-rs generated config, whose channel or
+  # targets need not match this shell (stable cargo rejects nightly -Z flags).
+  mkCargoHomeHook = {
+    pkgs,
+    cargoConfig,
+  }:
+    if cargoConfig != null
+    then ''
+      __rs_harbor_cfg_hash="$(${pkgs.coreutils}/bin/sha256sum ${cargoConfig.configPath} | ${pkgs.coreutils}/bin/cut -c1-16)"
+      RS_HARBOR_CARGO_HOME="''${XDG_CACHE_HOME:-$HOME/.cache}/harbor-rs/cargo-config-$__rs_harbor_cfg_hash"
+      case "''${CARGO_HOME:-}" in
+        "" | "''${XDG_CACHE_HOME:-$HOME/.cache}"/harbor-rs/cargo-config-*)
+          export CARGO_HOME="$RS_HARBOR_CARGO_HOME"
+          ;;
+      esac
+      if [ "$CARGO_HOME" = "$RS_HARBOR_CARGO_HOME" ]; then
+        mkdir -p "$RS_HARBOR_CARGO_HOME" || return 1
+        # Concurrent direnv shells must not unlink or expose a partial config.
+        __rs_harbor_cfg_tmp="$(mktemp "$RS_HARBOR_CARGO_HOME/.config.toml.XXXXXX")" || return 1
+        if ! install -m 0644 ${cargoConfig.configPath} "$__rs_harbor_cfg_tmp" \
+          || ! ${pkgs.coreutils}/bin/mv -fT "$__rs_harbor_cfg_tmp" "$RS_HARBOR_CARGO_HOME/config.toml"; then
+          rm -f "$__rs_harbor_cfg_tmp"
+          return 1
+        fi
+        echo "harbor-rs: cargo config at $CARGO_HOME/config.toml" >&2
+      else
+        echo "harbor-rs: keeping existing CARGO_HOME=$CARGO_HOME; generated Cargo config is not activated" >&2
+      fi
+    ''
+    else "";
+
+  # A composable Rust toolchain shell for polyglot projects: no crane, cross,
+  # MinGW or osxcross. Pass it to harbor-meta's `devShell.mkShell { shells }`.
+  # Defaults to the pinned stable profile with only the host standard library.
+  mkToolchainShell = {
+    pkgs,
+    timeZone ? "UTC",
+    toolchainProfile ? "stable",
+    targets ? [],
+    packages ? [],
+    extraEnv ? {},
+    extraShellHook ? "",
+    opencodeLsp ? {enable = true;},
+  }: let
+    pkgs' =
+      if pkgs ? rust-bin
+      then pkgs
+      else if rustOverlay == null
+      then throw "harbor-rs: mkToolchainShell requires the rust-overlay flake input"
+      else pkgs.extend rustOverlay.overlays.default;
+    toolchain = mkToolchain {
+      pkgs = pkgs';
+      inherit toolchainProfile targets;
+    };
+    opencodeLspPackages = pkgs.lib.optionals (opencodeLsp.enable or true) (
+      if opencodeProfiles == null
+      then throw "harbor-rs: mkToolchainShell opencode LSP packages require the harbor-meta flake input"
+      else opencodeProfiles.rust.packages pkgs'
+    );
+    shell = metaDevShell.mkShell {
+      pkgs = pkgs';
+      inherit timeZone;
+      packages = [toolchain.rustToolchain] ++ opencodeLspPackages ++ packages;
+      env = extraEnv;
+      extraShellHook = ''
+        ${mkCargoHomeHook {
+          pkgs = pkgs';
+          inherit (toolchain) cargoConfig;
+        }}
+        ${extraShellHook}
+      '';
+    };
+  in
+    if metaDevShell == null || mkToolchain == null
+    then throw "harbor-rs: mkToolchainShell requires the harbor-meta flake input"
+    else shell // {passthru = shell.passthru // {inherit toolchain;};};
+
   # Build a devShell with Rust cross-compilation environment variables pre-configured.
   mkDevShell = {
     pkgs,
@@ -63,29 +144,7 @@
       then osxcrossRustHelpers.mkDevShellHook {}
       else "";
 
-    cargoConfigHook =
-      if cargoConfig != null
-      then ''
-        __rs_harbor_cfg_hash="$(${pkgs.coreutils}/bin/sha256sum ${cargoConfig.configPath} | ${pkgs.coreutils}/bin/cut -c1-16)"
-        RS_HARBOR_CARGO_HOME="''${XDG_CACHE_HOME:-$HOME/.cache}/harbor-rs/cargo-config-$__rs_harbor_cfg_hash"
-        if [ -z "''${CARGO_HOME:-}" ]; then
-          export CARGO_HOME="$RS_HARBOR_CARGO_HOME"
-        fi
-        if [ "$CARGO_HOME" = "$RS_HARBOR_CARGO_HOME" ]; then
-          mkdir -p "$RS_HARBOR_CARGO_HOME" || return 1
-          # Concurrent direnv shells must not unlink or expose a partial config.
-          __rs_harbor_cfg_tmp="$(mktemp "$RS_HARBOR_CARGO_HOME/.config.toml.XXXXXX")" || return 1
-          if ! install -m 0644 ${cargoConfig.configPath} "$__rs_harbor_cfg_tmp" \
-            || ! ${pkgs.coreutils}/bin/mv -fT "$__rs_harbor_cfg_tmp" "$RS_HARBOR_CARGO_HOME/config.toml"; then
-            rm -f "$__rs_harbor_cfg_tmp"
-            return 1
-          fi
-          echo "harbor-rs: cargo config at $CARGO_HOME/config.toml" >&2
-        else
-          echo "harbor-rs: keeping existing CARGO_HOME=$CARGO_HOME; generated Cargo config is not activated" >&2
-        fi
-      ''
-      else "";
+    cargoConfigHook = mkCargoHomeHook {inherit pkgs cargoConfig;};
 
     baseEnv = {
       LIBCLANG_PATH = pkgs.lib.makeLibraryPath [pkgs.clang.cc];

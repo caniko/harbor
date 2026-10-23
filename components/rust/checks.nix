@@ -1571,6 +1571,13 @@ in
         done
         for pid in "''${pids[@]}"; do wait "$pid"; done
 
+        # Another harbor-rs shell's generated config (e.g. a parent nightly
+        # shell) is replaced, not inherited.
+        export CARGO_HOME="$XDG_CACHE_HOME/harbor-rs/cargo-config-0000000000000000"
+        source ${hook}
+        test "$CARGO_HOME" = "$RS_HARBOR_CARGO_HOME"
+        cmp ${toolchain.cargoConfig.configPath} "$CARGO_HOME/config.toml"
+
         export CARGO_HOME="$TMPDIR/previous-harbor-home"
         source ${hook} 2>diagnostic
         test "$CARGO_HOME" = "$TMPDIR/previous-harbor-home"
@@ -1594,6 +1601,41 @@ in
         fi
         touch "$out"
       '';
+
+    # mkToolchainShell composes into harbor-meta's mkShell from plain nixpkgs
+    # (rust-overlay applied internally), installs only the host stdlib, and
+    # replaces a parent nightly shell's generated CARGO_HOME.
+    mkToolchainShell-composes = let
+      plainPkgs = import nixpkgs {inherit system;};
+      shell = self.lib.mkToolchainShell {pkgs = plainPkgs;};
+      composed = self.inputs.harbor-meta.lib.devShell.mkShell {
+        pkgs = plainPkgs;
+        shells = [shell];
+      };
+      hook = pkgs.writeText "toolchain-shell-hook" composed.shellHook;
+      inherit (shell.passthru) toolchain;
+    in
+      assert toolchain.toolchainProfile == "stable";
+      assert toolchain.crossTargets == [];
+        pkgs.runCommand "check-mkToolchainShell-composes" {
+          inherit (composed) nativeBuildInputs;
+        } ''
+          export HOME="$TMPDIR/home"
+          export XDG_CACHE_HOME="$TMPDIR/cache"
+          export CARGO_HOME="$XDG_CACHE_HOME/harbor-rs/cargo-config-0000000000000000"
+          source ${hook}
+          test "$CARGO_HOME" = "$RS_HARBOR_CARGO_HOME"
+          if grep -q -- '-Z' "$CARGO_HOME/config.toml"; then
+            echo 'stable toolchain shell installed nightly-only rustflags' >&2
+            exit 1
+          fi
+          if rustc --version | grep -q nightly; then
+            echo 'stable toolchain shell resolved a nightly rustc' >&2
+            exit 1
+          fi
+          command -v rust-analyzer cargo-clippy rustfmt >/dev/null
+          touch "$out"
+        '';
 
     mkDevShells-audit-tools-in-path =
       pkgs.runCommand "check-mkDevShells-audit-tools-in-path" {
