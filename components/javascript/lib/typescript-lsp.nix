@@ -13,9 +13,14 @@ in
     shellHook =
       (opencodeLspLib.mkShell {
         inherit pkgs;
-        extraLsp.typescript = {
-          command = ["${server}/bin/typescript-language-server" "--stdio"];
-          extensions = [".ts" ".tsx" ".mts" ".cts" ".js" ".jsx" ".mjs" ".cjs"];
+        extraLsp = {
+          typescript = {
+            command = ["${server}/bin/typescript-language-server" "--stdio"];
+            extensions = [".ts" ".tsx" ".mts" ".cts" ".js" ".jsx" ".mjs" ".cjs"];
+          };
+          # The base config pins nixpkgs' rust-analyzer; resolve it from PATH
+          # like harbor-rs's profile, so a composed Rust toolchain's serves.
+          rust.command = ["rust-analyzer"];
         };
       }).shellHook;
   }

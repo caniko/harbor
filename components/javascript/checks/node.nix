@@ -67,15 +67,16 @@ in {
     pkgs.runCommand "harbor-js-node-opencode-typescript-lsp" {
       nativeBuildInputs = shell.nativeBuildInputs ++ [pkgs.jq];
     } ''
-      export HOME="$TMPDIR" XDG_CACHE_HOME="$TMPDIR"
-      export OPENCODE_CONFIG_CONTENT='{"lsp":{"caller":{"command":["caller-lsp"]}}}'
-      ${shell.passthru.devShellSpec.shellHook}
-      server="$(jq -er '.lsp.typescript.command[0]' <<<"$OPENCODE_CONFIG_CONTENT")"
-      test -x "$server"
-      test "$server" = "$(command -v typescript-language-server)"
-      jq -e '.lsp.caller.command == ["caller-lsp"]' <<<"$OPENCODE_CONFIG_CONTENT" >/dev/null
-      mkdir -p "$out"
-      echo ok > "$out/result"
+        export HOME="$TMPDIR" XDG_CACHE_HOME="$TMPDIR"
+        export OPENCODE_CONFIG_CONTENT='{"lsp":{"caller":{"command":["caller-lsp"]}}}'
+        ${shell.passthru.devShellSpec.shellHook}
+        server="$(jq -er '.lsp.typescript.command[0]' <<<"$OPENCODE_CONFIG_CONTENT")"
+        test -x "$server"
+        test "$server" = "$(command -v typescript-language-server)"
+        jq -e '.lsp.caller.command == ["caller-lsp"]' <<<"$OPENCODE_CONFIG_CONTENT" >/dev/null
+      jq -e '.lsp.rust.command == ["rust-analyzer"]' <<<"$OPENCODE_CONFIG_CONTENT" >/dev/null
+        mkdir -p "$out"
+        echo ok > "$out/result"
     '';
 
   pnpm-pinned-install = pkgs.runCommand "harbor-js-pnpm-pinned-install" ({
