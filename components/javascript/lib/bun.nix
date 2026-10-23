@@ -2,6 +2,7 @@
   lib,
   bun-overlay,
   metaDevShell ? null,
+  mkTypescriptLsp ? (_: {}),
 }: let
   supportedSystems = [
     "x86_64-linux"
@@ -171,6 +172,7 @@ in rec {
     extraPackages ? [],
     extraEnv ? {},
     extraShellHook ? "",
+    opencodeLsp ? {enable = true;},
   }:
     if metaDevShell == null
     then throw "harbor-js.bun.mkBunDevShell requires the harbor-meta flake input"
@@ -184,6 +186,7 @@ in rec {
         packages = toolchain.packages;
         env = toolchain.env // extraEnv;
         inherit extraShellHook;
+        fragments = [(mkTypescriptLsp {inherit pkgs opencodeLsp;})];
       };
 
   mkBunWorkspaceDeps = {

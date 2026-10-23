@@ -1,6 +1,7 @@
 {
   lib,
   metaDevShell ? null,
+  mkTypescriptLsp ? (_: {}),
 }: rec {
   readPnpmVersion = {packageJson}: let
     parsed =
@@ -68,6 +69,7 @@
     extraPackages ? [],
     extraEnv ? {},
     extraShellHook ? "",
+    opencodeLsp ? {enable = true;},
   }:
     if metaDevShell == null
     then throw "harbor-js.node.mkNodeDevShell requires the harbor-meta flake input"
@@ -78,5 +80,6 @@
         inherit pkgs timeZone extraShellHook;
         inherit (toolchain) packages;
         env = toolchain.env // extraEnv;
+        fragments = [(mkTypescriptLsp {inherit pkgs opencodeLsp;})];
       };
 }
