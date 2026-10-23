@@ -3,7 +3,7 @@
   "qualification_date": "2026-10-05",
   "lock_status": {
     "Cargo.lock": "committed",
-    "uv.lock": "committed",
+    "python/uv.lock": "committed",
     "flake.lock": "created through scoped Canix update; immutable root revisions verified"
   },
   "flake_lock_sha256": "c82b720484076521ba2a59ca4bf891873b69971a0c9766bd7f58c181d403a807",
@@ -194,7 +194,7 @@
     "sdk_revision": "2118f14f8a19bc158d8a1cf90af58d85d187f849",
     "api": "mcp.server.MCPServer",
     "python_requirement": ">=3.12,<3.14",
-    "dependency_hashes": "uv.lock",
+    "dependency_hashes": "python/uv.lock",
     "runtime_test": "passed with the official SDK stdio Client against the Rust worker",
     "nix_clean_runtime": "passed; packaged official MCP client also exercised native CPU job submission"
   },

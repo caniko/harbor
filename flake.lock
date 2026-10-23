@@ -227,6 +227,23 @@
         "type": "github"
       }
     },
+    "nix-cache-pin": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792571507,
+        "narHash": "sha256-8DdsRc5/cgwAtlHYEicNsMPgNCHR8qT/aurDteVkuQw=",
+        "owner": "caniko",
+        "repo": "nix-cache-pin",
+        "rev": "a69647e9be1afe5f9973732b9286b4e7de3b31b4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "caniko",
+        "ref": "0.3.0",
+        "repo": "nix-cache-pin",
+        "type": "github"
+      }
+    },
     "nix-opencode-lsp": {
       "inputs": {
         "flake-utils": [
@@ -415,6 +432,7 @@
         "git-hooks": "git-hooks",
         "home-manager": "home-manager",
         "nix-bundle": "nix-bundle",
+        "nix-cache-pin": "nix-cache-pin",
         "nix-opencode-lsp": "nix-opencode-lsp",
         "nixpkgs": "nixpkgs",
         "nixpkgs-darwin": "nixpkgs-darwin",
@@ -455,17 +473,17 @@
     "simit": {
       "flake": false,
       "locked": {
-        "lastModified": 1791939107,
-        "narHash": "sha256-KSEhdT660yN+dGrPtgMM+9NYt/CgOJq9ZYjLwgO4BWw=",
-        "ref": "fix/monorepo-nix-diagnostics-20261014",
-        "rev": "54ae206d02f7ad371bb206c337594615894cd43e",
-        "revCount": 619,
+        "lastModified": 1792754497,
+        "narHash": "sha256-qeeUiiqO8HQO8BPbME1sktGM3yuStkBXdV/MUJdjVZI=",
+        "ref": "trunk",
+        "rev": "4c6841cce19327927ea8a8f6e856276dd5c878f0",
+        "revCount": 858,
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       },
       "original": {
-        "ref": "fix/monorepo-nix-diagnostics-20261014",
-        "rev": "54ae206d02f7ad371bb206c337594615894cd43e",
+        "ref": "trunk",
+        "rev": "4c6841cce19327927ea8a8f6e856276dd5c878f0",
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       }

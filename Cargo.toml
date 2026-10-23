@@ -2,22 +2,15 @@
 resolver = "3"
 members = [
   "components/core/crates/harbor-evidence",
-  "components/llm",
-  "components/llm/runtime",
-  "components/llm/tools/codegen",
-  "components/rust/cli",
-  "components/rust/crates/harbor-cache",
-  "components/rust/crates/harbor-sdk",
-  "components/rust/crates/harbor-xtask",
-  "components/rust/crates/harbor-sandbox",
   "components/database",
   "components/cad",
   "components/tex/plugins/zenodo",
 ]
 exclude = [
   "migration/legacy/*",
-  "components/rust/templates/*",
-  "components/rust/tests/fixtures/*",
+  # Submodules with their own Cargo workspaces and lockfiles.
+  "components/rust",
+  "components/llm",
   "components/solana/templates/*",
 ]
 

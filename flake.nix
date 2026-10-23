@@ -2,9 +2,11 @@
   description = "Harbor shared build infrastructure: independent components in one repository";
 
   inputs = {
+    # Components are git submodules; evaluate them as part of this flake's source.
+    self.submodules = true;
     # Consume qualified tool sources without their consumer flake graphs.
     simit = {
-      url = "git+https://github.com/caniko/simit.git?ref=fix/monorepo-nix-diagnostics-20261014&rev=54ae206d02f7ad371bb206c337594615894cd43e";
+      url = "git+https://github.com/caniko/simit.git?ref=trunk&rev=4c6841cce19327927ea8a8f6e856276dd5c878f0";
       flake = false;
     };
     plinth-source = {
@@ -78,6 +80,11 @@
     };
     solana-source-darwin = {
       url = "github:anza-xyz/agave/5a06890206cf9f00a5fbd253b8f417cc5c3a075c";
+      flake = false;
+    };
+    # Source for harbor-rs's mkCachePin check (components/rust declares the same pin).
+    nix-cache-pin = {
+      url = "github:caniko/nix-cache-pin/0.3.0";
       flake = false;
     };
     openlb = {

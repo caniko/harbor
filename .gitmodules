@@ -1,0 +1,48 @@
+[submodule "components/core"]
+	path = components/core
+	url = https://github.com/caniko/harbor-meta.git
+	branch = trunk
+[submodule "components/rust"]
+	path = components/rust
+	url = https://github.com/caniko/harbor-rs.git
+	branch = trunk
+[submodule "components/python"]
+	path = components/python
+	url = https://github.com/caniko/harbor-py.git
+	branch = trunk
+[submodule "components/javascript"]
+	path = components/javascript
+	url = https://github.com/caniko/harbor-js.git
+	branch = trunk
+[submodule "components/go"]
+	path = components/go
+	url = https://github.com/caniko/harbor-go.git
+	branch = trunk
+[submodule "components/android"]
+	path = components/android
+	url = https://github.com/caniko/harbor-android.git
+	branch = trunk
+[submodule "components/database"]
+	path = components/database
+	url = https://github.com/caniko/harbor-db.git
+	branch = trunk
+[submodule "components/evm"]
+	path = components/evm
+	url = https://github.com/caniko/harbor-eth.git
+	branch = trunk
+[submodule "components/solana"]
+	path = components/solana
+	url = https://github.com/caniko/harbor-sol.git
+	branch = trunk
+[submodule "components/ntt"]
+	path = components/ntt
+	url = https://github.com/caniko/harbor-ntt.git
+	branch = trunk
+[submodule "components/llm"]
+	path = components/llm
+	url = https://github.com/caniko/harbor-llm.git
+	branch = trunk
+[submodule "components/projects"]
+	path = components/projects
+	url = https://github.com/caniko/harbor-projects.git
+	branch = trunk

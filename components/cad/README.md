@@ -18,7 +18,7 @@ Process success is never a physical-validation claim.
 
 ```sh
 cargo build --locked --jobs 2
-uv sync --locked
+uv sync --locked --project python
 harbor-cad worker --state /absolute/private/state --profile profiles/ci.json
 harbor-cad case init > case.json
 harbor-cad case plan case.json > planned.json
@@ -43,7 +43,7 @@ MCP uses the same worker, with bounded structured responses and durable job IDs:
 
 ```sh
 HARBOR_CAD_SOCKET=/absolute/private/state/worker.sock \
-  uv run --locked harbor-cad-mcp --profile all
+  uv run --locked --project python harbor-cad-mcp --profile all
 ```
 
 Profiles: `cad`, `simulation`, `results`, `all`. There is no arbitrary shell,
@@ -54,7 +54,7 @@ Python evaluation, package installation or scientific-array response tool.
 ```sh
 cargo test --locked --jobs 2
 cargo clippy --locked --all-targets --jobs 2 -- -D warnings
-HARBOR_CAD_TEST_BINARY="$PWD/target/debug/harbor-cad" uv run --locked pytest -q
+HARBOR_CAD_TEST_BINARY="$PWD/target/debug/harbor-cad" uv run --locked --project python pytest -q python/tests
 treefmt --config-file treefmt.toml
 ```
 
@@ -233,7 +233,7 @@ systemd user manager and the separately built CLI, MCP and `runtime-cpu` are
 required:
 
 ```sh
-uv run --locked python scripts/verify_native_cpu.py \
+uv run --locked --project python python scripts/verify_native_cpu.py \
   --executable /nix/store/CLI/bin/harbor-cad \
   --mcp /nix/store/MCP/bin/harbor-cad-mcp \
   --runtime /nix/store/RUNTIME-harbor-cad-native-runtime.json \
