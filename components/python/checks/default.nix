@@ -174,6 +174,10 @@ in
         test -e ${shellWithoutSelections}
         test "${builtins.toJSON (pkgs.lib.hasInfix "--extra" shellWithoutSelections.passthru.devShellSpec.shellHook)}" = "false"
         test "${builtins.toJSON (pkgs.lib.hasInfix "--group" shellWithoutSelections.passthru.devShellSpec.shellHook)}" = "false"
+        # OpenCode's Python servers are on PATH for other editors, and only
+        # when the OpenCode LSP profile is enabled.
+        test "${builtins.toJSON (builtins.all (p: builtins.elem p shell.passthru.devShellSpec.packages) [pkgs.basedpyright pkgs.ruff])}" = "true"
+        test "${builtins.toJSON (builtins.any (p: builtins.elem p shellWithoutSelections.passthru.devShellSpec.packages) [pkgs.basedpyright pkgs.ruff])}" = "false"
         mkdir -p $out
         echo ok > $out/result
       '';

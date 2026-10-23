@@ -26,7 +26,13 @@
   runtime ? null,
   opencodeLsp ? {enable = true;},
 }: let
-  inherit (nixLib) escapeShellArg escapeShellArgs optional optionalString;
+  inherit (nixLib) escapeShellArg escapeShellArgs optional optionals optionalString;
+  opencodeLspEnabled = (opencodeLsp.enable or true) && opencodeLspLib != null;
+  # The servers nix-opencode-lsp configures for the python profile, also on
+  # PATH so other editors (VS Code via direnv, Helix, Neovim) resolve the same
+  # binaries. Listed explicitly: its full shell would add nixpkgs'
+  # rust-analyzer and shadow a Rust toolchain's in a composed shell.
+  opencodeLspPackages = optionals opencodeLspEnabled [pkgs.basedpyright pkgs.ruff];
   expectedPython = nixLib.getExe python;
   scopedRuntime =
     if runtime != null
@@ -50,7 +56,7 @@
   );
   generatedHelpers = map (spec: mkUvHelper ({inherit pkgs;} // spec)) helperSpecs;
   opencodeLspHook =
-    if (opencodeLsp.enable or true) && opencodeLspLib != null
+    if opencodeLspEnabled
     then
       (opencodeLspLib.mkShell {
         inherit pkgs;
@@ -80,7 +86,7 @@ in
     else
       metaDevShell.mkShell {
         inherit pkgs timeZone;
-        packages = [python pkgs.uv scopedRuntime] ++ basePackages ++ extraPackages ++ generatedHelpers ++ helperPackages;
+        packages = [python pkgs.uv scopedRuntime] ++ basePackages ++ extraPackages ++ generatedHelpers ++ helperPackages ++ opencodeLspPackages;
         env =
           {
             UV_LINK_MODE = "copy";
