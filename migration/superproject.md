@@ -23,7 +23,7 @@ admission.
 | evm | caniko/harbor-eth | `6060c62` |
 | solana | caniko/harbor-sol | `4ee4fe0` |
 | ntt | caniko/harbor-ntt | `57d2429` |
-| llm | caniko/harbor-llm | `d303cbf` |
+| llm | caniko/harbor-llm | `4062374` |
 | projects | caniko/harbor-projects | `8e7503d` |
 
 `cad` and `tex` are synced the same way after harbor #6 lands. `macos-sdk`
@@ -44,6 +44,12 @@ The cross-component `timezone-consumers` check moved from core's flake to the ro
 `components/rust` and `components/llm` became separate Cargo workspaces. The root
 workspace excludes them, and the root `Cargo.lock` dropped their 41 packages
 without changing any remaining version.
+
+Upgrading to Simit trunk applies simit #58's rule that every release owner
+needs its own CHANGELOG.md directory. harbor-llm #4 moved the protocol crate's
+manifest to `rust/` and the Python package to `python/` (hence gitlink
+`4062374`). CAD's MCP package (`pyproject.toml`, `uv.lock`) moved to
+`components/cad/python/`.
 
 Imported histories, archival refs and `scripts/check_history.py` are unchanged.
 Commit ancestry still holds every import boundary.
