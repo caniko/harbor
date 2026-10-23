@@ -6,7 +6,7 @@
     self.submodules = true;
     # Consume qualified tool sources without their consumer flake graphs.
     simit = {
-      url = "git+https://github.com/caniko/simit.git?ref=fix/monorepo-nix-diagnostics-20261014&rev=54ae206d02f7ad371bb206c337594615894cd43e";
+      url = "git+https://github.com/caniko/simit.git?ref=trunk&rev=4c6841cce19327927ea8a8f6e856276dd5c878f0";
       flake = false;
     };
     plinth-source = {

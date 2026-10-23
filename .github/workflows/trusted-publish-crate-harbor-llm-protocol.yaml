@@ -49,8 +49,8 @@ jobs:
           components: rustfmt, clippy
 
       - name: Build trusted publisher engine
-        working-directory: .simit-publisher-engine
-        run: cargo build --release --locked
+        working-directory: /
+        run: cargo build --release --locked --manifest-path "$GITHUB_WORKSPACE/.simit-publisher-engine/Cargo.toml" --target-dir "$GITHUB_WORKSPACE/.simit-publisher-engine/target"
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
 
@@ -64,13 +64,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          .simit-publisher-engine/target/release/simit release publisher --publisher-stage prepare --repo "$GITHUB_REPOSITORY" --package harbor-llm-protocol --source-workflow .github/workflows/publish-crate-harbor-llm-protocol.yaml --publisher-workflow .github/workflows/trusted-publish-crate-harbor-llm-protocol.yaml --reconstruct-package harbor-llm-protocol --publisher-output "$RUNNER_TEMP/verified-harbor-llm-protocol" > "$RUNNER_TEMP/verified-harbor-llm-protocol.json"
+          .simit-publisher-engine/target/release/simit release publisher --publisher-stage prepare --repo "$GITHUB_REPOSITORY" --package harbor-llm-protocol --source-workflow .github/workflows/publish-crate-harbor-llm-protocol.yaml --publisher-workflow .github/workflows/trusted-publish-crate-harbor-llm-protocol.yaml --reconstruct-package harbor-llm-protocol --tag-namespace harbor-llm-protocol --source-submodules --cargo-manifest components/llm/Cargo.toml --publisher-output "$RUNNER_TEMP/verified-harbor-llm-protocol" > "$RUNNER_TEMP/verified-harbor-llm-protocol.json"
       - name: Checkout original signed source for verification
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           path: .simit-release-source
           persist-credentials: false
+          submodules: recursive
       - name: Verify packaged contents harbor-llm-protocol
         working-directory: .simit-release-source
         env:
@@ -110,13 +111,13 @@ jobs:
           components: rustfmt, clippy
 
       - name: Build trusted publisher engine
-        working-directory: .simit-publisher-engine
-        run: cargo build --release --locked
+        working-directory: /
+        run: cargo build --release --locked --manifest-path "$GITHUB_WORKSPACE/.simit-publisher-engine/Cargo.toml" --target-dir "$GITHUB_WORKSPACE/.simit-publisher-engine/target"
       - name: Upload independently verified archive harbor-llm-protocol
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CRATES_IO_API_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
-        run: .simit-publisher-engine/target/release/simit release publisher --publisher-stage publish --repo "$GITHUB_REPOSITORY" --package harbor-llm-protocol --source-workflow .github/workflows/publish-crate-harbor-llm-protocol.yaml --publisher-workflow .github/workflows/trusted-publish-crate-harbor-llm-protocol.yaml --reconstruct-package harbor-llm-protocol
+        run: .simit-publisher-engine/target/release/simit release publisher --publisher-stage publish --repo "$GITHUB_REPOSITORY" --package harbor-llm-protocol --source-workflow .github/workflows/publish-crate-harbor-llm-protocol.yaml --publisher-workflow .github/workflows/trusted-publish-crate-harbor-llm-protocol.yaml --reconstruct-package harbor-llm-protocol --tag-namespace harbor-llm-protocol --source-submodules --cargo-manifest components/llm/Cargo.toml
   publish-report:
     needs: [publish-harbor-llm-protocol]
     if: always()

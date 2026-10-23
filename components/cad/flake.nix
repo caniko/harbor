@@ -127,7 +127,7 @@
       inherit pkgs;
       python = pkgs.python313;
       name = "harbor-cad-mcp-env";
-      workspaceRoot = ./.;
+      workspaceRoot = ./python;
       dependencies = {harbor-cad-mcp = [];};
     };
     mcp = python.mkPythonApplicationPackage {
@@ -141,8 +141,8 @@
       inherit pkgs;
       python = pkgs.python313;
       name = "harbor-cad-tests";
-      workspaceRoot = ./.;
-      dependencies = (python.loadUvWorkspace {workspaceRoot = ./.;}).deps.all;
+      workspaceRoot = ./python;
+      dependencies = (python.loadUvWorkspace {workspaceRoot = ./python;}).deps.all;
     };
     native = import ./nix/native.nix {inherit pkgs cudaPkgs inputs;};
     filters = import ./nix/filters.nix {inherit pkgs;};
@@ -257,7 +257,8 @@
         cp -r ${self}/examples ./examples
         # The native CLI/MCP parity fixtures use the same project environment
         # layout as uv; expose the declared test environment in the sandbox.
-        ln -s ${testEnv} .venv
+        chmod u+w python
+        ln -s ${testEnv} python/.venv
         ${testEnv}/bin/python -m pytest -q python/tests
         mkdir $out
       '';
