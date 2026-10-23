@@ -61,6 +61,10 @@
       (opencodeLspLib.mkShell {
         inherit pkgs;
         profiles = ["python"];
+        # nix-opencode-lsp's base config pins nixpkgs' rust-analyzer; resolve
+        # it from PATH like harbor-rs's profile, so a composed Rust toolchain's
+        # rust-analyzer serves OpenCode.
+        extraLsp.rust.command = ["rust-analyzer"];
       }).shellHook
     else "";
   pythonPath = optionalString (pythonPathEntries != []) ''

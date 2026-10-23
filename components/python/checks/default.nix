@@ -182,6 +182,20 @@ in
         echo ok > $out/result
       '';
 
+      # OpenCode's rust server resolves from PATH (a composed toolchain's
+      # rust-analyzer), not nixpkgs' rust-analyzer.
+      opencode-rust-from-path =
+        pkgs.runCommand "harbor-py-opencode-rust-from-path" {
+          inherit (shell) nativeBuildInputs;
+        } ''
+          export HOME="$TMPDIR" XDG_CACHE_HOME="$TMPDIR" OPENCODE_CONFIG_CONTENT='{}'
+          ${shell.passthru.devShellSpec.shellHook}
+          test "$(${pkgs.jq}/bin/jq -c .lsp.rust.command <<<"$OPENCODE_CONFIG_CONTENT")" = '["rust-analyzer"]'
+          ${pkgs.jq}/bin/jq -e '.lsp.basedpyright.command[0] | test("basedpyright-langserver$")' <<<"$OPENCODE_CONFIG_CONTENT" >/dev/null
+          mkdir -p $out
+          echo ok > $out/result
+        '';
+
       managed-venv = import ./managed-venv.nix {inherit pkgs harbor;};
 
       template-default = meta.templateTests.mkCheck {
