@@ -212,17 +212,17 @@
         "uv2nix": "uv2nix"
       },
       "locked": {
-        "lastModified": 1792738983,
-        "narHash": "sha256-OLF2ucXGQMWQr5Cpv/YEdxhPMci+3Tbb1ZWE9I2Jp7g=",
+        "lastModified": 1792754498,
+        "narHash": "sha256-bxO47tp+Nvc+mynRHXd1OwdczM4/FthyyF97ykwbl2s=",
         "ref": "feat/harbor-monorepo-components",
-        "rev": "3be813378c4b97f97edf06beb3bfed0a8d8acff1",
-        "revCount": 918,
+        "rev": "a623c2db712a823f75b29523940fc7432dea49aa",
+        "revCount": 930,
         "type": "git",
         "url": "https://github.com/caniko/harbor.git"
       },
       "original": {
         "ref": "feat/harbor-monorepo-components",
-        "rev": "3be813378c4b97f97edf06beb3bfed0a8d8acff1",
+        "rev": "a623c2db712a823f75b29523940fc7432dea49aa",
         "type": "git",
         "url": "https://github.com/caniko/harbor.git"
       }

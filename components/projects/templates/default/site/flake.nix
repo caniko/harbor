@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
-    harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=3be813378c4b97f97edf06beb3bfed0a8d8acff1";
+    harbor.url = "git+https://github.com/caniko/harbor.git?ref=feat/harbor-monorepo-components&rev=a623c2db712a823f75b29523940fc7432dea49aa";
 
     plinth = {
       url = "git+https://github.com/caniko/plinth.git?ref=refs/heads/trunk";
