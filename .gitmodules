@@ -46,3 +46,11 @@
 	path = components/projects
 	url = https://github.com/caniko/harbor-projects.git
 	branch = trunk
+[submodule "components/tex"]
+	path = components/tex
+	url = https://github.com/caniko/harbor-tex.git
+	branch = trunk
+[submodule "components/cad"]
+	path = components/cad
+	url = https://github.com/caniko/harbor-cad.git
+	branch = trunk
