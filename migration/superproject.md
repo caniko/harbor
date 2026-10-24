@@ -33,7 +33,7 @@ On 2026-10-24, `cad` and `tex` followed the same recipe and absorbed harbor #6
 
 | Component | Repository        | Gitlink   |
 | --------- | ----------------- | --------- |
-| cad       | caniko/harbor-cad | `7741f2c` |
+| cad       | caniko/harbor-cad | `836aee4` |
 | tex       | caniko/harbor-tex | `a0f9d1f` |
 
 Both remain root Cargo workspace members (`components/cad`,
