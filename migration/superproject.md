@@ -26,8 +26,20 @@ admission.
 | llm        | caniko/harbor-llm      | `4062374` |
 | projects   | caniko/harbor-projects | `8e7503d` |
 
-`cad` and `tex` are synced the same way after harbor #6 lands. `macos-sdk`
-stays inline because `caniko/harbor-macos-sdk-pin` is private.
+The table records the conversion; later gitlink bumps are in the history.
+
+On 2026-10-24, `cad` and `tex` followed the same recipe and absorbed harbor #6
+(registry Fleetix in CAD) along the way:
+
+| Component | Repository        | Gitlink   |
+| --------- | ----------------- | --------- |
+| cad       | caniko/harbor-cad | `32b5fcc` |
+| tex       | caniko/harbor-tex | `a0f9d1f` |
+
+Both remain root Cargo workspace members (`components/cad`,
+`components/tex/plugins/zenodo`). Their crate-local `Cargo.lock` files serve
+standalone builds. `macos-sdk` stays inline because
+`caniko/harbor-macos-sdk-pin` is private.
 
 Every difference between harbor's pre-conversion tree (`a3aa8ed`) and the gitlinked
 revisions is one of three kinds:
