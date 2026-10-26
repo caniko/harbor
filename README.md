@@ -23,8 +23,17 @@ otherwise falls back to harbor-meta's `lib.standaloneRoot`. When a component
 adds a flake input, declare it in the root `flake.nix` too (the root supplies
 every component input; `checks.<system>.component-core` fails otherwise).
 Component lock pins
-match the root pins (nixpkgs, nixpkgs-darwin, rust-overlay, flake-parts, ...);
-keep them aligned when the root moves. Nix consumers must fetch submodules:
+match the root pins (nixpkgs, nixpkgs-darwin, rust-overlay, flake-parts, ...),
+which `component-core`'s `lock-alignment` check enforces. To move the root
+nixpkgs:
+
+1. Run `canix repo update cache-pin` in this checkout. It picks the newest
+   revision whose `cachePinMeta` requirements (every opted-in component's plus
+   stock `paraview`) are cached.
+2. Run `scripts/align-component-locks nixpkgs`.
+3. Land each component's lock change in its repository and bump the gitlinks.
+
+Nix consumers must fetch submodules:
 `git+https://github.com/caniko/harbor.git?ref=...&submodules=1`; the
 `github:` tarball fetcher omits them.
 

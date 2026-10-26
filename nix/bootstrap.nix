@@ -64,6 +64,10 @@ in {
       nativeCheckInputs = [pkgs.git pkgs.gnupg pkgs.nodejs pkgs.jq pkgs.python3 actionlint] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [pkgs.bubblewrap pkgs.nix pkgs.sqlite];
       # As upstream: namespace integration is qualified outside the build sandbox.
       cargoTestExtraArgs = "-- --skip commands::projects_update::engine::tests::namespace_";
+      # Simit's timing-bound integration tests flake on hosted macOS runners
+      # (harbor #21: a 3.1 s pipe release, then ProbeTimedOut for
+      # AttemptsExhausted). Linux jobs still run the suite on the same source.
+      doCheck = !pkgs.stdenv.hostPlatform.isDarwin;
     });
   plinthProject = craneLib.buildPackage (projectArgs
     // {

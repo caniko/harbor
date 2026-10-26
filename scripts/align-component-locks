@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Pin every component input shared with the root lock to the root's revision.
+
+Run in the superproject after moving a root input (for example nixpkgs). For
+each components/<name>/flake.lock, every root input that the component also
+locks (not via `follows`) gets the root's `locked` attributes. An input pinned
+by revision in the component's flake.nix URL also gets that revision replaced
+there and in `original`. The edits land in the component checkouts; commit
+them in each component repository and bump the gitlinks afterwards. The
+`lock-alignment` check (checks.<system>.component-core) enforces the result.
+
+Usage: scripts/align-component-locks [INPUT ...]   (default: every shared input)
+"""
+
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def load(path):
+    return json.loads(path.read_text())
+
+
+def dump(path, lock):
+    # Nix writes flake.lock with sorted keys, two-space indent, trailing newline.
+    path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
+
+
+def main(selected):
+    root = load(ROOT / "flake.lock")
+    root_inputs = root["nodes"]["root"]["inputs"]
+    changed = []
+    for lock_path in sorted(ROOT.glob("components/*/flake.lock")):
+        component = lock_path.parent
+        lock = load(lock_path)
+        flake = component / "flake.nix"
+        flake_text = flake.read_text()
+        touched = False
+        for name, ref in lock["nodes"]["root"].get("inputs", {}).items():
+            root_ref = root_inputs.get(name)
+            if selected and name not in selected:
+                continue
+            if not (isinstance(ref, str) and isinstance(root_ref, str)):
+                continue  # follows edges inherit their target's pin
+            node, want = lock["nodes"][ref], root["nodes"][root_ref]["locked"]
+            have = node.get("locked", {})
+            if have.get("rev", have.get("narHash")) == want.get("rev", want.get("narHash")):
+                continue
+            old_rev, new_rev = have.get("rev"), want.get("rev")
+            if "rev" in node.get("original", {}):
+                if not (old_rev and new_rev and old_rev in flake_text):
+                    sys.exit(f"{component.name}/{name}: pinned by URL but {old_rev} is not in flake.nix")
+                flake_text = flake_text.replace(old_rev, new_rev)
+                node["original"]["rev"] = new_rev
+            node["locked"] = dict(want)
+            touched = True
+            changed.append(f"{component.name}/{name}: {old_rev or have.get('narHash')} -> {new_rev or want.get('narHash')}")
+        if touched:
+            dump(lock_path, lock)
+            flake.write_text(flake_text)
+    print("\n".join(changed) if changed else "component locks already match the root")
+
+
+if __name__ == "__main__":
+    main(set(sys.argv[1:]))
