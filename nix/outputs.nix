@@ -77,6 +77,28 @@ inputs @ {
     };
   in
     inputs.treefmt-nix.lib.evalModule pkgs (import ./treefmt.nix {rustfmtPackage = toolchain.rustToolchain;}));
+  # Every component shares the root nixpkgs, so the root pin moves only to a
+  # revision where all components' cache-pin requirements are cached. A
+  # component opts in by exposing cachePinMeta and
+  # legacyPackages.<system>.cachePinTargets (as cad does).
+  cachePinSystem = "x86_64-linux";
+  cachePinComponents = nixlib.filterAttrs (_: component: component ? cachePinMeta) components;
+  cachePinTargets = nixlib.mapAttrs (_: component: component.legacyPackages.${cachePinSystem}.cachePinTargets or {}) cachePinComponents;
+  rootCachePin = components.rust.lib.mkCachePin {
+    inherit (inputs) nix-cache-pin;
+    pkgs = pkgsFor cachePinSystem {};
+    consumerAttr = "legacyPackages.${cachePinSystem}";
+    # Stock paraview replaces cad's custom headless build; Hydra's paraview
+    # failed at 73e728d.
+    packages = nixlib.unique (["paraview"] ++ nixlib.concatMap (component: component.cachePinMeta.pins.nixpkgs.packages or []) (builtins.attrValues cachePinComponents));
+    extra = {
+      # The root pins nixpkgs by revision in its URL.
+      lockOnly = false;
+      requiredConsumerTargets = nixlib.concatMapAttrs (name: targets:
+        nixlib.mapAttrs' (label: _: nixlib.nameValuePair "${name}-${label}" "legacyPackages.${cachePinSystem}.cachePinTargets.${name}.${label}") targets)
+      cachePinTargets;
+    };
+  };
   companions = system: let
     pkgs = pkgsFor system {};
   in
@@ -108,6 +130,9 @@ in {
     pins.macosSdk = (import ../components/macos-sdk/flake.nix).outputs {};
     tooling = import ./tooling/selection.nix {lib = nixlib;};
   };
+  # Read by `canix repo update cache-pin` run in this checkout.
+  inherit (rootCachePin) cachePinMeta;
+  legacyPackages.${cachePinSystem} = pkgsFor cachePinSystem {} // {inherit cachePinTargets;};
   # Transitional output adapters, not independent input/source owners.
   legacy = aliases;
   sccache = components.rust.sccache;
@@ -170,6 +195,32 @@ in {
     in
       assert nixlib.assertMsg (missing == []) "harbor root lacks component inputs (declare them in flake.nix): ${nixlib.concatStringsSep ", " missing}";
         pkgs.writeText "harbor-component-input-coverage" "ok";
+    # Standalone component locks must pin every input they share with the
+    # root to the root's revision, so a component behaves the same inside
+    # and outside harbor. After a root bump, align each component lock
+    # (scripts/align-component-locks) and land it in the component repo.
+    lockAlignment = let
+      rootLock = builtins.fromJSON (builtins.readFile ../flake.lock);
+      pin = lock: ref: let
+        locked = lock.nodes.${ref}.locked or {};
+      in
+        locked.rev or locked.narHash or null;
+      drifted = nixlib.concatMap (name: let
+        path = ../components + "/${name}/flake.lock";
+        lock = builtins.fromJSON (builtins.readFile path);
+        inputs' = lock.nodes.root.inputs or {};
+      in
+        nixlib.optionals (builtins.pathExists path) (nixlib.concatMap (input: let
+          ref = inputs'.${input};
+          rootRef = rootLock.nodes.root.inputs.${input} or null;
+        in
+          nixlib.optional (builtins.isString ref && builtins.isString rootRef && pin lock ref != pin rootLock rootRef)
+          "${name}/${input} (${toString (pin lock ref)}, root ${toString (pin rootLock rootRef)})")
+        (builtins.attrNames inputs')))
+      componentNames;
+    in
+      assert nixlib.assertMsg (drifted == []) "component locks drifted from the root lock: ${nixlib.concatStringsSep ", " drifted}; run scripts/align-component-locks";
+        pkgs.writeText "harbor-component-lock-alignment" "ok";
     sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
       pkgs.runCommand "harbor-component-source-materialization" {} ''
         set -euo pipefail
@@ -189,6 +240,7 @@ in {
               source-materialization = sourceMaterialization;
               timezone-consumers = timezoneConsumers;
               input-coverage = inputCoverage;
+              lock-alignment = lockAlignment;
               template-contract = templateContract;
               bootstrap-inputs = bootstrapInputs;
               module-contracts = moduleContracts;
