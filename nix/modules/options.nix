@@ -156,6 +156,11 @@ in {
             type = types.nullOr types.ints.positive;
             default = null;
           };
+          harnesses = mkOption {
+            type = types.nullOr (types.listOf types.str);
+            default = null;
+            description = "Client allowlist for the delivery adapter; null selects every configured client.";
+          };
           overrides = mkOption {
             type = (pkgs.formats.json {}).type;
             default = {};
