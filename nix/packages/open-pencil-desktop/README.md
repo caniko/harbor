@@ -13,6 +13,14 @@ renderer on success or failure. It preserves font metadata and captured layout.
 Missing fonts can use fallback glyphs; visible text does not establish exact
 typographic fidelity.
 
+`save-live-graph.patch` makes `.fig` save, autosave and export always encode
+the live scene graph. Upstream reused the opened archive until a node event
+fired, so variable-only edits were silently dropped and a save hung forever
+when the parse worker stopped answering. Untouched imports now re-encode
+instead of copying their original bytes. Upstream later added a worker
+fallback but still invalidates the archive only on node events; keep the
+regression test passing before dropping the patch on an upgrade.
+
 `frontend.nix` requires two independent cold, frozen Bun installs to produce
 byte-identical dependency archives in its fixed-output derivation. The pinned
 Bun 1.4.2 linker races on the shared `react-is` alias and ESLint/Browserslist peer binaries;

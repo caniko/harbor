@@ -1,0 +1,61 @@
+diff --git a/packages/core/src/io/formats/fig/export.ts b/packages/core/src/io/formats/fig/export.ts
+index 94ddc8d..918b4ae 100644
+--- a/packages/core/src/io/formats/fig/export.ts
++++ b/packages/core/src/io/formats/fig/export.ts
+@@ -31,7 +31,6 @@ import {
+   makeCanvasNodeChange
+ } from '#core/kiwi/fig/node-change/serialize'
+ import { cloneSceneGraphForFigExport } from '#core/kiwi/fig/parse/transfer'
+-import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
+ 
+ const THUMBNAIL_1X1 = decodeBase64(
+   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+@@ -446,8 +445,9 @@ export async function exportFigFile(
+   pageId?: string,
+   renderHeadlessThumbnail = false
+ ): Promise<Uint8Array> {
+-  const originalArchive = await originalFigArchive(sourceGraph)
+-  if (originalArchive) return originalArchive.slice()
++  // Always encode the live graph. The opened archive was reused only while no
++  // node event fired, so variable edits were dropped and a silent parse worker
++  // hung saving. ponytail: untouched imports re-encode instead of copying bytes.
+   const graph = cloneSceneGraphForFigExport(sourceGraph)
+   populateAllLazyFigImportRoots(graph)
+   await initCodec()
+diff --git a/tests/engine/io/fig/export/live-graph.test.ts b/tests/engine/io/fig/export/live-graph.test.ts
+new file mode 100644
+index 0000000..44a3f15
+--- /dev/null
++++ b/tests/engine/io/fig/export/live-graph.test.ts
+@@ -0,0 +1,31 @@
++/**
++ * Saving must encode the live scene graph. Reusing the archive the document
++ * was opened from lost edits that emit no node event (variables, collections)
++ * and hung forever when the parse worker no longer answered.
++ */
++import { expect, test } from 'bun:test'
++
++import { SceneGraph } from '@open-pencil/scene-graph'
++
++import { exportFigFile } from '#core/io/formats/fig/export'
++import { parseFigFile } from '#core/io/formats/fig/read'
++import { registerOriginalArchiveRequest } from '#core/kiwi/fig/population/client'
++
++test('export does not wait for an unanswered original-archive request', async () => {
++  const graph = new SceneGraph()
++  registerOriginalArchiveRequest(graph, () => new Promise<Uint8Array>(() => {}))
++  expect((await exportFigFile(graph)).byteLength).toBeGreaterThan(0)
++}, 5000)
++
++test('export keeps a variable added after opening', async () => {
++  const graph = new SceneGraph()
++  registerOriginalArchiveRequest(graph, async () => new Uint8Array([1, 2, 3]))
++  const collection = graph.createCollection('Tokens')
++  graph.createVariable('brand', 'COLOR', collection.id, { r: 1, g: 0, b: 0, a: 1 })
++
++  const out = await exportFigFile(graph)
++  const reread = await parseFigFile(
++    out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer
++  )
++  expect([...reread.variables.values()].map((v) => v.name)).toContain('brand')
++})
