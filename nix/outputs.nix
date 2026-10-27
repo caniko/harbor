@@ -157,11 +157,12 @@ in {
     collect "packages" system
     // companions system
     // nixlib.optionalAttrs (skillsSupported system) {
-      llm-skills = import ./tooling/skills.nix {
-        inherit self;
-        pkgs = pkgsFor system {};
-      }
-      skillNames;
+      llm-skills =
+        import ./tooling/skills.nix {
+          inherit self;
+          pkgs = pkgsFor system {};
+        }
+        skillNames;
     }
     // nixlib.optionalAttrs (builtins.hasAttr system components.rust.packages) {
       default = components.rust.packages.${system}.harbor-rs;

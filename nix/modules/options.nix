@@ -181,7 +181,10 @@ in {
   config = lib.mkMerge [
     {
       programs.harbor.resolved = selection;
-      programs.harbor.skillBundle = if cfg.skills == [] then null else import ../tooling/skills.nix {inherit self pkgs config;} cfg.skills;
+      programs.harbor.skillBundle =
+        if cfg.skills == []
+        then null
+        else import ../tooling/skills.nix {inherit self pkgs config;} cfg.skills;
       assertions = [
         {
           assertion = selection.unsupported == [];
