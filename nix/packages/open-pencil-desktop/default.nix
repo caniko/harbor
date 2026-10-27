@@ -20,7 +20,7 @@
 in
   rustPlatform.buildRustPackage {
     pname = "open-pencil-desktop";
-    version = "0.15.1-canix2";
+    version = "0.15.1-canix3";
     src = callPackage ./source.nix {};
     cargoRoot = "desktop";
     buildAndTestSubdir = "desktop";

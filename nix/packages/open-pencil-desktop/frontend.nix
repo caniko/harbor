@@ -60,7 +60,7 @@
 in
   stdenvNoCC.mkDerivation {
     pname = "open-pencil-frontend";
-    version = "0.15.1-canix2";
+    version = "0.15.1-canix3";
     inherit src;
     patches = [./document-export.patch ./save-live-graph.patch];
     nativeBuildInputs = [bun nodejs];
