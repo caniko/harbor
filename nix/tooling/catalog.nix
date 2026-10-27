@@ -75,4 +75,12 @@ in {
     openpencil = tool ["javascript" "projects"] ["openpencil" "openpencil-mcp" "openpencil-mcp-http"];
     macos-sdk = tool ["macos-sdk"] ["validate-macos-sdk"];
   };
+  # Skill content lives in `owner`'s component; `requires` declares the
+  # framework tools (realized into the skill's env/bin) and extra TeX packages.
+  skills.dataset-report = {
+    owner = "llm";
+    source = "skills/dataset-report";
+    requires.frameworks = ["tex" "python"];
+    requires.tex.extraPackages = ["pgfplots"];
+  };
 }

@@ -202,6 +202,18 @@
       };
     }
   ];
+  missingSkillnet = home [self.homeManagerModules.skillnet];
+  skillnet = home [
+    self.homeManagerModules.skillnet
+    {options.programs.skillnet.externalManifests = lib.mkOption {type = lib.types.listOf lib.types.str;};}
+    {
+      programs.harbor = {
+        enable = true;
+        skills = ["dataset-report"];
+      };
+      programs.skillnet.externalManifests = ["first"];
+    }
+  ];
   integrated = inputs.nixpkgs.lib.nixosSystem {
     inherit system;
     modules = [
@@ -248,6 +260,7 @@
       presets = lib.mapAttrs (_: c: c.activationPackage.drvPath) presets;
       sdkDisabled = sdkDisabled.activationPackage.drvPath;
       fleetix = fleetix.activationPackage.drvPath;
+      skillnet = skillnet.activationPackage.drvPath;
     }
     // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
       integrated = integrated.config.system.build.toplevel.drvPath;
@@ -273,6 +286,8 @@ in
   assert system != "x86_64-linux" || rejected conflict;
   assert rejected dependencyDisabled;
   assert rejected missingFleetix;
+  assert rejected missingSkillnet;
+  assert assertGood skillnet && skillnet.config.programs.skillnet.externalManifests == ["first" "${self.packages.${system}.llm-skills}/Skillnet.pkl"];
   assert assertGood fleetix;
   assert !pkgs.stdenv.hostPlatform.isLinux
   || (

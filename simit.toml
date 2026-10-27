@@ -186,7 +186,7 @@ checks = [
   { id = "protocol-test", run = "cargo test --locked --manifest-path components/llm/Cargo.toml -p harbor-llm-protocol -p harbor-llm-runtime --jobs 2", timeout_minutes = 10 },
   { id = "protocol-clippy", run = "cargo clippy --locked --manifest-path components/llm/Cargo.toml -p harbor-llm-protocol -p harbor-llm-runtime -p harbor-llm-codegen --all-targets --jobs 2 -- -D warnings", timeout_minutes = 10 },
   { id = "protocol-generated", run = "cargo run --locked --manifest-path components/llm/Cargo.toml -p harbor-llm-codegen -- --check components/llm", timeout_minutes = 10 },
-  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#llm-default", timeout_minutes = 30 },
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-llm .#checks.x86_64-linux.llm-skills .#llm-default", timeout_minutes = 30 },
 ]
 
 [[monorepo.components]]
