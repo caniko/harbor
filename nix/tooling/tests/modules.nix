@@ -96,6 +96,9 @@
         [
           self.nixosModules.default
           {
+            # Reuse the shared package set; each nixosSystem otherwise
+            # instantiates its own nixpkgs, which dominated core's eval memory.
+            nixpkgs.pkgs = pkgs;
             boot.isContainer = true;
             system.stateVersion = "26.05";
           }
@@ -248,6 +251,7 @@
       self.nixosModules.default
       inputs.home-manager.nixosModules.home-manager
       {
+        nixpkgs.pkgs = pkgs;
         boot.isContainer = true;
         system.stateVersion = "26.05";
         users.users.fixture.isNormalUser = true;
