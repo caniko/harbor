@@ -14,6 +14,12 @@
     remote_enabled = false;
   });
 
+  # FreeCADCmd runs positional .py files; its -c only selects console mode.
+  appDataScript = pkgs.writeText "freecad_app_data_dir.py" ''
+    import FreeCAD
+    print(FreeCAD.getUserAppDataDir())
+  '';
+
   launcher = pkgs.writeShellApplication {
     name = "freecad-mcp-launcher";
     runtimeInputs = [mcpCfg.package];
@@ -37,7 +43,7 @@ in {
       # FreeCAD only loads add-ons from its writable user Mod directory, so
       # replace the managed FreeCADMCP copy on every activation.
       home.activation.freecadMcpAddon = lib.hm.dag.entryAfter ["writeBoundary"] ''
-        freecad_app_data_dir="$(${cfg.package}/bin/FreeCADCmd -c 'import FreeCAD; print(FreeCAD.getUserAppDataDir())' | tail -n 1)"
+        freecad_app_data_dir="$(${cfg.package}/bin/FreeCADCmd ${appDataScript} </dev/null | tail -n 1)"
         if [ -z "$freecad_app_data_dir" ]; then
           echo "FreeCAD MCP activation failed: could not determine FreeCAD user app data directory" >&2
           exit 1

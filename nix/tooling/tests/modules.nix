@@ -337,6 +337,9 @@ in
     && freecad.config.fleetix.mcp.servers.freecad.harnesses == ["opencode"]
     && freecad.config.programs.opencode.settings.mcp.servers.freecad.command == [freecad.config.programs.harbor.mcp.servers.freecad.command]
     && lib.hasInfix "freecad_mcp_settings.json" freecad.config.home.activation.freecadMcpAddon.data
+    # FreeCADCmd -c is console mode, not "run this expression"; the query must be a script file.
+    && lib.hasInfix "freecad_app_data_dir.py </dev/null" freecad.config.home.activation.freecadMcpAddon.data
+    && !lib.hasInfix "FreeCADCmd -c" freecad.config.home.activation.freecadMcpAddon.data
     && rejected freecadWithoutApp
   );
   assert system != "x86_64-linux" || rejected mismatchedPencil;
