@@ -112,6 +112,17 @@
       services.harbor-cad.package = cadPackage;
     }
   ];
+  systemFreecad = nixos [
+    {
+      programs.harbor = {
+        enable = true;
+        tools.freecad = {
+          enable = true;
+          mcp.enable = true;
+        };
+      };
+    }
+  ];
   missingAndroid = home [
     {
       programs.harbor = {
@@ -341,6 +352,8 @@ in
     && lib.hasInfix "freecad_app_data_dir.py </dev/null" freecad.config.home.activation.freecadMcpAddon.data
     && !lib.hasInfix "FreeCADCmd -c" freecad.config.home.activation.freecadMcpAddon.data
     && rejected freecadWithoutApp
+    # NixOS must reject the Home Manager-only FreeCAD MCP instead of silently ignoring it.
+    && !assertGood systemFreecad
   );
   assert system != "x86_64-linux" || rejected mismatchedPencil;
     pkgs.runCommand "harbor-module-contracts" {

@@ -139,6 +139,11 @@ in {
           message = "harbor: FreeCAD MCP requires tools.freecad.enable";
         }
         {
+          # Only the Home Manager module installs and registers the server.
+          assertion = kind == "home" || !(cfg.tools.freecad.mcp.enable || cfg.tools.freecad.mcp.addon.enable);
+          message = "harbor: FreeCAD MCP is supported only through Home Manager";
+        }
+        {
           assertion = !cfg.tools.openpencil.desktop.enable || cfg.tools.openpencil.enable;
           message = "harbor: OpenPencil desktop requires tools.openpencil.enable";
         }
