@@ -76,11 +76,14 @@ in {
     macos-sdk = tool ["macos-sdk"] ["validate-macos-sdk"];
   };
   # Skill content lives in `owner`'s component; `requires` declares the
-  # framework tools (realized into the skill's env/bin) and extra TeX packages.
+  # frameworks it needs, optionally narrowed to `tools` (realized into the
+  # skill's env/bin; default: every tool of those frameworks), and extra TeX
+  # packages.
   skills.dataset-report = {
     owner = "llm";
     source = "skills/dataset-report";
     requires.frameworks = ["tex" "python"];
+    requires.tools = ["texlive" "python"];
     requires.tex.extraPackages = ["pgfplots"];
   };
 }

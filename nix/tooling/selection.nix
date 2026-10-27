@@ -4,14 +4,18 @@
     lib.any (framework: lib.elem framework (["core"] ++ frameworks)) catalog.tools.${tool}.frameworks;
   supported = system: tool: lib.elem system catalog.tools.${tool}.systems;
 in
-  assert lib.assertMsg (lib.all (skill: lib.all (name: builtins.hasAttr name catalog.frameworks) skill.requires.frameworks) (builtins.attrValues catalog.skills)) "harbor: skill requires an unknown framework"; {
+  assert lib.assertMsg (lib.all (skill: lib.all (name: builtins.hasAttr name catalog.frameworks) skill.requires.frameworks) (builtins.attrValues catalog.skills)) "harbor: skill requires an unknown framework";
+  assert lib.assertMsg (lib.all (skill: lib.all (tool: builtins.hasAttr tool catalog.tools && lib.any (framework: lib.elem framework skill.requires.frameworks) catalog.tools.${tool}.frameworks) (skill.requires.tools or [])) (builtins.attrValues catalog.skills)) "harbor: skill requires a tool outside its frameworks"; {
   inherit catalog requested supported;
-  # Tools a skill's required frameworks realize on `system` (core excluded).
-  skillTools = system: name:
+  # Tools a skill realizes on `system`: `requires.tools`, or else every tool
+  # of its required frameworks (core excluded).
+  skillTools = system: name: let
+    inherit (catalog.skills.${name}) requires;
+  in
     lib.filter (tool:
       supported system tool
-      && lib.any (framework: lib.elem framework catalog.skills.${name}.requires.frameworks) (lib.remove "core" catalog.tools.${tool}.frameworks))
-    (builtins.attrNames catalog.tools);
+      && (requires ? tools || lib.any (framework: lib.elem framework requires.frameworks) (lib.remove "core" catalog.tools.${tool}.frameworks)))
+    (requires.tools or (builtins.attrNames catalog.tools));
   defaultEnabled = {
     enable,
     frameworks,
