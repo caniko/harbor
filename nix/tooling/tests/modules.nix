@@ -186,9 +186,10 @@
     }
   ];
   missingFleetix = home [self.homeManagerModules.fleetix];
+  fleetixMcp = import (inputs.fleetix + "/modules/mcp.nix") {fleetixLib = import (inputs.fleetix + "/lib") {inherit lib;};};
   fleetix = home [
     self.homeManagerModules.fleetix
-    (import (inputs.fleetix + "/modules/mcp.nix") {fleetixLib = import (inputs.fleetix + "/lib") {inherit lib;};})
+    fleetixMcp
     {
       programs.harbor = {
         enable = true;
@@ -199,6 +200,34 @@
         enable = true;
         package = pkgs.hello;
         harnesses.opencode.enable = true;
+      };
+    }
+  ];
+  freecad = home [
+    self.homeManagerModules.fleetix
+    fleetixMcp
+    {
+      programs.harbor = {
+        enable = true;
+        tools.freecad = {
+          enable = true;
+          mcp.enable = true;
+        };
+        mcp.servers.freecad.harnesses = ["opencode"];
+      };
+      programs.opencode.enable = true;
+      fleetix.mcp = {
+        enable = true;
+        package = pkgs.hello;
+        harnesses.opencode.enable = true;
+      };
+    }
+  ];
+  freecadWithoutApp = home [
+    {
+      programs.harbor = {
+        enable = true;
+        tools.freecad.mcp.enable = true;
       };
     }
   ];
@@ -255,6 +284,7 @@
     }
     // lib.optionalAttrs (system == "x86_64-linux") {
       cad = cad.activationPackage.drvPath;
+      freecad = freecad.activationPackage.drvPath;
       systemCad = systemCad.config.system.build.toplevel.drvPath;
     };
 in
@@ -300,6 +330,14 @@ in
     && systemCad.config.environment.etc."harbor/cad/runtime-cpu.json".source == self.packages.${system}.cad-runtime-cpu
     && pencil.config.programs.harbor.tools.openpencil.desktop.package.cli == pencilOverride
     && fleetix.config.programs.opencode.settings.mcp.servers.open-pencil.command == [fleetix.config.programs.harbor.mcp.servers.open-pencil.command]
+    # FreeCAD MCP is opt-in even under the cad preset.
+    && !(cad.config.programs.harbor.mcp.servers ? freecad)
+    && !(cad.config.home.activation ? freecadMcpAddon)
+    && assertGood freecad
+    && freecad.config.fleetix.mcp.servers.freecad.harnesses == ["opencode"]
+    && freecad.config.programs.opencode.settings.mcp.servers.freecad.command == [freecad.config.programs.harbor.mcp.servers.freecad.command]
+    && lib.hasInfix "freecad_mcp_settings.json" freecad.config.home.activation.freecadMcpAddon.data
+    && rejected freecadWithoutApp
   );
   assert system != "x86_64-linux" || rejected mismatchedPencil;
     pkgs.runCommand "harbor-module-contracts" {
