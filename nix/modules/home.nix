@@ -18,6 +18,7 @@ in {
       kind = "home";
     })
     (import ./blender.nix {inherit self;})
+    ./freecad.nix
     self.homeManagerModules.cad-default
     self.homeManagerModules.llm-default
     (lib.mkAliasOptionModule ["programs" "harbor" "tools" "cad" "package"] ["programs" "harbor-cad" "package"])

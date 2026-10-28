@@ -13,6 +13,26 @@ renderer on success or failure. It preserves font metadata and captured layout.
 Missing fonts can use fallback glyphs; visible text does not establish exact
 typographic fidelity.
 
+`save-live-graph.patch` fixes `.fig` save, autosave and export. Upstream reused
+the opened archive until a node event fired, so variable and collection edits
+(which emit none) were silently dropped, and the archive was fetched from the
+parse worker, so a save hung forever when the worker stopped answering.
+`parseFigFile` now keeps the opened bytes in main-thread memory. A save returns
+them verbatim only while the document is untouched: no node event fired and the
+variables, collections, enabled libraries and image set still equal a snapshot
+taken at open (compared by value, so direct field writes count). Otherwise the
+live graph is encoded, and archive members the encoder does not model (anything
+besides `canvas.fig`, `thumbnail.png`, `meta.json` and `images/`) are copied from
+the opened archive into the result. Saving never waits on the worker.
+
+Remaining limits: an edited document is re-encoded, so data inside the modeled
+members that the scene graph does not represent (for example unknown Kiwi
+fields) is still lost, as in upstream; only untouched documents are
+byte-identical. Documents opened through a path other than `parseFigFile` have
+no retained archive and always re-encode. Upstream later added a worker fallback
+but still invalidates the archive only on node events; keep the regression test
+passing before dropping the patch on an upgrade.
+
 `frontend.nix` requires two independent cold, frozen Bun installs to produce
 byte-identical dependency archives in its fixed-output derivation. The pinned
 Bun 1.4.2 linker races on the shared `react-is` alias and ESLint/Browserslist peer binaries;

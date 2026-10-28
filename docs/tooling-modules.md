@@ -96,6 +96,32 @@ control is preserved. Consumers choose a GPU-specific Blender through the normal
 package override. Installed OpenCode clients receive the retained tool-permission
 defaults and skill when the corresponding options exist.
 
+The FreeCAD MCP bridge (`neka-nat/freecad-mcp`) is opt-in through
+`tools.freecad.mcp.enable`, because its FreeCAD add-on serves unauthenticated RPC
+on 127.0.0.1. Enabling it registers `freecad`; `tools.freecad.mcp.addon.enable`
+(default: follows `mcp.enable`) replaces the managed `Mod/FreeCADMCP` add-on and
+its localhost-only settings in the FreeCAD user profile on every activation.
+A server's `harnesses` list limits which Fleetix clients receive it.
+
+## Skills
+
+`skills` in `nix/tooling/catalog.nix` (`lib.tooling.catalog.skills`) declares
+agent skills whose content lives in a component (`owner`, `source`) and whose
+runtime is declared as `requires.frameworks`, optionally narrowed by
+`requires.tools` (which must belong to those frameworks), plus
+`requires.tex.extraPackages` for TeX packages beyond the article profile. The
+required tools (default: every tool of those frameworks), filtered to the host
+system, are realized into `skills/<name>/env/bin` of the bundle, so a skill runs `env/bin/python3` or `env/bin/latexmk` instead of
+relying on the user's `PATH`.
+
+`packages.<system>.llm-skills` bundles every catalog skill with a
+`Skillnet.pkl` manifest (`skills/<name>` sources). `checks.<system>.llm-skills`
+checks each `SKILL.md` name against its catalog key, runs the dataset-report
+reconciler self-test and compiles its report template with the bundled TeX.
+`programs.harbor.skills = ["dataset-report"]` builds the same bundle for a
+module; `homeManagerModules.skillnet` appends its manifest to
+`programs.skillnet.externalManifests` when the consumer provides that option.
+
 ## Explicit framework inputs
 
 ```nix

@@ -96,6 +96,9 @@
         [
           self.nixosModules.default
           {
+            # Reuse the shared package set; each nixosSystem otherwise
+            # instantiates its own nixpkgs, which dominated core's eval memory.
+            nixpkgs.pkgs = pkgs;
             boot.isContainer = true;
             system.stateVersion = "26.05";
           }
@@ -110,6 +113,17 @@
         frameworks = ["cad"];
       };
       services.harbor-cad.package = cadPackage;
+    }
+  ];
+  systemFreecad = nixos [
+    {
+      programs.harbor = {
+        enable = true;
+        tools.freecad = {
+          enable = true;
+          mcp.enable = true;
+        };
+      };
     }
   ];
   missingAndroid = home [
@@ -186,9 +200,10 @@
     }
   ];
   missingFleetix = home [self.homeManagerModules.fleetix];
+  fleetixMcp = import (inputs.fleetix + "/modules/mcp.nix") {fleetixLib = import (inputs.fleetix + "/lib") {inherit lib;};};
   fleetix = home [
     self.homeManagerModules.fleetix
-    (import (inputs.fleetix + "/modules/mcp.nix") {fleetixLib = import (inputs.fleetix + "/lib") {inherit lib;};})
+    fleetixMcp
     {
       programs.harbor = {
         enable = true;
@@ -202,12 +217,53 @@
       };
     }
   ];
+  freecad = home [
+    self.homeManagerModules.fleetix
+    fleetixMcp
+    {
+      programs.harbor = {
+        enable = true;
+        tools.freecad = {
+          enable = true;
+          mcp.enable = true;
+        };
+        mcp.servers.freecad.harnesses = ["opencode"];
+      };
+      programs.opencode.enable = true;
+      fleetix.mcp = {
+        enable = true;
+        package = pkgs.hello;
+        harnesses.opencode.enable = true;
+      };
+    }
+  ];
+  freecadWithoutApp = home [
+    {
+      programs.harbor = {
+        enable = true;
+        tools.freecad.mcp.enable = true;
+      };
+    }
+  ];
+  missingSkillnet = home [self.homeManagerModules.skillnet];
+  skillnet = home [
+    self.homeManagerModules.skillnet
+    {options.programs.skillnet.externalManifests = lib.mkOption {type = lib.types.listOf lib.types.str;};}
+    {
+      programs.harbor = {
+        enable = true;
+        skills = ["dataset-report"];
+      };
+      programs.skillnet.externalManifests = ["first"];
+    }
+  ];
   integrated = inputs.nixpkgs.lib.nixosSystem {
     inherit system;
     modules = [
       self.nixosModules.default
       inputs.home-manager.nixosModules.home-manager
       {
+        nixpkgs.pkgs = pkgs;
         boot.isContainer = true;
         system.stateVersion = "26.05";
         users.users.fixture.isNormalUser = true;
@@ -248,6 +304,7 @@
       presets = lib.mapAttrs (_: c: c.activationPackage.drvPath) presets;
       sdkDisabled = sdkDisabled.activationPackage.drvPath;
       fleetix = fleetix.activationPackage.drvPath;
+      skillnet = skillnet.activationPackage.drvPath;
     }
     // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
       integrated = integrated.config.system.build.toplevel.drvPath;
@@ -255,6 +312,7 @@
     }
     // lib.optionalAttrs (system == "x86_64-linux") {
       cad = cad.activationPackage.drvPath;
+      freecad = freecad.activationPackage.drvPath;
       systemCad = systemCad.config.system.build.toplevel.drvPath;
     };
 in
@@ -273,6 +331,8 @@ in
   assert system != "x86_64-linux" || rejected conflict;
   assert rejected dependencyDisabled;
   assert rejected missingFleetix;
+  assert rejected missingSkillnet;
+  assert assertGood skillnet && skillnet.config.programs.skillnet.externalManifests == ["first" "${self.packages.${system}.llm-skills}/Skillnet.pkl"];
   assert assertGood fleetix;
   assert !pkgs.stdenv.hostPlatform.isLinux
   || (
@@ -300,6 +360,19 @@ in
     && systemCad.config.environment.etc."harbor/cad/runtime-cpu.json".source == self.packages.${system}.cad-runtime-cpu
     && pencil.config.programs.harbor.tools.openpencil.desktop.package.cli == pencilOverride
     && fleetix.config.programs.opencode.settings.mcp.servers.open-pencil.command == [fleetix.config.programs.harbor.mcp.servers.open-pencil.command]
+    # FreeCAD MCP is opt-in even under the cad preset.
+    && !(cad.config.programs.harbor.mcp.servers ? freecad)
+    && !(cad.config.home.activation ? freecadMcpAddon)
+    && assertGood freecad
+    && freecad.config.fleetix.mcp.servers.freecad.harnesses == ["opencode"]
+    && freecad.config.programs.opencode.settings.mcp.servers.freecad.command == [freecad.config.programs.harbor.mcp.servers.freecad.command]
+    && lib.hasInfix "freecad_mcp_settings.json" freecad.config.home.activation.freecadMcpAddon.data
+    # FreeCADCmd -c is console mode, not "run this expression"; the query must be a script file.
+    && lib.hasInfix "freecad_app_data_dir.py </dev/null" freecad.config.home.activation.freecadMcpAddon.data
+    && !lib.hasInfix "FreeCADCmd -c" freecad.config.home.activation.freecadMcpAddon.data
+    && rejected freecadWithoutApp
+    # NixOS must reject the Home Manager-only FreeCAD MCP instead of silently ignoring it.
+    && !assertGood systemFreecad
   );
   assert system != "x86_64-linux" || rejected mismatchedPencil;
     pkgs.runCommand "harbor-module-contracts" {

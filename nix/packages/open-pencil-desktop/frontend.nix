@@ -60,9 +60,9 @@
 in
   stdenvNoCC.mkDerivation {
     pname = "open-pencil-frontend";
-    version = "0.15.1-canix1";
+    version = "0.15.1-canix3";
     inherit src;
-    patches = [./document-export.patch];
+    patches = [./document-export.patch ./save-live-graph.patch];
     nativeBuildInputs = [bun nodejs];
     env.LD_LIBRARY_PATH = lib.makeLibraryPath [stdenv.cc.cc.lib];
     buildPhase = ''
@@ -77,7 +77,7 @@ in
     '';
     doCheck = true;
     checkPhase = ''
-      bun test tests/engine/app/document/export.test.ts
+      bun test tests/engine/app/document/export.test.ts tests/engine/io/fig/export/live-graph.test.ts
     '';
     installPhase = ''
       mkdir -p $out
