@@ -40,6 +40,18 @@ in {
       example = ["rust" "python" "cad"];
       description = "Full curated presets. Core tools are included whenever Harbor is enabled.";
     };
+    skills = mkOption {
+      type = types.listOf (types.enum (builtins.attrNames catalog.skills));
+      default = [];
+      example = ["dataset-report"];
+      description = "Catalog skills to bundle with their required tools realized into each skill's env/bin.";
+    };
+    skillBundle = mkOption {
+      type = types.nullOr types.package;
+      readOnly = true;
+      internal = true;
+      description = "Bundle of the selected skills and their Skillnet.pkl manifest, for consumer adapters such as homeManagerModules.skillnet.";
+    };
     inheritSystemSelection = mkOption {
       type = types.bool;
       default = false;
@@ -174,6 +186,10 @@ in {
   config = lib.mkMerge [
     {
       programs.harbor.resolved = selection;
+      programs.harbor.skillBundle =
+        if cfg.skills == []
+        then null
+        else import ../tooling/skills.nix {inherit self pkgs config;} cfg.skills;
       assertions = [
         {
           assertion = selection.unsupported == [];
