@@ -1,4 +1,4 @@
-# Build from the pinned upstream source so document-export.patch is embedded
+# Build from the pinned upstream source so the patches are embedded
 # in the actual Tauri application, rather than only patching the CLI closure.
 {
   lib,
@@ -20,7 +20,7 @@
 in
   rustPlatform.buildRustPackage {
     pname = "open-pencil-desktop";
-    version = "0.15.1-canix1";
+    version = "0.15.1-canix3";
     src = callPackage ./source.nix {};
     cargoRoot = "desktop";
     buildAndTestSubdir = "desktop";

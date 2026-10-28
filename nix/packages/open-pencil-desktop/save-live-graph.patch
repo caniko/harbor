@@ -1,0 +1,264 @@
+diff --git a/packages/core/src/io/formats/fig/export.ts b/packages/core/src/io/formats/fig/export.ts
+index 94ddc8d..202dd67 100644
+--- a/packages/core/src/io/formats/fig/export.ts
++++ b/packages/core/src/io/formats/fig/export.ts
+@@ -31,7 +31,7 @@ import {
+   makeCanvasNodeChange
+ } from '#core/kiwi/fig/node-change/serialize'
+ import { cloneSceneGraphForFigExport } from '#core/kiwi/fig/parse/transfer'
+-import { originalFigArchive } from '#core/kiwi/fig/session/original-archive'
++import { carryOpaqueFigMembers, sourceFigArchive } from '#core/kiwi/fig/session/original-archive'
+ 
+ const THUMBNAIL_1X1 = decodeBase64(
+   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+@@ -446,8 +446,22 @@ export async function exportFigFile(
+   pageId?: string,
+   renderHeadlessThumbnail = false
+ ): Promise<Uint8Array> {
+-  const originalArchive = await originalFigArchive(sourceGraph)
+-  if (originalArchive) return originalArchive.slice()
++  // The opened archive is read from memory, never from the parse worker. Reuse it
++  // only for a document that is still untouched; otherwise encode the live graph
++  // (variables and collections emit no node event) and keep the members it omits.
++  const source = sourceFigArchive(sourceGraph)
++  if (source?.untouched) return source.bytes.slice()
++  const encoded = await encodeLiveGraph(sourceGraph, ck, renderer, pageId, renderHeadlessThumbnail)
++  return source ? carryOpaqueFigMembers(encoded, source.bytes) : encoded
++}
++
++async function encodeLiveGraph(
++  sourceGraph: SceneGraph,
++  ck?: CanvasKit,
++  renderer?: SkiaRenderer,
++  pageId?: string,
++  renderHeadlessThumbnail = false
++): Promise<Uint8Array> {
+   const graph = cloneSceneGraphForFigExport(sourceGraph)
+   populateAllLazyFigImportRoots(graph)
+   await initCodec()
+diff --git a/packages/core/src/io/formats/fig/read.ts b/packages/core/src/io/formats/fig/read.ts
+index 3c7cde0..f5fd51f 100644
+--- a/packages/core/src/io/formats/fig/read.ts
++++ b/packages/core/src/io/formats/fig/read.ts
+@@ -10,6 +10,7 @@ import {
+   registerOriginalArchiveRequest
+ } from '#core/kiwi/fig/population/client'
+ import { createFigSessionWorker } from '#core/kiwi/fig/session/client'
++import { retainSourceFigArchive } from '#core/kiwi/fig/session/original-archive'
+ import type { FigSessionOpenRequest, FigSessionResponse } from '#core/kiwi/fig/session/protocol'
+ import { randomHex } from '#core/random'
+ 
+@@ -120,20 +121,23 @@ export async function parseFigFile(
+   options: ParseFigFileOptions = {}
+ ): Promise<SceneGraph> {
+   options.signal?.throwIfAborted()
++  // Kept in main-thread memory so saving an untouched document never waits on a worker.
++  const source = buffer.slice(0)
++  let graph: SceneGraph
+   if (typeof Worker !== 'undefined' && IS_BROWSER) {
+-    const copy = buffer.slice(0)
+     try {
+-      return await parseViaWorker(buffer, options)
++      graph = await parseViaWorker(buffer, options)
+     } catch (error) {
+       if (options.signal?.aborted) throw error
+       console.warn('Worker parsing failed, falling back to main thread:', error)
+-      const graph = parseFigFileSync(copy, options)
+-      registerOriginalArchiveRequest(graph, async () => new Uint8Array(copy.slice(0)))
+-      return graph
++      graph = parseFigFileSync(source, options)
+     }
++  } else {
++    options.signal?.throwIfAborted()
++    graph = parseFigFileSync(buffer, options)
+   }
+-  options.signal?.throwIfAborted()
+-  return parseFigFileSync(buffer, options)
++  retainSourceFigArchive(graph, new Uint8Array(source))
++  return graph
+ }
+ 
+ export async function readFigFile(
+diff --git a/packages/core/src/kiwi/fig/session/original-archive.ts b/packages/core/src/kiwi/fig/session/original-archive.ts
+index f037c07..72ec86f 100644
+--- a/packages/core/src/kiwi/fig/session/original-archive.ts
++++ b/packages/core/src/kiwi/fig/session/original-archive.ts
+@@ -1,3 +1,5 @@
++import { unzipSync, zipSync, type Zippable } from 'fflate'
++
+ import type { SceneGraph } from '@open-pencil/scene-graph'
+ 
+ import { requestOriginalArchive } from '#core/kiwi/fig/population/client'
+@@ -17,4 +19,82 @@ export async function originalFigArchive(graph: SceneGraph): Promise<Uint8Array
+ 
+ export function releaseOriginalFigArchive(graph: SceneGraph): void {
+   originalFigArchives.delete(graph)
++  sourceArchives.get(graph)?.unbind()
++  sourceArchives.delete(graph)
++}
++
++interface SourceArchive {
++  bytes: Uint8Array
++  baseline: string
++  touched: boolean
++  unbind: () => void
++}
++const sourceArchives = new WeakMap<SceneGraph, SourceArchive>()
++
++/**
++ * Graph state that can change without a node event (variables, collections,
++ * libraries, images). Compared by value, so direct field writes are caught too.
++ */
++function storeState(graph: SceneGraph): string {
++  return JSON.stringify([
++    graph.documentColorSpace,
++    [...graph.variables],
++    [...graph.variableCollections],
++    [...graph.enabledLibraries],
++    [...graph.images].map(([hash, data]) => [hash, data.byteLength])
++  ])
++}
++
++/** Keep the opened archive in main-thread memory so saving never waits on a worker. */
++export function retainSourceFigArchive(graph: SceneGraph, bytes: Uint8Array): void {
++  sourceArchives.get(graph)?.unbind()
++  const entry: SourceArchive = {
++    bytes,
++    baseline: storeState(graph),
++    touched: false,
++    unbind: () => undefined
++  }
++  const touch = () => {
++    if (!graph.isApplyingLayout) entry.touched = true
++  }
++  entry.unbind = graph.onNodeEvents({
++    created: touch,
++    updated: touch,
++    deleted: touch,
++    reparented: touch,
++    reordered: touch
++  })
++  sourceArchives.set(graph, entry)
++}
++
++/** The opened archive, and whether the document is still byte-for-byte what was opened. */
++export function sourceFigArchive(
++  graph: SceneGraph
++): { bytes: Uint8Array; untouched: boolean } | null {
++  const entry = sourceArchives.get(graph)
++  if (!entry) return null
++  return { bytes: entry.bytes, untouched: !entry.touched && storeState(graph) === entry.baseline }
++}
++
++// Members the encoder regenerates from the graph; everything else is opaque.
++const ENCODED_MEMBERS = new Set(['canvas.fig', 'canvas', 'thumbnail.png', 'meta.json'])
++
++/** Copy archive members the encoder does not model from the opened archive into a re-encoded one. */
++export function carryOpaqueFigMembers(encoded: Uint8Array, source: Uint8Array): Uint8Array {
++  let opaque: Record<string, Uint8Array>
++  try {
++    opaque = unzipSync(source, {
++      filter: ({ name }) =>
++        !ENCODED_MEMBERS.has(name) && !name.startsWith('images/') && !name.endsWith('/')
++    })
++  } catch {
++    return encoded // legacy raw fig-kiwi container: no zip members
++  }
++  if (Object.keys(opaque).length === 0) return encoded
++  const entries: Zippable = {}
++  for (const [name, data] of Object.entries(opaque)) entries[name] = data
++  for (const [name, data] of Object.entries(unzipSync(encoded))) {
++    entries[name] = name === 'meta.json' ? data : [data, { level: 0 }]
++  }
++  return zipSync(entries)
+ }
+diff --git a/tests/engine/io/fig/export/live-graph.test.ts b/tests/engine/io/fig/export/live-graph.test.ts
+new file mode 100644
+index 0000000..db31a9f
+--- /dev/null
++++ b/tests/engine/io/fig/export/live-graph.test.ts
+@@ -0,0 +1,84 @@
++/**
++ * Saving an opened .fig reuses its archive only while the document is untouched.
++ * Variable and collection edits emit no node event, so they must still reach the
++ * live-graph encoder, and saving must never wait on the parse worker.
++ */
++import { expect, test } from 'bun:test'
++import { unzipSync, zipSync } from 'fflate'
++
++import { SceneGraph } from '@open-pencil/scene-graph'
++
++import { exportFigFile } from '#core/io/formats/fig/export'
++import { parseFigFile } from '#core/io/formats/fig/read'
++import { registerOriginalArchiveRequest } from '#core/kiwi/fig/population/client'
++
++const OPAQUE = 'plugin/opaque.bin'
++const opaqueBytes = new Uint8Array([9, 8, 7, 6])
++
++function toBuffer(bytes: Uint8Array): ArrayBuffer {
++  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
++}
++
++/** An imported file carrying a member the encoder knows nothing about, plus a variable. */
++async function openFixture(): Promise<{ source: Uint8Array; graph: SceneGraph }> {
++  const seed = new SceneGraph()
++  const collection = seed.createCollection('Tokens')
++  seed.createVariable('brand', 'COLOR', collection.id, { r: 1, g: 0, b: 0, a: 1 })
++  const encoded = await exportFigFile(seed)
++  const source = zipSync({ ...unzipSync(encoded), [OPAQUE]: opaqueBytes })
++  return { source, graph: await parseFigFile(toBuffer(source)) }
++}
++
++async function names(bytes: Uint8Array): Promise<string[]> {
++  const graph = await parseFigFile(toBuffer(bytes))
++  return [...graph.variables.values()].map((v) => v.name)
++}
++
++test('an untouched import saves as the exact opened archive', async () => {
++  const { source, graph } = await openFixture()
++  expect(await exportFigFile(graph)).toEqual(source)
++})
++
++test('an unanswered parse worker cannot hang saving an untouched document', async () => {
++  const { source, graph } = await openFixture()
++  registerOriginalArchiveRequest(graph, () => new Promise<Uint8Array>(() => {}))
++  expect(await exportFigFile(graph)).toEqual(source)
++}, 5000)
++
++test('a variable added after opening is saved, and the opaque member survives', async () => {
++  const { graph } = await openFixture()
++  const collection = [...graph.variableCollections.values()][0]
++  graph.createVariable('accent', 'COLOR', collection.id, { r: 0, g: 1, b: 0, a: 1 })
++
++  const out = await exportFigFile(graph)
++  expect(await names(out)).toEqual(expect.arrayContaining(['brand', 'accent']))
++  expect(unzipSync(out)[OPAQUE]).toEqual(opaqueBytes)
++})
++
++test('a collection created after opening is saved', async () => {
++  const { graph } = await openFixture()
++  const collection = graph.createCollection('Spacing')
++  graph.createVariable('gap', 'FLOAT', collection.id, 4)
++  expect(await names(await exportFigFile(graph))).toContain('gap')
++})
++
++test('an in-place variable value edit is saved', async () => {
++  const { graph } = await openFixture()
++  const variable = [...graph.variables.values()][0]
++  const modeId = Object.keys(variable.valuesByMode)[0]
++  variable.valuesByMode[modeId] = { r: 0, g: 0, b: 1, a: 1 }
++
++  const reread = await parseFigFile(toBuffer(await exportFigFile(graph)))
++  const saved = [...reread.variables.values()][0]
++  expect(Object.values(saved.valuesByMode)[0]).toMatchObject({ r: 0, g: 0, b: 1 })
++})
++
++test('a node edit is saved and keeps the opaque member', async () => {
++  const { graph } = await openFixture()
++  graph.updateNode(graph.getPages()[0].id, { name: 'Renamed' })
++
++  const out = await exportFigFile(graph)
++  const reread = await parseFigFile(toBuffer(out))
++  expect(reread.getPages()[0].name).toBe('Renamed')
++  expect(unzipSync(out)[OPAQUE]).toEqual(opaqueBytes)
++})
