@@ -99,6 +99,13 @@ inputs @ {
       cachePinTargets;
     };
   };
+  skillNames = builtins.attrNames self.lib.tooling.catalog.skills;
+  skillsSupported = system:
+    (self.lib.tooling.resolve {
+      inherit system;
+      frameworks = nixlib.unique (nixlib.concatMap (name: self.lib.tooling.catalog.skills.${name}.requires.frameworks) skillNames);
+    }).unsupported
+    == [];
   companions = system: let
     pkgs = pkgsFor system {};
   in
@@ -143,12 +150,21 @@ in {
     // {
       default = import ./modules/home.nix {inherit self;};
       fleetix = import ./modules/fleetix.nix {inherit self;};
+      skillnet = import ./modules/skillnet.nix {inherit self;};
     };
   treefmtModules = collectModules "treefmtModules";
   templates = nixlib.foldl' (result: name: result // nixlib.mapAttrs' (key: value: nixlib.nameValuePair "${name}-${key}" value) (components.${name}.templates or {})) {} componentNames;
   packages = nixlib.genAttrs systems (system:
     collect "packages" system
     // companions system
+    // nixlib.optionalAttrs (skillsSupported system) {
+      llm-skills =
+        import ./tooling/skills.nix {
+          inherit self;
+          pkgs = pkgsFor system {};
+        }
+        skillNames;
+    }
     // nixlib.optionalAttrs (builtins.hasAttr system components.rust.packages) {
       default = components.rust.packages.${system}.harbor-rs;
     });
@@ -165,6 +181,13 @@ in {
       openPencilCli = self.packages.${system}.open-pencil-cli;
       openPencilDesktop = self.packages.${system}.open-pencil-desktop;
     });
+    skillsCheck = nixlib.optionalAttrs (skillsSupported system) {
+      llm-skills = import ./tooling/tests/skills.nix {
+        inherit pkgs;
+        bundle = self.packages.${system}.llm-skills;
+        names = skillNames;
+      };
+    };
     blenderCheck = nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
       blender-mcp-runtime = import ./tooling/tests/blender.nix {inherit self inputs pkgs;};
     };
@@ -259,6 +282,7 @@ in {
     // groups
     // desktopChecks
     // blenderCheck
+    // skillsCheck
     // {
       template-contract = templateContract;
       bootstrap-inputs = bootstrapInputs;
