@@ -108,6 +108,7 @@ inputs @ {
     // nixlib.optionalAttrs (system == "x86_64-linux") {
       open-pencil-desktop = pkgs.callPackage ./packages/open-pencil-desktop {};
     }
+    // import ./packages/freecad-mcp {inherit pkgs;}
     // nixlib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (import ./packages/blender-mcp {inherit pkgs;});
 in {
   lib = {
@@ -248,6 +249,7 @@ in {
             // portableCoreChecks)
           // nixlib.optionalAttrs (name == "cad" && system == "x86_64-linux") {
             dependency-links = desktopChecks.open-pencil-dependency-links;
+            inherit (self.packages.${system}) freecad-mcp freecad-mcp-addon;
           }))))
     componentNames);
   in

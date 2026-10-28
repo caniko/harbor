@@ -96,6 +96,13 @@ control is preserved. Consumers choose a GPU-specific Blender through the normal
 package override. Installed OpenCode clients receive the retained tool-permission
 defaults and skill when the corresponding options exist.
 
+The FreeCAD MCP bridge (`neka-nat/freecad-mcp`) is opt-in through
+`tools.freecad.mcp.enable`, because its FreeCAD add-on serves unauthenticated RPC
+on 127.0.0.1. Enabling it registers `freecad`; `tools.freecad.mcp.addon.enable`
+(default: follows `mcp.enable`) replaces the managed `Mod/FreeCADMCP` add-on and
+its localhost-only settings in the FreeCAD user profile on every activation.
+A server's `harnesses` list limits which Fleetix clients receive it.
+
 ## Explicit framework inputs
 
 ```nix

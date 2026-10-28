@@ -44,6 +44,32 @@ in {
         description = "Absolute writable JSON export/patch workspace for Home Manager. The existing canix state identity is preserved.";
       };
     };
+    freecad.mcp = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Install and register the FreeCAD MCP server (neka-nat/freecad-mcp). Opt-in: its FreeCAD add-on serves unauthenticated RPC on 127.0.0.1.";
+      };
+      addon.enable = mkOption {
+        type = types.bool;
+        default = cfg.tools.freecad.mcp.enable;
+        defaultText = lib.literalExpression "tools.freecad.mcp.enable";
+        description = "Install the FreeCAD-side add-on and localhost-only RPC settings into the FreeCAD user profile on Home Manager activation.";
+      };
+      onlyTextFeedback = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Suppress screenshot/image feedback from the MCP server.";
+      };
+      package = mkOption {
+        type = types.package;
+        default = self.packages.${system}.freecad-mcp;
+      };
+      addonPackage = mkOption {
+        type = types.package;
+        default = self.packages.${system}.freecad-mcp-addon;
+      };
+    };
     openpencil = {
       desktop.enable = mkOption {
         type = types.bool;
@@ -107,6 +133,15 @@ in {
         {
           assertion = !cfg.tools.blender.mcp.enable || pkgs.stdenv.hostPlatform.isLinux;
           message = "harbor: Blender MCP launchers currently support Linux only";
+        }
+        {
+          assertion = !(cfg.tools.freecad.mcp.enable || cfg.tools.freecad.mcp.addon.enable) || cfg.tools.freecad.enable;
+          message = "harbor: FreeCAD MCP requires tools.freecad.enable";
+        }
+        {
+          # Only the Home Manager module installs and registers the server.
+          assertion = kind == "home" || !(cfg.tools.freecad.mcp.enable || cfg.tools.freecad.mcp.addon.enable);
+          message = "harbor: FreeCAD MCP is supported only through Home Manager";
         }
         {
           assertion = !cfg.tools.openpencil.desktop.enable || cfg.tools.openpencil.enable;

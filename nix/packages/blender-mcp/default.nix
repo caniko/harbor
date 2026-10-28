@@ -17,9 +17,10 @@
     ];
 
     # Upstream requires mcp[cli]>=1.3.0,<2 plus httpx; tomli is only needed
-    # below Python 3.11. The cli extra is python-dotenv + typer.
+    # below Python 3.11. The cli extra is python-dotenv + typer. Once nixpkgs
+    # moves `mcp` to the 2.x SDK it keeps the cached v1 line as `mcp_1`.
     dependencies = with pkgs.python3Packages; [
-      mcp
+      (pkgs.python3Packages.mcp_1 or mcp)
       python-dotenv
       typer
       httpx
@@ -151,7 +152,7 @@
     };
   };
 in {
-  blender-mcp-test-env = pkgs.python3.withPackages (ps: [ps.mcp ps.pillow]);
+  blender-mcp-test-env = pkgs.python3.withPackages (ps: [(ps.mcp_1 or ps.mcp) ps.pillow]);
   blender-mcp = blenderMcp;
   blender-mcp-extension = blenderMcpExtension;
   blender-mcp-skill = blenderMcpSkill;
