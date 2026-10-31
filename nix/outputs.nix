@@ -126,6 +126,7 @@ in {
     go = components.go.lib;
     android = components.android.lib;
     tex = components.tex.lib;
+    game = components.game.lib;
     docs = components.projects.lib;
     database = components.database.lib;
     cad = components.cad.lib;
