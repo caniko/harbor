@@ -4,7 +4,7 @@ inputs @ {
   ...
 }: let
   nixlib = nixpkgs.lib;
-  componentNames = ["core" "rust" "python" "javascript" "go" "android" "tex" "database" "evm" "solana" "ntt" "llm" "cad" "projects" "macos-sdk"];
+  componentNames = ["core" "rust" "python" "javascript" "go" "android" "tex" "game" "database" "evm" "solana" "ntt" "llm" "cad" "projects" "macos-sdk"];
   aliases = {
     harbor-meta = components.core;
     meta-harbor = components.core;

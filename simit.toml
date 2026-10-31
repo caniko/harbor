@@ -120,6 +120,16 @@ checks = [
 ]
 
 [[monorepo.components]]
+id = "game"
+paths = ["components/game"]
+depends_on = ["core"]
+checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-game", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
 id = "database"
 paths = ["components/database"]
 cargo_packages = ["harbor-db"]
