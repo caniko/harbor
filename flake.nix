@@ -14,7 +14,7 @@
       flake = false;
     };
     # CAD's minimum FreeCAD version establishes the shared package-set floor.
-    nixpkgs.url = "github:NixOS/nixpkgs/1c89083e451e891152365b799595cf7790a43325";
+    nixpkgs.url = "github:NixOS/nixpkgs/8edc0c72e3a38faf5434e40d1f19431125fe4b30";
     # Retained Intel macOS compatibility fixes qualified this maintained revision.
     nixpkgs-darwin.url = "github:NixOS/nixpkgs/2bd3427b41d10b8318383195efe502ed1baca6cd";
     crane.url = "github:ipetkov/crane/eb35abda9f232cc6610b1d1e3200d15c49b7ac54";
