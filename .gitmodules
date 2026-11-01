@@ -54,3 +54,7 @@
 	path = components/cad
 	url = https://github.com/caniko/harbor-cad.git
 	branch = trunk
+[submodule "components/game"]
+	path = components/game
+	url = https://github.com/caniko/harbor-game.git
+	branch = trunk
