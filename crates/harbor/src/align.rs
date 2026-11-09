@@ -365,7 +365,7 @@ mod tests {
         let before = fs::read(dir.path().join("components/demo/flake.lock")).unwrap();
         let report = align_locks(dir.path(), &[], true).unwrap();
         assert!(report.is_clean(), "{:?}", report.changed);
-        assert!(report.components.is_empty());
+        assert_eq!(report.components, Vec::<String>::new());
         let after = fs::read(dir.path().join("components/demo/flake.lock")).unwrap();
         assert_eq!(before, after);
     }
