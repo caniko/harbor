@@ -18,7 +18,7 @@ submodules = true
 [[monorepo.components]]
 id = "core"
 paths = ["components/core"]
-cargo_packages = ["harbor-evidence"]
+cargo_packages = ["harbor-cli", "harbor-evidence"]
 checks = [
   # Builds the CI shell (Simit from source) once, outside the bounded checks.
   { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },

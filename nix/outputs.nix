@@ -57,6 +57,37 @@ inputs @ {
       inherit self inputs;
       pkgs = pkgsFor system {overlays = [inputs.rust-overlay.overlays.default];};
     };
+  # The superproject CLI lives in the root Cargo workspace. Build it with the
+  # shared toolchain and crane; the git-pinned fleetix dependency is vendored
+  # from Cargo.lock, so no outputHashes are needed.
+  harborCli = system: let
+    pkgs = pkgsFor system {
+      overlays = [inputs.rust-overlay.overlays.default];
+    };
+    toolchain = self.lib.rust.mkToolchain {
+      inherit pkgs;
+      toolchainProfile = "nightly";
+      cache.enable = false;
+    };
+    inherit (toolchain) craneLib;
+    source = pkgs.lib.cleanSourceWith {
+      src = ../.;
+      filter = path: type:
+        craneLib.filterCargoSources path type
+        || pkgs.lib.hasSuffix "/Cargo.lock" path;
+    };
+    commonArgs = {
+      src = source;
+      pname = "harbor-cli";
+      version = "0.1.0";
+      strictDeps = true;
+      cargoExtraArgs = "--locked --package harbor-cli";
+    };
+  in
+    craneLib.buildPackage (commonArgs
+      // {
+        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+      });
   templatePlinth =
     inputs.plinth-source
     // {
@@ -158,6 +189,9 @@ in {
   packages = nixlib.genAttrs systems (system:
     collect "packages" system
     // companions system
+    // {
+      harbor-cli = harborCli system;
+    }
     // nixlib.optionalAttrs (skillsSupported system) {
       llm-skills =
         import ./tooling/skills.nix {
@@ -223,7 +257,7 @@ in {
     # Standalone component locks must pin every input they share with the
     # root to the root's revision, so a component behaves the same inside
     # and outside harbor. After a root bump, align each component lock
-    # (scripts/align-component-locks) and land it in the component repo.
+    # (harbor align-locks) and land it in the component repo.
     lockAlignment = let
       rootLock = builtins.fromJSON (builtins.readFile ../flake.lock);
       pin = lock: ref: let
@@ -244,7 +278,7 @@ in {
         (builtins.attrNames inputs')))
       componentNames;
     in
-      assert nixlib.assertMsg (drifted == []) "component locks drifted from the root lock: ${nixlib.concatStringsSep ", " drifted}; run scripts/align-component-locks";
+      assert nixlib.assertMsg (drifted == []) "component locks drifted from the root lock: ${nixlib.concatStringsSep ", " drifted}; run harbor align-locks";
         pkgs.writeText "harbor-component-lock-alignment" "ok";
     sourceMaterialization = assert builtins.all (name: builtins.getContext (toString components.${name}) != {}) componentNames;
       pkgs.runCommand "harbor-component-source-materialization" {} ''
@@ -288,6 +322,7 @@ in {
       template-contract = templateContract;
       bootstrap-inputs = bootstrapInputs;
       harbor-modules = moduleContracts;
+      harbor-cli = self.packages.${system}.harbor-cli;
       formatting = formatters.${system}.config.build.check self;
     });
   formatter = nixlib.genAttrs systems (system: formatters.${system}.config.build.wrapper);
