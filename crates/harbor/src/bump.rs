@@ -459,13 +459,19 @@ fn update_superproject(
     let branch_ref = format!("refs/heads/{branch}");
     let current = git_optional(root, &["symbolic-ref", "--short", "HEAD"])?;
     let default = default_branch(root)?;
-    if current.as_deref() == Some(default.as_str()) {
-        if git_optional(root, &["rev-parse", "--verify", "--quiet", &branch_ref])?.is_some() {
-            git_ok(root, &["checkout", branch])?;
-        } else {
-            git_ok(root, &["checkout", "-b", branch])?;
+    // Off the default branch, the bump lands on the branch already checked out.
+    let branch = match current.as_deref() {
+        Some(current) if current != default => current.to_owned(),
+        _ => {
+            if git_optional(root, &["rev-parse", "--verify", "--quiet", &branch_ref])?.is_some() {
+                git_ok(root, &["checkout", branch])?;
+            } else {
+                git_ok(root, &["checkout", "-b", branch])?;
+            }
+            branch.to_owned()
         }
-    }
+    };
+    let branch = branch.as_str();
 
     let mut paths = vec!["flake.nix".to_owned(), "flake.lock".to_owned()];
     paths.extend(
