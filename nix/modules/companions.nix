@@ -193,5 +193,11 @@ in {
         env = lib.optionalAttrs (cfg.tools.cad.mcp.socket != null) {HARBOR_CAD_SOCKET = cfg.tools.cad.mcp.socket;};
       };
     })
+    (lib.mkIf (kind == "home" && cfg.cli.mcp.root != null) {
+      programs.harbor.mcp.servers.harbor = {
+        command = "${cfg.cli.package}/bin/harbor";
+        args = ["mcp" "--root" cfg.cli.mcp.root] ++ lib.optional cfg.cli.mcp.allowPublish "--allow-publish";
+      };
+    })
   ]);
 }

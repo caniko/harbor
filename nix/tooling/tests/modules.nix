@@ -217,6 +217,26 @@
       };
     }
   ];
+  harborCli = home [
+    {
+      programs.harbor = {
+        enable = true;
+        frameworks = ["core"];
+        cli = {
+          enable = true;
+          mcp.root = "/srv/harbor";
+        };
+      };
+    }
+  ];
+  harborCliWithoutServer = home [
+    {
+      programs.harbor = {
+        enable = true;
+        cli.enable = true;
+      };
+    }
+  ];
   freecad = home [
     self.homeManagerModules.fleetix
     fleetixMcp
@@ -304,6 +324,7 @@
       presets = lib.mapAttrs (_: c: c.activationPackage.drvPath) presets;
       sdkDisabled = sdkDisabled.activationPackage.drvPath;
       fleetix = fleetix.activationPackage.drvPath;
+      harborCli = harborCli.activationPackage.drvPath;
       skillnet = skillnet.activationPackage.drvPath;
     }
     // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
@@ -334,6 +355,12 @@ in
   assert rejected missingSkillnet;
   assert assertGood skillnet && skillnet.config.programs.skillnet.externalManifests == ["first" "${self.packages.${system}.llm-skills}/Skillnet.pkl"];
   assert assertGood fleetix;
+  assert lib.elem self.packages.${system}.harbor-cli harborCli.config.home.packages;
+  assert harborCli.config.programs.harbor.mcp.servers ? harbor;
+  assert harborCli.config.programs.harbor.mcp.servers.harbor.command
+  == "${self.packages.${system}.harbor-cli}/bin/harbor";
+  assert harborCli.config.programs.harbor.mcp.servers.harbor.args == ["mcp" "--root" "/srv/harbor"];
+  assert !(harborCliWithoutServer.config.programs.harbor.mcp.servers ? harbor);
   assert !pkgs.stdenv.hostPlatform.isLinux
   || (
     integrated.config.home-manager.users.fixture.programs.harbor.frameworks
