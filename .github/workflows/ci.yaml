@@ -6500,7 +6500,7 @@ on:
   pull_request: {}
   push:
     branches:
-    - '**'
+    - feat/harbor-monorepo-components
   workflow_dispatch: {}
 permissions:
   contents: read
