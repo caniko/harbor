@@ -4,6 +4,10 @@ provider = "actions"
 runtime = "nix"
 publish_crates = true
 publish_strategy = "members"
+# Qualify each change once: pull requests, plus trunk pushes. A wildcard here
+# also runs every PR head branch, and that push run shares the PR's concurrency
+# group, so it is cancelled while its `qualified` aggregate still reports.
+push_branches = ["feat/harbor-monorepo-components"]
 
 [ci.nix_system_runners]
 x86_64-linux = "ubuntu-24.04"
