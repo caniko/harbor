@@ -14,7 +14,7 @@ in
   assert sourceOnly "simit";
   assert sourceOnly "plinth-source";
   assert builtins.all currentTransport (builtins.attrValues lock.nodes);
-  assert inputs.simit.rev == "4c6841cce19327927ea8a8f6e856276dd5c878f0";
+  assert inputs.simit.rev == "2240b1d90c2151e5a66a04a743fbb14a313d4498";
   assert inputs.plinth-source.rev == "534dfa6dd6217db97b7ccd313501120a3c34d912";
     pkgs.runCommand "harbor-bootstrap-inputs" {} ''
       touch "$out"

@@ -6,7 +6,7 @@
     self.submodules = true;
     # Consume qualified tool sources without their consumer flake graphs.
     simit = {
-      url = "git+https://github.com/caniko/simit.git?ref=trunk&rev=4c6841cce19327927ea8a8f6e856276dd5c878f0";
+      url = "git+https://github.com/caniko/simit.git?ref=trunk&rev=2240b1d90c2151e5a66a04a743fbb14a313d4498";
       flake = false;
     };
     plinth-source = {

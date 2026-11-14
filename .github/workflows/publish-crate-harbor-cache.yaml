@@ -82,8 +82,10 @@ jobs:
       run: nix develop -c cargo test --locked --manifest-path components/rust/Cargo.toml -p harbor-cache --all-targets --all-features
     - name: Clippy harbor-cache
       run: nix develop -c cargo clippy --locked --manifest-path components/rust/Cargo.toml -p harbor-cache --all-targets --all-features -- -D warnings
-    - name: Package coordinated release set
-      run: nix develop -c cargo package --locked --manifest-path components/rust/Cargo.toml --allow-dirty --no-verify -p harbor-cache --target-dir "$RUNNER_TEMP/simit-package-target"
+    - name: Verify and package coordinated release set
+      run: |
+        set -euo pipefail
+        nix develop -c cargo package --locked --manifest-path components/rust/Cargo.toml --allow-dirty -p harbor-cache --target-dir "$RUNNER_TEMP/simit-package-target"
     - name: Build immutable archive harbor-cache
       run: |
         set -euo pipefail
@@ -91,6 +93,8 @@ jobs:
         test "$(nix develop -c cargo pkgid --locked --manifest-path components/rust/Cargo.toml -p harbor-cache | awk -F'[#@]' 'NF > 1 {print $NF}' | tail -n 1)" = "$version"
         mkdir -p "$RUNNER_TEMP/simit-crates/harbor-cache"
         cp "$RUNNER_TEMP/simit-package-target/package/harbor-cache-$version.crate" "$RUNNER_TEMP/simit-crates/harbor-cache/"
+        size="$(wc -c < "$RUNNER_TEMP/simit-crates/harbor-cache/harbor-cache-$version.crate")"
+        test "$size" -le 10485760 || { echo "crate harbor-cache archive is $size bytes, over the crates.io upload limit of 10485760 bytes (10 MiB)" >&2; exit 1; }
     - name: Retain original-run archive harbor-cache
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
@@ -6586,10 +6590,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - env:
+        OWNERS: '{"android":"android","cad":"cad","core":"core","database":"database","evm":"evm","game":"game","go":"go","javascript":"javascript","llm":"llm","macos-sdk":"macos-sdk","ntt":"ntt","projects":"projects","python":"python","rust":"rust","solana":"solana","tex":"tex"}'
         RESULTS: ${{ toJSON(needs) }}
         SELECTED: ${{ needs.plan.outputs.selected }}
       name: Require every selected component
-      run: printf '%s' "$RESULTS" | jq -e --argjson selected "$SELECTED" '. as $jobs | $jobs.plan.result == "success" and all($selected[]; $jobs["component-" + .].result == "success")'
+      run: |
+        set -euo pipefail
+        plan_result=$(printf '%s' "$RESULTS" | jq -r '.plan.result // "missing"')
+        if [ "$plan_result" != success ]; then
+          printf 'Qualification failed: the plan job is %s, so the selected components are unknown.\n' "$plan_result" >&2
+          exit 1
+        fi
+        if [ -z "$SELECTED" ]; then
+          printf 'Qualification failed: the plan job produced no selection output.\n' >&2
+          exit 1
+        fi
+        if ! printf '%s' "$SELECTED" | jq -e 'type == "array"' >/dev/null 2>&1; then
+          printf 'Qualification failed: the plan selection is not a JSON array: %s\n' "$SELECTED" >&2
+          exit 1
+        fi
+        if [ "$(printf '%s' "$SELECTED" | jq length)" -eq 0 ]; then
+          printf 'Qualification passed: no component changed, so no gate is needed.\n'
+          exit 0
+        fi
+        failed=$(printf '%s' "$RESULTS" | jq -c --argjson selected "$SELECTED" --argjson owners "$OWNERS" '. as $jobs | [ $selected[] | if $owners[.] == null then {component: ., reason: "no component job"} elif $jobs["component-" + $owners[.]].result != "success" then {component: ., reason: ($jobs["component-" + $owners[.]].result // "missing")} else empty end ]')
+        if [ "$(printf '%s' "$failed" | jq length)" -ne 0 ]; then
+          printf 'Qualification failed: these selected components did not pass: %s\n' "$(printf '%s' "$failed" | jq -r '.[] | "\(.component)=\(.reason)"' | tr '\n' ' ')" >&2
+          exit 1
+        fi
+        printf 'Qualification passed: every selected component succeeded.\n'
+      shell: bash
     timeout-minutes: 5
 name: Build Crate harbor-cache
 on:
