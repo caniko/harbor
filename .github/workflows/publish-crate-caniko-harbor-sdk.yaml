@@ -6869,7 +6869,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - env:
-        OWNERS: '{"android":"android","cad":"cad","core":"core","database":"database","evm":"evm","game":"game","go":"go","javascript":"javascript","llm":"llm","macos-sdk":"macos-sdk","ntt":"ntt","projects":"projects","python":"python","rust":"rust","solana":"solana","tex":"tex"}'
+        OWNERS: '{"android":"android","cad":"cad","core":"core","database":"database","evm":"evm","game":"game","go":"go","javascript":"javascript","llm":"llm","macos-sdk":"macos-sdk","mcp":"mcp","ntt":"ntt","projects":"projects","python":"python","rust":"rust","solana":"solana","tex":"tex"}'
         RESULTS: ${{ toJSON(needs) }}
         SELECTED: ${{ needs.plan.outputs.selected }}
       name: Require every selected component
