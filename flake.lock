@@ -473,17 +473,17 @@
     "simit": {
       "flake": false,
       "locked": {
-        "lastModified": 1792754497,
-        "narHash": "sha256-qeeUiiqO8HQO8BPbME1sktGM3yuStkBXdV/MUJdjVZI=",
+        "lastModified": 1794657846,
+        "narHash": "sha256-LotfcOqceiS20nzeQTLqfcR+WFNhxsJHQG8A6a5xwOI=",
         "ref": "trunk",
-        "rev": "4c6841cce19327927ea8a8f6e856276dd5c878f0",
-        "revCount": 858,
+        "rev": "2240b1d90c2151e5a66a04a743fbb14a313d4498",
+        "revCount": 1141,
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       },
       "original": {
         "ref": "trunk",
-        "rev": "4c6841cce19327927ea8a8f6e856276dd5c878f0",
+        "rev": "2240b1d90c2151e5a66a04a743fbb14a313d4498",
         "type": "git",
         "url": "https://github.com/caniko/simit.git"
       }
