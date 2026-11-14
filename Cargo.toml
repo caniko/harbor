@@ -13,6 +13,7 @@ exclude = [
   "components/rust",
   "components/llm",
   "components/solana/templates/*",
+  "components/mcp",
 ]
 
 # Versions and licenses belong to individual packages. Only shared lint policy

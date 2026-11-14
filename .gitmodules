@@ -58,3 +58,7 @@
 	path = components/game
 	url = https://github.com/caniko/harbor-game.git
 	branch = trunk
+[submodule "components/mcp"]
+	path = components/mcp
+	url = https://github.com/caniko/harbor-mcp.git
+	branch = trunk
