@@ -237,3 +237,15 @@ checks = [
   { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
   { id = "pin", run = "nix eval --json .#lib.pins.macosSdk | jq -e '(.sdkVersion | test(\"^[0-9]+([.][0-9]+)+$\")) and (.outputHash | startswith(\"sha256-\")) and (.storePath | startswith(\"/nix/store/\")) and .attic.cacheName == \"harbor-macos-sdk\"'" },
 ]
+
+[[monorepo.components]]
+id = "mcp"
+paths = ["components/mcp"]
+# harbor-mcp is its own Cargo package with its own lock; it never publishes.
+depends_on = ["rust"]
+systems = ["x86_64-linux"]
+checks = [
+  # Builds the CI shell (Simit from source) once, outside the bounded checks.
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.x86_64-linux.component-mcp", timeout_minutes = 90 },
+]
