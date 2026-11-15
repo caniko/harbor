@@ -28,6 +28,7 @@ in {
   config = lib.mkIf cfg.enable {
     home.packages =
       map (name: cfg.tools.${name}.package) generic
+      ++ lib.optional cfg.cli.enable cfg.cli.package
       ++ lib.optional (cfg.tools.openpencil.desktop.enable && pkgs.stdenv.hostPlatform.system == "x86_64-linux") cfg.tools.openpencil.desktop.package;
     programs.harbor.tools.cad.mcp.socket = lib.mkDefault "${config.home.homeDirectory}/.local/state/harbor-cad/worker.sock";
     programs.harbor-cad = {

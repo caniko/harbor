@@ -88,6 +88,24 @@ the same typed server records through their own integration. The OpenPencil
 bridge command is `openpencil-mcp`; its document tools need an open desktop
 document. Headless file operations use the CLI directly.
 
+The superproject CLI ships as `self.packages.<system>.harbor-cli`.
+`programs.harbor.cli.enable` installs `harbor`, and
+`programs.harbor.cli.mcp.root` registers a stdio server rooted at that checkout:
+
+```nix
+programs.harbor.cli = {
+  enable = true;
+  mcp.root = "/srv/harbor";
+  # mcp.allowPublish = true; # permit push/pr through the MCP server
+};
+```
+
+`harbor align-locks` pins component locks to the root lock, `harbor bump`
+relocks a root input and commits the component and superproject changes, and
+`harbor mcp` serves both over MCP. The server root is fixed at startup; tool
+arguments cannot select another directory. Publishing bumps are denied unless
+the server runs with `--allow-publish`.
+
 Blender uses matching server/extension versions, a private instance registry and
 screenshot transport, and the existing immutable extension/bootstrap. The
 `canix` extension repository identity, workspace paths and `CANIX_BLENDER_MCP_*`

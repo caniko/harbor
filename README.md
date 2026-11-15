@@ -30,8 +30,9 @@ nixpkgs:
 1. Run `canix repo update cache-pin` in this checkout. It picks the newest
    revision whose `cachePinMeta` requirements (every opted-in component's plus
    stock `paraview`) are cached.
-2. Run `scripts/align-component-locks nixpkgs`.
-3. Land each component's lock change in its repository and bump the gitlinks.
+2. Run `harbor bump nixpkgs --rev <rev> --push --pr`. It rewrites the root pin,
+   runs `nix flake lock`, aligns every component lock, commits one branch per
+   component, and bumps the gitlinks.
 
 Nix consumers must fetch submodules:
 `git+https://github.com/caniko/harbor.git?ref=...&submodules=1`; the
@@ -48,10 +49,10 @@ catalog, platform support, Blender/OpenPencil MCP and CAD runtime contracts.
 The root `flake.nix` and `flake.lock` own the input graph. Component output
 adapters are imported with those inputs and a component-local `self`; their own
 input declarations and lockfiles serve standalone evaluation only. The root
-Cargo workspace holds core's `harbor-evidence`, database, CAD and the Zenodo
-plugin with one lockfile; `components/rust` and `components/llm` are their own
-Cargo workspaces with their own lockfiles. Templates and test fixtures keep
-their independent project manifests.
+Cargo workspace holds core's `harbor-evidence`, database, CAD, the Zenodo
+plugin, and the superproject `harbor-cli` with one lockfile; `components/rust`
+and `components/llm` are their own Cargo workspaces with their own lockfiles.
+Templates and test fixtures keep their independent project manifests.
 
 | Component                                               | Nix library namespace             |
 | ------------------------------------------------------- | --------------------------------- |
@@ -97,7 +98,7 @@ aggregates every check exported by that component. Database qualification retain
 the hosted KVM and sandbox-cache prerequisites. Go keeps its Linux, ARM Linux,
 and ARM macOS native runners. Rust qualifies its workspace and Nix outputs on
 x86-64 Linux and ARM macOS; namespace runtime acceptance runs on Linux. Linux
-qualifies all nine Cargo members. macOS qualifies the seven portable members
+qualifies all ten Cargo members. macOS qualifies the eight portable members
 with `--workspace --exclude harbor-cad --exclude harbor-db`: CAD's worker and
 DB's lifecycle engines are Linux-only and retain their dedicated Linux component
 and runtime checks.

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "crates/harbor",
   "components/core/crates/harbor-evidence",
   "components/database",
   "components/cad",
@@ -12,6 +13,7 @@ exclude = [
   "components/rust",
   "components/llm",
   "components/solana/templates/*",
+  "components/mcp",
 ]
 
 # Versions and licenses belong to individual packages. Only shared lint policy

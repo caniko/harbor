@@ -34,6 +34,27 @@
 in {
   options.programs.harbor = {
     enable = lib.mkEnableOption "selected Harbor framework tooling";
+    cli = {
+      enable = lib.mkEnableOption "the harbor superproject CLI";
+      package = mkOption {
+        type = types.package;
+        default = self.packages.${system}.harbor-cli;
+        defaultText = lib.literalExpression "Harbor's harbor-cli package";
+        description = "Package used by the harbor superproject CLI and MCP server.";
+      };
+      mcp = {
+        root = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = "Harbor superproject checkout served to MCP clients; null disables the server.";
+        };
+        allowPublish = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Allow MCP clients to push branches and open pull requests.";
+        };
+      };
+    };
     frameworks = mkOption {
       type = types.listOf (types.enum (builtins.attrNames catalog.frameworks));
       default = [];

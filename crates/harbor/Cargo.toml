@@ -1,0 +1,28 @@
+[package]
+name = "harbor-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+description = "Harbor superproject maintenance CLI"
+
+[[bin]]
+name = "harbor"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# ponytail: git pin until fleetix 0.10 (first release with mcp-server) is on crates.io; then use the registry version.
+fleetix = { git = "https://github.com/caniko/fleetix", rev = "d70d7fa4b2021487be2f0173f4dfa5b15d93f8bf", default-features = false, features = [
+  "mcp-server",
+] }
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
