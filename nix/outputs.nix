@@ -29,7 +29,6 @@ inputs @ {
       // {
         self = component;
         harborRoot = self;
-        harborFormatting = system: formatters.${system}.config.build.check self;
       };
     component =
       outputs
