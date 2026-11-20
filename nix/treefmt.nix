@@ -1,20 +1,23 @@
+# Root policy, composed from the components' own treefmt modules so the
+# superproject formats with exactly the harbor helpers its consumers use.
 {rustfmtPackage}: {pkgs, ...}: {
+  imports = [
+    ../components/core/nix/treefmt/nix.nix
+    ../components/core/nix/treefmt/toml.nix
+    ../components/rust/nix/treefmt/rust.nix
+    ../components/python/nix/treefmt/python.nix
+    ../components/javascript/nix/treefmt/javascript.nix
+  ];
   projectRootFile = "flake.nix";
-  programs.rustfmt = {
-    enable = true;
-    edition = "2024";
-    package = rustfmtPackage;
-  };
-  programs.alejandra.enable = true;
-  programs.taplo.enable = true;
-  programs.ruff-format.enable = true;
+  programs.rustfmt.package = rustfmtPackage;
+  # The root also formats its docs and workflow-adjacent YAML.
   programs.prettier = {
-    enable = true;
     package = pkgs.prettier;
-    includes = ["*.md" "*.json" "*.yaml" "*.yml" "*.js" "*.ts"];
+    includes = ["*.md" "*.yaml" "*.yml"];
   };
   # Imported templates and byte-sensitive test data retain their source policy.
   # Simit owns workflow serialization; it verifies those files independently.
-  # Submodule components own their formatting (each repository checks it).
-  settings.excludes = ["components/core/**" "components/rust/**" "components/python/**" "components/javascript/**" "components/go/**" "components/android/**" "components/database/**" "components/evm/**" "components/solana/**" "components/ntt/**" "components/llm/**" "components/projects/**" "components/cad/**" "components/tex/**" "components/mcp/**" "components/database/tests/oracles/**" "migration/legacy/**" "**/templates/**" "**/tests/fixtures/**" "**/checks/fixtures/**" "components/llm/test/*.json" "components/llm/protocol/execution.json" "components/llm/protocol/conformance.json" "components/llm/protocol/commands.json" "components/llm/src/execution/types.d.ts" "components/llm/src/execution/command-types.d.ts" ".github/workflows/*.yaml" "nix/packages/*/package-lock.json"];
+  # Submodule components own their formatting: each checks its own
+  # nix/treefmt.nix, inside harbor as well as standalone.
+  settings.excludes = ["components/core/**" "components/rust/**" "components/python/**" "components/javascript/**" "components/go/**" "components/android/**" "components/database/**" "components/evm/**" "components/solana/**" "components/ntt/**" "components/llm/**" "components/projects/**" "components/cad/**" "components/tex/**" "components/game/**" "components/mcp/**" "migration/legacy/**" "**/templates/**" "**/tests/fixtures/**" "**/checks/fixtures/**" ".github/workflows/*.yaml" "nix/packages/*/package-lock.json"];
 }

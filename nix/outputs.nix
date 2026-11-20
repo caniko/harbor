@@ -12,6 +12,7 @@ inputs @ {
     rs-harbor = components.rust;
     harbor-py = components.python;
     py-harbor = components.python;
+    harbor-js = components.javascript;
     harbor-android = components.android;
   };
   # Import component output modules with one shared input graph. Compatibility
@@ -29,7 +30,6 @@ inputs @ {
       // {
         self = component;
         harborRoot = self;
-        harborFormatting = system: formatters.${system}.config.build.check self;
       };
     component =
       outputs
