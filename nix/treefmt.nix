@@ -4,16 +4,19 @@
   imports = [
     ../components/core/nix/treefmt/nix.nix
     ../components/core/nix/treefmt/toml.nix
+    ../components/core/nix/treefmt/markdown.nix
+    ../components/core/nix/treefmt/shell.nix
+    ../components/core/nix/treefmt/svg.nix
     ../components/rust/nix/treefmt/rust.nix
     ../components/python/nix/treefmt/python.nix
     ../components/javascript/nix/treefmt/javascript.nix
   ];
   projectRootFile = "flake.nix";
   programs.rustfmt.package = rustfmtPackage;
-  # The root also formats its docs and workflow-adjacent YAML.
+  # The root also formats its workflow-adjacent YAML.
   programs.prettier = {
     package = pkgs.prettier;
-    includes = ["*.md" "*.yaml" "*.yml"];
+    includes = ["*.yaml" "*.yml"];
   };
   # Imported templates and byte-sensitive test data retain their source policy.
   # Simit owns workflow serialization; it verifies those files independently.
