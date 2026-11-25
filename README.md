@@ -62,6 +62,7 @@ Templates and test fixtures keep their independent project manifests.
 | JavaScript                                              | `lib.javascript`                  |
 | Go                                                      | `lib.go`                          |
 | Android                                                 | `lib.android`                     |
+| Bevy                                                    | `lib.bevy`                        |
 | TeX and article plugins                                 | `lib.tex`                         |
 | Documentation projects                                  | `lib.docs`                        |
 | Database lifecycle                                      | `lib.database`                    |

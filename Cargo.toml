@@ -14,6 +14,7 @@ exclude = [
   "components/llm",
   "components/solana/templates/*",
   "components/mcp",
+  "components/bevy",
 ]
 
 # Versions and licenses belong to individual packages. Only shared lint policy

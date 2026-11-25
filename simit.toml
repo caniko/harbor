@@ -110,6 +110,16 @@ checks = [
 ]
 
 [[monorepo.components]]
+id = "bevy"
+paths = ["components/bevy"]
+depends_on = ["core", "rust", "android"]
+systems = ["x86_64-linux", "aarch64-linux"]
+checks = [
+  { id = "provision", run = "simit init ci --check", timeout_minutes = 60 },
+  { id = "nix", run = "nix build --no-link --max-jobs 1 --cores 2 .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).component-bevy", timeout_minutes = 90 },
+]
+
+[[monorepo.components]]
 id = "tex"
 paths = ["components/tex"]
 cargo_packages = ["anx-plugin-zenodo"]

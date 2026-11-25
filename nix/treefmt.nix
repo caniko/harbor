@@ -22,5 +22,5 @@
   # Simit owns workflow serialization; it verifies those files independently.
   # Submodule components own their formatting: each checks its own
   # nix/treefmt.nix, inside harbor as well as standalone.
-  settings.excludes = ["components/core/**" "components/rust/**" "components/python/**" "components/javascript/**" "components/go/**" "components/android/**" "components/database/**" "components/evm/**" "components/solana/**" "components/ntt/**" "components/llm/**" "components/projects/**" "components/cad/**" "components/tex/**" "components/game/**" "components/mcp/**" "migration/legacy/**" "**/templates/**" "**/tests/fixtures/**" "**/checks/fixtures/**" ".github/workflows/*.yaml" "nix/packages/*/package-lock.json"];
+  settings.excludes = ["components/core/**" "components/rust/**" "components/python/**" "components/javascript/**" "components/go/**" "components/android/**" "components/bevy/**" "components/database/**" "components/evm/**" "components/solana/**" "components/ntt/**" "components/llm/**" "components/projects/**" "components/cad/**" "components/tex/**" "components/game/**" "components/mcp/**" "migration/legacy/**" "**/templates/**" "**/tests/fixtures/**" "**/checks/fixtures/**" ".github/workflows/*.yaml" "nix/packages/*/package-lock.json"];
 }

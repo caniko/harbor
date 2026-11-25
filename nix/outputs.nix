@@ -4,7 +4,7 @@ inputs @ {
   ...
 }: let
   nixlib = nixpkgs.lib;
-  componentNames = ["core" "rust" "python" "javascript" "go" "android" "tex" "game" "database" "evm" "solana" "ntt" "llm" "cad" "projects" "macos-sdk" "mcp"];
+  componentNames = ["core" "rust" "python" "javascript" "go" "android" "bevy" "tex" "game" "database" "evm" "solana" "ntt" "llm" "cad" "projects" "macos-sdk" "mcp"];
   aliases = {
     harbor-meta = components.core;
     meta-harbor = components.core;
@@ -14,6 +14,7 @@ inputs @ {
     py-harbor = components.python;
     harbor-js = components.javascript;
     harbor-android = components.android;
+    harbor-bevy = components.bevy;
   };
   # Import component output modules with one shared input graph. Compatibility
   # adapters bind a component-local self so internal output recursion remains
@@ -156,6 +157,7 @@ in {
     javascript = components.javascript.lib;
     go = components.go.lib;
     android = components.android.lib;
+    bevy = components.bevy.lib;
     tex = components.tex.lib;
     game = components.game.lib;
     docs = components.projects.lib;

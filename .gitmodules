@@ -62,3 +62,7 @@
 	path = components/mcp
 	url = https://github.com/caniko/harbor-mcp.git
 	branch = trunk
+[submodule "components/bevy"]
+	path = components/bevy
+	url = https://github.com/caniko/harbor-bevy.git
+	branch = trunk
